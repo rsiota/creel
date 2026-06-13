@@ -430,10 +430,16 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "ctrl+enter", "ctrl+j", "f5":
 		return m, m.executeQuery()
-	case "ctrl+n":
-		return m, m.nextPage()
-	case "ctrl+p":
-		return m, m.prevPage()
+	case "ctrl+d":
+		// Vim-style page navigation — only when not in the editor
+		// (Ctrl+D/U scroll within the editor in vim normal mode).
+		if m.focus != FocusEditor {
+			return m, m.nextPage()
+		}
+	case "ctrl+u":
+		if m.focus != FocusEditor {
+			return m, m.prevPage()
+		}
 	case "ctrl+r":
 		m.editor.Reset()
 		return m, nil
@@ -944,7 +950,7 @@ func (m Model) contextHelp() string {
 		if m.pageMsg != "" {
 			pg = "  " + m.pageMsg
 		}
-		return mutedStyle.Render("j/k: rows  h/l: cols  ctrl+n/ctrl+p: page" + pg)
+		return mutedStyle.Render("j/k: rows  h/l: cols  ctrl+d/ctrl+u: page" + pg)
 	default:
 		return m.editor.HelpText()
 	}
