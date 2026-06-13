@@ -195,7 +195,9 @@ func truncateCell(s string, width int) string {
 // visibleColRange returns the start and end column indices that fit
 // within the available width, starting from scrollCol.
 func (r ResultsTable) visibleColRange() (int, int) {
-	available := r.width - 3 // account for borders
+	// Each column renders as: " " + value(colWidth) + " " + "│" = colWidth + 3
+	// The leftmost "│" is 1 extra char.
+	available := r.width - 1
 	if available < 1 {
 		available = 1
 	}
@@ -205,7 +207,7 @@ func (r ResultsTable) visibleColRange() (int, int) {
 	end := start
 
 	for i := start; i < len(r.colWidths); i++ {
-		colW := r.colWidths[i] + 3 // padding + border
+		colW := r.colWidths[i] + 3
 		if used+colW > available && end > start {
 			break
 		}
@@ -242,17 +244,17 @@ func (r ResultsTable) View() string {
 
 	var b strings.Builder
 
-	// Build header
+	// Top border
 	borderColor := lipgloss.NewStyle().Foreground(colorBorder)
 	b.WriteString(borderColor.Render("┌"))
 	for i := colStart; i < colEnd; i++ {
-		w := r.colWidths[i] + 2 // +2 for padding
-		b.WriteString(borderColor.Render(strings.Repeat("─", w+2)))
+		w := r.colWidths[i] + 2 // match cell content: " " + value + " "
+		b.WriteString(borderColor.Render(strings.Repeat("─", w)))
 		if i < colEnd-1 {
 			b.WriteString(borderColor.Render("┬"))
 		}
 	}
-	b.WriteString(borderStyle.Render("┐"))
+	b.WriteString(borderColor.Render("┐"))
 	b.WriteString("\n")
 
 	// Header row
@@ -268,7 +270,7 @@ func (r ResultsTable) View() string {
 	b.WriteString(borderColor.Render("├"))
 	for i := colStart; i < colEnd; i++ {
 		w := r.colWidths[i] + 2
-		b.WriteString(borderColor.Render(strings.Repeat("─", w+2)))
+		b.WriteString(borderColor.Render(strings.Repeat("─", w)))
 		if i < colEnd-1 {
 			b.WriteString(borderColor.Render("┼"))
 		}
@@ -296,7 +298,7 @@ func (r ResultsTable) View() string {
 	b.WriteString(borderColor.Render("└"))
 	for i := colStart; i < colEnd; i++ {
 		w := r.colWidths[i] + 2
-		b.WriteString(borderColor.Render(strings.Repeat("─", w+2)))
+		b.WriteString(borderColor.Render(strings.Repeat("─", w)))
 		if i < colEnd-1 {
 			b.WriteString(borderColor.Render("┴"))
 		}
