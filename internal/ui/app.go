@@ -576,12 +576,13 @@ func (m Model) viewWorkspace() string {
 		)
 
 	editorTitle := titleStyle.Render("Query")
+	modeIndicator := mutedStyle.Render(fmt.Sprintf("[%s]", m.editor.VimModeStr()))
 	editorPanel := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.borderForFocus(FocusEditor)).
 		Render(
 			lipgloss.JoinVertical(lipgloss.Left,
-				editorTitle,
+				editorTitle+"  "+modeIndicator,
 				m.editor.View(),
 			),
 		)

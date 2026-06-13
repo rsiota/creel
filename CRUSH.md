@@ -47,7 +47,7 @@ internal/ui/              — All Bubble Tea UI components
 - [x] Slice 1: Project scaffold + DB abstraction + CLI mode
 - [x] Slice 1b: TUI skeleton (connection list, editor, results, workspace layout)
 - [x] Slice 2: Connection manager (add/edit/delete connections from TUI, saved to config)
-- [ ] Slice 3: Vim mode editing
+- [x] Slice 3: Vim mode editing (normal/insert modes, h/j/k/l, i/a/o/A/O, dd/dw/x/D, y/p)
 - [ ] Slice 4: Query history (per-connection)
 - [ ] Slice 5: Full table browser (columns, schema view)
 - [ ] Slice 6: Row pagination for large result sets
