@@ -492,10 +492,9 @@ func (m *Model) layoutWorkspace() {
 	sidebarWidth := 30
 	statusHeight := 1
 	borderOverhead := 2
-	gapHeight := 1
 	editorHeight := 8
 
-	resultsHeight := m.height - editorHeight - gapHeight - statusHeight - (borderOverhead * 2)
+	resultsHeight := m.height - editorHeight - statusHeight - (borderOverhead * 2)
 	if resultsHeight < 3 {
 		resultsHeight = 3
 	}
@@ -566,15 +565,13 @@ func (m Model) viewWorkspace() string {
 	sidebarWidth := 30
 	statusHeight := 1
 	borderOverhead := 2
-	gapHeight := 1 // vertical gap between editor and results panels
 	editorHeight := 8
-	// Total right column = editor + gap + results + status
-	// resultsHeight fills the remainder
-	resultsHeight := m.height - editorHeight - gapHeight - statusHeight - (borderOverhead * 2)
+	// Editor and results are adjacent; their touching borders create a
+	// 2-line visual gap matching the 2-char horizontal gap.
+	resultsHeight := m.height - editorHeight - statusHeight - (borderOverhead * 2)
 	if resultsHeight < 3 {
 		resultsHeight = 3
 	}
-	// Sidebar matches the full workspace (editor + gap + results)
 	sidebarHeight := m.height - statusHeight - borderOverhead
 
 	sidebarTitle := titleStyle.Render("Tables")
@@ -671,7 +668,6 @@ func (m Model) viewWorkspace() string {
 
 	rightPanel := lipgloss.JoinVertical(lipgloss.Left,
 		editorPanel,
-		"\n", // gap line matching horizontal spacing
 		resultsPanel,
 	)
 
