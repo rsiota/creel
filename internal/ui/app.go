@@ -171,7 +171,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.updateLayout()
+		m = m.updateLayout()
 		return m, nil
 
 	case tea.KeyMsg:
@@ -449,19 +449,19 @@ func (m Model) applyFocus() Model {
 	return m
 }
 
-func (m Model) updateLayout() {
+func (m Model) updateLayout() Model {
 	if m.width == 0 || m.height == 0 {
-		return
+		return m
 	}
 
 	if m.state == stateConnections {
 		m.connList.SetSize(m.width, m.height)
-		return
+		return m
 	}
 
 	if m.state == stateAddConnection {
 		m.connForm.SetSize(m.width, m.height)
-		return
+		return m
 	}
 
 	sidebarWidth := 30
@@ -472,6 +472,8 @@ func (m Model) updateLayout() {
 	m.editor.SetSize(m.width-sidebarWidth-2, editorHeight)
 
 	m.results.SetSize(m.width-sidebarWidth-2, m.height-editorHeight-4)
+
+	return m
 }
 
 // View renders the entire application.

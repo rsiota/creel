@@ -66,7 +66,7 @@ func (r *ResultsTable) SetSize(width, height int) {
 	r.width = width
 	r.height = height
 
-	maxVisible := height - 5
+	maxVisible := height - 4
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -77,7 +77,7 @@ func (r *ResultsTable) SetSize(width, height int) {
 
 // ScrollDown moves the visible rows down by one.
 func (r *ResultsTable) ScrollDown() {
-	maxVisible := r.height - 5
+	maxVisible := r.height - 4
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -108,7 +108,7 @@ func (r ResultsTable) View() string {
 		return errorStyle.Render(r.message)
 	}
 
-	maxVisible := r.height - 6
+	maxVisible := r.height - 4
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
