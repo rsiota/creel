@@ -344,7 +344,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Global workspace keys
 	switch msg.String() {
-	case "ctrl+h":
+	case "ctrl+y":
 		if m.connection != nil {
 			if m.history.IsVisible() {
 				m.history.Toggle()
@@ -719,7 +719,7 @@ func (m Model) viewWorkspace() string {
 				m.connectionInfo(connName),
 				m.focusInfo(),
 				m.editor.HelpText(),
-				mutedStyle.Render("ctrl+t: switch  ctrl+h: history  ctrl+q: quit"),
+				mutedStyle.Render("ctrl+t: switch  ctrl+y: history  ctrl+q: quit"),
 			),
 		)
 
