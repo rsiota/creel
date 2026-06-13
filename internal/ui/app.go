@@ -790,9 +790,7 @@ func (m Model) viewWorkspace() string {
 
 	scrollInfo := ""
 	if len(items) > maxVisible {
-		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d  │  enter: expand  s: select  d: describe", start+1, end, len(items)))
-	} else if len(items) > 0 {
-		scrollInfo = mutedStyle.Render(" enter: expand  s: select  d: describe")
+		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", start+1, end, len(items)))
 	}
 
 	sidebar := lipgloss.NewStyle().
