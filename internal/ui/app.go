@@ -135,6 +135,7 @@ func (m *Model) connectToDB() tea.Cmd {
 
 	cmd := m.editor.Focus()
 	m.loadTables()
+	m.layoutWorkspace()
 
 	return cmd
 }
@@ -193,6 +194,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateWorkspace(msg)
 
 	case queryExecutedMsg:
+		m.layoutWorkspace()
 		if msg.err != nil {
 			m.results.SetError(msg.err.Error())
 		} else {
@@ -322,6 +324,10 @@ func (m Model) updateAddConnection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Ensure panels are correctly sized (handles state transitions where
+	// WindowSizeMsg hasn't re-fired).
+	m.layoutWorkspace()
+
 	// Global workspace keys
 	switch msg.String() {
 	case "ctrl+enter", "ctrl+j", "f5":
@@ -464,6 +470,13 @@ func (m Model) updateLayout() Model {
 		return m
 	}
 
+	m.layoutWorkspace()
+	return m
+}
+
+// layoutWorkspace sizes the workspace panels. Uses pointer receiver so it
+// works correctly when called from both value and pointer receiver methods.
+func (m *Model) layoutWorkspace() {
 	sidebarWidth := 30
 
 	m.connList.SetSize(sidebarWidth-2, m.height-2)
@@ -472,8 +485,6 @@ func (m Model) updateLayout() Model {
 	m.editor.SetSize(m.width-sidebarWidth-2, editorHeight)
 
 	m.results.SetSize(m.width-sidebarWidth-2, m.height-editorHeight-4)
-
-	return m
 }
 
 // View renders the entire application.
