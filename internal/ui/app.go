@@ -491,21 +491,27 @@ func (m Model) updateLayout() Model {
 func (m *Model) layoutWorkspace() {
 	sidebarWidth := 30
 	statusHeight := 1
-	editorHeight := 8
+	borderOverhead := 2 // each bordered panel: top + bottom border line
 
-	resultsHeight := m.height - editorHeight - statusHeight
+	editorHeight := 8
+	resultsHeight := m.height - editorHeight - statusHeight - (borderOverhead * 2)
 	if resultsHeight < 3 {
 		resultsHeight = 3
 	}
 
-	sidebarHeight := m.height - statusHeight
+	sidebarHeight := m.height - statusHeight - borderOverhead
 	if sidebarHeight < 3 {
 		sidebarHeight = 3
 	}
 
-	m.connList.SetSize(sidebarWidth-2, sidebarHeight)
-	m.editor.SetSize(m.width-sidebarWidth-2, editorHeight)
-	m.results.SetSize(m.width-sidebarWidth-2, resultsHeight)
+	editorContentHeight := editorHeight - borderOverhead
+	if editorContentHeight < 1 {
+		editorContentHeight = 1
+	}
+
+	m.connList.SetSize(sidebarWidth-borderOverhead, sidebarHeight)
+	m.editor.SetSize(m.width-sidebarWidth-borderOverhead, editorContentHeight)
+	m.results.SetSize(m.width-sidebarWidth-borderOverhead, resultsHeight)
 }
 
 // View renders the entire application.
@@ -558,9 +564,10 @@ func (m Model) viewAddConnection() string {
 func (m Model) viewWorkspace() string {
 	sidebarWidth := 30
 	statusHeight := 1
+	borderOverhead := 2
 	editorHeight := 8
-	resultsHeight := m.height - editorHeight - statusHeight
-	sidebarHeight := m.height - statusHeight
+	resultsHeight := m.height - editorHeight - statusHeight - (borderOverhead * 2)
+	sidebarHeight := m.height - statusHeight - borderOverhead
 
 	sidebarTitle := titleStyle.Render("Tables")
 
@@ -603,7 +610,7 @@ func (m Model) viewWorkspace() string {
 	}
 
 	sidebar := lipgloss.NewStyle().
-		Width(sidebarWidth).
+		Width(sidebarWidth - borderOverhead).
 		Height(sidebarHeight).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorBorder).
@@ -618,8 +625,8 @@ func (m Model) viewWorkspace() string {
 		m.editor.View(),
 	)
 	editorPanel := lipgloss.NewStyle().
-		Width(m.width - sidebarWidth).
-		Height(editorHeight).
+		Width(m.width - sidebarWidth - borderOverhead).
+		Height(editorHeight - borderOverhead).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.borderForFocus(FocusEditor)).
 		Render(editorContent)
@@ -630,7 +637,7 @@ func (m Model) viewWorkspace() string {
 		m.results.View(),
 	)
 	resultsPanel := lipgloss.NewStyle().
-		Width(m.width - sidebarWidth).
+		Width(m.width - sidebarWidth - borderOverhead).
 		Height(resultsHeight).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.borderForFocus(FocusResults)).
