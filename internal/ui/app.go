@@ -55,15 +55,16 @@ type Model struct {
 	height   int
 	quitting bool
 
-	connList    ConnectionList
-	connForm    ConnectionForm
-	editor      QueryEditor
-	results     ResultsTable
-	history    HistoryPanel
-	tableScroll int
+	connList     ConnectionList
+	connForm     ConnectionForm
+	editor       QueryEditor
+	results      ResultsTable
+	history      HistoryPanel
+	sidebarCursor int
+	expanded     map[string][]db.Column
 
-	config      *config.Config
-	connection  *db.Connection
+	config       *config.Config
+	connection   *db.Connection
 	historyStore *history.Store
 	connError   string
 	tables      []string
@@ -80,6 +81,7 @@ func NewModel(cfg *config.Config) Model {
 		connList:     NewConnectionList(),
 		history:      NewHistoryPanel(),
 		historyStore: history.NewStore(historyDir()),
+		expanded:     make(map[string][]db.Column),
 	}
 	m.loadConnections()
 	return m
@@ -451,37 +453,105 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case FocusConnections:
 		switch msg.String() {
 		case "up", "k":
-			m = m.scrollTables(-1)
+			m = m.scrollSidebar(-1)
 			return m, nil
 		case "down", "j":
-			m = m.scrollTables(1)
+			m = m.scrollSidebar(1)
 			return m, nil
-		case "enter":
-			tableName := m.tables[m.tableScroll]
-			m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s LIMIT 100;", tableName))
-			m.focus = FocusEditor
-			m.applyFocus()
-			return m, m.editor.Focus()
+		case "enter", " ":
+			m.toggleExpand()
+			return m, nil
+		case "s":
+			item := m.currentSidebarItem()
+			if item != nil && !item.isColumn {
+				m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s LIMIT 100;", item.text))
+				m.focus = FocusEditor
+				m.applyFocus()
+				return m, m.editor.Focus()
+			}
+		case "d":
+			item := m.currentSidebarItem()
+			if item != nil && !item.isColumn {
+				tableName := item.text
+				if m.connection != nil && m.connection.Config().Driver == db.DriverSQLite {
+					m.editor.SetValue(fmt.Sprintf("SELECT name, type, \"notnull\", dflt_value, pk FROM pragma_table_info('%s');", tableName))
+				} else {
+					m.editor.SetValue(fmt.Sprintf("DESCRIBE %s;", tableName))
+				}
+				m.focus = FocusEditor
+				m.applyFocus()
+				return m, m.executeQuery()
+			}
 		}
 		m.connList, cmd = m.connList.Update(msg)
 	}
 	return m, cmd
 }
 
-func (m Model) scrollTables(delta int) Model {
-	total := len(m.tables)
+// sidebarItem is a flat entry in the sidebar (table or column).
+type sidebarItem struct {
+	text     string
+	isColumn bool
+	colType  string
+}
 
-	m.tableScroll += delta
-	if m.tableScroll < 0 {
-		m.tableScroll = 0
+// sidebarItems builds the flat list of tables + expanded columns.
+func (m Model) sidebarItems() []sidebarItem {
+	var items []sidebarItem
+	for _, t := range m.tables {
+		items = append(items, sidebarItem{text: t})
+		if cols, ok := m.expanded[t]; ok {
+			for _, c := range cols {
+				items = append(items, sidebarItem{text: c.Name, isColumn: true, colType: c.Type})
+			}
+		}
 	}
-	if m.tableScroll > total-1 {
-		m.tableScroll = total - 1
+	return items
+}
+
+// scrollSidebar moves the cursor through the flat sidebar item list.
+func (m Model) scrollSidebar(delta int) Model {
+	items := m.sidebarItems()
+	if len(items) == 0 {
+		m.sidebarCursor = 0
+		return m
 	}
-	if total == 0 {
-		m.tableScroll = 0
+	m.sidebarCursor += delta
+	if m.sidebarCursor < 0 {
+		m.sidebarCursor = 0
+	}
+	if m.sidebarCursor > len(items)-1 {
+		m.sidebarCursor = len(items) - 1
 	}
 	return m
+}
+
+// currentSidebarItem returns the item under the cursor.
+func (m Model) currentSidebarItem() *sidebarItem {
+	items := m.sidebarItems()
+	if m.sidebarCursor < 0 || m.sidebarCursor >= len(items) {
+		return nil
+	}
+	return &items[m.sidebarCursor]
+}
+
+// toggleExpand loads or clears the schema for the selected table.
+func (m *Model) toggleExpand() {
+	item := m.currentSidebarItem()
+	if item == nil || item.isColumn {
+		return
+	}
+	table := item.text
+	if _, ok := m.expanded[table]; ok {
+		delete(m.expanded, table)
+		return
+	}
+	cols, err := m.connection.DB().TableSchema(table)
+	if err != nil {
+		m.connError = err.Error()
+		return
+	}
+	m.expanded[table] = cols
 }
 
 func (m Model) cycleFocus() Model {
@@ -660,16 +730,17 @@ func (m Model) viewWorkspace() string {
 		maxVisible = 1
 	}
 
-	totalTables := len(m.tables)
-	// tableScroll is the cursor position; compute the visible window around it.
+	items := m.sidebarItems()
+
+	// Scroll window centered on cursor.
 	half := maxVisible / 2
-	start := m.tableScroll - half
+	start := m.sidebarCursor - half
 	if start < 0 {
 		start = 0
 	}
 	end := start + maxVisible
-	if end > totalTables {
-		end = totalTables
+	if end > len(items) {
+		end = len(items)
 		start = end - maxVisible
 		if start < 0 {
 			start = 0
@@ -678,22 +749,41 @@ func (m Model) viewWorkspace() string {
 
 	tableList := strings.Builder{}
 	for i := start; i < end; i++ {
-		cursor := "  "
-		style := normalStyle
-		if m.focus == FocusConnections && i == m.tableScroll {
-			cursor = "→ "
-			style = selectedStyle
+		item := items[i]
+		isCursor := m.focus == FocusConnections && i == m.sidebarCursor
+
+		if item.isColumn {
+			marker := mutedStyle.Render("    • ")
+			colName := item.text
+			colType := mutedStyle.Render(" " + item.colType)
+			if isCursor {
+				tableList.WriteString("  → ")
+			}
+			tableList.WriteString(marker + colName + colType)
+		} else {
+			cursor := "  "
+			style := normalStyle
+			expandIcon := "▸"
+			if _, ok := m.expanded[item.text]; ok {
+				expandIcon = "▾"
+			}
+			if isCursor {
+				cursor = "→ "
+				style = selectedStyle
+			}
+			tableList.WriteString(style.Render(cursor + expandIcon + " " + item.text))
 		}
-		tableList.WriteString(style.Render(cursor + m.tables[i]))
 		tableList.WriteString("\n")
 	}
-	if totalTables == 0 {
+	if len(items) == 0 {
 		tableList.WriteString(mutedStyle.Render("  (no tables)"))
 	}
 
 	scrollInfo := ""
-	if totalTables > maxVisible {
-		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", start+1, end, totalTables))
+	if len(items) > maxVisible {
+		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d  │  enter: expand  s: select  d: describe", start+1, end, len(items)))
+	} else if len(items) > 0 {
+		scrollInfo = mutedStyle.Render(" enter: expand  s: select  d: describe")
 	}
 
 	sidebar := lipgloss.NewStyle().

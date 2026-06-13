@@ -36,7 +36,7 @@ internal/ui/              — All Bubble Tea UI components
   results_table.go        — Query results table (custom renderer)
   history_panel.go        — Query history overlay panel
   connection_form_test.go — Tests for form validation
-  table_scroll_test.go    — Tests for sidebar table scrolling
+  table_scroll_test.go    — Tests for sidebar table/schema scrolling
 ```
 
 ## Key Design Decisions
@@ -52,7 +52,7 @@ internal/ui/              — All Bubble Tea UI components
 - [x] Slice 2: Connection manager (add/edit/delete connections from TUI, saved to config)
 - [x] Slice 3: Vim mode editing (normal/insert modes, h/j/k/l, i/a/o/A/O, dd/dw/x/D, y/p)
 - [x] Slice 4: Query history (per-connection, persisted, searchable, overlay panel)
-- [ ] Slice 5: Full table browser (columns, schema view)
+- [x] Slice 5: Full table browser (expand/collapse columns, schema view, quick actions)
 - [ ] Slice 6: Row pagination for large result sets
 
 ## Config Format (~/.config/gsql/config.yaml)
