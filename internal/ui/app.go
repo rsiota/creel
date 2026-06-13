@@ -28,6 +28,7 @@ type state int
 const (
 	stateConnections state = iota
 	stateWorkspace
+	stateAddConnection
 )
 
 // executeResultMsg carries the result of an async query execution.
@@ -50,9 +51,10 @@ type Model struct {
 	height   int
 	quitting bool
 
-	connList ConnectionList
-	editor   QueryEditor
-	results  ResultsTable
+	connList  ConnectionList
+	connForm  ConnectionForm
+	editor    QueryEditor
+	results   ResultsTable
 
 	config     *config.Config
 	connection *db.Connection
@@ -184,6 +186,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.state == stateConnections {
 			return m.updateConnections(msg)
 		}
+		if m.state == stateAddConnection {
+			return m.updateAddConnection(msg)
+		}
 		return m.updateWorkspace(msg)
 
 	case queryExecutedMsg:
@@ -210,6 +215,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	if m.state == stateAddConnection {
+		var cmd tea.Cmd
+		m.connForm, cmd = m.connForm.Update(msg)
+		return m, cmd
+	}
+
 	return m, nil
 }
 
@@ -218,7 +229,14 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m, m.connectToDB()
 	case "n":
-		return m.addDefaultSQLiteConnection()
+		m.state = stateAddConnection
+		m.connForm = NewConnectionForm()
+		cmd := m.connForm.Focus()
+		return m, cmd
+	case "e":
+		return m.openEditForm()
+	case "d":
+		return m.deleteSelectedConnection()
 	case "esc":
 		if m.connList.list.FilterState() == list.Filtering {
 			break
@@ -238,10 +256,74 @@ func (m Model) addDefaultSQLiteConnection() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) openEditForm() (tea.Model, tea.Cmd) {
+	name := m.connList.SelectedName()
+	if name == "" {
+		return m, nil
+	}
+	existing := m.config.GetConnection(name)
+	if existing == nil {
+		return m, nil
+	}
+	m.state = stateAddConnection
+	m.connForm = NewConnectionFormEdit(*existing)
+	cmd := m.connForm.Focus()
+	return m, cmd
+}
+
+func (m Model) deleteSelectedConnection() (tea.Model, tea.Cmd) {
+	name := m.connList.SelectedName()
+	if name == "" {
+		return m, nil
+	}
+	m.config.RemoveConnection(name)
+	if err := m.config.Save(); err != nil {
+		m.connError = err.Error()
+		return m, nil
+	}
+	m.connError = ""
+	m.loadConnections()
+	return m, nil
+}
+
+func (m Model) updateAddConnection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.state = stateConnections
+		m.connError = ""
+		return m, nil
+	case "enter":
+		connCfg, errMsg := m.connForm.EnterPressed()
+		if errMsg != "" {
+			m.connForm.SetError(errMsg)
+			return m, nil
+		}
+
+		if m.connForm.mode == formModeEdit {
+			m.config.RemoveConnection(m.connForm.editing)
+		}
+
+		m.config.AddConnection(connCfg)
+		if err := m.config.Save(); err != nil {
+			m.connForm.SetError(err.Error())
+			return m, nil
+		}
+
+		m.state = stateConnections
+		m.connError = ""
+		m.loadConnections()
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+	m.connForm, cmd = m.connForm.Update(msg)
+	return m, cmd
+}
+
 func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Global workspace keys
 	switch msg.String() {
-	case "ctrl+enter":
+	case "ctrl+enter", "ctrl+j", "f5":
 		return m, m.executeQuery()
 	case "ctrl+r":
 		m.editor.Reset()
@@ -341,6 +423,11 @@ func (m Model) updateLayout() {
 		return
 	}
 
+	if m.state == stateAddConnection {
+		m.connForm.SetSize(m.width, m.height)
+		return
+	}
+
 	sidebarWidth := 30
 
 	m.connList.SetSize(sidebarWidth-2, m.height-2)
@@ -361,6 +448,10 @@ func (m Model) View() string {
 		return "Loading..."
 	}
 
+	if m.state == stateAddConnection {
+		return m.viewAddConnection()
+	}
+
 	if m.state == stateConnections {
 		return m.viewConnections()
 	}
@@ -375,12 +466,22 @@ func (m Model) viewConnections() string {
 
 	header := titleStyle.Render("gsql") + mutedStyle.Render("  — a fast SQL TUI")
 	body := m.connList.View()
-	footer := helpStyle.Render("enter: connect  n: new connection  esc: quit  /: filter")
+	footer := helpStyle.Render("enter: connect  n: new  e: edit  d: delete  esc: quit  /: filter")
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		appStyle.Render(header),
 		appStyle.Render(body),
 		footer,
+	)
+}
+
+func (m Model) viewAddConnection() string {
+	return appStyle.Render(
+		lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorBorder).
+			Padding(1, 2).
+			Render(m.connForm.View()),
 	)
 }
 

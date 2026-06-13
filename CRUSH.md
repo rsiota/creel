@@ -30,8 +30,10 @@ internal/ui/              — All Bubble Tea UI components
   app.go                  — Top-level Model (state machine)
   styles.go               — Shared color palette + lipgloss styles
   connection_list.go      — Connection selection screen
+  connection_form.go      — Add/edit connection form
   query_editor.go         — SQL editor (bubbles/textarea)
   results_table.go        — Query results table (lipgloss/table)
+  connection_form_test.go — Tests for form validation
 ```
 
 ## Key Design Decisions
@@ -44,7 +46,7 @@ internal/ui/              — All Bubble Tea UI components
 ## Vertical Slices Progress
 - [x] Slice 1: Project scaffold + DB abstraction + CLI mode
 - [x] Slice 1b: TUI skeleton (connection list, editor, results, workspace layout)
-- [ ] Slice 2: Add/save/delete connections from TUI (currently config-only)
+- [x] Slice 2: Connection manager (add/edit/delete connections from TUI, saved to config)
 - [ ] Slice 3: Vim mode editing
 - [ ] Slice 4: Query history (per-connection)
 - [ ] Slice 5: Full table browser (columns, schema view)

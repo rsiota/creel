@@ -103,7 +103,7 @@ func (e QueryEditor) FormatQuery() string {
 // HelpText returns keybinding hints for the editor.
 func (e QueryEditor) HelpText() string {
 	return fmt.Sprintf("%s run query  %s clear  %s/%s navigate",
-		mutedStyle.Render("Ctrl+Enter"),
+		mutedStyle.Render("Ctrl+J"),
 		mutedStyle.Render("Ctrl+R"),
 		mutedStyle.Render("↑"),
 		mutedStyle.Render("↓"),
