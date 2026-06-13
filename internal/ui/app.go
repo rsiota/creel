@@ -218,16 +218,34 @@ func (m *Model) prevPage() tea.Cmd {
 }
 
 // runPageQuery wraps the original query with LIMIT/OFFSET and executes it.
+// Non-SELECT statements (DESCRIBE, SHOW, EXPLAIN, etc.) are executed directly
+// without pagination wrapping, since they can't be used as subqueries.
 func (m *Model) runPageQuery() tea.Cmd {
 	offset := m.page * m.pageSize
-	pagedQuery := fmt.Sprintf("SELECT * FROM (%s) AS _gsql_page LIMIT %d OFFSET %d",
-		m.lastQuery, m.pageSize+1, offset)
+	query := strings.TrimRight(m.lastQuery, ";")
 
 	conn := m.connection
 	page := m.page
 	pageSize := m.pageSize
+
+	// Only wrap SELECT queries; everything else runs as-is.
+	if isSelectQuery(query) {
+		pagedQuery := fmt.Sprintf("SELECT * FROM (%s) AS _gsql_page LIMIT %d OFFSET %d",
+			query, pageSize+1, offset)
+		return func() tea.Msg {
+			result, err := conn.DB().Execute(pagedQuery)
+			return queryExecutedMsg{
+				query:    m.lastQuery,
+				result:   result,
+				err:      err,
+				page:     page,
+				pageSize: pageSize,
+			}
+		}
+	}
+
 	return func() tea.Msg {
-		result, err := conn.DB().Execute(pagedQuery)
+		result, err := conn.DB().Execute(query)
 		return queryExecutedMsg{
 			query:    m.lastQuery,
 			result:   result,
@@ -236,6 +254,14 @@ func (m *Model) runPageQuery() tea.Cmd {
 			pageSize: pageSize,
 		}
 	}
+}
+
+// isSelectQuery returns true if the query is a SELECT (or WITH ... SELECT)
+// statement that can safely be wrapped in a subquery for pagination.
+func isSelectQuery(query string) bool {
+	trimmed := strings.TrimSpace(query)
+	upper := strings.ToUpper(trimmed)
+	return strings.HasPrefix(upper, "SELECT") || strings.HasPrefix(upper, "WITH")
 }
 
 // Update handles all application messages.
