@@ -747,19 +747,20 @@ func (m Model) viewWorkspace() string {
 		}
 	}
 
+	sidebarContentWidth := sidebarWidth - borderOverhead
+
 	tableList := strings.Builder{}
 	for i := start; i < end; i++ {
 		item := items[i]
 		isCursor := m.focus == FocusConnections && i == m.sidebarCursor
 
+		var line string
 		if item.isColumn {
 			prefix := "  "
 			if isCursor {
 				prefix = "→ "
 			}
-			colName := item.text
-			colType := mutedStyle.Render(" " + item.colType)
-			tableList.WriteString(prefix + colName + colType)
+			line = prefix + item.text + " " + item.colType
 		} else {
 			prefix := "  "
 			style := normalStyle
@@ -771,8 +772,14 @@ func (m Model) viewWorkspace() string {
 				prefix = "→ "
 				style = selectedStyle
 			}
-			tableList.WriteString(style.Render(prefix + expandIcon + " " + item.text))
+			line = prefix + expandIcon + " " + item.text
+			line = style.Render(line)
 		}
+
+		// Truncate to sidebar width — strip ANSI codes for measurement,
+		// then truncate the rendered string.
+		line = truncateSidebarLine(line, sidebarContentWidth)
+		tableList.WriteString(line)
 		tableList.WriteString("\n")
 	}
 	if len(items) == 0 {
@@ -856,6 +863,20 @@ func (m Model) borderForFocus(f Focus) lipgloss.Color {
 		return colorPrimary
 	}
 	return colorBorder
+}
+
+// truncateSidebarLine truncates a rendered (possibly ANSI-styled) string
+// to fit within maxVisible visible characters, appending "…" if truncated.
+func truncateSidebarLine(line string, maxVisible int) string {
+	// Measure visible width by counting non-ANSI characters.
+	visible := lipgloss.Width(line)
+	if visible <= maxVisible {
+		return line
+	}
+
+	// lipgloss doesn't have a truncate-with-ansi helper we can use directly,
+	// so use its MaxWidth style which handles ANSI-aware truncation.
+	return lipgloss.NewStyle().MaxWidth(maxVisible).Render(line)
 }
 
 // Run starts the application.
