@@ -402,10 +402,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case FocusConnections:
 		switch msg.String() {
 		case "up", "k":
-			m.scrollTables(-1)
+			m = m.scrollTables(-1)
 			return m, nil
 		case "down", "j":
-			m.scrollTables(1)
+			m = m.scrollTables(1)
 			return m, nil
 		case "enter":
 			tableName := m.tables[m.tableScroll]
