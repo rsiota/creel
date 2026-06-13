@@ -51,10 +51,11 @@ type Model struct {
 	height   int
 	quitting bool
 
-	connList  ConnectionList
-	connForm  ConnectionForm
-	editor    QueryEditor
-	results   ResultsTable
+	connList    ConnectionList
+	connForm    ConnectionForm
+	editor      QueryEditor
+	results     ResultsTable
+	tableScroll int
 
 	config     *config.Config
 	connection *db.Connection
@@ -374,6 +375,20 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.results, cmd = m.results.Update(msg)
 	case FocusConnections:
+		switch msg.String() {
+		case "up", "k":
+			m.scrollTables(-1)
+			return m, nil
+		case "down", "j":
+			m.scrollTables(1)
+			return m, nil
+		case "enter":
+			tableName := m.tables[m.tableScroll]
+			m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s LIMIT 100;", tableName))
+			m.focus = FocusEditor
+			m.applyFocus()
+			return m, m.editor.Focus()
+		}
 		m.connList, cmd = m.connList.Update(msg)
 	}
 	return m, cmd
@@ -384,6 +399,27 @@ func (m Model) escapeWorkspace() (tea.Model, tea.Cmd) {
 		m.editor.Blur()
 	}
 	return m, nil
+}
+
+func (m Model) scrollTables(delta int) Model {
+	total := len(m.tables)
+	sidebarHeight := m.height - 4
+	maxVisible := sidebarHeight - 3
+	if maxVisible < 1 {
+		maxVisible = 1
+	}
+
+	m.tableScroll += delta
+	if m.tableScroll < 0 {
+		m.tableScroll = 0
+	}
+	if m.tableScroll > total-1 {
+		m.tableScroll = total - 1
+	}
+	if m.tableScroll > total-maxVisible && total > maxVisible {
+		m.tableScroll = total - maxVisible
+	}
+	return m
 }
 
 func (m Model) cycleFocus() Model {
@@ -490,21 +526,53 @@ func (m Model) viewWorkspace() string {
 
 	sidebarTitle := titleStyle.Render("Tables")
 
+	// Cap sidebar to terminal height, scroll if too many tables.
+	sidebarHeight := m.height - 4
+	maxVisible := sidebarHeight - 3
+	if maxVisible < 1 {
+		maxVisible = 1
+	}
+
+	totalTables := len(m.tables)
+	start := m.tableScroll
+	end := start + maxVisible
+	if end > totalTables {
+		end = totalTables
+	}
+	if start > totalTables-maxVisible && totalTables > maxVisible {
+		start = totalTables - maxVisible
+	}
+	if start < 0 {
+		start = 0
+	}
+
 	tableList := strings.Builder{}
-	for _, t := range m.tables {
-		tableList.WriteString(normalStyle.Render("  " + t))
+	for i := start; i < end; i++ {
+		cursor := "  "
+		style := normalStyle
+		if m.focus == FocusConnections && i == m.tableScroll {
+			cursor = "→ "
+			style = selectedStyle
+		}
+		tableList.WriteString(style.Render(cursor + m.tables[i]))
 		tableList.WriteString("\n")
 	}
-	if len(m.tables) == 0 {
+	if totalTables == 0 {
 		tableList.WriteString(mutedStyle.Render("  (no tables)"))
+	}
+
+	scrollInfo := ""
+	if totalTables > maxVisible {
+		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", start+1, end, totalTables))
 	}
 
 	sidebar := lipgloss.NewStyle().
 		Width(sidebarWidth).
+		Height(sidebarHeight).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorBorder).
 		Render(
-			lipgloss.JoinVertical(lipgloss.Left, sidebarTitle, tableList.String()),
+			lipgloss.JoinVertical(lipgloss.Left, sidebarTitle, tableList.String(), scrollInfo),
 		)
 
 	editorTitle := titleStyle.Render("Query")
