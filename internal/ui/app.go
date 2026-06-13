@@ -756,11 +756,13 @@ func (m Model) viewWorkspace() string {
 
 		var line string
 		if item.isColumn {
-			prefix := "  "
+			prefix := "    "
 			if isCursor {
-				prefix = "→ "
+				prefix = "→   "
 			}
-			line = prefix + item.text + " " + item.colType
+			colName := lipgloss.NewStyle().Foreground(colorFg).Render(item.text)
+			colType := mutedStyle.Render(item.colType)
+			line = prefix + colName + " " + colType
 		} else {
 			prefix := "  "
 			style := normalStyle
