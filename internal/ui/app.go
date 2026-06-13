@@ -756,9 +756,9 @@ func (m Model) viewWorkspace() string {
 
 		var line string
 		if item.isColumn {
-			prefix := "    "
+			prefix := "     "
 			if isCursor {
-				prefix = "→   "
+				prefix = "→    "
 			}
 			colName := lipgloss.NewStyle().Foreground(colorFg).Render(item.text)
 			colType := mutedStyle.Render(item.colType)
@@ -817,7 +817,7 @@ func (m Model) viewWorkspace() string {
 			fmt.Sprintf(" %s  │  %s  │  %s  │  %s",
 				m.connectionInfo(connName),
 				m.focusInfo(),
-				m.editor.HelpText(),
+				m.contextHelp(),
 				mutedStyle.Render("ctrl+t: switch  ctrl+y: history  ctrl+q: quit"),
 			),
 		)
@@ -857,6 +857,17 @@ func (m Model) focusInfo() string {
 		return mutedStyle.Render("focus: results")
 	default:
 		return ""
+	}
+}
+
+func (m Model) contextHelp() string {
+	switch m.focus {
+	case FocusConnections:
+		return mutedStyle.Render("enter: expand  s: select  d: describe  j/k: scroll")
+	case FocusResults:
+		return mutedStyle.Render("j/k: scroll rows  h/l: scroll cols")
+	default:
+		return m.editor.HelpText()
 	}
 }
 
