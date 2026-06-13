@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -11,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ruben/gsql/internal/config"
 	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/gsql/internal/history"
 )
 
 // Focus represents which panel currently has keyboard focus.
@@ -39,6 +42,7 @@ type executeResultMsg struct {
 
 // queryExecutedMsg is sent when a query finishes executing.
 type queryExecutedMsg struct {
+	query  string
 	result db.Result
 	err    error
 }
@@ -55,23 +59,27 @@ type Model struct {
 	connForm    ConnectionForm
 	editor      QueryEditor
 	results     ResultsTable
+	history    HistoryPanel
 	tableScroll int
 
-	config     *config.Config
-	connection *db.Connection
-	connError  string
-	tables     []string
+	config      *config.Config
+	connection  *db.Connection
+	historyStore *history.Store
+	connError   string
+	tables      []string
 }
 
 // NewModel creates a new top-level application model.
 func NewModel(cfg *config.Config) Model {
 	m := Model{
-		state:    stateConnections,
-		focus:    FocusConnections,
-		config:   cfg,
-		editor:   NewQueryEditor(),
-		results:  NewResultsTable(),
-		connList: NewConnectionList(),
+		state:        stateConnections,
+		focus:        FocusConnections,
+		config:       cfg,
+		editor:       NewQueryEditor(),
+		results:      NewResultsTable(),
+		connList:     NewConnectionList(),
+		history:      NewHistoryPanel(),
+		historyStore: history.NewStore(historyDir()),
 	}
 	m.loadConnections()
 	return m
@@ -162,7 +170,7 @@ func (m *Model) executeQuery() tea.Cmd {
 	conn := m.connection
 	return func() tea.Msg {
 		result, err := conn.DB().Execute(query)
-		return queryExecutedMsg{result: result, err: err}
+		return queryExecutedMsg{query: query, result: result, err: err}
 	}
 }
 
@@ -195,6 +203,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case queryExecutedMsg:
 		m.layoutWorkspace()
+		// Record to history
+		if m.connection != nil && m.historyStore != nil {
+			m.historyStore.Record(m.connection.Config().Name, msg.query, msg.err == nil)
+		}
 		if msg.err != nil {
 			m.results.SetError(msg.err.Error())
 		} else {
@@ -332,6 +344,19 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Global workspace keys
 	switch msg.String() {
+	case "ctrl+h":
+		if m.connection != nil {
+			if m.history.IsVisible() {
+				m.history.Toggle()
+			} else {
+				entries, err := m.historyStore.Get(m.connection.Config().Name)
+				if err == nil {
+					m.history.SetEntries(entries)
+				}
+				m.history.Toggle()
+			}
+		}
+		return m, nil
 	case "ctrl+enter", "ctrl+j", "f5":
 		return m, m.executeQuery()
 	case "ctrl+r":
@@ -362,6 +387,30 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		return m, nil
+	}
+
+	// History panel takes over navigation when visible
+	if m.history.IsVisible() {
+		switch msg.String() {
+		case "j", "down":
+			m.history.CursorDown()
+			return m, nil
+		case "k", "up":
+			m.history.CursorUp()
+			return m, nil
+		case "enter":
+			q := m.history.SelectedQuery()
+			if q != "" {
+				m.editor.SetValue(q)
+				m.focus = FocusEditor
+				m.applyFocus()
+			}
+			m.history.Toggle()
+			return m, m.editor.Focus()
+		case "esc":
+			m.history.Toggle()
+			return m, nil
+		}
 	}
 
 	// Dispatch to focused panel
@@ -670,13 +719,26 @@ func (m Model) viewWorkspace() string {
 				m.connectionInfo(connName),
 				m.focusInfo(),
 				m.editor.HelpText(),
-				mutedStyle.Render("ctrl+t: switch  ctrl+q: quit"),
+				mutedStyle.Render("ctrl+t: switch  ctrl+h: history  ctrl+q: quit"),
 			),
 		)
 
 	workspace := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel)
 
-	return lipgloss.JoinVertical(lipgloss.Left, workspace, statusBar)
+	view := lipgloss.JoinVertical(lipgloss.Left, workspace, statusBar)
+
+	// Overlay history panel if visible
+	if m.history.IsVisible() {
+		m.history.SetSize(m.width/2, m.height-4)
+		histPanel := m.history.View()
+		view = lipgloss.Place(m.width, m.height-1,
+			lipgloss.Center, lipgloss.Center,
+			histPanel,
+			lipgloss.WithWhitespaceChars(" "),
+		)
+	}
+
+	return view
 }
 
 func (m Model) connectionInfo(name string) string {
@@ -713,4 +775,17 @@ func Run(cfg *config.Config) {
 	if _, err := p.Run(); err != nil {
 		log.Fatalf("Error running application: %v", err)
 	}
+}
+
+// historyDir returns the directory for storing query history files.
+func historyDir() string {
+	configDir := os.Getenv("XDG_CONFIG_HOME")
+	if configDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return filepath.Join(".config", "gsql")
+		}
+		configDir = filepath.Join(home, ".config")
+	}
+	return filepath.Join(configDir, "gsql")
 }
