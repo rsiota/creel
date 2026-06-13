@@ -53,7 +53,7 @@ internal/ui/              — All Bubble Tea UI components
 - [x] Slice 3: Vim mode editing (normal/insert modes, h/j/k/l, i/a/o/A/O, dd/dw/x/D, y/p)
 - [x] Slice 4: Query history (per-connection, persisted, searchable, overlay panel)
 - [x] Slice 5: Full table browser (expand/collapse columns, schema view, quick actions)
-- [ ] Slice 6: Row pagination for large result sets
+- [x] Slice 6: Row pagination for large result sets (LIMIT/OFFSET wrapping, 200/page)
 
 ## Config Format (~/.config/gsql/config.yaml)
 ```yaml

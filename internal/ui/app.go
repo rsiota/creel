@@ -42,9 +42,11 @@ type executeResultMsg struct {
 
 // queryExecutedMsg is sent when a query finishes executing.
 type queryExecutedMsg struct {
-	query  string
-	result db.Result
-	err    error
+	query    string
+	result   db.Result
+	err      error
+	page     int
+	pageSize int
 }
 
 // Model is the top-level application model for the Bubble Tea architecture.
@@ -66,9 +68,17 @@ type Model struct {
 	config       *config.Config
 	connection   *db.Connection
 	historyStore *history.Store
-	connError   string
-	tables      []string
+	connError    string
+	tables       []string
+
+	// Pagination
+	page     int
+	pageSize int
+	lastQuery string
+	pageMsg  string
 }
+
+const defaultPageSize = 200
 
 // NewModel creates a new top-level application model.
 func NewModel(cfg *config.Config) Model {
@@ -82,6 +92,7 @@ func NewModel(cfg *config.Config) Model {
 		history:      NewHistoryPanel(),
 		historyStore: history.NewStore(historyDir()),
 		expanded:     make(map[string][]db.Column),
+		pageSize:     defaultPageSize,
 	}
 	m.loadConnections()
 	return m
@@ -162,17 +173,54 @@ func (m *Model) loadTables() {
 	m.tables = tables
 }
 
-// executeQuery runs the current query asynchronously.
+// executeQuery runs the current query asynchronously with pagination.
 func (m *Model) executeQuery() tea.Cmd {
 	query := m.editor.FormatQuery()
 	if query == "" {
 		return nil
 	}
 
+	m.lastQuery = query
+	m.page = 0
+	return m.runPageQuery()
+}
+
+// nextPage advances to the next page of results.
+func (m *Model) nextPage() tea.Cmd {
+	if m.lastQuery == "" {
+		return nil
+	}
+	m.page++
+	return m.runPageQuery()
+}
+
+// prevPage goes back to the previous page of results.
+func (m *Model) prevPage() tea.Cmd {
+	if m.lastQuery == "" || m.page == 0 {
+		return nil
+	}
+	m.page--
+	return m.runPageQuery()
+}
+
+// runPageQuery wraps the original query with LIMIT/OFFSET and executes it.
+func (m *Model) runPageQuery() tea.Cmd {
+	offset := m.page * m.pageSize
+	pagedQuery := fmt.Sprintf("SELECT * FROM (%s) AS _gsql_page LIMIT %d OFFSET %d",
+		m.lastQuery, m.pageSize+1, offset)
+
 	conn := m.connection
+	page := m.page
+	pageSize := m.pageSize
 	return func() tea.Msg {
-		result, err := conn.DB().Execute(query)
-		return queryExecutedMsg{query: query, result: result, err: err}
+		result, err := conn.DB().Execute(pagedQuery)
+		return queryExecutedMsg{
+			query:    m.lastQuery,
+			result:   result,
+			err:      err,
+			page:     page,
+			pageSize: pageSize,
+		}
 	}
 }
 
@@ -216,7 +264,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for i, c := range msg.result.Columns {
 				cols[i] = c.Name
 			}
-			m.results.SetResult(cols, msg.result.Rows, msg.result.Message)
+
+			// Check for "has next page" — we fetched pageSize+1 rows
+			rows := msg.result.Rows
+			hasNext := false
+			if len(rows) > msg.pageSize {
+				hasNext = true
+				rows = rows[:msg.pageSize]
+			}
+
+			m.results.SetResult(cols, rows, msg.result.Message)
+			m.page = msg.page
+
+			// Build pagination status message
+			pgInfo := ""
+			if msg.page > 0 || hasNext {
+				offset := msg.page * msg.pageSize
+				pgInfo = fmt.Sprintf("page %d (rows %d-%d)", msg.page+1, offset+1, offset+len(rows))
+				if hasNext {
+					pgInfo += " · more available"
+				}
+			}
+			m.pageMsg = pgInfo
 		}
 		return m, nil
 	}
@@ -361,6 +430,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "ctrl+enter", "ctrl+j", "f5":
 		return m, m.executeQuery()
+	case "ctrl+n":
+		return m, m.nextPage()
+	case "ctrl+p":
+		return m, m.prevPage()
 	case "ctrl+r":
 		m.editor.Reset()
 		return m, nil
@@ -379,6 +452,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state = stateConnections
 		m.focus = FocusConnections
 		m.results.Clear()
+		m.lastQuery = ""
+		m.page = 0
+		m.pageMsg = ""
+		m.expanded = make(map[string][]db.Column)
 		m.loadConnections()
 		return m, nil
 	case "esc":
@@ -863,7 +940,11 @@ func (m Model) contextHelp() string {
 	case FocusConnections:
 		return mutedStyle.Render("enter: expand  s: select  d: describe  j/k: scroll")
 	case FocusResults:
-		return mutedStyle.Render("j/k: scroll rows  h/l: scroll cols")
+		pg := ""
+		if m.pageMsg != "" {
+			pg = "  " + m.pageMsg
+		}
+		return mutedStyle.Render("j/k: rows  h/l: cols  ctrl+n/ctrl+p: page" + pg)
 	default:
 		return m.editor.HelpText()
 	}
