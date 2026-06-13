@@ -368,6 +368,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "ctrl+down":
 			m.results.ScrollDown()
 			return m, nil
+		case "ctrl+left":
+			m.results.ScrollLeft()
+			return m, nil
+		case "ctrl+right":
+			m.results.ScrollRight()
+			return m, nil
 		}
 		m.editor, cmd = m.editor.Update(msg)
 	case FocusResults:
@@ -377,6 +383,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "down", "j":
 			m.results.ScrollDown()
+			return m, nil
+		case "left", "h":
+			m.results.ScrollLeft()
+			return m, nil
+		case "right", "l":
+			m.results.ScrollRight()
 			return m, nil
 		}
 		m.results, cmd = m.results.Update(msg)
@@ -409,8 +421,8 @@ func (m Model) escapeWorkspace() (tea.Model, tea.Cmd) {
 
 func (m Model) scrollTables(delta int) Model {
 	total := len(m.tables)
-	sidebarHeight := m.height - 4
-	maxVisible := sidebarHeight - 3
+	sidebarHeight := m.height - 1
+	maxVisible := sidebarHeight - 4
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -478,13 +490,22 @@ func (m Model) updateLayout() Model {
 // works correctly when called from both value and pointer receiver methods.
 func (m *Model) layoutWorkspace() {
 	sidebarWidth := 30
+	statusHeight := 1
+	editorHeight := 8
 
-	m.connList.SetSize(sidebarWidth-2, m.height-2)
+	resultsHeight := m.height - editorHeight - statusHeight
+	if resultsHeight < 3 {
+		resultsHeight = 3
+	}
 
-	editorHeight := 7
+	sidebarHeight := m.height - statusHeight
+	if sidebarHeight < 3 {
+		sidebarHeight = 3
+	}
+
+	m.connList.SetSize(sidebarWidth-2, sidebarHeight)
 	m.editor.SetSize(m.width-sidebarWidth-2, editorHeight)
-
-	m.results.SetSize(m.width-sidebarWidth-2, m.height-editorHeight-4)
+	m.results.SetSize(m.width-sidebarWidth-2, resultsHeight)
 }
 
 // View renders the entire application.
@@ -536,12 +557,14 @@ func (m Model) viewAddConnection() string {
 
 func (m Model) viewWorkspace() string {
 	sidebarWidth := 30
+	statusHeight := 1
+	editorHeight := 8
+	resultsHeight := m.height - editorHeight - statusHeight
+	sidebarHeight := m.height - statusHeight
 
 	sidebarTitle := titleStyle.Render("Tables")
 
-	// Cap sidebar to terminal height, scroll if too many tables.
-	sidebarHeight := m.height - 4
-	maxVisible := sidebarHeight - 3
+	maxVisible := sidebarHeight - 4
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -590,26 +613,28 @@ func (m Model) viewWorkspace() string {
 
 	editorTitle := titleStyle.Render("Query")
 	modeIndicator := mutedStyle.Render(fmt.Sprintf("[%s]", m.editor.VimModeStr()))
+	editorContent := lipgloss.JoinVertical(lipgloss.Left,
+		editorTitle+"  "+modeIndicator,
+		m.editor.View(),
+	)
 	editorPanel := lipgloss.NewStyle().
+		Width(m.width - sidebarWidth).
+		Height(editorHeight).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.borderForFocus(FocusEditor)).
-		Render(
-			lipgloss.JoinVertical(lipgloss.Left,
-				editorTitle+"  "+modeIndicator,
-				m.editor.View(),
-			),
-		)
+		Render(editorContent)
 
 	resultsTitle := titleStyle.Render("Results")
+	resultsContent := lipgloss.JoinVertical(lipgloss.Left,
+		resultsTitle,
+		m.results.View(),
+	)
 	resultsPanel := lipgloss.NewStyle().
+		Width(m.width - sidebarWidth).
+		Height(resultsHeight).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.borderForFocus(FocusResults)).
-		Render(
-			lipgloss.JoinVertical(lipgloss.Left,
-				resultsTitle,
-				m.results.View(),
-			),
-		)
+		Render(resultsContent)
 
 	connName := ""
 	if m.connection != nil {
@@ -618,13 +643,14 @@ func (m Model) viewWorkspace() string {
 
 	statusBar := lipgloss.NewStyle().
 		Width(m.width).
+		Height(statusHeight).
 		Foreground(colorMuted).
 		Render(
 			fmt.Sprintf(" %s  │  %s  │  %s  │  %s",
 				m.connectionInfo(connName),
 				m.focusInfo(),
 				m.editor.HelpText(),
-				mutedStyle.Render("ctrl+t: switch connection  ctrl+q: quit"),
+				mutedStyle.Render("ctrl+t: switch  ctrl+q: quit"),
 			),
 		)
 
