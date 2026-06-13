@@ -499,9 +499,10 @@ func (m *Model) layoutWorkspace() {
 		resultsHeight = 3
 	}
 
-	sidebarHeight := m.height - statusHeight - borderOverhead
-	if sidebarHeight < 3 {
-		sidebarHeight = 3
+	// Sidebar spans the same height as editor + results combined.
+	sidebarContentHeight := m.height - statusHeight - borderOverhead
+	if sidebarContentHeight < 3 {
+		sidebarContentHeight = 3
 	}
 
 	editorContentHeight := editorHeight - borderOverhead
@@ -509,7 +510,7 @@ func (m *Model) layoutWorkspace() {
 		editorContentHeight = 1
 	}
 
-	m.connList.SetSize(sidebarWidth-borderOverhead, sidebarHeight)
+	m.connList.SetSize(sidebarWidth-borderOverhead, sidebarContentHeight)
 	m.editor.SetSize(m.width-sidebarWidth-borderOverhead, editorContentHeight)
 	m.results.SetSize(m.width-sidebarWidth-borderOverhead, resultsHeight)
 }
@@ -566,17 +567,51 @@ func (m Model) viewWorkspace() string {
 	statusHeight := 1
 	borderOverhead := 2
 	editorHeight := 8
-	// Editor and results are adjacent; their touching borders create a
-	// 2-line visual gap matching the 2-char horizontal gap.
 	resultsHeight := m.height - editorHeight - statusHeight - (borderOverhead * 2)
 	if resultsHeight < 3 {
 		resultsHeight = 3
 	}
-	sidebarHeight := m.height - statusHeight - borderOverhead
+
+	// Build right column first so we can measure its actual rendered height.
+	editorTitle := titleStyle.Render("Query")
+	modeIndicator := mutedStyle.Render(fmt.Sprintf("[%s]", m.editor.VimModeStr()))
+	editorContent := lipgloss.JoinVertical(lipgloss.Left,
+		editorTitle+"  "+modeIndicator,
+		m.editor.View(),
+	)
+	editorPanel := lipgloss.NewStyle().
+		Width(m.width - sidebarWidth - borderOverhead).
+		Height(editorHeight - borderOverhead).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.borderForFocus(FocusEditor)).
+		Render(editorContent)
+
+	resultsTitle := titleStyle.Render("Results")
+	resultsContent := lipgloss.JoinVertical(lipgloss.Left,
+		resultsTitle,
+		m.results.View(),
+	)
+	resultsPanel := lipgloss.NewStyle().
+		Width(m.width - sidebarWidth - borderOverhead).
+		Height(resultsHeight).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.borderForFocus(FocusResults)).
+		Render(resultsContent)
+
+	rightPanel := lipgloss.JoinVertical(lipgloss.Left,
+		editorPanel,
+		resultsPanel,
+	)
+
+	// Sidebar content height = right panel height minus sidebar's own borders.
+	sidebarContentHeight := lipgloss.Height(rightPanel) - borderOverhead
+	if sidebarContentHeight < 3 {
+		sidebarContentHeight = 3
+	}
 
 	sidebarTitle := titleStyle.Render("Tables")
 
-	maxVisible := sidebarHeight - 4
+	maxVisible := sidebarContentHeight - 4
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -616,37 +651,12 @@ func (m Model) viewWorkspace() string {
 
 	sidebar := lipgloss.NewStyle().
 		Width(sidebarWidth - borderOverhead).
-		Height(sidebarHeight).
+		Height(sidebarContentHeight).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorBorder).
 		Render(
 			lipgloss.JoinVertical(lipgloss.Left, sidebarTitle, tableList.String(), scrollInfo),
 		)
-
-	editorTitle := titleStyle.Render("Query")
-	modeIndicator := mutedStyle.Render(fmt.Sprintf("[%s]", m.editor.VimModeStr()))
-	editorContent := lipgloss.JoinVertical(lipgloss.Left,
-		editorTitle+"  "+modeIndicator,
-		m.editor.View(),
-	)
-	editorPanel := lipgloss.NewStyle().
-		Width(m.width - sidebarWidth - borderOverhead).
-		Height(editorHeight - borderOverhead).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.borderForFocus(FocusEditor)).
-		Render(editorContent)
-
-	resultsTitle := titleStyle.Render("Results")
-	resultsContent := lipgloss.JoinVertical(lipgloss.Left,
-		resultsTitle,
-		m.results.View(),
-	)
-	resultsPanel := lipgloss.NewStyle().
-		Width(m.width - sidebarWidth - borderOverhead).
-		Height(resultsHeight).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.borderForFocus(FocusResults)).
-		Render(resultsContent)
 
 	connName := ""
 	if m.connection != nil {
@@ -665,11 +675,6 @@ func (m Model) viewWorkspace() string {
 				mutedStyle.Render("ctrl+t: switch  ctrl+q: quit"),
 			),
 		)
-
-	rightPanel := lipgloss.JoinVertical(lipgloss.Left,
-		editorPanel,
-		resultsPanel,
-	)
 
 	workspace := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel)
 
