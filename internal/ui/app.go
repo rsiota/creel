@@ -753,25 +753,25 @@ func (m Model) viewWorkspace() string {
 		isCursor := m.focus == FocusConnections && i == m.sidebarCursor
 
 		if item.isColumn {
-			marker := mutedStyle.Render("    • ")
+			prefix := "  "
+			if isCursor {
+				prefix = "→ "
+			}
 			colName := item.text
 			colType := mutedStyle.Render(" " + item.colType)
-			if isCursor {
-				tableList.WriteString("  → ")
-			}
-			tableList.WriteString(marker + colName + colType)
+			tableList.WriteString(prefix + colName + colType)
 		} else {
-			cursor := "  "
+			prefix := "  "
 			style := normalStyle
 			expandIcon := "▸"
 			if _, ok := m.expanded[item.text]; ok {
 				expandIcon = "▾"
 			}
 			if isCursor {
-				cursor = "→ "
+				prefix = "→ "
 				style = selectedStyle
 			}
-			tableList.WriteString(style.Render(cursor + expandIcon + " " + item.text))
+			tableList.WriteString(style.Render(prefix + expandIcon + " " + item.text))
 		}
 		tableList.WriteString("\n")
 	}
