@@ -421,11 +421,6 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) scrollTables(delta int) Model {
 	total := len(m.tables)
-	sidebarHeight := m.height - 1
-	maxVisible := sidebarHeight - 4
-	if maxVisible < 1 {
-		maxVisible = 1
-	}
 
 	m.tableScroll += delta
 	if m.tableScroll < 0 {
@@ -434,8 +429,8 @@ func (m Model) scrollTables(delta int) Model {
 	if m.tableScroll > total-1 {
 		m.tableScroll = total - 1
 	}
-	if m.tableScroll > total-maxVisible && total > maxVisible {
-		m.tableScroll = total - maxVisible
+	if total == 0 {
+		m.tableScroll = 0
 	}
 	return m
 }
@@ -617,16 +612,19 @@ func (m Model) viewWorkspace() string {
 	}
 
 	totalTables := len(m.tables)
-	start := m.tableScroll
+	// tableScroll is the cursor position; compute the visible window around it.
+	half := maxVisible / 2
+	start := m.tableScroll - half
+	if start < 0 {
+		start = 0
+	}
 	end := start + maxVisible
 	if end > totalTables {
 		end = totalTables
-	}
-	if start > totalTables-maxVisible && totalTables > maxVisible {
-		start = totalTables - maxVisible
-	}
-	if start < 0 {
-		start = 0
+		start = end - maxVisible
+		if start < 0 {
+			start = 0
+		}
 	}
 
 	tableList := strings.Builder{}
@@ -653,7 +651,7 @@ func (m Model) viewWorkspace() string {
 		Width(sidebarWidth - borderOverhead).
 		Height(sidebarContentHeight).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorBorder).
+		BorderForeground(m.borderForFocus(FocusConnections)).
 		Render(
 			lipgloss.JoinVertical(lipgloss.Left, sidebarTitle, tableList.String(), scrollInfo),
 		)
