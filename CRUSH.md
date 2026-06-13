@@ -25,6 +25,7 @@ internal/db/              — Database abstraction layer
   db.go                   — DB interface, Connection wrapper
   sqlite.go               — SQLite implementation
   mysql.go                — MySQL implementation
+  ssh_tunnel.go           — SSH tunnel (golang.org/x/crypto/ssh)
 internal/config/          — Config loading/saving (YAML)
 internal/history/         — Query history (per-connection JSON, searchable)
 internal/ui/              — All Bubble Tea UI components
@@ -54,6 +55,7 @@ internal/ui/              — All Bubble Tea UI components
 - [x] Slice 4: Query history (per-connection, persisted, searchable, overlay panel)
 - [x] Slice 5: Full table browser (expand/collapse columns, schema view, quick actions)
 - [x] Slice 6: Row pagination for large result sets (LIMIT/OFFSET wrapping, 200/page)
+- [x] SSH tunnel support (MySQL via bastion host; key-based auth with passphrase + password auth)
 
 ## Config Format (~/.config/gsql/config.yaml)
 ```yaml

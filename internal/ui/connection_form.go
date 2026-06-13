@@ -19,6 +19,11 @@ const (
 	fieldPort
 	fieldUser
 	fieldPass
+	fieldSSHHost
+	fieldSSHPort
+	fieldSSHUser
+	fieldSSHKeyPath
+	fieldSSHPassword
 	fieldCount
 )
 
@@ -57,6 +62,13 @@ func NewConnectionFormEdit(cfg config.ConnectionConfig) ConnectionForm {
 	}
 	f.fields[fieldUser].SetValue(cfg.Username)
 	f.fields[fieldPass].SetValue(cfg.Password)
+	f.fields[fieldSSHHost].SetValue(cfg.SSHHost)
+	if cfg.SSHPort > 0 {
+		f.fields[fieldSSHPort].SetValue(strconv.Itoa(cfg.SSHPort))
+	}
+	f.fields[fieldSSHUser].SetValue(cfg.SSHUser)
+	f.fields[fieldSSHKeyPath].SetValue(cfg.SSHKeyPath)
+	f.fields[fieldSSHPassword].SetValue(cfg.SSHPassword)
 	f.setDriverField(cfg.Driver)
 	return f
 }
@@ -71,6 +83,11 @@ func newForm(mode formMode, name string) ConnectionForm {
 	fields[fieldPort] = newTextInput("Port (mysql only, default 3306)", "3306", false)
 	fields[fieldUser] = newTextInput("Username (mysql only)", "root", false)
 	fields[fieldPass] = newTextInput("Password (mysql only)", "", true)
+	fields[fieldSSHHost] = newTextInput("SSH host (optional)", "", false)
+	fields[fieldSSHPort] = newTextInput("SSH port (default 22)", "22", false)
+	fields[fieldSSHUser] = newTextInput("SSH user", "", false)
+	fields[fieldSSHKeyPath] = newTextInput("SSH key path (~/.ssh/id_rsa)", "", false)
+	fields[fieldSSHPassword] = newTextInput("SSH password (optional)", "", true)
 
 	fields[fieldName].SetValue(name)
 	fields[fieldName].Focus()
@@ -137,6 +154,7 @@ func (f ConnectionForm) View() string {
 
 	labels := []string{
 		"Name", "Driver", "Database", "Host", "Port", "Username", "Password",
+		"SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass",
 	}
 
 	for i, label := range labels {
@@ -213,6 +231,15 @@ func (f *ConnectionForm) EnterPressed() (config.ConnectionConfig, string) {
 		}
 	}
 
+	sshPort := 22
+	if sshPortStr := f.fields[fieldSSHPort].Value(); sshPortStr != "" {
+		var err error
+		sshPort, err = strconv.Atoi(sshPortStr)
+		if err != nil {
+			return config.ConnectionConfig{}, "SSH port must be a number"
+		}
+	}
+
 	return config.ConnectionConfig{
 		Name:     name,
 		Driver:   driver,
@@ -221,6 +248,12 @@ func (f *ConnectionForm) EnterPressed() (config.ConnectionConfig, string) {
 		Port:     port,
 		Username: f.fields[fieldUser].Value(),
 		Password: f.fields[fieldPass].Value(),
+
+		SSHHost:     f.fields[fieldSSHHost].Value(),
+		SSHPort:     sshPort,
+		SSHUser:     f.fields[fieldSSHUser].Value(),
+		SSHKeyPath:  f.fields[fieldSSHKeyPath].Value(),
+		SSHPassword: f.fields[fieldSSHPassword].Value(),
 	}, ""
 }
 

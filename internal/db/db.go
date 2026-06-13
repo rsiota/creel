@@ -21,6 +21,14 @@ type ConnectionConfig struct {
 	Port     int    `yaml:"port,omitempty" json:"port,omitempty"`
 	Username string `yaml:"username,omitempty" json:"username,omitempty"`
 	Password string `yaml:"password,omitempty" json:"password,omitempty"`
+
+	// SSH tunnel (optional)
+	SSHHost       string `yaml:"ssh_host,omitempty" json:"ssh_host,omitempty"`
+	SSHPort       int    `yaml:"ssh_port,omitempty" json:"ssh_port,omitempty"`
+	SSHUser       string `yaml:"ssh_user,omitempty" json:"ssh_user,omitempty"`
+	SSHPassword   string `yaml:"ssh_password,omitempty" json:"ssh_password,omitempty"`
+	SSHKeyPath    string `yaml:"ssh_key_path,omitempty" json:"ssh_key_path,omitempty"`
+	SSHPassphrase string `yaml:"ssh_passphrase,omitempty" json:"ssh_passphrase,omitempty"`
 }
 
 // Connection wraps an open database connection with metadata.

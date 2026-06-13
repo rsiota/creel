@@ -105,6 +105,13 @@ func (m *Model) loadConnections() {
 		if conn.Driver == "mysql" {
 			detail = fmt.Sprintf("%s@%s:%d/%s", conn.Username, conn.Host, conn.Port, conn.Database)
 		}
+		if conn.SSHHost != "" {
+			sshUser := conn.SSHUser
+			if sshUser == "" {
+				sshUser = "ssh"
+			}
+			detail = fmt.Sprintf("%s via %s@%s", detail, sshUser, conn.SSHHost)
+		}
 		entries = append(entries, ConnectionEntry{
 			Name:   conn.Name,
 			Driver: conn.Driver,
@@ -137,6 +144,13 @@ func (m *Model) connectToDB() tea.Cmd {
 		Port:     connCfg.Port,
 		Username: connCfg.Username,
 		Password: connCfg.Password,
+
+		SSHHost:       connCfg.SSHHost,
+		SSHPort:       connCfg.SSHPort,
+		SSHUser:       connCfg.SSHUser,
+		SSHPassword:   connCfg.SSHPassword,
+		SSHKeyPath:    connCfg.SSHKeyPath,
+		SSHPassphrase: connCfg.SSHPassphrase,
 	}
 
 	conn, err := db.New(dbCfg)

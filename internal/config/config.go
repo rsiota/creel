@@ -23,6 +23,14 @@ type ConnectionConfig struct {
 	Port     int    `yaml:"port,omitempty"`
 	Username string `yaml:"username,omitempty"`
 	Password string `yaml:"password,omitempty"`
+
+	// SSH tunnel (optional)
+	SSHHost       string `yaml:"ssh_host,omitempty"`
+	SSHPort       int    `yaml:"ssh_port,omitempty"`
+	SSHUser       string `yaml:"ssh_user,omitempty"`
+	SSHPassword   string `yaml:"ssh_password,omitempty"`
+	SSHKeyPath    string `yaml:"ssh_key_path,omitempty"`
+	SSHPassphrase string `yaml:"ssh_passphrase,omitempty"`
 }
 
 // ConfigPath returns the path to the config file, creating the directory if needed.

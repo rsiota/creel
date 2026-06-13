@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -10,8 +11,10 @@ import (
 
 // MySQL implements the DB interface for MySQL databases.
 type MySQL struct {
-	config ConnectionConfig
-	db     *sql.DB
+	config  ConnectionConfig
+	db      *sql.DB
+	tunnel  *SSHTunnel
+	dialNet string
 }
 
 // NewMySQL creates a new MySQL database handler.
@@ -19,9 +22,24 @@ func NewMySQL(cfg ConnectionConfig) *MySQL {
 	return &MySQL{config: cfg}
 }
 
+var sshDialCounter uint64
+
 func (m *MySQL) Connect() error {
-	dsn := m.dsn()
-	db, err := sql.Open("mysql", dsn)
+	// If SSH tunnel is configured, establish it and register a custom dialer.
+	if m.config.SSHHost != "" {
+		tunnel, err := NewSSHTunnel(m.config)
+		if err != nil {
+			return fmt.Errorf("ssh tunnel: %w", err)
+		}
+		m.tunnel = tunnel
+
+		// Register a unique dial network name for this connection.
+		dialNet := fmt.Sprintf("ssh+%d", atomic.AddUint64(&sshDialCounter, 1))
+		mysqlRegisterDialContext(dialNet, tunnel)
+		m.dialNet = dialNet
+	}
+
+	db, err := sql.Open("mysql", m.dsn())
 	if err != nil {
 		return fmt.Errorf("failed to open mysql: %w", err)
 	}
@@ -32,9 +50,14 @@ func (m *MySQL) Connect() error {
 }
 
 func (m *MySQL) dsn() string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
+	netName := "tcp"
+	if m.dialNet != "" {
+		netName = m.dialNet
+	}
+	return fmt.Sprintf("%s:%s@%s(%s:%d)/%s?parseTime=true",
 		m.config.Username,
 		m.config.Password,
+		netName,
 		m.config.Host,
 		m.config.Port,
 		m.config.Database,
@@ -42,10 +65,13 @@ func (m *MySQL) dsn() string {
 }
 
 func (m *MySQL) Close() error {
-	if m.db == nil {
-		return nil
+	if m.db != nil {
+		m.db.Close()
 	}
-	return m.db.Close()
+	if m.tunnel != nil {
+		m.tunnel.Close()
+	}
+	return nil
 }
 
 func (m *MySQL) Tables() ([]string, error) {

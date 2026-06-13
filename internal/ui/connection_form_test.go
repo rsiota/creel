@@ -96,7 +96,7 @@ func TestConnectionFormFieldCount(t *testing.T) {
 		t.Errorf("expected %d fields, got %d", fieldCount, len(f.fields))
 	}
 	for i, field := range f.fields {
-		if field.EchoMode != textinput.EchoNormal && i != fieldPass {
+		if field.EchoMode != textinput.EchoNormal && i != fieldPass && i != fieldSSHPassword {
 			t.Errorf("field %d should use normal echo", i)
 		}
 	}
