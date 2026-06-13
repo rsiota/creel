@@ -1,0 +1,100 @@
+package db
+
+import (
+	"fmt"
+)
+
+// Driver represents a supported database driver type.
+type Driver string
+
+const (
+	DriverSQLite Driver = "sqlite"
+	DriverMySQL  Driver = "mysql"
+)
+
+// ConnectionConfig holds the parameters needed to connect to a database.
+type ConnectionConfig struct {
+	Name     string `yaml:"name" json:"name"`
+	Driver   Driver `yaml:"driver" json:"driver"`
+	Database string `yaml:"database" json:"database"`
+	Host     string `yaml:"host,omitempty" json:"host,omitempty"`
+	Port     int    `yaml:"port,omitempty" json:"port,omitempty"`
+	Username string `yaml:"username,omitempty" json:"username,omitempty"`
+	Password string `yaml:"password,omitempty" json:"password,omitempty"`
+}
+
+// Connection wraps an open database connection with metadata.
+type Connection struct {
+	config ConnectionConfig
+	db     DB
+}
+
+// DB is the interface that all database drivers must implement.
+type DB interface {
+	// Connect establishes a connection to the database.
+	Connect() error
+	// Close closes the database connection.
+	Close() error
+	// Tables returns the list of tables and views in the database.
+	Tables() ([]string, error)
+	// TableSchema returns the column names and types for a given table.
+	TableSchema(table string) ([]Column, error)
+	// Execute runs a query and returns the result set.
+	Execute(query string) (Result, error)
+}
+
+// Column describes a single column in a table or result set.
+type Column struct {
+	Name string
+	Type string
+}
+
+// Result holds the output of a query execution.
+type Result struct {
+	Columns []Column
+	Rows    [][]string
+	Message string
+	Elapsed string
+}
+
+// New creates a new database connection based on the driver type.
+func New(cfg ConnectionConfig) (*Connection, error) {
+	var database DB
+
+	switch cfg.Driver {
+	case DriverSQLite:
+		database = NewSQLite(cfg)
+	case DriverMySQL:
+		database = NewMySQL(cfg)
+	default:
+		return nil, fmt.Errorf("unsupported driver: %s", cfg.Driver)
+	}
+
+	return &Connection{
+		config: cfg,
+		db:     database,
+	}, nil
+}
+
+// Connect opens the underlying database connection.
+func (c *Connection) Connect() error {
+	return c.db.Connect()
+}
+
+// Close closes the underlying database connection.
+func (c *Connection) Close() error {
+	if c.db == nil {
+		return nil
+	}
+	return c.db.Close()
+}
+
+// DB returns the underlying database interface for direct operations.
+func (c *Connection) DB() DB {
+	return c.db
+}
+
+// Config returns the connection configuration.
+func (c *Connection) Config() ConnectionConfig {
+	return c.config
+}

@@ -1,0 +1,21 @@
+# Binary
+/gsql
+
+# Go
+*.test
+*.out
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test databases
+*.db
+*.sqlite
+*.sqlite3

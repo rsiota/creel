@@ -1,0 +1,100 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+
+	"github.com/ruben/gsql/internal/config"
+	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/gsql/internal/ui"
+)
+
+func main() {
+	var (
+		queryFlag    string
+		driverFlag   string
+		databaseFlag string
+		hostFlag     string
+		portFlag     int
+		userFlag     string
+		passFlag     string
+		cliMode      bool
+	)
+
+	flag.StringVar(&queryFlag, "e", "", "Execute SQL query and exit (CLI mode)")
+	flag.StringVar(&driverFlag, "driver", "sqlite", "Database driver: sqlite or mysql")
+	flag.StringVar(&databaseFlag, "database", "", "Database name (SQLite path or MySQL database)")
+	flag.StringVar(&hostFlag, "host", "localhost", "Database host (MySQL only)")
+	flag.IntVar(&portFlag, "port", 3306, "Database port (MySQL only)")
+	flag.StringVar(&userFlag, "user", "root", "Database username (MySQL only)")
+	flag.StringVar(&passFlag, "password", "", "Database password (MySQL only)")
+	flag.BoolVar(&cliMode, "cli", false, "Run in CLI mode (non-interactive)")
+	flag.Parse()
+
+	// CLI mode: execute query and print results
+	if queryFlag != "" || cliMode {
+		if err := runCLI(queryFlag, driverFlag, databaseFlag, hostFlag, portFlag, userFlag, passFlag); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// TUI mode
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	ui.Run(cfg)
+}
+
+func runCLI(query, driver, database, host string, port int, user, pass string) error {
+	if database == "" {
+		return fmt.Errorf("database is required (use -database flag)")
+	}
+	if query == "" {
+		return fmt.Errorf("query is required (use -e flag)")
+	}
+
+	connCfg := db.ConnectionConfig{
+		Driver:   db.Driver(driver),
+		Database: database,
+		Host:     host,
+		Port:     port,
+		Username: user,
+		Password: pass,
+	}
+
+	conn, err := db.New(connCfg)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	if err := conn.Connect(); err != nil {
+		return err
+	}
+
+	result, err := conn.DB().Execute(query)
+	if err != nil {
+		return err
+	}
+
+	for _, col := range result.Columns {
+		fmt.Printf("%s\t", col.Name)
+	}
+	fmt.Println()
+
+	for _, row := range result.Rows {
+		for _, val := range row {
+			fmt.Printf("%s\t", val)
+		}
+		fmt.Println()
+	}
+
+	fmt.Fprintf(os.Stderr, "%s\n", result.Message)
+	return nil
+}

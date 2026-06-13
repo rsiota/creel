@@ -1,0 +1,492 @@
+package ui
+
+import (
+	"fmt"
+	"log"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/list"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/ruben/gsql/internal/config"
+	"github.com/ruben/gsql/internal/db"
+)
+
+// Focus represents which panel currently has keyboard focus.
+type Focus int
+
+const (
+	FocusConnections Focus = iota
+	FocusEditor
+	FocusResults
+)
+
+// state represents the current screen the app is showing.
+type state int
+
+const (
+	stateConnections state = iota
+	stateWorkspace
+)
+
+// executeResultMsg carries the result of an async query execution.
+type executeResultMsg struct {
+	result db.Result
+	err    error
+}
+
+// queryExecutedMsg is sent when a query finishes executing.
+type queryExecutedMsg struct {
+	result db.Result
+	err    error
+}
+
+// Model is the top-level application model for the Bubble Tea architecture.
+type Model struct {
+	state    state
+	focus    Focus
+	width    int
+	height   int
+	quitting bool
+
+	connList ConnectionList
+	editor   QueryEditor
+	results  ResultsTable
+
+	config     *config.Config
+	connection *db.Connection
+	connError  string
+	tables     []string
+}
+
+// NewModel creates a new top-level application model.
+func NewModel(cfg *config.Config) Model {
+	m := Model{
+		state:    stateConnections,
+		focus:    FocusConnections,
+		config:   cfg,
+		editor:   NewQueryEditor(),
+		results:  NewResultsTable(),
+		connList: NewConnectionList(),
+	}
+	m.loadConnections()
+	return m
+}
+
+func (m *Model) loadConnections() {
+	var entries []ConnectionEntry
+	for _, conn := range m.config.Connections {
+		detail := conn.Database
+		if conn.Driver == "mysql" {
+			detail = fmt.Sprintf("%s@%s:%d/%s", conn.Username, conn.Host, conn.Port, conn.Database)
+		}
+		entries = append(entries, ConnectionEntry{
+			Name:   conn.Name,
+			Driver: conn.Driver,
+			Detail: detail,
+		})
+	}
+	m.connList.SetItems(entries)
+}
+
+// Init initializes the application.
+func (m Model) Init() tea.Cmd {
+	return nil
+}
+
+// connectToDB establishes a connection to the selected database.
+func (m *Model) connectToDB() tea.Cmd {
+	name := m.connList.SelectedName()
+	driver := m.connList.SelectedDriver()
+	connCfg := m.config.GetConnection(name)
+	if connCfg == nil {
+		m.connError = fmt.Sprintf("connection '%s' not found", name)
+		return nil
+	}
+
+	dbCfg := db.ConnectionConfig{
+		Name:     connCfg.Name,
+		Driver:   db.Driver(driver),
+		Database: connCfg.Database,
+		Host:     connCfg.Host,
+		Port:     connCfg.Port,
+		Username: connCfg.Username,
+		Password: connCfg.Password,
+	}
+
+	conn, err := db.New(dbCfg)
+	if err != nil {
+		m.connError = err.Error()
+		return nil
+	}
+
+	if err := conn.Connect(); err != nil {
+		m.connError = err.Error()
+		return nil
+	}
+
+	m.connection = conn
+	m.state = stateWorkspace
+	m.focus = FocusEditor
+
+	cmd := m.editor.Focus()
+	m.loadTables()
+
+	return cmd
+}
+
+func (m *Model) loadTables() {
+	if m.connection == nil {
+		return
+	}
+	tables, err := m.connection.DB().Tables()
+	if err != nil {
+		m.connError = err.Error()
+		return
+	}
+	m.tables = tables
+}
+
+// executeQuery runs the current query asynchronously.
+func (m *Model) executeQuery() tea.Cmd {
+	query := m.editor.FormatQuery()
+	if query == "" {
+		return nil
+	}
+
+	conn := m.connection
+	return func() tea.Msg {
+		result, err := conn.DB().Execute(query)
+		return queryExecutedMsg{result: result, err: err}
+	}
+}
+
+// Update handles all application messages.
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.updateLayout()
+		return m, nil
+
+	case tea.KeyMsg:
+		switch {
+		case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+c"))):
+			m.quitting = true
+			return m, tea.Quit
+		case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+q"))):
+			m.quitting = true
+			return m, tea.Quit
+		}
+
+		if m.state == stateConnections {
+			return m.updateConnections(msg)
+		}
+		return m.updateWorkspace(msg)
+
+	case queryExecutedMsg:
+		if msg.err != nil {
+			m.results.SetError(msg.err.Error())
+		} else {
+			cols := make([]string, len(msg.result.Columns))
+			for i, c := range msg.result.Columns {
+				cols[i] = c.Name
+			}
+			m.results.SetResult(cols, msg.result.Rows, msg.result.Message)
+		}
+		return m, nil
+	}
+
+	if m.state == stateWorkspace {
+		var cmd tea.Cmd
+		switch m.focus {
+		case FocusEditor:
+			m.editor, cmd = m.editor.Update(msg)
+		case FocusResults:
+			m.results, cmd = m.results.Update(msg)
+		}
+		return m, cmd
+	}
+
+	return m, nil
+}
+
+func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		return m, m.connectToDB()
+	case "n":
+		return m.addDefaultSQLiteConnection()
+	case "esc":
+		if m.connList.list.FilterState() == list.Filtering {
+			break
+		}
+		m.quitting = true
+		return m, tea.Quit
+	}
+
+	var cmd tea.Cmd
+	m.connList, cmd = m.connList.Update(msg)
+	return m, cmd
+}
+
+// addDefaultSQLiteConnection creates a quick local SQLite connection for convenience.
+func (m Model) addDefaultSQLiteConnection() (tea.Model, tea.Cmd) {
+	// For now just demonstrate; full add-connection UI is a future slice.
+	return m, nil
+}
+
+func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Global workspace keys
+	switch msg.String() {
+	case "ctrl+enter":
+		return m, m.executeQuery()
+	case "ctrl+r":
+		m.editor.Reset()
+		return m, nil
+	case "tab":
+		m = m.cycleFocus()
+		return m, nil
+	case "shift+tab":
+		m = m.cycleFocusBack()
+		return m, nil
+	case "ctrl+t":
+		// Return to connection screen
+		if m.connection != nil {
+			m.connection.Close()
+			m.connection = nil
+		}
+		m.state = stateConnections
+		m.focus = FocusConnections
+		m.results.Clear()
+		m.loadConnections()
+		return m, nil
+	case "esc":
+		return m.escapeWorkspace()
+	}
+
+	// Dispatch to focused panel
+	var cmd tea.Cmd
+	switch m.focus {
+	case FocusEditor:
+		// Handle ctrl+arrow for result scrolling while in editor
+		switch msg.String() {
+		case "ctrl+up":
+			m.results.ScrollUp()
+			return m, nil
+		case "ctrl+down":
+			m.results.ScrollDown()
+			return m, nil
+		}
+		m.editor, cmd = m.editor.Update(msg)
+	case FocusResults:
+		switch msg.String() {
+		case "up", "k":
+			m.results.ScrollUp()
+			return m, nil
+		case "down", "j":
+			m.results.ScrollDown()
+			return m, nil
+		}
+		m.results, cmd = m.results.Update(msg)
+	case FocusConnections:
+		m.connList, cmd = m.connList.Update(msg)
+	}
+	return m, cmd
+}
+
+func (m Model) escapeWorkspace() (tea.Model, tea.Cmd) {
+	if m.focus == FocusEditor {
+		m.editor.Blur()
+	}
+	return m, nil
+}
+
+func (m Model) cycleFocus() Model {
+	m.focus++
+	if m.focus > FocusResults {
+		m.focus = FocusConnections
+	}
+	m.applyFocus()
+	return m
+}
+
+func (m Model) cycleFocusBack() Model {
+	m.focus--
+	if m.focus < FocusConnections {
+		m.focus = FocusResults
+	}
+	m.applyFocus()
+	return m
+}
+
+func (m Model) applyFocus() Model {
+	m.editor.Blur()
+	switch m.focus {
+	case FocusEditor:
+		m.editor.Focus()
+	}
+	return m
+}
+
+func (m Model) updateLayout() {
+	if m.width == 0 || m.height == 0 {
+		return
+	}
+
+	if m.state == stateConnections {
+		m.connList.SetSize(m.width, m.height)
+		return
+	}
+
+	sidebarWidth := 30
+
+	m.connList.SetSize(sidebarWidth-2, m.height-2)
+
+	editorHeight := 7
+	m.editor.SetSize(m.width-sidebarWidth-2, editorHeight)
+
+	m.results.SetSize(m.width-sidebarWidth-2, m.height-editorHeight-4)
+}
+
+// View renders the entire application.
+func (m Model) View() string {
+	if m.quitting {
+		return ""
+	}
+
+	if m.width == 0 {
+		return "Loading..."
+	}
+
+	if m.state == stateConnections {
+		return m.viewConnections()
+	}
+
+	return m.viewWorkspace()
+}
+
+func (m Model) viewConnections() string {
+	if m.connError != "" {
+		return errorStyle.Render(m.connError)
+	}
+
+	header := titleStyle.Render("gsql") + mutedStyle.Render("  — a fast SQL TUI")
+	body := m.connList.View()
+	footer := helpStyle.Render("enter: connect  n: new connection  esc: quit  /: filter")
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		appStyle.Render(header),
+		appStyle.Render(body),
+		footer,
+	)
+}
+
+func (m Model) viewWorkspace() string {
+	sidebarWidth := 30
+
+	sidebarTitle := titleStyle.Render("Tables")
+
+	tableList := strings.Builder{}
+	for _, t := range m.tables {
+		tableList.WriteString(normalStyle.Render("  " + t))
+		tableList.WriteString("\n")
+	}
+	if len(m.tables) == 0 {
+		tableList.WriteString(mutedStyle.Render("  (no tables)"))
+	}
+
+	sidebar := lipgloss.NewStyle().
+		Width(sidebarWidth).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorBorder).
+		Render(
+			lipgloss.JoinVertical(lipgloss.Left, sidebarTitle, tableList.String()),
+		)
+
+	editorTitle := titleStyle.Render("Query")
+	editorPanel := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.borderForFocus(FocusEditor)).
+		Render(
+			lipgloss.JoinVertical(lipgloss.Left,
+				editorTitle,
+				m.editor.View(),
+			),
+		)
+
+	resultsTitle := titleStyle.Render("Results")
+	resultsPanel := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.borderForFocus(FocusResults)).
+		Render(
+			lipgloss.JoinVertical(lipgloss.Left,
+				resultsTitle,
+				m.results.View(),
+			),
+		)
+
+	connName := ""
+	if m.connection != nil {
+		connName = m.connection.Config().Name
+	}
+
+	statusBar := lipgloss.NewStyle().
+		Width(m.width).
+		Foreground(colorMuted).
+		Render(
+			fmt.Sprintf(" %s  │  %s  │  %s  │  %s",
+				m.connectionInfo(connName),
+				m.focusInfo(),
+				m.editor.HelpText(),
+				mutedStyle.Render("ctrl+t: switch connection  ctrl+q: quit"),
+			),
+		)
+
+	rightPanel := lipgloss.JoinVertical(lipgloss.Left,
+		editorPanel,
+		resultsPanel,
+	)
+
+	workspace := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel)
+
+	return lipgloss.JoinVertical(lipgloss.Left, workspace, statusBar)
+}
+
+func (m Model) connectionInfo(name string) string {
+	if m.connection == nil {
+		return mutedStyle.Render("not connected")
+	}
+	return successStyle.Render("● " + name)
+}
+
+func (m Model) focusInfo() string {
+	switch m.focus {
+	case FocusConnections:
+		return mutedStyle.Render("focus: tables")
+	case FocusEditor:
+		return mutedStyle.Render("focus: editor")
+	case FocusResults:
+		return mutedStyle.Render("focus: results")
+	default:
+		return ""
+	}
+}
+
+func (m Model) borderForFocus(f Focus) lipgloss.Color {
+	if m.focus == f {
+		return colorPrimary
+	}
+	return colorBorder
+}
+
+// Run starts the application.
+func Run(cfg *config.Config) {
+	m := NewModel(cfg)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
+		log.Fatalf("Error running application: %v", err)
+	}
+}
