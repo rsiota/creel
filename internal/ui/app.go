@@ -328,6 +328,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// WindowSizeMsg hasn't re-fired).
 	m.layoutWorkspace()
 
+	var cmd tea.Cmd
+
 	// Global workspace keys
 	switch msg.String() {
 	case "ctrl+enter", "ctrl+j", "f5":
@@ -353,11 +355,16 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.loadConnections()
 		return m, nil
 	case "esc":
-		return m.escapeWorkspace()
+		// In insert mode, esc goes to the editor for vim mode switching.
+		// In normal mode, esc is a no-op (or could blur the editor).
+		if m.focus == FocusEditor && m.editor.VimMode() == VimInsert {
+			m.editor, cmd = m.editor.Update(msg)
+			return m, cmd
+		}
+		return m, nil
 	}
 
 	// Dispatch to focused panel
-	var cmd tea.Cmd
 	switch m.focus {
 	case FocusEditor:
 		// Handle ctrl+arrow for result scrolling while in editor
@@ -410,13 +417,6 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.connList, cmd = m.connList.Update(msg)
 	}
 	return m, cmd
-}
-
-func (m Model) escapeWorkspace() (tea.Model, tea.Cmd) {
-	if m.focus == FocusEditor {
-		m.editor.Blur()
-	}
-	return m, nil
 }
 
 func (m Model) scrollTables(delta int) Model {
