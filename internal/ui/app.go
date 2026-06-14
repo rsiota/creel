@@ -1125,7 +1125,7 @@ func highlightMatches(text string, matchIdx []int) string {
 	for _, i := range matchIdx {
 		matchSet[i] = true
 	}
-	accent := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+	accent := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
 	var b strings.Builder
 	for i, r := range []rune(text) {
 		if matchSet[i] {
@@ -1402,7 +1402,7 @@ func (m Model) viewWorkspace() string {
 			if _, ok := m.expanded[item.text]; ok {
 				expandIcon = "▾"
 			}
-			if isCursor {
+			if isCursor && !m.sidebarFiltering {
 				style = selectedStyle
 			}
 			tableName := item.text
@@ -1410,7 +1410,11 @@ func (m Model) viewWorkspace() string {
 				tableName = highlightMatches(item.text, item.matchIdx)
 			}
 			line = expandIcon + " " + tableName
-			line = style.Render(line)
+			if isCursor && m.sidebarFiltering {
+				line = lipgloss.NewStyle().Bold(true).Padding(0, 1).Render(line)
+			} else {
+				line = style.Render(line)
+			}
 		}
 
 		// Truncate to sidebar width — strip ANSI codes for measurement,
