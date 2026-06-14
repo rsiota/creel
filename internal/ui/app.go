@@ -365,7 +365,7 @@ func parseSimpleSelectTable(query string) string {
 
 	// Reject if there's a JOIN, subquery, or GROUP BY clause.
 	restUpper := strings.ToUpper(rest)
-	for _, banned := range []string{" JOIN ", " WHERE ", " GROUP BY ", " HAVING ", " UNION ", "(", ","} {
+	for _, banned := range []string{" JOIN ", " GROUP BY ", " HAVING ", " UNION ", "(", ","} {
 		if strings.Contains(restUpper, banned) {
 			return ""
 		}

@@ -17,7 +17,9 @@ func TestParseSimpleSelectTable(t *testing.T) {
 		{`SELECT * FROM "my table"`, "my table"},
 		{"SELECT * FROM `backtick`", "backtick"},
 		// Should return empty (not editable)
-		{`SELECT * FROM users WHERE id = 1`, ""},
+		{`SELECT * FROM users WHERE id = 1`, "users"},
+		{`SELECT * FROM users WHERE first_name = 'Ruben'`, "users"},
+		{`SELECT * FROM users WHERE id = 1 ORDER BY name`, "users"},
 		{`SELECT * FROM users JOIN orders ON users.id = orders.user_id`, ""},
 		{`SELECT * FROM users GROUP BY name`, ""},
 		{`SELECT * FROM (SELECT * FROM users)`, ""},
