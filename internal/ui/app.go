@@ -1367,29 +1367,28 @@ func (m Model) viewWorkspace() string {
 
 		var line string
 		if item.isColumn {
-			prefix := "     "
+			indent := "   "
+			colStyle := lipgloss.NewStyle().Foreground(colorSuccess)
 			if isCursor {
-				prefix = "→    "
+				colStyle = lipgloss.NewStyle().Foreground(colorBg).Background(colorSuccess).Bold(true)
 			}
-			colName := lipgloss.NewStyle().Foreground(colorFg).Render(item.text)
+			colName := colStyle.Render(item.text)
 			colType := mutedStyle.Render(item.colType)
-			line = prefix + colName + " " + colType
+			line = indent + colName + " " + colType
 		} else {
-			prefix := "  "
 			style := normalStyle
 			expandIcon := "▸"
 			if _, ok := m.expanded[item.text]; ok {
 				expandIcon = "▾"
 			}
 			if isCursor {
-				prefix = "→ "
 				style = selectedStyle
 			}
 			tableName := item.text
 			if m.sidebarFiltering {
 				tableName = highlightMatches(item.text, item.matchIdx)
 			}
-			line = prefix + expandIcon + " " + tableName
+			line = expandIcon + " " + tableName
 			line = style.Render(line)
 		}
 
