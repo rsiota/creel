@@ -35,6 +35,8 @@ type QueryEditor struct {
 	vimMode VimMode
 	pending vimPending
 	yank    string
+
+	completion completion
 }
 
 // NewQueryEditor creates a new SQL query editor with vim mode.
@@ -116,6 +118,35 @@ func (e QueryEditor) Update(msg tea.Msg) (QueryEditor, tea.Cmd) {
 }
 
 func (e QueryEditor) handleInsertMode(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
+	// Completion popup key handling
+	if e.completion.visible {
+		switch msg.String() {
+		case "esc":
+			e.CancelCompletion()
+			return e, nil
+		case "tab":
+			e.AcceptCompletion()
+			return e, nil
+		case "enter":
+			e.AcceptCompletion()
+			return e, nil
+		case "up", "ctrl+p":
+			e.MoveCompletion(-1)
+			return e, nil
+		case "down", "ctrl+n":
+			e.MoveCompletion(1)
+			return e, nil
+		}
+		// Printable characters: pass to textarea, then re-evaluate popup.
+		if msg.Type == tea.KeyRunes || msg.String() == "backspace" {
+			e.textarea, _ = e.textarea.Update(msg)
+			e.tryAutoTrigger()
+			return e, nil
+		}
+		// Any other key (space, punctuation, arrows): dismiss and pass through.
+		e.CancelCompletion()
+	}
+
 	if msg.String() == "esc" {
 		e.vimMode = VimNormal
 		e.sendKey("left")
@@ -124,6 +155,12 @@ func (e QueryEditor) handleInsertMode(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
 
 	var cmd tea.Cmd
 	e.textarea, cmd = e.textarea.Update(msg)
+
+	// Auto-trigger after typing a printable character.
+	if msg.Type == tea.KeyRunes {
+		e.tryAutoTrigger()
+	}
+
 	return e, cmd
 }
 
@@ -346,4 +383,121 @@ func (e QueryEditor) HelpText() string {
 		mutedStyle.Render("Ctrl+R"),
 		mutedStyle.Render("Esc"),
 	)
+}
+
+// --- Completion ---
+
+// SetCandidates stores the full candidate list for auto-completion.
+func (e *QueryEditor) SetCandidates(candidates []completionItem) {
+	e.completion.allCandidates = candidates
+}
+
+// CompletionVisible returns whether the completion popup is shown.
+func (e QueryEditor) CompletionVisible() bool {
+	return e.completion.visible
+}
+
+// StartCompletion forces the popup open (manual trigger via Ctrl+N).
+func (e *QueryEditor) StartCompletion() {
+	partial, wordStart := e.wordBeforeCursor()
+	e.completion.partial = partial
+	e.completion.wordStart = wordStart
+	e.completion.candidates = filterCandidates(e.completion.allCandidates, partial)
+	e.completion.selected = 0
+	if len(e.completion.candidates) > 0 {
+		e.completion.visible = true
+	}
+}
+
+// tryAutoTrigger shows the popup if the current word is long enough and has matches.
+func (e *QueryEditor) tryAutoTrigger() {
+	partial, wordStart := e.wordBeforeCursor()
+	if len(partial) < minAutoTriggerChars {
+		e.completion.visible = false
+		return
+	}
+	e.completion.partial = partial
+	e.completion.wordStart = wordStart
+	e.completion.candidates = filterCandidates(e.completion.allCandidates, partial)
+	e.completion.selected = 0
+	e.completion.visible = len(e.completion.candidates) > 0
+}
+
+// AcceptCompletion replaces the partial word with the selected candidate.
+func (e *QueryEditor) AcceptCompletion() {
+	if !e.completion.visible || len(e.completion.candidates) == 0 {
+		return
+	}
+	candidate := e.completion.candidates[e.completion.selected].text
+
+	// Recompute cursor position (it may have moved since trigger).
+	_, col := e.cursorLineCol()
+	charsToDelete := col - e.completion.wordStart
+
+	for i := 0; i < charsToDelete; i++ {
+		e.sendKey("left")
+	}
+	for i := 0; i < charsToDelete; i++ {
+		e.sendKey("delete")
+	}
+	e.textarea.InsertString(candidate)
+
+	e.completion.visible = false
+}
+
+// CancelCompletion hides the popup without inserting anything.
+func (e *QueryEditor) CancelCompletion() {
+	e.completion.visible = false
+}
+
+// MoveCompletion adjusts the selection by delta.
+func (e *QueryEditor) MoveCompletion(delta int) {
+	e.completion.move(delta)
+}
+
+// RefilterCompletion re-extracts the partial word and re-filters candidates.
+// If no candidates remain, the popup is hidden.
+func (e *QueryEditor) RefilterCompletion() {
+	partial, wordStart := e.wordBeforeCursor()
+	e.completion.partial = partial
+	e.completion.wordStart = wordStart
+	e.completion.candidates = filterCandidates(e.completion.allCandidates, partial)
+	e.completion.selected = 0
+	if len(e.completion.candidates) == 0 {
+		e.completion.visible = false
+	}
+}
+
+// CompletionView renders the popup box.
+func (e QueryEditor) CompletionView() string {
+	return e.completion.renderCompletion()
+}
+
+// CursorScreenPos returns the cursor's logical line and column.
+func (e QueryEditor) CursorScreenPos() (line int, col int) {
+	return e.cursorLineCol()
+}
+
+// cursorLineCol returns the current logical line index and character column.
+func (e QueryEditor) cursorLineCol() (int, int) {
+	line := e.textarea.Line()
+	li := e.textarea.LineInfo()
+	col := li.StartColumn + li.ColumnOffset
+	return line, col
+}
+
+// wordBeforeCursor returns the word being typed before the cursor and
+// the column where it starts.
+func (e QueryEditor) wordBeforeCursor() (word string, startCol int) {
+	_, col := e.cursorLineCol()
+	line := e.currentLineText()
+	if col > len([]rune(line)) {
+		col = len([]rune(line))
+	}
+	runes := []rune(line)
+	start := col
+	for start > 0 && isWordChar(runes[start-1]) {
+		start--
+	}
+	return string(runes[start:col]), start
 }

@@ -196,6 +196,7 @@ func (m *Model) loadTables() {
 		return
 	}
 	m.tables = tables
+	m.refreshCompletionCandidates()
 }
 
 // executeQuery runs the current query asynchronously with pagination.
@@ -704,6 +705,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.results.IsEditing() {
 			return m, nil
 		}
+		// Tab accepts completion when popup is visible.
+		if m.focus == FocusEditor && m.editor.CompletionVisible() {
+			m.editor.AcceptCompletion()
+			return m, nil
+		}
 		m = m.cycleFocus()
 		return m, nil
 	case "shift+tab":
@@ -728,6 +734,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.expanded = make(map[string][]db.Column)
 		m.sidebarFiltering = false
 		m.sidebarFilter = ""
+		m.editor.CancelCompletion()
 		m.loadConnections()
 		return m, nil
 	case "esc":
@@ -788,6 +795,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "ctrl+right":
 			m.results.ScrollRight()
 			return m, nil
+		case "ctrl+n":
+			if m.editor.VimMode() == VimInsert && !m.editor.CompletionVisible() {
+				m.editor.StartCompletion()
+				return m, nil
+			}
 		}
 		m.editor, cmd = m.editor.Update(msg)
 	case FocusResults:
@@ -940,6 +952,31 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// refreshCompletionCandidates rebuilds the editor's candidate list from
+// keywords, tables, and expanded columns.
+func (m *Model) refreshCompletionCandidates() {
+	var candidates []completionItem
+
+	for _, kw := range sqlKeywords {
+		candidates = append(candidates, completionItem{text: kw, kind: kindKeyword})
+	}
+	for _, t := range m.tables {
+		candidates = append(candidates, completionItem{text: t, kind: kindTable})
+	}
+
+	seen := make(map[string]bool)
+	for _, cols := range m.expanded {
+		for _, c := range cols {
+			if !seen[c.Name] {
+				candidates = append(candidates, completionItem{text: c.Name, kind: kindColumn})
+				seen[c.Name] = true
+			}
+		}
+	}
+
+	m.editor.SetCandidates(candidates)
+}
+
 // sidebarItem is a flat entry in the sidebar (table or column).
 type sidebarItem struct {
 	text     string
@@ -1085,6 +1122,7 @@ func (m *Model) toggleExpand() {
 	table := item.text
 	if _, ok := m.expanded[table]; ok {
 		delete(m.expanded, table)
+		m.refreshCompletionCandidates()
 		return
 	}
 	cols, err := m.connection.DB().TableSchema(table)
@@ -1093,6 +1131,7 @@ func (m *Model) toggleExpand() {
 		return
 	}
 	m.expanded[table] = cols
+	m.refreshCompletionCandidates()
 }
 
 func (m Model) cycleFocus() Model {
@@ -1394,6 +1433,15 @@ func (m Model) viewWorkspace() string {
 		)
 	}
 
+	// Overlay completion popup if visible
+	if m.editor.CompletionVisible() {
+		cursorLine, cursorCol := m.editor.CursorScreenPos()
+		popup := m.editor.CompletionView()
+		popupX := sidebarWidth + 2 + cursorCol
+		popupY := 2 + cursorLine + 1
+		view = placeOverlay(view, popup, popupX, popupY)
+	}
+
 	return view
 }
 
@@ -1441,6 +1489,9 @@ func (m Model) contextHelp() string {
 		}
 		return mutedStyle.Render("j/k: rows  h/l: cols  ctrl+d/ctrl+u: page" + pg)
 	default:
+		if m.editor.CompletionVisible() {
+			return mutedStyle.Render("tab/enter: accept  ctrl+p/n: select  esc: cancel")
+		}
 		return m.editor.HelpText()
 	}
 }

@@ -1,0 +1,311 @@
+package ui
+
+import (
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/ruben/gsql/internal/config"
+)
+
+func TestFilterCandidates(t *testing.T) {
+	all := []completionItem{
+		{text: "SELECT", kind: kindKeyword},
+		{text: "SET", kind: kindKeyword},
+		{text: "SUM", kind: kindKeyword},
+		{text: "users", kind: kindTable},
+		{text: "user_settings", kind: kindTable},
+		{text: "id", kind: kindColumn},
+	}
+
+	// Prefix match "se" → SELECT, SET (both start with "se" case-insensitively)
+	filtered := filterCandidates(all, "se")
+	if len(filtered) != 2 {
+		t.Fatalf("expected 2 matches for 'se', got %d: %+v", len(filtered), filtered)
+	}
+
+	// Prefix match "us" → users, user_settings
+	filtered = filterCandidates(all, "us")
+	if len(filtered) != 2 {
+		t.Fatalf("expected 2 matches for 'us', got %d", len(filtered))
+	}
+
+	// Empty partial → all
+	filtered = filterCandidates(all, "")
+	if len(filtered) != len(all) {
+		t.Errorf("expected all %d, got %d", len(all), len(filtered))
+	}
+
+	// No match
+	filtered = filterCandidates(all, "xyz")
+	if len(filtered) != 0 {
+		t.Errorf("expected 0 matches for 'xyz', got %d", len(filtered))
+	}
+}
+
+func TestWordBeforeCursor(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(80, 10)
+	e.vimMode = VimInsert
+	e.Focus()
+
+	for _, ch := range "SELECT * FROM us" {
+		e.textarea.InsertString(string(ch))
+	}
+
+	word, start := e.wordBeforeCursor()
+	if word != "us" {
+		t.Errorf("expected word 'us', got %q", word)
+	}
+	if start != 14 {
+		t.Errorf("expected start 14, got %d", start)
+	}
+}
+
+func TestCompletionManualTrigger(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(80, 10)
+	e.vimMode = VimInsert
+	e.Focus()
+
+	for _, ch := range "SEL" {
+		e.textarea.InsertString(string(ch))
+	}
+
+	e.SetCandidates([]completionItem{
+		{text: "SELECT", kind: kindKeyword},
+		{text: "SET", kind: kindKeyword},
+		{text: "users", kind: kindTable},
+	})
+	e.StartCompletion()
+
+	if !e.CompletionVisible() {
+		t.Fatal("expected completion to be visible")
+	}
+	if len(e.completion.candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(e.completion.candidates))
+	}
+	if e.completion.candidates[0].text != "SELECT" {
+		t.Errorf("expected SELECT, got %s", e.completion.candidates[0].text)
+	}
+}
+
+func TestCompletionAccept(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(80, 10)
+	e.vimMode = VimInsert
+	e.Focus()
+
+	for _, ch := range "SEL" {
+		e.textarea.InsertString(string(ch))
+	}
+
+	e.SetCandidates([]completionItem{
+		{text: "SELECT", kind: kindKeyword},
+	})
+	e.StartCompletion()
+	e.AcceptCompletion()
+
+	if e.CompletionVisible() {
+		t.Error("expected completion hidden after accept")
+	}
+	if e.Value() != "SELECT" {
+		t.Errorf("expected 'SELECT', got %q", e.Value())
+	}
+}
+
+func TestCompletionNavigation(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(80, 10)
+	e.vimMode = VimInsert
+	e.Focus()
+
+	e.textarea.InsertString("s")
+
+	e.SetCandidates([]completionItem{
+		{text: "SELECT", kind: kindKeyword},
+		{text: "SET", kind: kindKeyword},
+		{text: "SUM", kind: kindKeyword},
+	})
+	e.StartCompletion()
+
+	e.MoveCompletion(1)
+	if e.completion.selected != 1 {
+		t.Errorf("expected selected=1, got %d", e.completion.selected)
+	}
+
+	e.MoveCompletion(10)
+	// from 1, +10 = 11, 11 % 3 = 2
+	if e.completion.selected != 2 {
+		t.Errorf("expected selected=2 after wrap, got %d", e.completion.selected)
+	}
+
+	e.MoveCompletion(-1)
+	if e.completion.selected != 1 {
+		t.Errorf("expected selected=1 after -1, got %d", e.completion.selected)
+	}
+}
+
+func TestCompletionCancel(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(80, 10)
+	e.vimMode = VimInsert
+	e.Focus()
+
+	e.textarea.InsertString("SEL")
+	e.SetCandidates([]completionItem{
+		{text: "SELECT", kind: kindKeyword},
+	})
+	e.StartCompletion()
+
+	// Esc cancels (via handleInsertMode)
+	updated, _ := e.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	e = updated
+
+	if e.CompletionVisible() {
+		t.Error("expected completion hidden after esc")
+	}
+	if e.VimMode() != VimInsert {
+		t.Error("expected still in insert mode")
+	}
+}
+
+func TestCompletionAcceptReplacesPartialWord(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(80, 10)
+	e.vimMode = VimInsert
+	e.Focus()
+
+	for _, ch := range "SELECT * FROM us" {
+		e.textarea.InsertString(string(ch))
+	}
+
+	e.SetCandidates([]completionItem{
+		{text: "users", kind: kindTable},
+		{text: "user_settings", kind: kindTable},
+	})
+	e.StartCompletion()
+
+	// Navigate to "users" (after sort, "user_settings" is first due to '_' < 's')
+	e.MoveCompletion(1)
+	e.AcceptCompletion()
+
+	expected := "SELECT * FROM users"
+	if e.Value() != expected {
+		t.Errorf("expected %q, got %q", expected, e.Value())
+	}
+}
+
+func TestAutoTriggerAfterTwoChars(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(80, 10)
+	e.vimMode = VimInsert
+	e.Focus()
+
+	e.SetCandidates([]completionItem{
+		{text: "SELECT", kind: kindKeyword},
+		{text: "users", kind: kindTable},
+	})
+
+	// Type "s" — should NOT trigger (< minAutoTriggerChars)
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	if e.CompletionVisible() {
+		t.Error("expected popup NOT visible after 1 char")
+	}
+
+	// Type "e" — should trigger ("se" >= 2 chars, matches SELECT)
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	if !e.CompletionVisible() {
+		t.Fatal("expected popup visible after 2 chars")
+	}
+	if len(e.completion.candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(e.completion.candidates))
+	}
+	if e.completion.candidates[0].text != "SELECT" {
+		t.Errorf("expected SELECT, got %s", e.completion.candidates[0].text)
+	}
+}
+
+func TestAutoTriggerDismissOnSpace(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(80, 10)
+	e.vimMode = VimInsert
+	e.Focus()
+
+	e.SetCandidates([]completionItem{
+		{text: "SELECT", kind: kindKeyword},
+	})
+
+	// Type "se" to trigger
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	if !e.CompletionVisible() {
+		t.Fatal("expected popup visible after 'se'")
+	}
+
+	// Type space — should dismiss
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeySpace})
+	if e.CompletionVisible() {
+		t.Error("expected popup dismissed after space")
+	}
+}
+
+func TestAutoTriggerBackspaceRefilter(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(80, 10)
+	e.vimMode = VimInsert
+	e.Focus()
+
+	e.SetCandidates([]completionItem{
+		{text: "SELECT", kind: kindKeyword},
+		{text: "SET", kind: kindKeyword},
+		{text: "users", kind: kindTable},
+	})
+
+	// Type "se" to trigger (2 matches: SELECT, SET)
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	if len(e.completion.candidates) != 2 {
+		t.Fatalf("expected 2 candidates, got %d", len(e.completion.candidates))
+	}
+
+	// Backspace → word is "s" (< 2 chars) → dismiss
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	if e.CompletionVisible() {
+		t.Error("expected popup dismissed after backspace to 1 char")
+	}
+}
+
+func TestAutoTriggerFromApp(t *testing.T) {
+	cfg := &config.Config{}
+	m := NewModel(cfg)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.tables = []string{"users", "orders"}
+	m.state = stateWorkspace
+	m.focus = FocusEditor
+	m.refreshCompletionCandidates()
+
+	// Enter insert mode
+	m.editor.vimMode = VimInsert
+	m.editor.Focus()
+
+	// Type "us" — should auto-trigger with "users" as a candidate
+	m.editor, _ = m.editor.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
+	if m.editor.CompletionVisible() {
+		t.Fatal("expected popup NOT visible after 1 char")
+	}
+	m.editor, _ = m.editor.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	if !m.editor.CompletionVisible() {
+		t.Fatal("expected popup visible after 'us'")
+	}
+
+	found := false
+	for _, c := range m.editor.completion.candidates {
+		if c.text == "users" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected 'users' in candidates")
+	}
+}
