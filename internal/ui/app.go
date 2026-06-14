@@ -82,6 +82,9 @@ type Model struct {
 	sidebarFilter    string
 	sidebarFiltering bool
 
+	// Pending vim operator for sidebar (e.g. 'g' waiting for second 'g')
+	sidebarPendingG bool
+
 	config       *config.Config
 	connection   *db.Connection
 	historyStore *history.Store
@@ -941,12 +944,30 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "up", "k":
+			m.sidebarPendingG = false
 			m = m.scrollSidebar(-1)
 			return m, nil
 		case "down", "j":
+			m.sidebarPendingG = false
 			m = m.scrollSidebar(1)
 			return m, nil
+		case "G":
+			m.sidebarPendingG = false
+			items := m.sidebarItems()
+			if len(items) > 0 {
+				m.sidebarCursor = len(items) - 1
+			}
+			return m, nil
+		case "g":
+			if m.sidebarPendingG {
+				m.sidebarPendingG = false
+				m.sidebarCursor = 0
+				return m, nil
+			}
+			m.sidebarPendingG = true
+			return m, nil
 		case "enter", " ":
+			m.sidebarPendingG = false
 			m.toggleExpand()
 			return m, nil
 		case "/":
