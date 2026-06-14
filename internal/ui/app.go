@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -70,6 +71,10 @@ type Model struct {
 	history      HistoryPanel
 	sidebarCursor int
 	expanded     map[string][]db.Column
+
+	// Fuzzy table search
+	sidebarFilter    string
+	sidebarFiltering bool
 
 	config       *config.Config
 	connection   *db.Connection
@@ -721,9 +726,18 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.page = 0
 		m.pageMsg = ""
 		m.expanded = make(map[string][]db.Column)
+		m.sidebarFiltering = false
+		m.sidebarFilter = ""
 		m.loadConnections()
 		return m, nil
 	case "esc":
+		// Exit sidebar fuzzy filter mode.
+		if m.focus == FocusConnections && m.sidebarFiltering {
+			m.sidebarFiltering = false
+			m.sidebarFilter = ""
+			m.sidebarCursor = 0
+			return m, nil
+		}
 		// In insert mode, esc goes to the editor for vim mode switching.
 		// In normal mode, esc is a no-op (or could blur the editor).
 		if m.focus == FocusEditor && m.editor.VimMode() == VimInsert {
@@ -837,6 +851,53 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.results, cmd = m.results.Update(msg)
 	case FocusConnections:
+		// Fuzzy filter mode intercepts all keys.
+		if m.sidebarFiltering {
+			switch msg.String() {
+			case "esc":
+				m.sidebarFiltering = false
+				m.sidebarFilter = ""
+				m.sidebarCursor = 0
+				return m, nil
+			case "enter":
+				// Select the highlighted match: find it in the full list.
+				if item := m.currentSidebarItem(); item != nil {
+					for i, t := range m.tables {
+						if t == item.text {
+							m.sidebarCursor = i
+							break
+						}
+					}
+				}
+				m.sidebarFiltering = false
+				m.sidebarFilter = ""
+				return m, nil
+			case "backspace":
+				if len(m.sidebarFilter) > 0 {
+					m.sidebarFilter = m.sidebarFilter[:len(m.sidebarFilter)-1]
+				}
+				m.sidebarCursor = 0
+				return m, nil
+			case "up", "k":
+				m = m.scrollSidebar(-1)
+				return m, nil
+			case "down", "j":
+				m = m.scrollSidebar(1)
+				return m, nil
+			case "ctrl+c":
+				m.sidebarFiltering = false
+				m.sidebarFilter = ""
+				m.sidebarCursor = 0
+				return m, nil
+			}
+			// Printable characters extend the filter.
+			if msg.Type == tea.KeyRunes {
+				m.sidebarFilter += msg.String()
+				m.sidebarCursor = 0
+				return m, nil
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "up", "k":
 			m = m.scrollSidebar(-1)
@@ -846,6 +907,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "enter", " ":
 			m.toggleExpand()
+			return m, nil
+		case "/":
+			m.sidebarFiltering = true
+			m.sidebarFilter = ""
+			m.sidebarCursor = 0
 			return m, nil
 		case "s":
 			item := m.currentSidebarItem()
@@ -879,10 +945,14 @@ type sidebarItem struct {
 	text     string
 	isColumn bool
 	colType  string
+	matchIdx []int // rune indices of fuzzy-matched chars (for highlighting)
 }
 
 // sidebarItems builds the flat list of tables + expanded columns.
 func (m Model) sidebarItems() []sidebarItem {
+	if m.sidebarFiltering {
+		return m.filteredTables()
+	}
 	var items []sidebarItem
 	for _, t := range m.tables {
 		items = append(items, sidebarItem{text: t})
@@ -893,6 +963,91 @@ func (m Model) sidebarItems() []sidebarItem {
 		}
 	}
 	return items
+}
+
+// filteredTables returns tables matching the fuzzy filter, best match first.
+func (m Model) filteredTables() []sidebarItem {
+	type scored struct {
+		item  sidebarItem
+		score int
+	}
+	var results []scored
+	for _, t := range m.tables {
+		idx, score := fuzzyMatch(m.sidebarFilter, t)
+		if idx != nil || m.sidebarFilter == "" {
+			results = append(results, scored{sidebarItem{text: t, matchIdx: idx}, score})
+		}
+	}
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].score != results[j].score {
+			return results[i].score < results[j].score
+		}
+		return results[i].item.text < results[j].item.text
+	})
+	items := make([]sidebarItem, len(results))
+	for i, r := range results {
+		items[i] = r.item
+	}
+	return items
+}
+
+// fuzzyMatch performs case-insensitive subsequence matching.
+// Returns matched rune indices (nil if no match) and a score (lower = better).
+func fuzzyMatch(query, s string) ([]int, int) {
+	if query == "" {
+		return nil, 0
+	}
+	q := []rune(strings.ToLower(query))
+	target := []rune(strings.ToLower(s))
+
+	var indices []int
+	qi := 0
+	for si := 0; si < len(target) && qi < len(q); si++ {
+		if target[si] == q[qi] {
+			indices = append(indices, si)
+			qi++
+		}
+	}
+	if qi < len(q) {
+		return nil, 0
+	}
+
+	// Score: lower = better. Penalize gaps, reward consecutive/boundary matches.
+	score := len(target) // mild preference for shorter names
+	for i := 1; i < len(indices); i++ {
+		gap := indices[i] - indices[i-1] - 1
+		score += gap * 3
+		if indices[i] == indices[i-1]+1 {
+			score -= 5
+		}
+	}
+	for _, idx := range indices {
+		if idx == 0 || target[idx-1] == '_' || target[idx-1] == '.' {
+			score -= 2
+		}
+	}
+	return indices, score
+}
+
+// highlightMatches renders text with matched characters in the accent color.
+func highlightMatches(text string, matchIdx []int) string {
+	if len(matchIdx) == 0 {
+		return text
+	}
+	matchSet := make(map[int]bool, len(matchIdx))
+	for _, i := range matchIdx {
+		matchSet[i] = true
+	}
+	accent := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+	var b strings.Builder
+	for i, r := range []rune(text) {
+		if matchSet[i] {
+			b.WriteString(accent.Render(string(r)))
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // scrollSidebar moves the cursor through the flat sidebar item list.
@@ -1111,10 +1266,12 @@ func (m Model) viewWorkspace() string {
 
 	sidebarTitle := titleStyle.Render("Tables")
 
-	maxVisible := sidebarContentHeight - 4
-	if maxVisible < 1 {
-		maxVisible = 1
+	// Reserve 2 lines: title at top, bottom bar (search/scroll info) at bottom.
+	tableAreaHeight := sidebarContentHeight - 2
+	if tableAreaHeight < 1 {
+		tableAreaHeight = 1
 	}
+	maxVisible := tableAreaHeight
 
 	items := m.sidebarItems()
 
@@ -1160,7 +1317,11 @@ func (m Model) viewWorkspace() string {
 				prefix = "→ "
 				style = selectedStyle
 			}
-			line = prefix + expandIcon + " " + item.text
+			tableName := item.text
+			if m.sidebarFiltering {
+				tableName = highlightMatches(item.text, item.matchIdx)
+			}
+			line = prefix + expandIcon + " " + tableName
 			line = style.Render(line)
 		}
 
@@ -1171,13 +1332,25 @@ func (m Model) viewWorkspace() string {
 		tableList.WriteString("\n")
 	}
 	if len(items) == 0 {
-		tableList.WriteString(mutedStyle.Render("  (no tables)"))
+		if m.sidebarFiltering {
+			tableList.WriteString(mutedStyle.Render("  (no matches)"))
+		} else {
+			tableList.WriteString(mutedStyle.Render("  (no tables)"))
+		}
 	}
 
 	scrollInfo := ""
-	if len(items) > maxVisible {
+	if m.sidebarFiltering {
+		prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+m.sidebarFilter) +
+			lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
+		scrollInfo = prompt
+	} else if len(items) > maxVisible {
 		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", start+1, end, len(items)))
 	}
+
+	tableListStyled := lipgloss.NewStyle().
+		Height(tableAreaHeight).
+		Render(strings.TrimRight(tableList.String(), "\n"))
 
 	sidebar := lipgloss.NewStyle().
 		Width(sidebarWidth - borderOverhead).
@@ -1185,7 +1358,7 @@ func (m Model) viewWorkspace() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.borderForFocus(FocusConnections)).
 		Render(
-			lipgloss.JoinVertical(lipgloss.Left, sidebarTitle, tableList.String(), scrollInfo),
+			lipgloss.JoinVertical(lipgloss.Left, sidebarTitle, tableListStyled, scrollInfo),
 		)
 
 	connName := ""
@@ -1247,7 +1420,10 @@ func (m Model) focusInfo() string {
 func (m Model) contextHelp() string {
 	switch m.focus {
 	case FocusConnections:
-		return mutedStyle.Render("enter: expand  s: select  d: describe  j/k: scroll")
+		if m.sidebarFiltering {
+			return mutedStyle.Render("type to filter  enter: select  esc: cancel")
+		}
+		return mutedStyle.Render("enter: expand  s: select  d: describe  /: find  j/k: scroll")
 	case FocusResults:
 		if m.results.IsEditing() {
 			return mutedStyle.Render("enter: commit  esc: cancel")

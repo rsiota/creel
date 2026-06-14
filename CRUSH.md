@@ -55,6 +55,7 @@ internal/ui/              — All Bubble Tea UI components
 - [x] Slice 4: Query history (per-connection, persisted, searchable, overlay panel)
 - [x] Slice 5: Full table browser (expand/collapse columns, schema view, quick actions)
 - [x] Slice 6: Row pagination for large result sets (LIMIT/OFFSET wrapping, 200/page)
+- [x] Fuzzy table search in sidebar (press `/`, type to filter, `enter` to select, `esc` to cancel)
 - [x] SSH tunnel support (MySQL via bastion host; key-based auth with passphrase + password auth)
 
 ## Config Format (~/.config/gsql/config.yaml)
