@@ -195,7 +195,7 @@ func TestCompletionAcceptReplacesPartialWord(t *testing.T) {
 	}
 }
 
-func TestAutoTriggerAfterTwoChars(t *testing.T) {
+func TestAutoTriggerAfterOneChar(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
 	e.vimMode = VimInsert
@@ -203,25 +203,23 @@ func TestAutoTriggerAfterTwoChars(t *testing.T) {
 
 	e.SetCandidates([]completionItem{
 		{text: "SELECT", kind: kindKeyword},
-		{text: "users", kind: kindTable},
+		{text: "SET", kind: kindKeyword},
 	})
 
-	// Type "s" — should NOT trigger (< minAutoTriggerChars)
+	// Type "s" — should trigger immediately (>= minAutoTriggerChars)
 	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
-	if e.CompletionVisible() {
-		t.Error("expected popup NOT visible after 1 char")
+	if !e.CompletionVisible() {
+		t.Fatal("expected popup visible after 1 char")
+	}
+	// Both SELECT and SET start with 's'
+	if len(e.completion.candidates) != 2 {
+		t.Fatalf("expected 2 candidates, got %d", len(e.completion.candidates))
 	}
 
-	// Type "e" — should trigger ("se" >= 2 chars, matches SELECT)
+	// Type "e" — should narrow to SELECT and SET (both start with "se")
 	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
-	if !e.CompletionVisible() {
-		t.Fatal("expected popup visible after 2 chars")
-	}
-	if len(e.completion.candidates) != 1 {
-		t.Fatalf("expected 1 candidate, got %d", len(e.completion.candidates))
-	}
-	if e.completion.candidates[0].text != "SELECT" {
-		t.Errorf("expected SELECT, got %s", e.completion.candidates[0].text)
+	if len(e.completion.candidates) != 2 {
+		t.Fatalf("expected 2 candidates, got %d", len(e.completion.candidates))
 	}
 }
 
@@ -268,10 +266,10 @@ func TestAutoTriggerBackspaceRefilter(t *testing.T) {
 		t.Fatalf("expected 2 candidates, got %d", len(e.completion.candidates))
 	}
 
-	// Backspace → word is "s" (< 2 chars) → dismiss
+	// Backspace → word is "s" (still >= 1 char) → popup stays but refilters
 	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyBackspace})
-	if e.CompletionVisible() {
-		t.Error("expected popup dismissed after backspace to 1 char")
+	if !e.CompletionVisible() {
+		t.Error("expected popup still visible with 1-char word")
 	}
 }
 
@@ -288,12 +286,11 @@ func TestAutoTriggerFromApp(t *testing.T) {
 	m.editor.vimMode = VimInsert
 	m.editor.Focus()
 
-	// Type "us" — should auto-trigger with "users" as a candidate
+	// Type "u" — should auto-trigger with "users" as a candidate
 	m.editor, _ = m.editor.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
-	if m.editor.CompletionVisible() {
-		t.Fatal("expected popup NOT visible after 1 char")
+	if !m.editor.CompletionVisible() {
+		t.Fatal("expected popup visible after 1 char")
 	}
-	m.editor, _ = m.editor.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
 	if !m.editor.CompletionVisible() {
 		t.Fatal("expected popup visible after 'us'")
 	}

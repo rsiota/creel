@@ -56,6 +56,11 @@ type queryExecutedMsg struct {
 	pageSize int
 }
 
+// schemasLoadedMsg carries prefetched table schemas for autocomplete.
+type schemasLoadedMsg struct {
+	schemas map[string][]db.Column
+}
+
 // Model is the top-level application model for the Bubble Tea architecture.
 type Model struct {
 	state    state
@@ -71,6 +76,7 @@ type Model struct {
 	history      HistoryPanel
 	sidebarCursor int
 	expanded     map[string][]db.Column
+	columnCache  map[string][]db.Column
 
 	// Fuzzy table search
 	sidebarFilter    string
@@ -178,12 +184,13 @@ func (m *Model) connectToDB() tea.Cmd {
 	m.connection = conn
 	m.state = stateWorkspace
 	m.focus = FocusEditor
+	m.columnCache = make(map[string][]db.Column)
 
 	cmd := m.editor.Focus()
 	m.loadTables()
 	m.layoutWorkspace()
 
-	return cmd
+	return tea.Batch(cmd, m.prefetchSchemas())
 }
 
 func (m *Model) loadTables() {
@@ -197,6 +204,22 @@ func (m *Model) loadTables() {
 	}
 	m.tables = tables
 	m.refreshCompletionCandidates()
+}
+
+// prefetchSchemas asynchronously fetches column schemas for all tables.
+func (m Model) prefetchSchemas() tea.Cmd {
+	d := m.connection.DB()
+	tables := m.tables
+	return func() tea.Msg {
+		schemas := make(map[string][]db.Column)
+		for _, t := range tables {
+			cols, err := d.TableSchema(t)
+			if err == nil {
+				schemas[t] = cols
+			}
+		}
+		return schemasLoadedMsg{schemas: schemas}
+	}
 }
 
 // executeQuery runs the current query asynchronously with pagination.
@@ -538,6 +561,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.results.ConfirmSaved()
 		}
 		return m, nil
+
+	case schemasLoadedMsg:
+		m.columnCache = msg.schemas
+		m.refreshCompletionCandidates()
+		return m, nil
 	}
 
 	if m.state == stateWorkspace {
@@ -732,6 +760,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.page = 0
 		m.pageMsg = ""
 		m.expanded = make(map[string][]db.Column)
+		m.columnCache = nil
 		m.sidebarFiltering = false
 		m.sidebarFilter = ""
 		m.editor.CancelCompletion()
@@ -953,7 +982,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // refreshCompletionCandidates rebuilds the editor's candidate list from
-// keywords, tables, and expanded columns.
+// keywords, tables, and cached column schemas.
 func (m *Model) refreshCompletionCandidates() {
 	var candidates []completionItem
 
@@ -965,7 +994,7 @@ func (m *Model) refreshCompletionCandidates() {
 	}
 
 	seen := make(map[string]bool)
-	for _, cols := range m.expanded {
+	for _, cols := range m.columnCache {
 		for _, c := range cols {
 			if !seen[c.Name] {
 				candidates = append(candidates, completionItem{text: c.Name, kind: kindColumn})

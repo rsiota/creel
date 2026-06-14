@@ -48,7 +48,7 @@ type completion struct {
 }
 
 // minAutoTriggerChars is the minimum word length to auto-trigger the popup.
-const minAutoTriggerChars = 2
+const minAutoTriggerChars = 1
 
 // isWordChar returns true for characters allowed in SQL identifiers.
 func isWordChar(ch rune) bool {
