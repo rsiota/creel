@@ -47,8 +47,12 @@ type DB interface {
 	Tables() ([]string, error)
 	// TableSchema returns the column names and types for a given table.
 	TableSchema(table string) ([]Column, error)
+	// PrimaryKeys returns the primary key column names for a table.
+	PrimaryKeys(table string) ([]string, error)
 	// Execute runs a query and returns the result set.
 	Execute(query string) (Result, error)
+	// Exec runs a statement that doesn't return rows (INSERT, UPDATE, DELETE).
+	Exec(query string, args ...interface{}) (ExecResult, error)
 }
 
 // Column describes a single column in a table or result set.
@@ -63,6 +67,11 @@ type Result struct {
 	Rows    [][]string
 	Message string
 	Elapsed string
+}
+
+// ExecResult holds the output of a write operation (INSERT/UPDATE/DELETE).
+type ExecResult struct {
+	RowsAffected int64
 }
 
 // New creates a new database connection based on the driver type.

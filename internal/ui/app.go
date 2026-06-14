@@ -40,6 +40,12 @@ type executeResultMsg struct {
 	err    error
 }
 
+// saveResultMsg carries the result of an async inline edit save.
+type saveResultMsg struct {
+	saved int
+	err   error
+}
+
 // queryExecutedMsg is sent when a query finishes executing.
 type queryExecutedMsg struct {
 	query    string
@@ -264,6 +270,186 @@ func isSelectQuery(query string) bool {
 	return strings.HasPrefix(upper, "SELECT") || strings.HasPrefix(upper, "WITH")
 }
 
+// detectEditability checks if the query is a simple "SELECT * FROM <table>"
+// and, if so, sets up the results table for inline editing by fetching the
+// primary keys. Non-pointer because it only touches Model fields directly.
+func (m *Model) detectEditability(query string) {
+	m.results.ClearEditable()
+
+	// Must be a SELECT from a single table with no JOIN/GROUP BY.
+	table := parseSimpleSelectTable(query)
+	if table == "" || m.connection == nil {
+		return
+	}
+
+	// Verify the table exists.
+	found := false
+	for _, t := range m.tables {
+		if strings.EqualFold(t, table) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return
+	}
+
+	pkCols, err := m.connection.DB().PrimaryKeys(table)
+	if err != nil || len(pkCols) == 0 {
+		return
+	}
+
+	// Verify PK columns are present in the result set.
+	colSet := make(map[string]bool)
+	for _, c := range m.results.columns {
+		colSet[strings.ToLower(c)] = true
+	}
+	for _, pk := range pkCols {
+		if !colSet[strings.ToLower(pk)] {
+			return
+		}
+	}
+
+	m.results.SetEditable(table, pkCols)
+}
+
+// parseSimpleSelectTable extracts the table name from a query of the form
+// "SELECT ... FROM <table>" (no JOIN, no subquery). Returns "" if the query
+// is not a simple single-table SELECT.
+func parseSimpleSelectTable(query string) string {
+	upper := strings.ToUpper(strings.TrimSpace(query))
+	if !strings.HasPrefix(upper, "SELECT") {
+		return ""
+	}
+
+	// Find "FROM " as a word boundary.
+	fromIdx := strings.Index(upper, " FROM ")
+	if fromIdx == -1 {
+		return ""
+	}
+
+	afterFrom := strings.TrimSpace(query[fromIdx:]) // "FROM <table> ..."
+	if !strings.EqualFold(afterFrom[:4], "FROM") {
+		return ""
+	}
+	rest := strings.TrimSpace(afterFrom[4:])
+
+	// Reject if there's a JOIN, subquery, or GROUP BY clause.
+	restUpper := strings.ToUpper(rest)
+	for _, banned := range []string{" JOIN ", " WHERE ", " GROUP BY ", " HAVING ", " UNION ", "(", ","} {
+		if strings.Contains(restUpper, banned) {
+			return ""
+		}
+	}
+
+	// Extract the table name, handling quoted identifiers.
+	rest = strings.TrimSpace(rest)
+	if len(rest) > 0 && (rest[0] == '"' || rest[0] == '`' || rest[0] == '[') {
+		// Quoted identifier — find closing quote/bracket.
+		closeCh := rest[0]
+		if rest[0] == '[' {
+			closeCh = ']'
+		}
+		endIdx := strings.IndexByte(rest[1:], closeCh)
+		if endIdx == -1 {
+			return ""
+		}
+		return rest[1 : 1+endIdx]
+	}
+
+	// Unquoted: the table name is the first token.
+	for _, terminator := range []string{" ", ";", "\n", "\t"} {
+		if idx := strings.Index(rest, terminator); idx != -1 {
+			rest = rest[:idx]
+		}
+	}
+	if rest == "" {
+		return ""
+	}
+	return rest
+}
+
+// saveEdits writes all pending dirty cells to the database using parameterized
+// UPDATE queries. Each dirty cell generates one UPDATE statement.
+func (m *Model) saveEdits() tea.Cmd {
+	if !m.results.HasDirtyCells() || m.connection == nil {
+		return nil
+	}
+
+	conn := m.connection
+	table := m.results.SourceTable()
+	pkCols := m.results.PKColumns()
+	colNames := make([]string, len(m.results.columns))
+	copy(colNames, m.results.columns)
+	edits := m.results.DirtyCells()
+
+	// Pre-resolve PK column indices and values for each dirty row.
+	type rowData struct {
+		edit     CellEdit
+		pkVals   []string
+		colName  string
+	}
+	var pending []rowData
+
+	for _, edit := range edits {
+		colName := ""
+		if edit.Col >= 0 && edit.Col < len(colNames) {
+			colName = colNames[edit.Col]
+		}
+		if colName == "" {
+			continue
+		}
+
+		var pkVals []string
+		for _, pk := range pkCols {
+			for i, cn := range colNames {
+				if strings.EqualFold(cn, pk) {
+					pkVals = append(pkVals, m.results.rows[edit.Row][i])
+					break
+				}
+			}
+		}
+		if len(pkVals) != len(pkCols) {
+			continue
+		}
+
+		pending = append(pending, rowData{
+			edit:    edit,
+			pkVals:  pkVals,
+			colName: colName,
+		})
+	}
+
+	return func() tea.Msg {
+		saved := 0
+		for _, p := range pending {
+			// Build: UPDATE <table> SET <col> = ? WHERE <pk1> = ? AND <pk2> = ?
+			var b strings.Builder
+			fmt.Fprintf(&b, "UPDATE %s SET %s = ?", table, p.colName)
+			for i, pk := range pkCols {
+				if i == 0 {
+					b.WriteString(" WHERE ")
+				} else {
+					b.WriteString(" AND ")
+				}
+				fmt.Fprintf(&b, "%s = ?", pk)
+			}
+
+			args := []interface{}{p.edit.NewValue}
+			for _, v := range p.pkVals {
+				args = append(args, v)
+			}
+
+			_, err := conn.DB().Exec(b.String(), args...)
+			if err != nil {
+				return saveResultMsg{saved: saved, err: err}
+			}
+			saved++
+		}
+		return saveResultMsg{saved: saved}
+	}
+}
+
 // Update handles all application messages.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -326,6 +512,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.pageMsg = pgInfo
+
+			// Enable inline editing if this is a simple SELECT from a single table.
+			m.detectEditability(msg.query)
+		}
+		return m, nil
+
+	case saveResultMsg:
+		if msg.err != nil {
+			m.results.SetSaveError(msg.err.Error())
+		} else {
+			// Apply dirty values to the underlying rows so the display stays consistent.
+			for _, edit := range m.results.DirtyCells() {
+				if edit.Row >= 0 && edit.Row < len(m.results.rows) &&
+					edit.Col >= 0 && edit.Col < len(m.results.rows[edit.Row]) {
+					m.results.rows[edit.Row][edit.Col] = edit.NewValue
+				}
+			}
+			m.results.ConfirmSaved()
 		}
 		return m, nil
 	}
@@ -473,20 +677,34 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+d":
 		// Vim-style page navigation — only when not in the editor
 		// (Ctrl+D/U scroll within the editor in vim normal mode).
+		// Also block when editing a cell or have unsaved edits.
 		if m.focus != FocusEditor {
+			if m.results.IsEditing() || m.results.HasDirtyCells() {
+				return m, nil
+			}
 			return m, m.nextPage()
 		}
 	case "ctrl+u":
 		if m.focus != FocusEditor {
+			if m.results.IsEditing() || m.results.HasDirtyCells() {
+				return m, nil
+			}
 			return m, m.prevPage()
 		}
 	case "ctrl+r":
 		m.editor.Reset()
 		return m, nil
 	case "tab":
+		// Don't cycle focus while editing a cell.
+		if m.results.IsEditing() {
+			return m, nil
+		}
 		m = m.cycleFocus()
 		return m, nil
 	case "shift+tab":
+		if m.results.IsEditing() {
+			return m, nil
+		}
 		m = m.cycleFocusBack()
 		return m, nil
 	case "ctrl+t":
@@ -498,6 +716,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state = stateConnections
 		m.focus = FocusConnections
 		m.results.Clear()
+		m.results.ClearEditable()
 		m.lastQuery = ""
 		m.page = 0
 		m.pageMsg = ""
@@ -558,6 +777,50 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.editor, cmd = m.editor.Update(msg)
 	case FocusResults:
+		// If currently editing a cell, intercept keys first.
+		if m.results.IsEditing() {
+			switch msg.String() {
+			case "enter":
+				m.results.CommitEdit()
+				return m, nil
+			case "esc":
+				m.results.CancelEdit()
+				return m, nil
+			case "ctrl+c":
+				m.results.CancelEdit()
+				return m, nil
+			}
+			// All other keys go to the textinput.
+			m.results, cmd = m.results.Update(msg)
+			return m, cmd
+		}
+
+		// Editable results: cell cursor navigation.
+		if m.results.IsEditable() {
+			switch msg.String() {
+			case "up", "k":
+				m.results.CursorUp()
+				return m, nil
+			case "down", "j":
+				m.results.CursorDown()
+				return m, nil
+			case "left", "h":
+				m.results.CursorLeft()
+				return m, nil
+			case "right", "l":
+				m.results.CursorRight()
+				return m, nil
+			case "enter", "e", "i":
+				m.results.StartEdit()
+				return m, nil
+			case "ctrl+s":
+				return m, m.saveEdits()
+			}
+			m.results, cmd = m.results.Update(msg)
+			return m, cmd
+		}
+
+		// Non-editable results: scroll navigation.
 		switch msg.String() {
 		case "up", "k":
 			m.results.ScrollUp()
@@ -986,6 +1249,16 @@ func (m Model) contextHelp() string {
 	case FocusConnections:
 		return mutedStyle.Render("enter: expand  s: select  d: describe  j/k: scroll")
 	case FocusResults:
+		if m.results.IsEditing() {
+			return mutedStyle.Render("enter: commit  esc: cancel")
+		}
+		if m.results.IsEditable() {
+			pg := ""
+			if m.pageMsg != "" {
+				pg = "  " + m.pageMsg
+			}
+			return mutedStyle.Render("h/j/k/l: move  enter: edit  ctrl+s: save" + pg)
+		}
 		pg := ""
 		if m.pageMsg != "" {
 			pg = "  " + m.pageMsg

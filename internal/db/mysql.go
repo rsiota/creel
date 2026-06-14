@@ -113,6 +113,29 @@ func (m *MySQL) TableSchema(table string) ([]Column, error) {
 	return cols, rows.Err()
 }
 
+func (m *MySQL) PrimaryKeys(table string) ([]string, error) {
+	rows, err := m.db.Query(
+		`SELECT column_name FROM information_schema.key_column_usage
+		 WHERE table_schema = ? AND table_name = ? AND constraint_name = 'PRIMARY'
+		 ORDER BY ordinal_position`,
+		m.config.Database, table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var pks []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		pks = append(pks, name)
+	}
+	return pks, rows.Err()
+}
+
 func (m *MySQL) Execute(query string) (Result, error) {
 	start := time.Now()
 
@@ -175,4 +198,16 @@ func (m *MySQL) Execute(query string) (Result, error) {
 		Message: fmt.Sprintf("%d %s in %s", len(resultRows), noun, elapsed.Round(time.Millisecond)),
 		Elapsed: elapsed.String(),
 	}, nil
+}
+
+func (m *MySQL) Exec(query string, args ...interface{}) (ExecResult, error) {
+	res, err := m.db.Exec(query, args...)
+	if err != nil {
+		return ExecResult{}, fmt.Errorf("exec error: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return ExecResult{}, err
+	}
+	return ExecResult{RowsAffected: affected}, nil
 }

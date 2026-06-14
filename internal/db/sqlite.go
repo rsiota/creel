@@ -75,6 +75,29 @@ func (s *SQLite) TableSchema(table string) ([]Column, error) {
 	return cols, rows.Err()
 }
 
+func (s *SQLite) PrimaryKeys(table string) ([]string, error) {
+	rows, err := s.db.Query(fmt.Sprintf(`PRAGMA table_info("%s")`, table))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var pks []string
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull, pk int
+		var dfltValue sql.NullString
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &dfltValue, &pk); err != nil {
+			return nil, err
+		}
+		if pk > 0 {
+			pks = append(pks, name)
+		}
+	}
+	return pks, rows.Err()
+}
+
 func (s *SQLite) Execute(query string) (Result, error) {
 	start := time.Now()
 
@@ -137,4 +160,16 @@ func (s *SQLite) Execute(query string) (Result, error) {
 		Message: fmt.Sprintf("%d %s in %s", len(resultRows), noun, elapsed.Round(time.Millisecond)),
 		Elapsed: elapsed.String(),
 	}, nil
+}
+
+func (s *SQLite) Exec(query string, args ...interface{}) (ExecResult, error) {
+	res, err := s.db.Exec(query, args...)
+	if err != nil {
+		return ExecResult{}, fmt.Errorf("exec error: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return ExecResult{}, err
+	}
+	return ExecResult{RowsAffected: affected}, nil
 }
