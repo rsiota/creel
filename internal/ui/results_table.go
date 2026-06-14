@@ -490,7 +490,7 @@ func (r ResultsTable) isPKColumn(colName string) bool {
 // View renders the results table.
 func (r ResultsTable) View() string {
 	if !r.hasResult {
-		return mutedStyle.Render("Run a query to see results.")
+		return mutedStyle.Render(" Run a query to see results.")
 	}
 
 	if r.message != "" && len(r.columns) == 0 {

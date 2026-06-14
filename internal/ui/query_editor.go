@@ -41,7 +41,7 @@ type QueryEditor struct {
 func NewQueryEditor() QueryEditor {
 	ta := textarea.New()
 	ta.Placeholder = "SELECT * FROM ..."
-	ta.Prompt = "│ "
+	ta.Prompt = " "
 	ta.ShowLineNumbers = false
 	ta.CharLimit = 0
 	ta.SetHeight(5)
