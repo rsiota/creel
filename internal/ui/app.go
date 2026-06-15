@@ -1039,15 +1039,31 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "up", "k":
+			m.inspector.pendingG = false
 			m.inspector.CursorUp()
 			return m, nil
 		case "down", "j":
+			m.inspector.pendingG = false
 			m.inspector.CursorDown(m.results.NumCols())
 			return m, nil
+		case "G":
+			m.inspector.pendingG = false
+			m.inspector.CursorBottom(m.results.NumCols())
+			return m, nil
+		case "g":
+			if m.inspector.pendingG {
+				m.inspector.pendingG = false
+				m.inspector.CursorTop()
+				return m, nil
+			}
+			m.inspector.pendingG = true
+			return m, nil
 		case "enter", "e", "i":
+			m.inspector.pendingG = false
 			m.inspector.StartFieldEdit(m.results)
 			return m, nil
 		case "ctrl+s":
+			m.inspector.pendingG = false
 			return m, m.saveEdits()
 		}
 		return m, nil

@@ -28,6 +28,7 @@ type Inspector struct {
 	editing     bool
 	editInput   textinput.Model
 	scrollRow   int
+	pendingG    bool
 }
 
 // NewInspector creates a new inspector component.
@@ -73,6 +74,20 @@ func (i *Inspector) Reset() {
 	i.cursorField = 0
 	i.scrollRow = 0
 	i.editing = false
+}
+
+// CursorTop moves the field cursor to the first field.
+func (i *Inspector) CursorTop() {
+	i.cursorField = 0
+	i.ensureFieldVisible()
+}
+
+// CursorBottom moves the field cursor to the last field.
+func (i *Inspector) CursorBottom(numFields int) {
+	if numFields > 0 {
+		i.cursorField = numFields - 1
+	}
+	i.ensureFieldVisible()
 }
 
 // CursorUp moves the field cursor up by one.
