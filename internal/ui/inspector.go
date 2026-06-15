@@ -93,7 +93,7 @@ func (i *Inspector) CursorDown(numFields int) {
 
 // visibleFieldCount returns how many complete fields fit in the available height.
 func (i Inspector) visibleFieldCount() int {
-	avail := i.height - 1 // blank padding under title
+	avail := i.height - 2 // title + blank line
 	if avail < linesPerField {
 		return 1
 	}
@@ -178,7 +178,7 @@ func (i Inspector) Update(msg tea.Msg) (Inspector, tea.Cmd) {
 func (i Inspector) View(results ResultsTable) string {
 	numFields := results.NumCols()
 	if numFields == 0 || results.NumRows() == 0 {
-		fieldsHeight := i.height - 1
+		fieldsHeight := i.height - 2
 		if fieldsHeight < 1 {
 			fieldsHeight = 1
 		}
@@ -305,7 +305,7 @@ func (i Inspector) View(results ResultsTable) string {
 	}
 
 	// Height-constrained fields block fills the panel.
-	fieldsHeight := i.height - 1
+	fieldsHeight := i.height - 2
 	if fieldsHeight < linesPerField {
 		fieldsHeight = linesPerField
 	}

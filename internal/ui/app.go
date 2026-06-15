@@ -1432,6 +1432,7 @@ func (m Model) viewWorkspace() string {
 		if inspectorContentHeight < 3 {
 			inspectorContentHeight = 3
 		}
+		m.inspector.SetSize(inspectorWidth-borderOverhead, inspectorContentHeight)
 		inspectorContent := lipgloss.JoinVertical(lipgloss.Left,
 			titleStyle.Render("Inspector"),
 			m.inspector.View(m.results),
