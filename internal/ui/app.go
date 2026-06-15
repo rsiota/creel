@@ -535,6 +535,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			m.results.SetResult(cols, rows, msg.result.Message)
+			colTypes := make(map[string]string)
+			for _, c := range msg.result.Columns {
+				colTypes[c.Name] = c.Type
+			}
+			m.results.SetColumnTypes(colTypes)
 			m.page = msg.page
 
 			// Build pagination status message
@@ -1321,7 +1326,8 @@ func (m *Model) layoutWorkspace() {
 	m.results.SetSize(rightWidth, resultsHeight)
 
 	if inspectorVisible {
-		m.inspector.SetSize(inspectorWidth-borderOverhead, sideContentHeight)
+		viewHeight := editorHeight + resultsHeight
+		m.inspector.SetSize(inspectorWidth-borderOverhead, viewHeight)
 	}
 }
 
@@ -1627,18 +1633,22 @@ func (m Model) contextHelp() string {
 		if m.results.IsEditing() {
 			return mutedStyle.Render("enter: commit  esc: cancel")
 		}
+		inspHint := ""
+		if m.inspector.IsVisible() {
+			inspHint = "  ctrl+o: close inspector"
+		}
 		if m.results.IsEditable() {
 			pg := ""
 			if m.pageMsg != "" {
 				pg = "  " + m.pageMsg
 			}
-			return mutedStyle.Render("h/j/k/l: move  enter: edit  ctrl+s: save" + pg)
+			return mutedStyle.Render("h/j/k/l: move  enter: edit  ctrl+s: save" + pg + inspHint)
 		}
 		pg := ""
 		if m.pageMsg != "" {
 			pg = "  " + m.pageMsg
 		}
-		return mutedStyle.Render("j/k: rows  h/l: cols  ctrl+d/ctrl+u: page" + pg)
+		return mutedStyle.Render("j/k: rows  h/l: cols  ctrl+d/ctrl+u: page" + pg + inspHint)
 	case FocusInspector:
 		if m.inspector.IsEditing() {
 			return mutedStyle.Render("enter: commit  esc: cancel")

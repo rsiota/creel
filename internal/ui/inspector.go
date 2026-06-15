@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -94,7 +93,7 @@ func (i *Inspector) CursorDown(numFields int) {
 
 // visibleFieldCount returns how many complete fields fit in the available height.
 func (i Inspector) visibleFieldCount() int {
-	avail := i.height - 4 // title + row info + blank + help
+	avail := i.height - 1 // blank padding under title
 	if avail < linesPerField {
 		return 1
 	}
@@ -136,7 +135,7 @@ func (i *Inspector) StartFieldEdit(results ResultsTable) {
 	ti.CharLimit = 0
 	ti.SetValue(val)
 
-	valueWidth := i.width - 4 // "│ " + value + " │"
+	valueWidth := i.width - 4
 	if valueWidth < 10 {
 		valueWidth = 10
 	}
@@ -172,13 +171,19 @@ func (i Inspector) Update(msg tea.Msg) (Inspector, tea.Cmd) {
 	return i, nil
 }
 
-// View renders the inspector content (without outer border) as a vertical form.
-// Each field is: column-name label, then a bordered value box. The focused
-// field's box border uses the primary color; all others use the table grid color.
+// View renders the inspector content (without outer border or title) as a
+// vertical form. Each field is: column-name label (with type right-aligned),
+// then a bordered value box. The focused field's box border uses the primary
+// color; all others use the table grid color. Row info is pinned to the bottom.
 func (i Inspector) View(results ResultsTable) string {
 	numFields := results.NumCols()
 	if numFields == 0 || results.NumRows() == 0 {
-		return mutedStyle.Render(" No row selected")
+		fieldsHeight := i.height - 1
+		if fieldsHeight < 1 {
+			fieldsHeight = 1
+		}
+		empty := lipgloss.NewStyle().Height(fieldsHeight).Render("")
+		return "\n" + empty
 	}
 
 	row := results.CursorRow()
@@ -192,19 +197,12 @@ func (i Inspector) View(results ResultsTable) string {
 		row = 0
 	}
 
-	tableName := results.SourceTable()
-	if tableName == "" {
-		tableName = "Row"
-	}
-
-	// Value box: "│ " + value(valueWidth) + " │"
 	valueWidth := i.width - 4
 	if valueWidth < 5 {
 		valueWidth = 5
 	}
 	borderWidth := valueWidth + 2
 
-	// Determine visible field range.
 	maxFields := i.visibleFieldCount()
 
 	cursorClamp := i.cursorField
@@ -229,16 +227,12 @@ func (i Inspector) View(results ResultsTable) string {
 
 	borderNormal := lipgloss.NewStyle().Foreground(colorBorder)
 	borderFocused := lipgloss.NewStyle().Foreground(colorPrimary)
+	labelStyle := lipgloss.NewStyle().Foreground(colorLabel)
+	pkLabelStyle := lipgloss.NewStyle().Foreground(colorLabel).Bold(true)
+	typeStyle := lipgloss.NewStyle().Foreground(colorMuted)
 
-	var b strings.Builder
+	var fields strings.Builder
 
-	// Header
-	b.WriteString(titleStyle.Render(tableName))
-	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(fmt.Sprintf("row %d of %d", row+1, results.NumRows())))
-	b.WriteString("\n")
-
-	// Fields
 	for c := start; c < end; c++ {
 		colName := results.ColumnName(c)
 		isPK := results.isPKColumn(colName)
@@ -246,21 +240,32 @@ func (i Inspector) View(results ResultsTable) string {
 		isFocused := c == cursorClamp
 		val := results.RowValue(row, c)
 
-		// Label line
-		label := " " + colName
+		// Label line: 1-char left pad + column name (left) + type (right) + 1-char right pad
+		labelRaw := colName
 		if isPK {
-			label = " 🔑 " + colName
+			labelRaw = "🔑 " + labelRaw
 		}
 		if isDirty {
-			label += " ●"
+			labelRaw += " ●"
 		}
-		label = truncateSidebarLine(label, i.width)
-		labelStyle := lipgloss.NewStyle().Foreground(colorMuted)
+		typeRaw := strings.ToLower(results.ColumnType(c))
+
+		ls := labelStyle
 		if isPK {
-			labelStyle = lipgloss.NewStyle().Foreground(colorAccent)
+			ls = pkLabelStyle
 		}
-		b.WriteString(labelStyle.Render(label))
-		b.WriteString("\n")
+		labelStr := ls.Render(labelRaw)
+		typeStr := typeStyle.Render(typeRaw)
+
+		labelW := lipgloss.Width(labelStr)
+		typeW := lipgloss.Width(typeStr)
+		pad := i.width - 2 - labelW - typeW
+		if pad < 1 {
+			pad = 1
+		}
+
+		fields.WriteString(" " + labelStr + strings.Repeat(" ", pad) + typeStr + " ")
+		fields.WriteString("\n")
 
 		// Choose border color for this field's value box.
 		bs := borderNormal
@@ -269,8 +274,8 @@ func (i Inspector) View(results ResultsTable) string {
 		}
 
 		// Top border
-		b.WriteString(bs.Render("┌" + strings.Repeat("─", borderWidth) + "┐"))
-		b.WriteString("\n")
+		fields.WriteString(bs.Render("┌" + strings.Repeat("─", borderWidth) + "┐"))
+		fields.WriteString("\n")
 
 		// Value line
 		var displayVal string
@@ -291,27 +296,22 @@ func (i Inspector) View(results ResultsTable) string {
 			}
 		}
 
-		b.WriteString(bs.Render("│ ") + valStyle.Render(displayVal) + bs.Render(" │"))
-		b.WriteString("\n")
+		fields.WriteString(bs.Render("│ ") + valStyle.Render(displayVal) + bs.Render(" │"))
+		fields.WriteString("\n")
 
 		// Bottom border
-		b.WriteString(bs.Render("└" + strings.Repeat("─", borderWidth) + "┘"))
-		b.WriteString("\n")
+		fields.WriteString(bs.Render("└" + strings.Repeat("─", borderWidth) + "┘"))
+		fields.WriteString("\n")
 	}
 
-	// Bottom help
-	b.WriteString("\n")
-	if i.editing {
-		b.WriteString(mutedStyle.Render("enter: commit  esc: cancel"))
-	} else if results.IsEditable() {
-		if results.HasDirtyCells() {
-			b.WriteString(mutedStyle.Render(fmt.Sprintf("%d unsaved · ctrl+s: save", results.DirtyCellCount())))
-		} else {
-			b.WriteString(mutedStyle.Render("enter: edit  ctrl+s: save"))
-		}
-	} else {
-		b.WriteString(mutedStyle.Render("read-only"))
+	// Height-constrained fields block fills the panel.
+	fieldsHeight := i.height - 1
+	if fieldsHeight < linesPerField {
+		fieldsHeight = linesPerField
 	}
+	fieldsBlock := lipgloss.NewStyle().
+		Height(fieldsHeight).
+		Render(strings.TrimRight(fields.String(), "\n"))
 
-	return b.String()
+	return "\n" + fieldsBlock
 }

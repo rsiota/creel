@@ -42,6 +42,7 @@ type ResultsTable struct {
 	dirtyCells map[cellRef]string // pending unsaved edits (new values)
 	saved      bool              // all dirty cells were saved (show confirmation)
 	saveError  string            // last save error
+	columnTypes map[string]string // column name -> database type (for inspector)
 }
 
 // NewResultsTable creates a new results table component.
@@ -240,6 +241,22 @@ func (r *ResultsTable) SetDirtyCell(row, col int, val string) {
 		r.dirtyCells = make(map[cellRef]string)
 	}
 	r.dirtyCells[ref] = val
+}
+
+// SetColumnTypes stores column type metadata from the query result.
+func (r *ResultsTable) SetColumnTypes(types map[string]string) {
+	r.columnTypes = types
+}
+
+// ColumnType returns the database type for a given column index.
+func (r ResultsTable) ColumnType(col int) string {
+	if col < 0 || col >= len(r.columns) {
+		return ""
+	}
+	if r.columnTypes == nil {
+		return ""
+	}
+	return r.columnTypes[r.columns[col]]
 }
 
 // SetSize sets the dimensions of the results panel.
