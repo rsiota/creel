@@ -885,11 +885,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingG = false
 				m.results.CursorDown()
 				return m, nil
-			case "left", "h":
+			case "left", "h", "b":
 				m.resultsPendingG = false
 				m.results.CursorLeft()
 				return m, nil
-			case "right", "l":
+			case "right", "l", "w":
 				m.resultsPendingG = false
 				m.results.CursorRight()
 				return m, nil
@@ -934,11 +934,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.resultsPendingG = false
 			m.results.ScrollDown()
 			return m, nil
-		case "left", "h":
+		case "left", "h", "b":
 			m.resultsPendingG = false
 			m.results.ScrollLeft()
 			return m, nil
-		case "right", "l":
+		case "right", "l", "w":
 			m.resultsPendingG = false
 			m.results.ScrollRight()
 			return m, nil
