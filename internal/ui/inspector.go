@@ -155,6 +155,11 @@ func (i *Inspector) StartFieldEdit(results ResultsTable) {
 		valueWidth = 10
 	}
 	ti.Width = valueWidth
+
+	// Configure cursor styling for visible cursor feedback.
+	ti.TextStyle = lipgloss.NewStyle().Foreground(colorFg)
+	ti.Cursor.Style = lipgloss.NewStyle().Foreground(colorFg).Background(colorBg)
+
 	ti.Focus()
 	i.editInput = ti
 	i.editing = true
@@ -293,25 +298,21 @@ func (i Inspector) View(results ResultsTable) string {
 		fields.WriteString("\n")
 
 		// Value line
-		var displayVal string
-		valStyle := lipgloss.NewStyle().Foreground(colorFg)
-
 		if i.editing && isFocused {
-			displayVal = truncateCell(i.editInput.Value(), valueWidth)
-			valStyle = lipgloss.NewStyle().
-				Foreground(colorFg).
-				Background(colorHighlight)
+			// Use textinput's own View() which renders a visible cursor.
+			inputView := i.editInput.View()
+			fields.WriteString(bs.Render("│ ") + inputView + bs.Render(" │"))
 		} else {
-			displayVal = truncateCell(val, valueWidth)
+			displayVal := truncateCell(val, valueWidth)
+			valStyle := lipgloss.NewStyle().Foreground(colorFg)
 			if val == "NULL" {
 				valStyle = lipgloss.NewStyle().Foreground(colorMuted)
 			}
 			if isDirty {
 				valStyle = lipgloss.NewStyle().Foreground(colorSuccess)
 			}
+			fields.WriteString(bs.Render("│ ") + valStyle.Render(displayVal) + bs.Render(" │"))
 		}
-
-		fields.WriteString(bs.Render("│ ") + valStyle.Render(displayVal) + bs.Render(" │"))
 		fields.WriteString("\n")
 
 		// Bottom border
