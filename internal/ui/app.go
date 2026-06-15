@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ruben/gsql/internal/config"
@@ -602,6 +601,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Filter mode intercepts all keys.
+	if m.connList.IsFiltering() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.connList.CancelFilter()
+			return m, nil
+		case "enter":
+			m.connList.CommitFilter()
+			return m, m.connectToDB()
+		case "backspace":
+			m.connList.FilterBackspace()
+			return m, nil
+		case "up", "k":
+			m.connList.MoveCursor(-1)
+			return m, nil
+		case "down", "j":
+			m.connList.MoveCursor(1)
+			return m, nil
+		}
+		if msg.Type == tea.KeyRunes {
+			m.connList.FilterAddChar(msg.String())
+			return m, nil
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "enter":
 		return m, m.connectToDB()
@@ -614,17 +639,28 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openEditForm()
 	case "d":
 		return m.deleteSelectedConnection()
+	case "/":
+		m.connList.StartFilter()
+		return m, nil
 	case "esc":
-		if m.connList.list.FilterState() == list.Filtering {
-			break
-		}
 		m.quitting = true
 		return m, tea.Quit
+	case "up", "k":
+		m.connList.MoveCursor(-1)
+		return m, nil
+	case "down", "j":
+		m.connList.MoveCursor(1)
+		return m, nil
+	case "G":
+		items := m.connList.visibleItems()
+		m.connList.SetCursor(len(items) - 1)
+		return m, nil
+	case "g":
+		m.connList.SetCursor(0)
+		return m, nil
 	}
 
-	var cmd tea.Cmd
-	m.connList, cmd = m.connList.Update(msg)
-	return m, cmd
+	return m, nil
 }
 
 // addDefaultSQLiteConnection creates a quick local SQLite connection for convenience.
@@ -1332,7 +1368,6 @@ func (m Model) updateLayout() Model {
 	}
 
 	if m.state == stateConnections {
-		m.connList.SetSize(m.width, m.height)
 		return m
 	}
 
@@ -1409,17 +1444,45 @@ func (m Model) View() string {
 }
 
 func (m Model) viewConnections() string {
-	if m.connError != "" {
-		return errorStyle.Render(m.connError)
-	}
+	borderOverhead := 2
 
 	header := titleStyle.Render("gsql") + mutedStyle.Render("  — a fast SQL TUI")
-	body := m.connList.View()
-	footer := helpStyle.Render("enter: connect  n: new  e: edit  d: delete  esc: quit  /: filter")
+
+	contentHeight := m.height - 4 // header + blank + footer + status
+	if contentHeight < 3 {
+		contentHeight = 3
+	}
+	contentWidth := m.width - 2
+
+	connTitle := titleStyle.Render("Connections")
+
+	panelHeight := contentHeight - borderOverhead
+	if panelHeight < 3 {
+		panelHeight = 3
+	}
+
+	connListHeight := panelHeight - 2 // title + scroll info
+	m.connList.SetSize(contentWidth-borderOverhead, connListHeight)
+
+	connPanel := lipgloss.NewStyle().
+		Width(contentWidth - borderOverhead).
+		Height(panelHeight).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorBorder).
+		Render(
+			lipgloss.JoinVertical(lipgloss.Left,
+				connTitle,
+				m.connList.View(),
+				m.connList.ScrollInfo(),
+			),
+		)
+
+	footer := helpStyle.Render("enter: connect  n: new  e: edit  d: delete  /: filter  j/k: scroll  esc: quit")
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		appStyle.Render(header),
-		appStyle.Render(body),
+		"",
+		connPanel,
 		footer,
 	)
 }
