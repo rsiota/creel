@@ -202,6 +202,46 @@ func (r ResultsTable) HasResult() bool {
 	return r.hasResult
 }
 
+// CursorRow returns the current cursor row index (editable mode).
+func (r ResultsTable) CursorRow() int {
+	return r.cursorRow
+}
+
+// ScrollRow returns the current vertical scroll position.
+func (r ResultsTable) ScrollRow() int {
+	return r.scrollRow
+}
+
+// NumRows returns the number of data rows.
+func (r ResultsTable) NumRows() int {
+	return len(r.rows)
+}
+
+// NumCols returns the number of columns.
+func (r ResultsTable) NumCols() int {
+	return len(r.columns)
+}
+
+// IsDirty returns whether a cell has a pending unsaved edit.
+func (r ResultsTable) IsDirty(row, col int) bool {
+	_, ok := r.dirtyCells[cellRef{row: row, col: col}]
+	return ok
+}
+
+// DirtyCellCount returns the number of pending unsaved edits.
+func (r ResultsTable) DirtyCellCount() int {
+	return len(r.dirtyCells)
+}
+
+// SetDirtyCell records a pending cell edit (e.g. from the inspector).
+func (r *ResultsTable) SetDirtyCell(row, col int, val string) {
+	ref := cellRef{row: row, col: col}
+	if r.dirtyCells == nil {
+		r.dirtyCells = make(map[cellRef]string)
+	}
+	r.dirtyCells[ref] = val
+}
+
 // SetSize sets the dimensions of the results panel.
 func (r *ResultsTable) SetSize(width, height int) {
 	r.width = width

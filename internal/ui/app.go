@@ -24,6 +24,7 @@ const (
 	FocusConnections Focus = iota
 	FocusEditor
 	FocusResults
+	FocusInspector
 )
 
 // state represents the current screen the app is showing.
@@ -73,6 +74,7 @@ type Model struct {
 	connForm     ConnectionForm
 	editor       QueryEditor
 	results      ResultsTable
+	inspector    Inspector
 	history      HistoryPanel
 	sidebarCursor int
 	expanded     map[string][]db.Column
@@ -108,6 +110,7 @@ func NewModel(cfg *config.Config) Model {
 		config:       cfg,
 		editor:       NewQueryEditor(),
 		results:      NewResultsTable(),
+		inspector:    NewInspector(),
 		connList:     NewConnectionList(),
 		history:      NewHistoryPanel(),
 		historyStore: history.NewStore(historyDir()),
@@ -547,6 +550,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Enable inline editing if this is a simple SELECT from a single table.
 			m.detectEditability(msg.query)
+			m.inspector.Reset()
 		}
 		return m, nil
 
@@ -731,9 +735,19 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+r":
 		m.editor.Reset()
 		return m, nil
+	case "ctrl+o":
+		m.inspector.Toggle()
+		if m.inspector.IsVisible() {
+			m.focus = FocusInspector
+		} else if m.focus == FocusInspector {
+			m.focus = FocusResults
+		}
+		m.layoutWorkspace()
+		m.applyFocus()
+		return m, nil
 	case "tab":
-		// Don't cycle focus while editing a cell.
-		if m.results.IsEditing() {
+		// Don't cycle focus while editing a cell or inspector field.
+		if m.results.IsEditing() || m.inspector.IsEditing() {
 			return m, nil
 		}
 		// Tab accepts completion when popup is visible.
@@ -744,7 +758,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m = m.cycleFocus()
 		return m, nil
 	case "shift+tab":
-		if m.results.IsEditing() {
+		if m.results.IsEditing() || m.inspector.IsEditing() {
 			return m, nil
 		}
 		m = m.cycleFocusBack()
@@ -759,6 +773,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.focus = FocusConnections
 		m.results.Clear()
 		m.results.ClearEditable()
+		m.inspector.Hide()
 		m.lastQuery = ""
 		m.page = 0
 		m.pageMsg = ""
@@ -869,6 +884,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.results.CursorRight()
 				return m, nil
 			case "enter", "e", "i":
+				if m.inspector.IsVisible() {
+					return m, nil
+				}
 				m.results.StartEdit()
 				return m, nil
 			case "ctrl+s":
@@ -998,6 +1016,36 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.connList, cmd = m.connList.Update(msg)
+	case FocusInspector:
+		if m.inspector.IsEditing() {
+			switch msg.String() {
+			case "enter":
+				col, val, ok := m.inspector.CommitFieldEdit()
+				if ok {
+					m.results.SetDirtyCell(m.results.CursorRow(), col, val)
+				}
+				return m, nil
+			case "esc", "ctrl+c":
+				m.inspector.CancelEdit()
+				return m, nil
+			}
+			m.inspector, cmd = m.inspector.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "up", "k":
+			m.inspector.CursorUp()
+			return m, nil
+		case "down", "j":
+			m.inspector.CursorDown(m.results.NumCols())
+			return m, nil
+		case "enter", "e", "i":
+			m.inspector.StartFieldEdit(m.results)
+			return m, nil
+		case "ctrl+s":
+			return m, m.saveEdits()
+		}
+		return m, nil
 	}
 	return m, cmd
 }
@@ -1186,7 +1234,10 @@ func (m *Model) toggleExpand() {
 
 func (m Model) cycleFocus() Model {
 	m.focus++
-	if m.focus > FocusResults {
+	if m.focus > FocusInspector {
+		m.focus = FocusConnections
+	}
+	if m.focus == FocusInspector && !m.inspector.IsVisible() {
 		m.focus = FocusConnections
 	}
 	m.applyFocus()
@@ -1196,6 +1247,9 @@ func (m Model) cycleFocus() Model {
 func (m Model) cycleFocusBack() Model {
 	m.focus--
 	if m.focus < FocusConnections {
+		m.focus = FocusInspector
+	}
+	if m.focus == FocusInspector && !m.inspector.IsVisible() {
 		m.focus = FocusResults
 	}
 	m.applyFocus()
@@ -1234,19 +1288,27 @@ func (m Model) updateLayout() Model {
 // works correctly when called from both value and pointer receiver methods.
 func (m *Model) layoutWorkspace() {
 	sidebarWidth := 30
+	inspectorWidth := InspectorWidth
 	statusHeight := 1
 	borderOverhead := 2
 	editorHeight := 8
+
+	inspectorVisible := m.inspector.IsVisible()
+
+	rightWidth := m.width - sidebarWidth - borderOverhead
+	if inspectorVisible {
+		rightWidth -= inspectorWidth
+	}
 
 	resultsHeight := m.height - editorHeight - statusHeight - (borderOverhead * 2)
 	if resultsHeight < 3 {
 		resultsHeight = 3
 	}
 
-	// Sidebar spans the same height as editor + results combined.
-	sidebarContentHeight := m.height - statusHeight - borderOverhead
-	if sidebarContentHeight < 3 {
-		sidebarContentHeight = 3
+	// Sidebar and inspector span the same height as editor + results combined.
+	sideContentHeight := m.height - statusHeight - borderOverhead
+	if sideContentHeight < 3 {
+		sideContentHeight = 3
 	}
 
 	editorContentHeight := editorHeight - borderOverhead
@@ -1254,9 +1316,13 @@ func (m *Model) layoutWorkspace() {
 		editorContentHeight = 1
 	}
 
-	m.connList.SetSize(sidebarWidth-borderOverhead, sidebarContentHeight)
-	m.editor.SetSize(m.width-sidebarWidth-borderOverhead, editorContentHeight)
-	m.results.SetSize(m.width-sidebarWidth-borderOverhead, resultsHeight)
+	m.connList.SetSize(sidebarWidth-borderOverhead, sideContentHeight)
+	m.editor.SetSize(rightWidth, editorContentHeight)
+	m.results.SetSize(rightWidth, resultsHeight)
+
+	if inspectorVisible {
+		m.inspector.SetSize(inspectorWidth-borderOverhead, sideContentHeight)
+	}
 }
 
 // View renders the entire application.
@@ -1308,12 +1374,18 @@ func (m Model) viewAddConnection() string {
 
 func (m Model) viewWorkspace() string {
 	sidebarWidth := 30
+	inspectorWidth := InspectorWidth
 	statusHeight := 1
 	borderOverhead := 2
 	editorHeight := 8
 	resultsHeight := m.height - editorHeight - statusHeight - (borderOverhead * 2)
 	if resultsHeight < 3 {
 		resultsHeight = 3
+	}
+
+	rightWidth := m.width - sidebarWidth - borderOverhead
+	if m.inspector.IsVisible() {
+		rightWidth -= inspectorWidth
 	}
 
 	// Build right column first so we can measure its actual rendered height.
@@ -1324,7 +1396,7 @@ func (m Model) viewWorkspace() string {
 		m.editor.View(),
 	)
 	editorPanel := lipgloss.NewStyle().
-		Width(m.width - sidebarWidth - borderOverhead).
+		Width(rightWidth).
 		Height(editorHeight - borderOverhead).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.borderForFocus(FocusEditor)).
@@ -1336,7 +1408,7 @@ func (m Model) viewWorkspace() string {
 		m.results.View(),
 	)
 	resultsPanel := lipgloss.NewStyle().
-		Width(m.width - sidebarWidth - borderOverhead).
+		Width(rightWidth).
 		Height(resultsHeight).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.borderForFocus(FocusResults)).
@@ -1346,6 +1418,25 @@ func (m Model) viewWorkspace() string {
 		editorPanel,
 		resultsPanel,
 	)
+
+	// Build inspector panel if visible.
+	var inspectorPanel string
+	if m.inspector.IsVisible() {
+		inspectorContentHeight := lipgloss.Height(rightPanel) - borderOverhead
+		if inspectorContentHeight < 3 {
+			inspectorContentHeight = 3
+		}
+		inspectorContent := lipgloss.JoinVertical(lipgloss.Left,
+			titleStyle.Render("Inspector"),
+			m.inspector.View(m.results),
+		)
+		inspectorPanel = lipgloss.NewStyle().
+			Width(inspectorWidth - borderOverhead).
+			Height(inspectorContentHeight).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(m.borderForFocus(FocusInspector)).
+			Render(inspectorContent)
+	}
 
 	// Sidebar content height = right panel height minus sidebar's own borders.
 	sidebarContentHeight := lipgloss.Height(rightPanel) - borderOverhead
@@ -1467,11 +1558,16 @@ func (m Model) viewWorkspace() string {
 				m.connectionInfo(connName),
 				m.focusInfo(),
 				m.contextHelp(),
-				mutedStyle.Render("ctrl+t: switch  ctrl+y: history  ctrl+q: quit"),
+				mutedStyle.Render("ctrl+t: switch  ctrl+y: history  ctrl+o: inspector  ctrl+q: quit"),
 			),
 		)
 
-	workspace := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel)
+	var workspace string
+	if m.inspector.IsVisible() {
+		workspace = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel, inspectorPanel)
+	} else {
+		workspace = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel)
+	}
 
 	view := lipgloss.JoinVertical(lipgloss.Left, workspace, statusBar)
 
@@ -1513,6 +1609,8 @@ func (m Model) focusInfo() string {
 		return mutedStyle.Render("focus: editor")
 	case FocusResults:
 		return mutedStyle.Render("focus: results")
+	case FocusInspector:
+		return mutedStyle.Render("focus: inspector")
 	default:
 		return ""
 	}
@@ -1541,6 +1639,14 @@ func (m Model) contextHelp() string {
 			pg = "  " + m.pageMsg
 		}
 		return mutedStyle.Render("j/k: rows  h/l: cols  ctrl+d/ctrl+u: page" + pg)
+	case FocusInspector:
+		if m.inspector.IsEditing() {
+			return mutedStyle.Render("enter: commit  esc: cancel")
+		}
+		if m.results.IsEditable() {
+			return mutedStyle.Render("j/k: fields  enter: edit  ctrl+s: save  ctrl+o: close")
+		}
+		return mutedStyle.Render("j/k: fields  ctrl+o: close")
 	default:
 		if m.editor.CompletionVisible() {
 			return mutedStyle.Render("tab/enter: accept  ctrl+p/n: select  esc: cancel")

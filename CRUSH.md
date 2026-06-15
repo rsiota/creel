@@ -57,6 +57,7 @@ internal/ui/              — All Bubble Tea UI components
 - [x] Slice 6: Row pagination for large result sets (LIMIT/OFFSET wrapping, 200/page)
 - [x] Fuzzy table search in sidebar (press `/`, type to filter, `enter` to select, `esc` to cancel)
 - [x] SSH tunnel support (MySQL via bastion host; key-based auth with passphrase + password auth)
+- [x] Record inspector (Ctrl+O toggles right-side panel; vertical form editor that tracks results cursor)
 
 ## Config Format (~/.config/gsql/config.yaml)
 ```yaml
