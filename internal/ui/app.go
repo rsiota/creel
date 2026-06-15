@@ -86,6 +86,7 @@ type Model struct {
 
 	// Pending vim operator for sidebar (e.g. 'g' waiting for second 'g')
 	sidebarPendingG bool
+	resultsPendingG bool
 
 	config       *config.Config
 	connection   *db.Connection
@@ -877,26 +878,48 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.results.IsEditable() {
 			switch msg.String() {
 			case "up", "k":
+				m.resultsPendingG = false
 				m.results.CursorUp()
 				return m, nil
 			case "down", "j":
+				m.resultsPendingG = false
 				m.results.CursorDown()
 				return m, nil
 			case "left", "h":
+				m.resultsPendingG = false
 				m.results.CursorLeft()
 				return m, nil
 			case "right", "l":
+				m.resultsPendingG = false
 				m.results.CursorRight()
 				return m, nil
+			case "G":
+				m.resultsPendingG = false
+				m.results.cursorRow = len(m.results.rows)
+				m.results.clampCursor()
+				m.results.ensureCursorVisible()
+				return m, nil
+			case "g":
+				if m.resultsPendingG {
+					m.resultsPendingG = false
+					m.results.cursorRow = 0
+					m.results.ensureCursorVisible()
+					return m, nil
+				}
+				m.resultsPendingG = true
+				return m, nil
 			case "enter", "e", "i":
+				m.resultsPendingG = false
 				if m.inspector.IsVisible() {
 					return m, nil
 				}
 				m.results.StartEdit()
 				return m, nil
 			case "ctrl+s":
+				m.resultsPendingG = false
 				return m, m.saveEdits()
 			}
+			m.resultsPendingG = false
 			m.results, cmd = m.results.Update(msg)
 			return m, cmd
 		}
@@ -904,18 +927,35 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Non-editable results: scroll navigation.
 		switch msg.String() {
 		case "up", "k":
+			m.resultsPendingG = false
 			m.results.ScrollUp()
 			return m, nil
 		case "down", "j":
+			m.resultsPendingG = false
 			m.results.ScrollDown()
 			return m, nil
 		case "left", "h":
+			m.resultsPendingG = false
 			m.results.ScrollLeft()
 			return m, nil
 		case "right", "l":
+			m.resultsPendingG = false
 			m.results.ScrollRight()
 			return m, nil
+		case "G":
+			m.resultsPendingG = false
+			m.results.ScrollBottom()
+			return m, nil
+		case "g":
+			if m.resultsPendingG {
+				m.resultsPendingG = false
+				m.results.ScrollTop()
+				return m, nil
+			}
+			m.resultsPendingG = true
+			return m, nil
 		}
+		m.resultsPendingG = false
 		m.results, cmd = m.results.Update(msg)
 	case FocusConnections:
 		// Fuzzy filter mode intercepts all keys.

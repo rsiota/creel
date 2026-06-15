@@ -412,6 +412,19 @@ func (r *ResultsTable) ScrollLeft() {
 	}
 }
 
+// ScrollTop scrolls to the first row.
+func (r *ResultsTable) ScrollTop() {
+	r.scrollRow = 0
+}
+
+// ScrollBottom scrolls to the last row.
+func (r *ResultsTable) ScrollBottom() {
+	maxVisible := r.maxVisibleRows()
+	if len(r.rows) > maxVisible {
+		r.scrollRow = len(r.rows) - maxVisible
+	}
+}
+
 // CursorDown moves the cell cursor down (editable mode).
 func (r *ResultsTable) CursorDown() {
 	if r.cursorRow < len(r.rows)-1 {
