@@ -648,7 +648,7 @@ func (r ResultsTable) View() string {
 			var style lipgloss.Style
 			switch {
 			case isCursorCell:
-				style = lipgloss.NewStyle().Foreground(colorBg).Background(colorAccent)
+				style = lipgloss.NewStyle().Foreground(colorBg).Background(colorPrimary)
 			case isDirty:
 				style = lipgloss.NewStyle().Foreground(colorSuccess)
 			default:

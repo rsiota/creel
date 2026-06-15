@@ -189,7 +189,7 @@ func (m *Model) connectToDB() tea.Cmd {
 
 	m.connection = conn
 	m.state = stateWorkspace
-	m.focus = FocusEditor
+	m.focus = FocusConnections
 	m.columnCache = make(map[string][]db.Column)
 
 	cmd := m.editor.Focus()
@@ -1503,9 +1503,9 @@ func (m Model) viewWorkspace() string {
 		var line string
 		if item.isColumn {
 			indent := "   "
-			colStyle := lipgloss.NewStyle().Foreground(colorSuccess)
+			colStyle := lipgloss.NewStyle().Foreground(colorLabel)
 			if isCursor {
-				colStyle = lipgloss.NewStyle().Foreground(colorBg).Background(colorSuccess).Bold(true)
+				colStyle = lipgloss.NewStyle().Foreground(colorBg).Background(colorPrimary).Bold(true)
 			}
 			colName := colStyle.Render(item.text)
 			colType := mutedStyle.Render(item.colType)
