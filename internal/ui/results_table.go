@@ -146,6 +146,13 @@ func (r *ResultsTable) ConfirmSaved() {
 	r.saveError = ""
 }
 
+// DiscardEdits clears all pending cell edits.
+func (r *ResultsTable) DiscardEdits() {
+	r.dirtyCells = make(map[cellRef]string)
+	r.saved = false
+	r.saveError = ""
+}
+
 // SetSaveError records a save error message.
 func (r *ResultsTable) SetSaveError(msg string) {
 	r.saveError = msg

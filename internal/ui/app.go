@@ -88,6 +88,9 @@ type Model struct {
 	sidebarPendingG bool
 	resultsPendingG bool
 
+	// Discard confirmation dialog
+	discardConfirm bool
+
 	config       *config.Config
 	connection   *db.Connection
 	historyStore *history.Store
@@ -849,6 +852,20 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Discard confirmation dialog is modal — intercept all keys.
+	if m.discardConfirm {
+		switch msg.String() {
+		case "y", "Y", "enter":
+			m.results.DiscardEdits()
+			m.discardConfirm = false
+			return m, nil
+		case "n", "N", "esc", "ctrl+c":
+			m.discardConfirm = false
+			return m, nil
+		}
+		return m, nil
+	}
+
 	// Global workspace keys
 	switch msg.String() {
 	case "ctrl+y":
@@ -932,6 +949,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.results.ClearEditable()
 		m.inspector.Hide()
 		m.dbPicker.Hide()
+		m.discardConfirm = false
 		m.lastQuery = ""
 		m.page = 0
 		m.pageMsg = ""
@@ -1073,6 +1091,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case "ctrl+s":
 				m.resultsPendingG = false
 				return m, m.saveEdits()
+			case "D":
+				m.resultsPendingG = false
+				if m.results.HasDirtyCells() {
+					m.discardConfirm = true
+				}
+				return m, nil
 			}
 			m.resultsPendingG = false
 			m.results, cmd = m.results.Update(msg)
@@ -1260,6 +1284,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			m.inspector.pendingG = false
 			return m, m.saveEdits()
+		case "D":
+			m.inspector.pendingG = false
+			if m.results.HasDirtyCells() {
+				m.discardConfirm = true
+			}
+			return m, nil
 		}
 		return m, nil
 	}
@@ -1847,6 +1877,29 @@ func (m Model) viewWorkspace() string {
 		)
 	}
 
+	// Overlay discard confirmation dialog if visible
+	if m.discardConfirm {
+		dialog := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorPrimary).
+			Padding(1, 3).
+			Width(46).
+			Align(lipgloss.Center).
+			Render(
+				lipgloss.JoinVertical(lipgloss.Center,
+					lipgloss.NewStyle().Foreground(colorPrimary).Render("Discard all unsaved changes?"),
+					"",
+					lipgloss.NewStyle().Foreground(colorLabel).Render("y") + mutedStyle.Render(" confirm    ") +
+						lipgloss.NewStyle().Foreground(colorLabel).Render("n") + mutedStyle.Render(" cancel"),
+				),
+			)
+		dlgW := lipgloss.Width(dialog)
+		dlgH := lipgloss.Height(dialog)
+		dlgX := (m.width - dlgW) / 2
+		dlgY := (m.height - 1 - dlgH) / 2
+		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
 	// Overlay completion popup if visible
 	if m.editor.CompletionVisible() {
 		cursorLine, cursorCol := m.editor.CursorScreenPos()
@@ -1930,7 +1983,11 @@ func (m Model) contextHelp() string {
 			if m.pageMsg != "" {
 				pg = "  " + m.pageMsg
 			}
-			return keybinds("h/j/k/l", "move", "enter", "edit", "ctrl+s", "save") + pg + inspHint
+			discardHint := ""
+			if m.results.HasDirtyCells() {
+				discardHint = "  " + keybind("D", "discard")
+			}
+			return keybinds("h/j/k/l", "move", "enter", "edit", "ctrl+s", "save") + discardHint + pg + inspHint
 		}
 		pg := ""
 		if m.pageMsg != "" {
@@ -1942,7 +1999,11 @@ func (m Model) contextHelp() string {
 			return keybinds("enter", "commit", "esc", "cancel")
 		}
 		if m.results.IsEditable() {
-			return keybinds("j/k", "fields", "enter", "edit", "ctrl+s", "save", "ctrl+o", "close")
+			discardHint := ""
+			if m.results.HasDirtyCells() {
+				discardHint = "  " + keybind("D", "discard")
+			}
+			return keybinds("j/k", "fields", "enter", "edit", "ctrl+s", "save", "ctrl+o", "close") + discardHint
 		}
 		return keybinds("j/k", "fields", "ctrl+o", "close")
 	default:
