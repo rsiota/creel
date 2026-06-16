@@ -309,7 +309,7 @@ func (i Inspector) View(results ResultsTable) string {
 				valStyle = lipgloss.NewStyle().Foreground(colorMuted)
 			}
 			if isDirty {
-				valStyle = lipgloss.NewStyle().Foreground(colorSuccess)
+				valStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68"))
 			}
 			fields.WriteString(bs.Render("│ ") + valStyle.Render(displayVal) + bs.Render(" │"))
 		}
