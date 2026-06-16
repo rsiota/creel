@@ -178,7 +178,7 @@ func (p DatabasePicker) View() string {
 
 		marker := " "
 		if i == p.cursor {
-			marker = mutedStyle.Render("→")
+			marker = lipgloss.NewStyle().Foreground(colorPrimary).Render("▶")
 		}
 
 		line := fmt.Sprintf("%s  %s", marker, name)

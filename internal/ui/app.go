@@ -120,6 +120,9 @@ func NewModel(cfg *config.Config) Model {
 		pageSize:     defaultPageSize,
 	}
 	m.loadConnections()
+	if len(m.config.Connections) > 0 {
+		m.connList.StartFilter()
+	}
 	return m
 }
 
@@ -194,8 +197,8 @@ func (m *Model) connectToDB() tea.Cmd {
 	m.focus = FocusConnections
 	m.columnCache = make(map[string][]db.Column)
 
-	// MySQL without a configured database: list databases and let the user pick.
-	if dbCfg.Driver == db.DriverMySQL && dbCfg.Database == "" {
+	// MySQL: always show the database picker (no history of last selection).
+	if dbCfg.Driver == db.DriverMySQL {
 		dbs, err := conn.DB().Databases()
 		if err != nil {
 			m.connError = err.Error()
@@ -670,8 +673,10 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.connList.CancelFilter()
 			return m, nil
 		case "enter":
+			// Connect using the current filtered selection, then commit.
+			cmd := m.connectToDB()
 			m.connList.CommitFilter()
-			return m, m.connectToDB()
+			return m, cmd
 		case "backspace":
 			m.connList.FilterBackspace()
 			return m, nil
@@ -931,6 +936,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.sidebarFilter = ""
 		m.editor.CancelCompletion()
 		m.loadConnections()
+		if len(m.config.Connections) > 0 {
+			m.connList.StartFilter()
+		}
 		return m, nil
 	case "esc":
 		// Exit sidebar fuzzy filter mode.
