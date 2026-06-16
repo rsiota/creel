@@ -1663,7 +1663,7 @@ func (m Model) viewConnections() string {
 		Width(panelW).
 		Height(panelH).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorBorder).
+		BorderForeground(colorPrimary).
 		Padding(1, 2).
 		Render(
 			lipgloss.JoinVertical(lipgloss.Left,
@@ -1674,11 +1674,13 @@ func (m Model) viewConnections() string {
 			),
 		)
 
-	return lipgloss.Place(m.width, m.height,
-		lipgloss.Center, lipgloss.Center,
-		connPanel,
-		lipgloss.WithWhitespaceChars(" "),
-	)
+	// Render as an overlay on a blank background.
+	panelW2 := lipgloss.Width(connPanel)
+	panelH2 := lipgloss.Height(connPanel)
+	panelX := (m.width - panelW2) / 2
+	panelY := (m.height - panelH2) / 2
+	bg := strings.Repeat("\n", m.height-1)
+	return placeOverlay(bg, connPanel, panelX, panelY)
 }
 
 func (m Model) viewAddConnection() string {
@@ -1691,7 +1693,7 @@ func (m Model) viewAddConnection() string {
 	formPanel := lipgloss.NewStyle().
 		Width(popupW - borderOverhead).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorBorder).
+		BorderForeground(colorPrimary).
 		Padding(1, 2).
 		Render(m.connForm.View())
 
@@ -1918,11 +1920,11 @@ func (m Model) viewWorkspace() string {
 		pw, ph := popupDim()
 		m.dbPicker.SetSize(pw, ph)
 		pickerPanel := m.dbPicker.View()
-		view = lipgloss.Place(m.width, m.height-1,
-			lipgloss.Center, lipgloss.Center,
-			pickerPanel,
-			lipgloss.WithWhitespaceChars(" "),
-		)
+		panelW := lipgloss.Width(pickerPanel)
+		panelH := lipgloss.Height(pickerPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, pickerPanel, panelX, panelY)
 	}
 
 	// Overlay discard confirmation dialog if visible

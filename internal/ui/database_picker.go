@@ -220,7 +220,7 @@ func (p DatabasePicker) View() string {
 		Width(p.width - 2).
 		Height(p.height - 2).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorBorder).
+		BorderForeground(colorPrimary).
 		Padding(1, 2).
 		Render(content)
 
