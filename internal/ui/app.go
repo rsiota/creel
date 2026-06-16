@@ -881,7 +881,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
-	case "ctrl+enter", "ctrl+j", "f5":
+	case "ctrl+enter", "f5":
 		return m, m.executeQuery()
 	case "ctrl+d":
 		// Vim-style page navigation — only when not in the editor
@@ -903,11 +903,21 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+r":
 		m.editor.Reset()
 		return m, nil
-	case "ctrl+k":
-		// Open database picker (MySQL only).
+	case "ctrl+b":
+		// Browse databases (MySQL only).
 		if m.connection != nil && m.connection.Config().Driver == db.DriverMySQL {
 			return m, m.openDatabasePicker(false)
 		}
+		return m, nil
+	case "ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l":
+		// Directional panel navigation — not while editing or in insert mode.
+		if m.results.IsEditing() || m.inspector.IsEditing() {
+			return m, nil
+		}
+		if m.focus == FocusEditor && m.editor.VimMode() == VimInsert {
+			break // let it fall through to the editor
+		}
+		m = m.moveFocus(msg.String())
 		return m, nil
 	case "ctrl+o":
 		m.inspector.Toggle()
@@ -1511,6 +1521,44 @@ func (m Model) applyFocus() Model {
 	return m
 }
 
+// moveFocus navigates between panels using vim-style directions.
+func (m Model) moveFocus(direction string) Model {
+	switch m.focus {
+	case FocusConnections:
+		if direction == "ctrl+l" {
+			m.focus = FocusEditor
+		}
+	case FocusEditor:
+		switch direction {
+		case "ctrl+h":
+			m.focus = FocusConnections
+		case "ctrl+j":
+			m.focus = FocusResults
+		case "ctrl+l":
+			if m.inspector.IsVisible() {
+				m.focus = FocusInspector
+			}
+		}
+	case FocusResults:
+		switch direction {
+		case "ctrl+h":
+			m.focus = FocusConnections
+		case "ctrl+k":
+			m.focus = FocusEditor
+		case "ctrl+l":
+			if m.inspector.IsVisible() {
+				m.focus = FocusInspector
+			}
+		}
+	case FocusInspector:
+		if direction == "ctrl+h" {
+			m.focus = FocusResults
+		}
+	}
+	m.applyFocus()
+	return m
+}
+
 func (m Model) updateLayout() Model {
 	if m.width == 0 || m.height == 0 {
 		return m
@@ -1841,7 +1889,7 @@ func (m Model) viewWorkspace() string {
 				m.connectionInfo(connName),
 				m.focusInfo(),
 				m.contextHelp(),
-				keybinds("ctrl+t", "switch", "ctrl+k", "database", "ctrl+y", "history", "ctrl+o", "inspector", "ctrl+q", "quit"),
+				keybinds("ctrl+t", "switch", "ctrl+b", "database", "ctrl+y", "history", "ctrl+o", "inspector", "ctrl+hjkl", "focus", "ctrl+q", "quit"),
 			),
 		)
 
