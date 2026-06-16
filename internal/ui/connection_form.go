@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -78,7 +79,7 @@ func newForm(mode formMode, name string) ConnectionForm {
 
 	fields[fieldName] = newTextInput("Connection name", "my-db", false)
 	fields[fieldDriver] = newTextInput("Driver (sqlite/mysql)", "sqlite", false)
-	fields[fieldDatabase] = newTextInput("Database (path for sqlite, name for mysql)", "/path/to/db.sqlite", false)
+	fields[fieldDatabase] = newTextInput("Database (required for sqlite, optional for mysql)", "/path/to/db.sqlite", false)
 	fields[fieldHost] = newTextInput("Host (mysql only)", "localhost", false)
 	fields[fieldPort] = newTextInput("Port (mysql only, default 3306)", "3306", false)
 	fields[fieldUser] = newTextInput("Username (mysql only)", "root", false)
@@ -207,18 +208,18 @@ func (f *ConnectionForm) Focus() tea.Cmd {
 // EnterPressed is called when enter is pressed; it validates and returns the
 // connection config, or an error message.
 func (f *ConnectionForm) EnterPressed() (config.ConnectionConfig, string) {
-	name := f.fields[fieldName].Value()
+	name := strings.TrimSpace(f.fields[fieldName].Value())
 	if name == "" {
 		return config.ConnectionConfig{}, "name is required"
 	}
 
-	driver := f.fields[fieldDriver].Value()
+	driver := strings.TrimSpace(f.fields[fieldDriver].Value())
 	if driver != "sqlite" && driver != "mysql" {
 		return config.ConnectionConfig{}, "driver must be 'sqlite' or 'mysql'"
 	}
 
 	database := f.fields[fieldDatabase].Value()
-	if database == "" {
+	if database == "" && driver != "mysql" {
 		return config.ConnectionConfig{}, "database is required"
 	}
 

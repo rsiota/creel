@@ -89,6 +89,34 @@ func TestConnectionFormPortValidation(t *testing.T) {
 	}
 }
 
+func TestConnectionFormMySQLDatabaseOptional(t *testing.T) {
+	f := NewConnectionForm()
+	f.fields[fieldName].SetValue("local")
+	f.fields[fieldDriver].SetValue("mysql")
+	f.fields[fieldDatabase].SetValue("") // empty — should be allowed for MySQL
+	f.fields[fieldHost].SetValue("localhost")
+
+	cfg, errMsg := f.EnterPressed()
+	if errMsg != "" {
+		t.Fatalf("expected no error for MySQL with empty database, got: %s", errMsg)
+	}
+	if cfg.Database != "" {
+		t.Errorf("expected empty database, got '%s'", cfg.Database)
+	}
+}
+
+func TestConnectionFormSQLiteDatabaseRequired(t *testing.T) {
+	f := NewConnectionForm()
+	f.fields[fieldName].SetValue("local")
+	f.fields[fieldDriver].SetValue("sqlite")
+	f.fields[fieldDatabase].SetValue("") // empty — should error for SQLite
+
+	_, errMsg := f.EnterPressed()
+	if errMsg == "" {
+		t.Fatal("expected error for SQLite with empty database")
+	}
+}
+
 // Ensure textinput.Model compiles with our field setup.
 func TestConnectionFormFieldCount(t *testing.T) {
 	f := NewConnectionForm()

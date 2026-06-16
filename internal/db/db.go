@@ -53,6 +53,11 @@ type DB interface {
 	Execute(query string) (Result, error)
 	// Exec runs a statement that doesn't return rows (INSERT, UPDATE, DELETE).
 	Exec(query string, args ...interface{}) (ExecResult, error)
+	// Databases returns the list of databases accessible through this connection.
+	// For single-file drivers (e.g. SQLite) this returns the configured database only.
+	Databases() ([]string, error)
+	// UseDatabase switches the active database, re-opening the connection if needed.
+	UseDatabase(name string) error
 }
 
 // Column describes a single column in a table or result set.
@@ -114,4 +119,15 @@ func (c *Connection) DB() DB {
 // Config returns the connection configuration.
 func (c *Connection) Config() ConnectionConfig {
 	return c.config
+}
+
+// UseDatabase switches the active database on the underlying driver and keeps
+// the wrapper's config in sync so that Config().Database always reflects the
+// active database.
+func (c *Connection) UseDatabase(name string) error {
+	if err := c.db.UseDatabase(name); err != nil {
+		return err
+	}
+	c.config.Database = name
+	return nil
 }

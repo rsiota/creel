@@ -75,6 +75,7 @@ type Model struct {
 	results      ResultsTable
 	inspector    Inspector
 	history      HistoryPanel
+	dbPicker     DatabasePicker
 	sidebarCursor int
 	expanded     map[string][]db.Column
 	columnCache  map[string][]db.Column
@@ -113,6 +114,7 @@ func NewModel(cfg *config.Config) Model {
 		inspector:    NewInspector(),
 		connList:     NewConnectionList(),
 		history:      NewHistoryPanel(),
+		dbPicker:     NewDatabasePicker(),
 		historyStore: history.NewStore(historyDir()),
 		expanded:     make(map[string][]db.Column),
 		pageSize:     defaultPageSize,
@@ -192,11 +194,71 @@ func (m *Model) connectToDB() tea.Cmd {
 	m.focus = FocusConnections
 	m.columnCache = make(map[string][]db.Column)
 
+	// MySQL without a configured database: list databases and let the user pick.
+	if dbCfg.Driver == db.DriverMySQL && dbCfg.Database == "" {
+		dbs, err := conn.DB().Databases()
+		if err != nil {
+			m.connError = err.Error()
+			return nil
+		}
+		m.dbPicker.Show(dbs, true)
+		m.layoutWorkspace()
+		return nil
+	}
+
 	cmd := m.editor.Focus()
 	m.loadTables()
 	m.layoutWorkspace()
 
 	return tea.Batch(cmd, m.prefetchSchemas())
+}
+
+// selectDatabase switches to the chosen database, reloads tables/schemas, and
+// clears stale results. Called from the database picker.
+func (m *Model) selectDatabase(name string) tea.Cmd {
+	if m.connection == nil || name == "" {
+		return nil
+	}
+	if err := m.connection.UseDatabase(name); err != nil {
+		m.connError = err.Error()
+		return nil
+	}
+	m.connError = ""
+	m.dbPicker.Hide()
+
+	// Reset workspace state for the new database.
+	m.expanded = make(map[string][]db.Column)
+	m.columnCache = make(map[string][]db.Column)
+	m.results.Clear()
+	m.results.ClearEditable()
+	m.inspector.Hide()
+	m.tables = nil
+	m.lastQuery = ""
+	m.page = 0
+	m.pageMsg = ""
+	m.sidebarCursor = 0
+	m.sidebarFiltering = false
+	m.sidebarFilter = ""
+
+	cmd := m.editor.Focus()
+	m.loadTables()
+	m.layoutWorkspace()
+	m.applyFocus()
+	return tea.Batch(cmd, m.prefetchSchemas())
+}
+
+// openDatabasePicker fetches available databases and shows the picker overlay.
+func (m *Model) openDatabasePicker(mustChoose bool) tea.Cmd {
+	if m.connection == nil {
+		return nil
+	}
+	dbs, err := m.connection.DB().Databases()
+	if err != nil {
+		m.connError = err.Error()
+		return nil
+	}
+	m.dbPicker.Show(dbs, mustChoose)
+	return nil
 }
 
 func (m *Model) loadTables() {
@@ -740,6 +802,43 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 
+	// Database picker is modal — intercept all keys when visible.
+	if m.dbPicker.IsVisible() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			if m.dbPicker.MustChoose() {
+				// No database selected yet — return to connection list.
+				m.connection.Close()
+				m.connection = nil
+				m.dbPicker.Hide()
+				m.state = stateConnections
+				m.focus = FocusConnections
+				m.loadConnections()
+			} else {
+				m.dbPicker.Hide()
+			}
+			return m, nil
+		case "enter":
+			name := m.dbPicker.SelectedDatabase()
+			m.dbPicker.Hide()
+			return m, m.selectDatabase(name)
+		case "up", "k":
+			m.dbPicker.CursorUp()
+			return m, nil
+		case "down", "j":
+			m.dbPicker.CursorDown()
+			return m, nil
+		case "backspace":
+			m.dbPicker.FilterBackspace()
+			return m, nil
+		}
+		if msg.Type == tea.KeyRunes {
+			m.dbPicker.FilterAddChar(msg.String())
+			return m, nil
+		}
+		return m, nil
+	}
+
 	// Global workspace keys
 	switch msg.String() {
 	case "ctrl+y":
@@ -776,6 +875,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "ctrl+r":
 		m.editor.Reset()
+		return m, nil
+	case "ctrl+k":
+		// Open database picker (MySQL only).
+		if m.connection != nil && m.connection.Config().Driver == db.DriverMySQL {
+			return m, m.openDatabasePicker(false)
+		}
 		return m, nil
 	case "ctrl+o":
 		m.inspector.Toggle()
@@ -816,6 +921,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.results.Clear()
 		m.results.ClearEditable()
 		m.inspector.Hide()
+		m.dbPicker.Hide()
 		m.lastQuery = ""
 		m.page = 0
 		m.pageMsg = ""
@@ -1444,56 +1550,72 @@ func (m Model) View() string {
 }
 
 func (m Model) viewConnections() string {
+	header := titleStyle.Render("gsql") + mutedStyle.Render("  — a fast SQL TUI")
+	footer := mutedStyle.Render("enter: connect  n: new  e: edit  d: delete  /: filter  j/k: scroll  esc: quit")
+
+	popupW, popupH := popupDim()
 	borderOverhead := 2
 
-	header := titleStyle.Render("gsql") + mutedStyle.Render("  — a fast SQL TUI")
-
-	contentHeight := m.height - 4 // header + blank + footer + status
-	if contentHeight < 3 {
-		contentHeight = 3
-	}
-	contentWidth := m.width - 2
+	panelW := popupW - borderOverhead
+	panelH := popupH - borderOverhead
 
 	connTitle := titleStyle.Render("Connections")
+	listH := panelH - 2 // title + scroll info
+	m.connList.SetSize(panelW, listH)
 
-	panelHeight := contentHeight - borderOverhead
-	if panelHeight < 3 {
-		panelHeight = 3
-	}
-
-	connListHeight := panelHeight - 2 // title + scroll info
-	m.connList.SetSize(contentWidth-borderOverhead, connListHeight)
+	// Pin the list to a fixed height so ScrollInfo sits at the bottom.
+	listStyled := lipgloss.NewStyle().
+		Height(listH).
+		Render(m.connList.View())
 
 	connPanel := lipgloss.NewStyle().
-		Width(contentWidth - borderOverhead).
-		Height(panelHeight).
+		Width(panelW).
+		Height(panelH).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorBorder).
 		Render(
 			lipgloss.JoinVertical(lipgloss.Left,
 				connTitle,
-				m.connList.View(),
+				listStyled,
 				m.connList.ScrollInfo(),
 			),
 		)
 
-	footer := helpStyle.Render("enter: connect  n: new  e: edit  d: delete  /: filter  j/k: scroll  esc: quit")
-
-	return lipgloss.JoinVertical(lipgloss.Left,
+	// Header at top, centered popup in the middle, footer at bottom.
+	top := lipgloss.JoinVertical(lipgloss.Left,
 		appStyle.Render(header),
 		"",
+	)
+	topH := lipgloss.Height(top)
+	popupAreaH := m.height - topH - 2 // footer + margin
+	if popupAreaH < panelH {
+		popupAreaH = panelH
+	}
+
+	centered := lipgloss.Place(m.width, popupAreaH,
+		lipgloss.Center, lipgloss.Center,
 		connPanel,
+		lipgloss.WithWhitespaceChars(" "),
+	)
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		top,
+		centered,
 		footer,
 	)
 }
 
 func (m Model) viewAddConnection() string {
-	return appStyle.Render(
-		lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorBorder).
-			Padding(1, 2).
-			Render(m.connForm.View()),
+	formPanel := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorBorder).
+		Padding(1, 2).
+		Render(m.connForm.View())
+
+	return lipgloss.Place(m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		formPanel,
+		lipgloss.WithWhitespaceChars(" "),
 	)
 }
 
@@ -1684,7 +1806,7 @@ func (m Model) viewWorkspace() string {
 				m.connectionInfo(connName),
 				m.focusInfo(),
 				m.contextHelp(),
-				mutedStyle.Render("ctrl+t: switch  ctrl+y: history  ctrl+o: inspector  ctrl+q: quit"),
+				mutedStyle.Render("ctrl+t: switch  ctrl+k: database  ctrl+y: history  ctrl+o: inspector  ctrl+q: quit"),
 			),
 		)
 
@@ -1708,6 +1830,18 @@ func (m Model) viewWorkspace() string {
 		)
 	}
 
+	// Overlay database picker if visible
+	if m.dbPicker.IsVisible() {
+		pw, ph := popupDim()
+		m.dbPicker.SetSize(pw, ph)
+		pickerPanel := m.dbPicker.View()
+		view = lipgloss.Place(m.width, m.height-1,
+			lipgloss.Center, lipgloss.Center,
+			pickerPanel,
+			lipgloss.WithWhitespaceChars(" "),
+		)
+	}
+
 	// Overlay completion popup if visible
 	if m.editor.CompletionVisible() {
 		cursorLine, cursorCol := m.editor.CursorScreenPos()
@@ -1720,11 +1854,20 @@ func (m Model) viewWorkspace() string {
 	return view
 }
 
+// popupDim returns the fixed popup dimensions matching the connection form.
+func popupDim() (w, h int) {
+	return 71, 19
+}
+
 func (m Model) connectionInfo(name string) string {
 	if m.connection == nil {
 		return mutedStyle.Render("not connected")
 	}
-	return successStyle.Render("● " + name)
+	s := successStyle.Render("● " + name)
+	if m.connection.Config().Driver == db.DriverMySQL && m.connection.Config().Database != "" {
+		s += mutedStyle.Render("  ⟁ " + m.connection.Config().Database)
+	}
+	return s
 }
 
 func (m Model) focusInfo() string {
@@ -1743,6 +1886,9 @@ func (m Model) focusInfo() string {
 }
 
 func (m Model) contextHelp() string {
+	if m.dbPicker.IsVisible() {
+		return mutedStyle.Render("type to filter  j/k: navigate  enter: select  esc: cancel")
+	}
 	switch m.focus {
 	case FocusConnections:
 		if m.sidebarFiltering {

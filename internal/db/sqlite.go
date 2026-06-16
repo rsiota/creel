@@ -36,6 +36,16 @@ func (s *SQLite) Close() error {
 	return s.db.Close()
 }
 
+// Databases returns the single configured database for SQLite.
+func (s *SQLite) Databases() ([]string, error) {
+	return []string{s.config.Database}, nil
+}
+
+// UseDatabase is not supported for single-file SQLite databases.
+func (s *SQLite) UseDatabase(name string) error {
+	return fmt.Errorf("switching databases is not supported for SQLite")
+}
+
 func (s *SQLite) Tables() ([]string, error) {
 	rows, err := s.db.Query(`SELECT name FROM sqlite_master WHERE type IN ('table','view') ORDER BY name`)
 	if err != nil {

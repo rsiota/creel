@@ -64,6 +64,46 @@ func (m *MySQL) dsn() string {
 	)
 }
 
+// Databases returns all user-accessible schemas on the server.
+func (m *MySQL) Databases() ([]string, error) {
+	rows, err := m.db.Query(
+		`SELECT schema_name FROM information_schema.schemata
+		 WHERE schema_name NOT IN ('information_schema','performance_schema','mysql','sys')
+		 ORDER BY schema_name`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var dbs []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		dbs = append(dbs, name)
+	}
+	return dbs, rows.Err()
+}
+
+// UseDatabase switches to a different schema by re-opening the connection pool.
+// The SSH tunnel (if any) is preserved.
+func (m *MySQL) UseDatabase(name string) error {
+	m.config.Database = name
+	if m.db != nil {
+		m.db.Close()
+	}
+	db, err := sql.Open("mysql", m.dsn())
+	if err != nil {
+		return fmt.Errorf("failed to open mysql: %w", err)
+	}
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	m.db = db
+	return db.Ping()
+}
+
 func (m *MySQL) Close() error {
 	if m.db != nil {
 		m.db.Close()
