@@ -622,6 +622,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detectEditability(msg.query)
 			m.inspector.Reset()
 		}
+		// Switch focus to results after a query completes.
+		if m.focus != FocusInspector {
+			m.focus = FocusResults
+			m.applyFocus()
+		}
 		return m, nil
 
 	case saveResultMsg:
@@ -1882,7 +1887,7 @@ func (m Model) connectionInfo(name string) string {
 	}
 	s := successStyle.Render("● " + name)
 	if m.connection.Config().Driver == db.DriverMySQL && m.connection.Config().Database != "" {
-		s += mutedStyle.Render("  ⟁ " + m.connection.Config().Database)
+		s += lipgloss.NewStyle().Foreground(colorLabel).Render("  ⟁ " + m.connection.Config().Database)
 	}
 	return s
 }

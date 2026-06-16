@@ -663,7 +663,7 @@ func (r ResultsTable) View() string {
 			case isCursorCell:
 				style = lipgloss.NewStyle().Foreground(colorBg).Background(colorPrimary)
 			case isDirty:
-				style = lipgloss.NewStyle().Foreground(colorSuccess)
+				style = lipgloss.NewStyle().Foreground(colorBg).Background(lipgloss.Color("#e0af68"))
 			default:
 				style = lipgloss.NewStyle().Foreground(colorFg)
 			}
