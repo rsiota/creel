@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -370,19 +369,9 @@ func (e QueryEditor) FormatQuery() string {
 // HelpText returns keybinding hints for the editor.
 func (e QueryEditor) HelpText() string {
 	if e.vimMode == VimNormal {
-		return fmt.Sprintf("%s run  %s clear  %s/%s move  %s insert",
-			mutedStyle.Render("Ctrl+J"),
-			mutedStyle.Render("Ctrl+R"),
-			mutedStyle.Render("h/j/k/l"),
-			mutedStyle.Render("w/b"),
-			mutedStyle.Render("i/a/o"),
-		)
+		return keybinds("Ctrl+J", "run", "Ctrl+R", "clear", "h/j/k/l/w/b", "move", "i/a/o", "insert")
 	}
-	return fmt.Sprintf("%s run  %s clear  %s normal mode",
-		mutedStyle.Render("Ctrl+J"),
-		mutedStyle.Render("Ctrl+R"),
-		mutedStyle.Render("Esc"),
-	)
+	return keybinds("Ctrl+J", "run", "Ctrl+R", "clear", "Esc", "normal mode")
 }
 
 // --- Completion ---

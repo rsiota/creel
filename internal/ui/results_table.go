@@ -726,24 +726,9 @@ func (r ResultsTable) View() string {
 func (r ResultsTable) HelpText() string {
 	if r.editable {
 		if r.editing {
-			return fmt.Sprintf("%s commit  %s cancel",
-				mutedStyle.Render("enter"),
-				mutedStyle.Render("esc"),
-			)
+			return keybinds("enter", "commit", "esc", "cancel")
 		}
-		return fmt.Sprintf("%s/%s/%s/%s move  %s edit  %s save",
-			mutedStyle.Render("h/j/k/l"),
-			mutedStyle.Render(""),
-			mutedStyle.Render(""),
-			mutedStyle.Render(""),
-			mutedStyle.Render("enter"),
-			mutedStyle.Render("ctrl+s"),
-		)
+		return keybinds("h/j/k/l", "move", "enter", "edit", "ctrl+s", "save")
 	}
-	return fmt.Sprintf("%s/%s scroll  %s/%s horizontal",
-		mutedStyle.Render("j/k"),
-		mutedStyle.Render(""),
-		mutedStyle.Render("h/l"),
-		mutedStyle.Render(""),
-	)
+	return keybinds("j/k", "scroll", "h/l", "horizontal")
 }

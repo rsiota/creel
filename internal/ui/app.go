@@ -1558,7 +1558,7 @@ func (m Model) View() string {
 }
 
 func (m Model) viewConnections() string {
-	footer := mutedStyle.Render("enter: connect  n: new  e: edit  d: delete  /: filter  j/k: scroll  esc: quit")
+	footer := keybinds("enter", "connect", "n", "new", "e", "edit", "d", "delete", "/", "filter", "esc", "quit")
 
 	popupW, popupH := popupDim()
 	borderOverhead := 2
@@ -1568,7 +1568,7 @@ func (m Model) viewConnections() string {
 	panelH := popupH - borderOverhead
 
 	connTitle := titleStyle.Render("Connections")
-	listH := panelH - 2 - padH // title + scroll info + padding
+	listH := panelH - 3 - padH // title + scroll info + footer + padding
 	m.connList.SetSize(panelW-padW, listH)
 
 	// Pin the list to a fixed height so ScrollInfo sits at the bottom.
@@ -1587,22 +1587,14 @@ func (m Model) viewConnections() string {
 				connTitle,
 				listStyled,
 				m.connList.ScrollInfo(),
+				footer,
 			),
 		)
 
-	// Center popup in the area above the bottom status bar.
-	popupAreaH := m.height - 1 // reserve 1 line for footer
-	centered := lipgloss.Place(m.width, popupAreaH,
+	return lipgloss.Place(m.width, m.height,
 		lipgloss.Center, lipgloss.Center,
 		connPanel,
 		lipgloss.WithWhitespaceChars(" "),
-	)
-
-	footerCentered := lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render(footer)
-
-	return lipgloss.JoinVertical(lipgloss.Left,
-		centered,
-		footerCentered,
 	)
 }
 
@@ -1814,7 +1806,7 @@ func (m Model) viewWorkspace() string {
 				m.connectionInfo(connName),
 				m.focusInfo(),
 				m.contextHelp(),
-				mutedStyle.Render("ctrl+t: switch  ctrl+k: database  ctrl+y: history  ctrl+o: inspector  ctrl+q: quit"),
+				keybinds("ctrl+t", "switch", "ctrl+k", "database", "ctrl+y", "history", "ctrl+o", "inspector", "ctrl+q", "quit"),
 			),
 		)
 
@@ -1867,6 +1859,23 @@ func popupDim() (w, h int) {
 	return 71, 19
 }
 
+// keybind renders a single keybinding: the key in colorLabel, the description
+// in colorMuted, separated by a space (no colon).
+func keybind(key, desc string) string {
+	return lipgloss.NewStyle().Foreground(colorLabel).Render(key) + " " +
+		mutedStyle.Render(desc)
+}
+
+// keybinds renders multiple keybinding pairs joined by double spaces.
+// Arguments are alternating key/description strings.
+func keybinds(pairs ...string) string {
+	var parts []string
+	for i := 0; i+1 < len(pairs); i += 2 {
+		parts = append(parts, keybind(pairs[i], pairs[i+1]))
+	}
+	return strings.Join(parts, "  ")
+}
+
 func (m Model) connectionInfo(name string) string {
 	if m.connection == nil {
 		return mutedStyle.Render("not connected")
@@ -1881,13 +1890,13 @@ func (m Model) connectionInfo(name string) string {
 func (m Model) focusInfo() string {
 	switch m.focus {
 	case FocusConnections:
-		return mutedStyle.Render("focus: tables")
+		return keybind("focus", "tables")
 	case FocusEditor:
-		return mutedStyle.Render("focus: editor")
+		return keybind("focus", "editor")
 	case FocusResults:
-		return mutedStyle.Render("focus: results")
+		return keybind("focus", "results")
 	case FocusInspector:
-		return mutedStyle.Render("focus: inspector")
+		return keybind("focus", "inspector")
 	default:
 		return ""
 	}
@@ -1895,45 +1904,45 @@ func (m Model) focusInfo() string {
 
 func (m Model) contextHelp() string {
 	if m.dbPicker.IsVisible() {
-		return mutedStyle.Render("type to filter  j/k: navigate  enter: select  esc: cancel")
+		return keybinds("type", "to filter", "j/k", "navigate", "enter", "select", "esc", "cancel")
 	}
 	switch m.focus {
 	case FocusConnections:
 		if m.sidebarFiltering {
-			return mutedStyle.Render("type to filter  enter: select  esc: cancel")
+			return keybinds("type", "to filter", "enter", "select", "esc", "cancel")
 		}
-		return mutedStyle.Render("enter: expand  s: select  d: describe  /: find  j/k: scroll")
+		return keybinds("enter", "expand", "s", "select", "d", "describe", "/", "find", "j/k", "scroll")
 	case FocusResults:
 		if m.results.IsEditing() {
-			return mutedStyle.Render("enter: commit  esc: cancel")
+			return keybinds("enter", "commit", "esc", "cancel")
 		}
 		inspHint := ""
 		if m.inspector.IsVisible() {
-			inspHint = "  ctrl+o: close inspector"
+			inspHint = "  " + keybind("ctrl+o", "close inspector")
 		}
 		if m.results.IsEditable() {
 			pg := ""
 			if m.pageMsg != "" {
 				pg = "  " + m.pageMsg
 			}
-			return mutedStyle.Render("h/j/k/l: move  enter: edit  ctrl+s: save" + pg + inspHint)
+			return keybinds("h/j/k/l", "move", "enter", "edit", "ctrl+s", "save") + pg + inspHint
 		}
 		pg := ""
 		if m.pageMsg != "" {
 			pg = "  " + m.pageMsg
 		}
-		return mutedStyle.Render("j/k: rows  h/l: cols  ctrl+d/ctrl+u: page" + pg + inspHint)
+		return keybinds("j/k", "rows", "h/l", "cols", "ctrl+d/ctrl+u", "page") + pg + inspHint
 	case FocusInspector:
 		if m.inspector.IsEditing() {
-			return mutedStyle.Render("enter: commit  esc: cancel")
+			return keybinds("enter", "commit", "esc", "cancel")
 		}
 		if m.results.IsEditable() {
-			return mutedStyle.Render("j/k: fields  enter: edit  ctrl+s: save  ctrl+o: close")
+			return keybinds("j/k", "fields", "enter", "edit", "ctrl+s", "save", "ctrl+o", "close")
 		}
-		return mutedStyle.Render("j/k: fields  ctrl+o: close")
+		return keybinds("j/k", "fields", "ctrl+o", "close")
 	default:
 		if m.editor.CompletionVisible() {
-			return mutedStyle.Render("tab/enter: accept  ctrl+p/n: select  esc: cancel")
+			return keybinds("tab/enter", "accept", "ctrl+p/n", "select", "esc", "cancel")
 		}
 		return m.editor.HelpText()
 	}
