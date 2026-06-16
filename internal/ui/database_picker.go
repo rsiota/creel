@@ -158,7 +158,7 @@ func (p DatabasePicker) View() string {
 
 	title := titleStyle.Render("Select Database")
 
-	maxVisible := p.height - 4
+	maxVisible := p.height - 6 // border(2) + title(1) + footer(1) + padding(2)
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -221,6 +221,7 @@ func (p DatabasePicker) View() string {
 		Height(p.height - 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorBorder).
+		Padding(1, 2).
 		Render(content)
 
 	return panel

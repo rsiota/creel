@@ -1558,18 +1558,18 @@ func (m Model) View() string {
 }
 
 func (m Model) viewConnections() string {
-	header := titleStyle.Render("gsql") + mutedStyle.Render("  — a fast SQL TUI")
 	footer := mutedStyle.Render("enter: connect  n: new  e: edit  d: delete  /: filter  j/k: scroll  esc: quit")
 
 	popupW, popupH := popupDim()
 	borderOverhead := 2
+	padH, padW := 2, 4 // Padding(1, 2) → 2 rows, 4 cols
 
 	panelW := popupW - borderOverhead
 	panelH := popupH - borderOverhead
 
 	connTitle := titleStyle.Render("Connections")
-	listH := panelH - 2 // title + scroll info
-	m.connList.SetSize(panelW, listH)
+	listH := panelH - 2 - padH // title + scroll info + padding
+	m.connList.SetSize(panelW-padW, listH)
 
 	// Pin the list to a fixed height so ScrollInfo sits at the bottom.
 	listStyled := lipgloss.NewStyle().
@@ -1581,6 +1581,7 @@ func (m Model) viewConnections() string {
 		Height(panelH).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorBorder).
+		Padding(1, 2).
 		Render(
 			lipgloss.JoinVertical(lipgloss.Left,
 				connTitle,
@@ -1589,32 +1590,31 @@ func (m Model) viewConnections() string {
 			),
 		)
 
-	// Header at top, centered popup in the middle, footer at bottom.
-	top := lipgloss.JoinVertical(lipgloss.Left,
-		appStyle.Render(header),
-		"",
-	)
-	topH := lipgloss.Height(top)
-	popupAreaH := m.height - topH - 2 // footer + margin
-	if popupAreaH < panelH {
-		popupAreaH = panelH
-	}
-
+	// Center popup in the area above the bottom status bar.
+	popupAreaH := m.height - 1 // reserve 1 line for footer
 	centered := lipgloss.Place(m.width, popupAreaH,
 		lipgloss.Center, lipgloss.Center,
 		connPanel,
 		lipgloss.WithWhitespaceChars(" "),
 	)
 
+	footerCentered := lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render(footer)
+
 	return lipgloss.JoinVertical(lipgloss.Left,
-		top,
 		centered,
-		footer,
+		footerCentered,
 	)
 }
 
 func (m Model) viewAddConnection() string {
+	popupW, _ := popupDim()
+	borderOverhead := 2
+	padding := 4 // padding(1,2) = 2 left + 2 right
+	innerW := popupW - borderOverhead - padding
+	m.connForm.SetMaxWidth(innerW)
+
 	formPanel := lipgloss.NewStyle().
+		Width(popupW - borderOverhead).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorBorder).
 		Padding(1, 2).

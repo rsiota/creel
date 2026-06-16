@@ -200,6 +200,15 @@ func (f *ConnectionForm) SetSize(width, height int) {
 	}
 }
 
+// SetMaxWidth adjusts the text input widths so the form renders at the given
+// content width (excluding border/padding).
+func (f *ConnectionForm) SetMaxWidth(width int) {
+	f.width = width
+	for i := range f.fields {
+		f.fields[i].Width = width - 30
+	}
+}
+
 // Focus first field.
 func (f *ConnectionForm) Focus() tea.Cmd {
 	return f.fields[fieldName].Focus()
