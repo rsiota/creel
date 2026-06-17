@@ -112,3 +112,35 @@ func TestSQLitePrimaryKeys(t *testing.T) {
 		t.Errorf("expected 2 PKs, got %d: %v", len(pks), pks)
 	}
 }
+
+func TestSQLiteForeignKeys(t *testing.T) {
+	s := setupTestSQLite(t)
+
+	_, err := s.Exec(`CREATE TABLE departments (
+		id INTEGER PRIMARY KEY,
+		name TEXT NOT NULL
+	)`)
+	if err != nil {
+		t.Fatalf("create departments: %v", err)
+	}
+	_, err = s.Exec(`CREATE TABLE employees (
+		id INTEGER PRIMARY KEY,
+		dept_id INTEGER,
+		name TEXT NOT NULL,
+		FOREIGN KEY (dept_id) REFERENCES departments(id)
+	)`)
+	if err != nil {
+		t.Fatalf("create employees: %v", err)
+	}
+
+	fks, err := s.ForeignKeys("employees")
+	if err != nil {
+		t.Fatalf("ForeignKeys: %v", err)
+	}
+	if len(fks) != 1 {
+		t.Fatalf("expected 1 FK, got %d", len(fks))
+	}
+	if fks[0].Column != "dept_id" || fks[0].RefTable != "departments" || fks[0].RefColumn != "id" {
+		t.Fatalf("unexpected FK: %+v", fks[0])
+	}
+}

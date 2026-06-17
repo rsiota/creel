@@ -108,6 +108,32 @@ func (s *SQLite) PrimaryKeys(table string) ([]string, error) {
 	return pks, rows.Err()
 }
 
+func (s *SQLite) ForeignKeys(table string) ([]ForeignKey, error) {
+	rows, err := s.db.Query(fmt.Sprintf(`PRAGMA foreign_key_list("%s")`, table))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var fks []ForeignKey
+	for rows.Next() {
+		var id, seq int
+		var refTable, localCol, refCol, onUpdate, onDelete, match string
+		if err := rows.Scan(&id, &seq, &refTable, &localCol, &refCol, &onUpdate, &onDelete, &match); err != nil {
+			return nil, err
+		}
+		if refCol == "" {
+			refCol = "id"
+		}
+		fks = append(fks, ForeignKey{
+			Column:    localCol,
+			RefTable:  refTable,
+			RefColumn: refCol,
+		})
+	}
+	return fks, rows.Err()
+}
+
 func (s *SQLite) Execute(query string) (Result, error) {
 	start := time.Now()
 

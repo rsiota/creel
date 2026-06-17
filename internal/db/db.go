@@ -49,6 +49,8 @@ type DB interface {
 	TableSchema(table string) ([]Column, error)
 	// PrimaryKeys returns the primary key column names for a table.
 	PrimaryKeys(table string) ([]string, error)
+	// ForeignKeys returns outbound foreign keys defined on a table.
+	ForeignKeys(table string) ([]ForeignKey, error)
 	// Execute runs a query and returns the result set.
 	Execute(query string) (Result, error)
 	// Exec runs a statement that doesn't return rows (INSERT, UPDATE, DELETE).
@@ -64,6 +66,13 @@ type DB interface {
 type Column struct {
 	Name string
 	Type string
+}
+
+// ForeignKey describes an outbound foreign key on a table column.
+type ForeignKey struct {
+	Column    string
+	RefTable  string
+	RefColumn string
 }
 
 // Result holds the output of a query execution.

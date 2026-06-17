@@ -1,6 +1,10 @@
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ruben/gsql/internal/db"
+)
 
 func TestParseSimpleSelectTable(t *testing.T) {
 	tests := []struct {
@@ -233,5 +237,33 @@ func TestCopyFeedback(t *testing.T) {
 	r.ClearCopiedMessage()
 	if r.copied {
 		t.Fatal("expected copied confirmation to clear")
+	}
+}
+
+func TestResultsForeignKeys(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult(
+		[]string{"id", "dept_id", "name"},
+		[][]string{{"1", "10", "alice"}},
+		"1 row",
+	)
+	r.SetForeignKeys("employees", []db.ForeignKey{
+		{Column: "dept_id", RefTable: "departments", RefColumn: "id"},
+	})
+	r.cursorCol = 1
+
+	if !r.HasForeignKeys() {
+		t.Fatal("expected foreign keys")
+	}
+	if !r.IsNavigableForeignKey(0, 1) {
+		t.Fatal("dept_id should be navigable")
+	}
+	if r.IsNavigableForeignKey(0, 0) {
+		t.Fatal("id should not be a foreign key cell")
+	}
+
+	fk, ok := r.ForeignKeyAtCursor()
+	if !ok || fk.RefTable != "departments" {
+		t.Fatalf("unexpected FK at cursor: %+v", fk)
 	}
 }

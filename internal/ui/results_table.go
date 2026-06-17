@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ruben/gsql/internal/db"
 )
 
 const maxCellWidth = 40
@@ -53,6 +54,8 @@ type ResultsTable struct {
 	copyFlashActive bool
 	copyFlashOn     bool
 	copyFlashTicks  int
+	resultTable     string
+	foreignKeys     map[string]db.ForeignKey // keyed by lowercase column name
 	columnTypes map[string]string // column name -> database type (for inspector)
 }
 
@@ -71,6 +74,72 @@ func (r *ResultsTable) SetEditable(table string, pkCols []string) {
 	r.dirtyCells = make(map[cellRef]string)
 	r.editing = false
 	r.saveError = ""
+}
+
+// ClearForeignKeys removes foreign-key navigation metadata.
+func (r *ResultsTable) ClearForeignKeys() {
+	r.resultTable = ""
+	r.foreignKeys = nil
+}
+
+// SetForeignKeys records outbound foreign keys for the current result table.
+func (r *ResultsTable) SetForeignKeys(table string, fks []db.ForeignKey) {
+	r.resultTable = table
+	r.foreignKeys = make(map[string]db.ForeignKey)
+	colSet := make(map[string]bool, len(r.columns))
+	for _, c := range r.columns {
+		colSet[strings.ToLower(c)] = true
+	}
+	for _, fk := range fks {
+		key := strings.ToLower(fk.Column)
+		if colSet[key] {
+			r.foreignKeys[key] = fk
+		}
+	}
+}
+
+// HasForeignKeys returns whether the current results expose FK navigation.
+func (r ResultsTable) HasForeignKeys() bool {
+	return len(r.foreignKeys) > 0
+}
+
+// ForeignKeyAt returns the foreign key for a column index, if any.
+func (r ResultsTable) ForeignKeyAt(col int) (db.ForeignKey, bool) {
+	name := strings.ToLower(r.ColumnName(col))
+	fk, ok := r.foreignKeys[name]
+	return fk, ok
+}
+
+// ForeignKeyAtCursor returns the foreign key for the cell under the cursor.
+func (r ResultsTable) ForeignKeyAtCursor() (db.ForeignKey, bool) {
+	return r.ForeignKeyAt(r.cursorCol)
+}
+
+// IsNavigableForeignKey reports whether a cell can be followed via gd.
+func (r ResultsTable) IsNavigableForeignKey(row, col int) bool {
+	if _, ok := r.ForeignKeyAt(col); !ok {
+		return false
+	}
+	val := r.RowValue(row, col)
+	return val != "" && val != "NULL"
+}
+
+// ResultTable returns the source table for the current results, if known.
+func (r ResultsTable) ResultTable() string {
+	return r.resultTable
+}
+
+// CursorCol returns the current cursor column index.
+func (r ResultsTable) CursorCol() int {
+	return r.cursorCol
+}
+
+// SetCursor moves the cell cursor and keeps it visible.
+func (r *ResultsTable) SetCursor(row, col int) {
+	r.cursorRow = row
+	r.cursorCol = col
+	r.clampCursor()
+	r.ensureCursorVisible()
 }
 
 // ClearEditable disables inline editing.
@@ -220,6 +289,7 @@ func (r *ResultsTable) SetResult(cols []string, rows [][]string, message string)
 	r.saveError = ""
 	r.copied = false
 	r.copyFlashActive = false
+	r.ClearForeignKeys()
 	r.computeColWidths()
 }
 
@@ -246,6 +316,7 @@ func (r *ResultsTable) Clear() {
 	r.editing = false
 	r.copied = false
 	r.copyFlashActive = false
+	r.ClearForeignKeys()
 }
 
 // Message returns the current status message.
@@ -735,6 +806,11 @@ func (r ResultsTable) View() string {
 			}
 
 			cell := truncateCell(val, r.colWidths[i])
+			if isCursorCell && r.IsNavigableForeignKey(rowIdx, i) {
+				arrow := " →"
+				arrowW := lipgloss.Width(arrow)
+				cell = truncateCell(val, r.colWidths[i]-arrowW) + arrow
+			}
 
 			// Style the cell
 			var style lipgloss.Style
@@ -778,6 +854,12 @@ func (r ResultsTable) View() string {
 		mutedStyle.Render(colInfo),
 	}
 
+	if r.IsNavigableForeignKey(r.cursorRow, r.cursorCol) {
+		if fk, ok := r.ForeignKeyAtCursor(); ok {
+			statusParts = append(statusParts, mutedStyle.Render(fmt.Sprintf("gd → %s", fk.RefTable)))
+		}
+	}
+
 	// Edit-specific status
 	if r.editable {
 		editInfo := ""
@@ -815,7 +897,11 @@ func (r ResultsTable) HelpText() string {
 		if r.editing {
 			return keybinds("enter", "commit", "esc", "cancel")
 		}
-		return keybinds("h/j/k/l", "move", "yy", "copy", "enter", "edit", "ctrl+s", "save")
+		return keybinds("h/j/k/l", "move", "yy", "copy", "gd", "follow fk", "enter", "edit", "ctrl+s", "save")
 	}
-	return keybinds("h/j/k/l", "move", "yy", "copy")
+	hints := []string{"h/j/k/l", "move", "yy", "copy"}
+	if r.HasForeignKeys() {
+		hints = append(hints, "gd", "follow fk")
+	}
+	return keybinds(hints...)
 }

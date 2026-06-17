@@ -176,6 +176,34 @@ func (m *MySQL) PrimaryKeys(table string) ([]string, error) {
 	return pks, rows.Err()
 }
 
+func (m *MySQL) ForeignKeys(table string) ([]ForeignKey, error) {
+	rows, err := m.db.Query(
+		`SELECT column_name, referenced_table_name, referenced_column_name
+		 FROM information_schema.key_column_usage
+		 WHERE table_schema = ? AND table_name = ? AND referenced_table_name IS NOT NULL
+		 ORDER BY ordinal_position`,
+		m.config.Database, table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var fks []ForeignKey
+	for rows.Next() {
+		var col, refTable, refCol string
+		if err := rows.Scan(&col, &refTable, &refCol); err != nil {
+			return nil, err
+		}
+		fks = append(fks, ForeignKey{
+			Column:    col,
+			RefTable:  refTable,
+			RefColumn: refCol,
+		})
+	}
+	return fks, rows.Err()
+}
+
 func (m *MySQL) Execute(query string) (Result, error) {
 	start := time.Now()
 

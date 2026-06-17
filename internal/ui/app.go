@@ -69,6 +69,14 @@ type copyFlashTickMsg struct{}
 // copyCopiedClearMsg clears the clipboard confirmation status message.
 type copyCopiedClearMsg struct{}
 
+// queryStackEntry stores navigation state for returning after following a FK.
+type queryStackEntry struct {
+	query     string
+	page      int
+	cursorRow int
+	cursorCol int
+}
+
 // Model is the top-level application model for the Bubble Tea architecture.
 type Model struct {
 	state    state
@@ -111,6 +119,12 @@ type Model struct {
 	pageSize int
 	lastQuery string
 	pageMsg  string
+
+	// Foreign-key navigation stack (gb to go back).
+	queryStack        []queryStackEntry
+	restoreCursor     bool
+	restoreCursorRow  int
+	restoreCursorCol  int
 }
 
 const defaultPageSize = 200
@@ -251,6 +265,7 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	m.lastQuery = ""
 	m.page = 0
 	m.pageMsg = ""
+	m.queryStack = nil
 	m.sidebarCursor = 0
 	m.sidebarFiltering = false
 	m.sidebarFilter = ""
@@ -314,6 +329,7 @@ func (m *Model) executeQuery() tea.Cmd {
 
 	m.lastQuery = query
 	m.page = 0
+	m.queryStack = nil
 	return m.runPageQuery()
 }
 
@@ -380,6 +396,76 @@ func isSelectQuery(query string) bool {
 	trimmed := strings.TrimSpace(query)
 	upper := strings.ToUpper(trimmed)
 	return strings.HasPrefix(upper, "SELECT") || strings.HasPrefix(upper, "WITH")
+}
+
+// detectResultMetadata loads table context (foreign keys, editability) for a query.
+func (m *Model) detectResultMetadata(query string) {
+	m.results.ClearForeignKeys()
+	m.detectEditability(query)
+
+	table := parseSimpleSelectTable(query)
+	if table == "" || m.connection == nil {
+		return
+	}
+
+	found := false
+	for _, t := range m.tables {
+		if strings.EqualFold(t, table) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return
+	}
+
+	fks, err := m.connection.DB().ForeignKeys(table)
+	if err != nil {
+		return
+	}
+	m.results.SetForeignKeys(table, fks)
+}
+
+func (m *Model) pushQueryStack() {
+	m.queryStack = append(m.queryStack, queryStackEntry{
+		query:     m.lastQuery,
+		page:      m.page,
+		cursorRow: m.results.CursorRow(),
+		cursorCol: m.results.CursorCol(),
+	})
+}
+
+func (m *Model) followForeignKey() tea.Cmd {
+	fk, ok := m.results.ForeignKeyAtCursor()
+	if !ok {
+		return nil
+	}
+	val := m.results.CursorCellValue()
+	if val == "" || val == "NULL" {
+		return nil
+	}
+
+	m.pushQueryStack()
+	query := buildForeignKeyQuery(fk.RefTable, fk.RefColumn, val)
+	m.editor.SetValue(query)
+	m.lastQuery = query
+	m.page = 0
+	return m.runPageQuery()
+}
+
+func (m *Model) goBackQuery() tea.Cmd {
+	if len(m.queryStack) == 0 {
+		return nil
+	}
+	entry := m.queryStack[len(m.queryStack)-1]
+	m.queryStack = m.queryStack[:len(m.queryStack)-1]
+	m.editor.SetValue(entry.query)
+	m.lastQuery = entry.query
+	m.page = entry.page
+	m.restoreCursor = true
+	m.restoreCursorRow = entry.cursorRow
+	m.restoreCursorCol = entry.cursorCol
+	return m.runPageQuery()
 }
 
 // detectEditability checks if the query is a simple "SELECT * FROM <table>"
@@ -597,6 +683,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err != nil {
 			m.results.SetError(msg.err.Error())
+			if m.restoreCursor {
+				m.restoreCursor = false
+			}
 		} else {
 			cols := make([]string, len(msg.result.Columns))
 			for i, c := range msg.result.Columns {
@@ -630,9 +719,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.pageMsg = pgInfo
 
-			// Enable inline editing if this is a simple SELECT from a single table.
-			m.detectEditability(msg.query)
+			// Enable inline editing and foreign-key navigation for simple table SELECTs.
+			m.detectResultMetadata(msg.query)
 			m.inspector.Reset()
+			if m.restoreCursor {
+				m.results.SetCursor(m.restoreCursorRow, m.restoreCursorCol)
+				m.restoreCursor = false
+			}
 		}
 		// Switch focus to results after a query completes.
 		if m.focus != FocusInspector {
@@ -986,6 +1079,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.lastQuery = ""
 		m.page = 0
 		m.pageMsg = ""
+		m.queryStack = nil
 		m.expanded = make(map[string][]db.Column)
 		m.columnCache = nil
 		m.sidebarFiltering = false
@@ -1093,11 +1187,27 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingY = false
 				m.results.CursorDown()
 				return m, nil
-			case "left", "h", "b":
+			case "left", "h":
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				m.results.CursorLeft()
 				return m, nil
+			case "b":
+				if m.resultsPendingG {
+					m.resultsPendingG = false
+					m.resultsPendingY = false
+					return m, m.goBackQuery()
+				}
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				m.results.CursorLeft()
+				return m, nil
+			case "d":
+				if m.resultsPendingG {
+					m.resultsPendingG = false
+					m.resultsPendingY = false
+					return m, m.followForeignKey()
+				}
 			case "right", "l", "w":
 				m.resultsPendingG = false
 				m.resultsPendingY = false
@@ -2014,6 +2124,17 @@ func (m Model) connectionInfo(name string) string {
 	return s
 }
 
+func (m Model) fkNavHint() string {
+	hint := ""
+	if m.results.HasForeignKeys() {
+		hint += "  " + keybind("gd", "follow fk")
+	}
+	if len(m.queryStack) > 0 {
+		hint += "  " + keybind("gb", "back")
+	}
+	return hint
+}
+
 func (m Model) focusInfo() string {
 	switch m.focus {
 	case FocusConnections:
@@ -2056,13 +2177,13 @@ func (m Model) contextHelp() string {
 			if m.results.HasDirtyCells() {
 				discardHint = "  " + keybind("D", "discard")
 			}
-			return keybinds("h/j/k/l", "move", "yy", "copy", "enter", "edit", "ctrl+s", "save") + discardHint + pg + inspHint
+			return keybinds("h/j/k/l", "move", "yy", "copy", "enter", "edit", "ctrl+s", "save") + m.fkNavHint() + discardHint + pg + inspHint
 		}
 		pg := ""
 		if m.pageMsg != "" {
 			pg = "  " + m.pageMsg
 		}
-		return keybinds("h/j/k/l", "move", "yy", "copy", "ctrl+d/ctrl+u", "page") + pg + inspHint
+		return keybinds("h/j/k/l", "move", "yy", "copy", "ctrl+d/ctrl+u", "page") + m.fkNavHint() + pg + inspHint
 	case FocusInspector:
 		if m.inspector.IsEditing() {
 			return keybinds("enter", "commit", "esc", "cancel")
