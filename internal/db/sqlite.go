@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -132,6 +133,39 @@ func (s *SQLite) ForeignKeys(table string) ([]ForeignKey, error) {
 		})
 	}
 	return fks, rows.Err()
+}
+
+func isIntegerType(typeName string) bool {
+	t := strings.ToUpper(strings.TrimSpace(typeName))
+	return strings.Contains(t, "INT")
+}
+
+func (s *SQLite) TableColumnInfo(table string) ([]TableColumnInfo, error) {
+	rows, err := s.db.Query(fmt.Sprintf(`PRAGMA table_info("%s")`, table))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cols []TableColumnInfo
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull, pk int
+		var dfltValue sql.NullString
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &dfltValue, &pk); err != nil {
+			return nil, err
+		}
+		cols = append(cols, TableColumnInfo{
+			Name:          name,
+			Type:          dataType,
+			NotNull:       notNull != 0,
+			PrimaryKey:    pk != 0,
+			AutoIncrement: pk != 0 && isIntegerType(dataType),
+			HasDefault:    dfltValue.Valid,
+		})
+	}
+	return cols, rows.Err()
 }
 
 func (s *SQLite) Execute(query string) (Result, error) {

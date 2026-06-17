@@ -51,6 +51,8 @@ type DB interface {
 	PrimaryKeys(table string) ([]string, error)
 	// ForeignKeys returns outbound foreign keys defined on a table.
 	ForeignKeys(table string) ([]ForeignKey, error)
+	// TableColumnInfo returns detailed column metadata for inserts and validation.
+	TableColumnInfo(table string) ([]TableColumnInfo, error)
 	// Execute runs a query and returns the result set.
 	Execute(query string) (Result, error)
 	// Exec runs a statement that doesn't return rows (INSERT, UPDATE, DELETE).
@@ -73,6 +75,16 @@ type ForeignKey struct {
 	Column    string
 	RefTable  string
 	RefColumn string
+}
+
+// TableColumnInfo describes column metadata needed for inserts.
+type TableColumnInfo struct {
+	Name          string
+	Type          string
+	NotNull       bool
+	PrimaryKey    bool
+	AutoIncrement bool
+	HasDefault    bool
 }
 
 // Result holds the output of a query execution.

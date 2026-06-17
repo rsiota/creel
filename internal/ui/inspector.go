@@ -32,6 +32,9 @@ type Inspector struct {
 	pendingG    bool
 	filtering   bool
 	filter      string
+	inserting   bool
+	insertValues map[int]string
+	editingCol  int
 }
 
 // NewInspector creates a new inspector component.
@@ -47,6 +50,43 @@ func (i *Inspector) Toggle() {
 	i.scrollRow = 0
 	i.filtering = false
 	i.filter = ""
+	i.inserting = false
+	i.insertValues = nil
+}
+
+// IsInserting returns whether the inspector is in new-record mode.
+func (i Inspector) IsInserting() bool {
+	return i.inserting
+}
+
+// StartInsert enters new-record mode with empty field values.
+func (i *Inspector) StartInsert() {
+	i.inserting = true
+	i.insertValues = make(map[int]string)
+	i.cursorField = 0
+	i.scrollRow = 0
+	i.editing = false
+	i.filtering = false
+	i.filter = ""
+}
+
+// CancelInsert exits new-record mode.
+func (i *Inspector) CancelInsert() {
+	i.inserting = false
+	i.insertValues = nil
+	i.editing = false
+}
+
+// InsertValues returns pending insert field values keyed by column index.
+func (i Inspector) InsertValues() map[int]string {
+	if len(i.insertValues) == 0 {
+		return nil
+	}
+	out := make(map[int]string, len(i.insertValues))
+	for k, v := range i.insertValues {
+		out[k] = v
+	}
+	return out
 }
 
 // Hide forcibly closes the inspector.
@@ -57,6 +97,8 @@ func (i *Inspector) Hide() {
 	i.scrollRow = 0
 	i.filtering = false
 	i.filter = ""
+	i.inserting = false
+	i.insertValues = nil
 }
 
 // IsVisible returns whether the inspector panel is currently shown.
@@ -83,6 +125,8 @@ func (i *Inspector) Reset() {
 	i.editing = false
 	i.filtering = false
 	i.filter = ""
+	i.inserting = false
+	i.insertValues = nil
 }
 
 // IsFiltering returns whether the inspector filter input is active.
@@ -251,10 +295,24 @@ func (i *Inspector) ensureFieldVisible(results ...ResultsTable) {
 
 // StartFieldEdit begins editing the currently focused field.
 func (i *Inspector) StartFieldEdit(results ResultsTable) {
-	if !results.IsEditable() || results.NumCols() == 0 || results.NumRows() == 0 {
+	if results.NumCols() == 0 {
 		return
 	}
 	col := i.selectedColumn(results)
+
+	if i.inserting {
+		if results.IsAutoIncrementCol(col) {
+			return
+		}
+		val := i.insertValues[col]
+		i.beginFieldEdit(val)
+		i.editingCol = col
+		return
+	}
+
+	if !results.IsEditable() || results.NumRows() == 0 {
+		return
+	}
 	colName := results.ColumnName(col)
 	if results.isPKColumn(colName) {
 		return
@@ -265,7 +323,11 @@ func (i *Inspector) StartFieldEdit(results ResultsTable) {
 	if val == "NULL" {
 		val = ""
 	}
+	i.beginFieldEdit(val)
+	i.editingCol = col
+}
 
+func (i *Inspector) beginFieldEdit(val string) {
 	ti := textinput.New()
 	ti.Prompt = ""
 	ti.CharLimit = 0
@@ -277,14 +339,12 @@ func (i *Inspector) StartFieldEdit(results ResultsTable) {
 	}
 	ti.Width = valueWidth
 
-	// Configure cursor styling for visible cursor feedback.
 	ti.TextStyle = lipgloss.NewStyle().Foreground(colorFg)
 	ti.Cursor.Style = lipgloss.NewStyle().Foreground(colorFg).Background(colorBg)
 
 	ti.Focus()
 	i.editInput = ti
 	i.editing = true
-	i.cursorField = col
 }
 
 // CommitFieldEdit finalizes the edit and returns the column index and new value.
@@ -292,9 +352,12 @@ func (i *Inspector) CommitFieldEdit() (col int, val string, ok bool) {
 	if !i.editing {
 		return 0, "", false
 	}
-	col = i.cursorField
+	col = i.editingCol
 	val = i.editInput.Value()
 	i.editing = false
+	if i.inserting {
+		i.insertValues[col] = val
+	}
 	return col, val, true
 }
 
@@ -326,7 +389,7 @@ func (i Inspector) View(results ResultsTable) string {
 			lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
 	}
 
-	if numFields == 0 || results.NumRows() == 0 {
+	if numFields == 0 || (!i.inserting && results.NumRows() == 0) {
 		fieldsHeight := i.height - 2
 		if i.filtering {
 			fieldsHeight--
@@ -348,7 +411,9 @@ func (i Inspector) View(results ResultsTable) string {
 	}
 
 	row := results.CursorRow()
-	if !results.IsEditable() {
+	if i.inserting {
+		row = 0
+	} else if !results.IsEditable() {
 		row = results.ScrollRow()
 	}
 	if row >= results.NumRows() {
@@ -393,14 +458,24 @@ func (i Inspector) View(results ResultsTable) string {
 	typeStyle := lipgloss.NewStyle().Foreground(colorMuted)
 
 	var rendered strings.Builder
+	if i.inserting {
+		rendered.WriteString(successStyle.Render(" [new record]"))
+		rendered.WriteString("\n")
+	}
 
 	for fi := start; fi < end; fi++ {
 		c := fieldIndices[fi]
 		colName := results.ColumnName(c)
 		isPK := results.isPKColumn(colName)
 		isDirty := results.IsDirty(row, c)
+		if i.inserting {
+			isDirty = i.insertValues[c] != ""
+		}
 		isFocused := fi == cursorClamp
 		val := results.RowValue(row, c)
+		if i.inserting {
+			val = i.insertValues[c]
+		}
 
 		// Label line: 1-char left pad + column name (left) + type (right) + 1-char right pad
 		labelRaw := colName
@@ -409,6 +484,9 @@ func (i Inspector) View(results ResultsTable) string {
 		}
 		if isDirty {
 			labelRaw += " ●"
+		}
+		if i.inserting && results.IsAutoIncrementCol(c) {
+			labelRaw += " (auto)"
 		}
 		typeRaw := strings.ToLower(results.ColumnType(c))
 
@@ -441,17 +519,20 @@ func (i Inspector) View(results ResultsTable) string {
 
 		// Value line
 		if i.editing && isFocused {
-			// Use textinput's own View() which renders a visible cursor.
 			inputView := i.editInput.View()
 			rendered.WriteString(bs.Render("│ ") + inputView + bs.Render(" │"))
 		} else {
 			displayVal := truncateCell(val, valueWidth)
 			valStyle := lipgloss.NewStyle().Foreground(colorFg)
-			if val == "NULL" {
+			if !i.inserting && val == "NULL" {
 				valStyle = lipgloss.NewStyle().Foreground(colorMuted)
 			}
 			if isDirty {
 				valStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68"))
+			}
+			if i.inserting && val == "" {
+				valStyle = lipgloss.NewStyle().Foreground(colorMuted)
+				displayVal = truncateCell("(empty)", valueWidth)
 			}
 			rendered.WriteString(bs.Render("│ ") + valStyle.Render(displayVal) + bs.Render(" │"))
 		}

@@ -57,6 +57,7 @@ type ResultsTable struct {
 	resultTable     string
 	foreignKeys     map[string]db.ForeignKey // keyed by lowercase column name
 	columnTypes map[string]string // column name -> database type (for inspector)
+	tableColumns []db.TableColumnInfo
 }
 
 // NewResultsTable creates a new results table component.
@@ -74,6 +75,32 @@ func (r *ResultsTable) SetEditable(table string, pkCols []string) {
 	r.dirtyCells = make(map[cellRef]string)
 	r.editing = false
 	r.saveError = ""
+}
+
+// SetTableColumns stores schema metadata for inserts.
+func (r *ResultsTable) SetTableColumns(cols []db.TableColumnInfo) {
+	r.tableColumns = cols
+}
+
+// TableColumns returns schema metadata for the editable table.
+func (r ResultsTable) TableColumns() []db.TableColumnInfo {
+	return r.tableColumns
+}
+
+// IsAutoIncrementCol reports whether a column is an auto-increment primary key.
+func (r ResultsTable) IsAutoIncrementCol(col int) bool {
+	info, ok := r.columnInfo(col)
+	return ok && info.AutoIncrement
+}
+
+func (r ResultsTable) columnInfo(col int) (db.TableColumnInfo, bool) {
+	name := r.ColumnName(col)
+	for _, c := range r.tableColumns {
+		if strings.EqualFold(c.Name, name) {
+			return c, true
+		}
+	}
+	return db.TableColumnInfo{}, false
 }
 
 // ClearForeignKeys removes foreign-key navigation metadata.
@@ -149,6 +176,7 @@ func (r *ResultsTable) ClearEditable() {
 	r.pkColumns = nil
 	r.dirtyCells = nil
 	r.editing = false
+	r.tableColumns = nil
 }
 
 // IsEditable returns whether the current results support inline editing.

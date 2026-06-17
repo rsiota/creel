@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -202,6 +203,38 @@ func (m *MySQL) ForeignKeys(table string) ([]ForeignKey, error) {
 		})
 	}
 	return fks, rows.Err()
+}
+
+func (m *MySQL) TableColumnInfo(table string) ([]TableColumnInfo, error) {
+	rows, err := m.db.Query(
+		`SELECT column_name, data_type, is_nullable, column_default, column_key, extra
+		 FROM information_schema.columns
+		 WHERE table_schema = ? AND table_name = ?
+		 ORDER BY ordinal_position`,
+		m.config.Database, table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cols []TableColumnInfo
+	for rows.Next() {
+		var name, dataType, nullable, colKey, extra string
+		var colDefault sql.NullString
+		if err := rows.Scan(&name, &dataType, &nullable, &colDefault, &colKey, &extra); err != nil {
+			return nil, err
+		}
+		cols = append(cols, TableColumnInfo{
+			Name:          name,
+			Type:          dataType,
+			NotNull:       nullable == "NO",
+			PrimaryKey:    colKey == "PRI",
+			AutoIncrement: strings.Contains(strings.ToLower(extra), "auto_increment"),
+			HasDefault:    colDefault.Valid,
+		})
+	}
+	return cols, rows.Err()
 }
 
 func (m *MySQL) Execute(query string) (Result, error) {

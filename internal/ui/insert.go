@@ -1,0 +1,75 @@
+package ui
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/ruben/gsql/internal/db"
+)
+
+// insertColumn represents one column included in a pending INSERT.
+type insertColumn struct {
+	Name  string
+	Value string
+}
+
+// buildInsertQuery builds a parameterized INSERT from column values.
+// Empty optional columns are omitted; required columns without values return an error.
+func buildInsertQuery(table string, columns []db.TableColumnInfo, values map[string]string) (string, []interface{}, error) {
+	if table == "" {
+		return "", nil, fmt.Errorf("no table for insert")
+	}
+
+	var included []insertColumn
+	valueSet := make(map[string]string, len(values))
+	for k, v := range values {
+		valueSet[strings.ToLower(k)] = v
+	}
+
+	for _, col := range columns {
+		val, hasValue := valueSet[strings.ToLower(col.Name)]
+		if hasValue && val != "" {
+			included = append(included, insertColumn{Name: col.Name, Value: val})
+			continue
+		}
+		if col.AutoIncrement {
+			continue
+		}
+		if col.NotNull && !col.HasDefault {
+			return "", nil, fmt.Errorf("column %q is required", col.Name)
+		}
+	}
+
+	if len(included) == 0 {
+		return "", nil, fmt.Errorf("no values to insert")
+	}
+
+	var colNames []string
+	var placeholders []string
+	var args []interface{}
+	for _, col := range included {
+		colNames = append(colNames, col.Name)
+		placeholders = append(placeholders, "?")
+		args = append(args, col.Value)
+	}
+
+	query := fmt.Sprintf(
+		"INSERT INTO %s (%s) VALUES (%s)",
+		table,
+		strings.Join(colNames, ", "),
+		strings.Join(placeholders, ", "),
+	)
+	return query, args, nil
+}
+
+// insertValuesByName maps inspector insert values from column indices to names.
+func insertValuesByName(results ResultsTable, values map[int]string) map[string]string {
+	out := make(map[string]string, len(values))
+	for col, val := range values {
+		name := results.ColumnName(col)
+		if name != "" {
+			out[name] = val
+		}
+	}
+	return out
+}

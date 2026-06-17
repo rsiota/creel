@@ -49,6 +49,11 @@ type saveResultMsg struct {
 	err   error
 }
 
+// insertResultMsg carries the result of an async insert save.
+type insertResultMsg struct {
+	err error
+}
+
 // queryExecutedMsg is sent when a query finishes executing.
 type queryExecutedMsg struct {
 	query    string
@@ -509,6 +514,9 @@ func (m *Model) detectEditability(query string) {
 	}
 
 	m.results.SetEditable(table, pkCols)
+	if cols, err := m.connection.DB().TableColumnInfo(table); err == nil {
+		m.results.SetTableColumns(cols)
+	}
 }
 
 // parseSimpleSelectTable extracts the table name from a query of the form
@@ -648,6 +656,57 @@ func (m *Model) saveEdits() tea.Cmd {
 	}
 }
 
+// saveChanges saves pending inserts or cell edits.
+func (m *Model) saveChanges() tea.Cmd {
+	if m.inspector.IsEditing() {
+		col, val, ok := m.inspector.CommitFieldEdit()
+		if ok && !m.inspector.IsInserting() {
+			m.results.SetDirtyCell(m.results.CursorRow(), col, val)
+		}
+	}
+	if m.inspector.IsInserting() {
+		return m.saveInsert()
+	}
+	return m.saveEdits()
+}
+
+// saveInsert writes a new row from inspector insert mode.
+func (m *Model) saveInsert() tea.Cmd {
+	if !m.inspector.IsInserting() || m.connection == nil || !m.results.IsEditable() {
+		return nil
+	}
+
+	conn := m.connection
+	table := m.results.SourceTable()
+	columns := m.results.TableColumns()
+	values := insertValuesByName(m.results, m.inspector.InsertValues())
+
+	query, args, err := buildInsertQuery(table, columns, values)
+	if err != nil {
+		return func() tea.Msg {
+			return insertResultMsg{err: err}
+		}
+	}
+
+	return func() tea.Msg {
+		_, err := conn.DB().Exec(query, args...)
+		return insertResultMsg{err: err}
+	}
+}
+
+// startInsert opens inspector new-record mode for the current editable table.
+func (m *Model) startInsert() {
+	if !m.results.IsEditable() || m.results.HasDirtyCells() || m.inspector.IsInserting() {
+		return
+	}
+	if !m.inspector.IsVisible() {
+		m.inspector.visible = true
+	}
+	m.inspector.StartInsert()
+	m.focus = FocusInspector
+	m.applyFocus()
+}
+
 // Update handles all application messages.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -746,6 +805,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.results.ConfirmSaved()
+		}
+		return m, nil
+
+	case insertResultMsg:
+		if msg.err != nil {
+			m.results.SetSaveError(msg.err.Error())
+		} else {
+			m.inspector.CancelInsert()
+			m.results.ConfirmSaved()
+			return m, m.runPageQuery()
 		}
 		return m, nil
 
@@ -1004,14 +1073,14 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// (Ctrl+D/U scroll within the editor in vim normal mode).
 		// Also block when editing a cell or have unsaved edits.
 		if m.focus != FocusEditor {
-			if m.results.IsEditing() || m.results.HasDirtyCells() {
+			if m.results.IsEditing() || m.results.HasDirtyCells() || m.inspector.IsInserting() {
 				return m, nil
 			}
 			return m, m.nextPage()
 		}
 	case "ctrl+u":
 		if m.focus != FocusEditor {
-			if m.results.IsEditing() || m.results.HasDirtyCells() {
+			if m.results.IsEditing() || m.results.HasDirtyCells() || m.inspector.IsInserting() {
 				return m, nil
 			}
 			return m, m.prevPage()
@@ -1027,7 +1096,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l":
 		// Directional panel navigation — not while editing or in insert mode.
-		if m.results.IsEditing() || m.inspector.IsEditing() {
+		if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() {
 			return m, nil
 		}
 		if m.focus == FocusEditor && m.editor.VimMode() == VimInsert {
@@ -1047,7 +1116,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "tab":
 		// Don't cycle focus while editing a cell or inspector field.
-		if m.results.IsEditing() || m.inspector.IsEditing() {
+		if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() {
 			return m, nil
 		}
 		// Tab accepts completion when popup is visible.
@@ -1058,7 +1127,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m = m.cycleFocus()
 		return m, nil
 	case "shift+tab":
-		if m.results.IsEditing() || m.inspector.IsEditing() {
+		if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() {
 			return m, nil
 		}
 		m = m.cycleFocusBack()
@@ -1102,6 +1171,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focus == FocusInspector && m.inspector.IsFiltering() {
 			m.inspector.CancelFilter()
 			m.inspector.cursorField = 0
+			return m, nil
+		}
+		// Cancel new-record mode.
+		if m.inspector.IsInserting() && !m.inspector.IsEditing() {
+			m.inspector.CancelInsert()
 			return m, nil
 		}
 		// In insert mode, esc goes to the editor for vim mode switching.
@@ -1255,12 +1329,19 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.results.StartEdit()
 				return m, nil
 			case "ctrl+s":
-				if !m.results.IsEditable() {
+				if !m.results.IsEditable() && !m.inspector.IsInserting() {
 					break
 				}
 				m.resultsPendingG = false
 				m.resultsPendingY = false
-				return m, m.saveEdits()
+				return m, m.saveChanges()
+			case "A":
+				if m.results.IsEditable() && !m.results.HasDirtyCells() && !m.inspector.IsInserting() {
+					m.resultsPendingG = false
+					m.resultsPendingY = false
+					m.startInsert()
+					return m, nil
+				}
 			case "D":
 				if !m.results.IsEditable() {
 					break
@@ -1390,7 +1471,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "enter":
 				col, val, ok := m.inspector.CommitFieldEdit()
-				if ok {
+				if ok && !m.inspector.IsInserting() {
 					m.results.SetDirtyCell(m.results.CursorRow(), col, val)
 				}
 				return m, nil
@@ -1456,7 +1537,21 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "ctrl+s":
 			m.inspector.pendingG = false
-			return m, m.saveEdits()
+			if m.results.IsEditable() || m.inspector.IsInserting() {
+				return m, m.saveChanges()
+			}
+			return m, nil
+		case "A":
+			m.inspector.pendingG = false
+			if m.results.IsEditable() && !m.results.HasDirtyCells() && !m.inspector.IsInserting() {
+				m.startInsert()
+			}
+			return m, nil
+		case "esc":
+			if m.inspector.IsInserting() {
+				m.inspector.CancelInsert()
+				return m, nil
+			}
 		case "D":
 			m.inspector.pendingG = false
 			if m.results.HasDirtyCells() {
@@ -2222,7 +2317,11 @@ func (m Model) contextHelp() string {
 			if m.results.HasDirtyCells() {
 				discardHint = "  " + keybind("D", "discard")
 			}
-			return keybinds("h/j/k/l", "move", "yy", "copy", "enter", "edit", "ctrl+s", "save") + m.fkNavHint() + discardHint + pg + inspHint
+			insertHint := ""
+			if !m.results.HasDirtyCells() && !m.inspector.IsInserting() {
+				insertHint = "  " + keybind("A", "new")
+			}
+			return keybinds("h/j/k/l", "move", "yy", "copy", "enter", "edit", "ctrl+s", "save") + insertHint + m.fkNavHint() + discardHint + pg + inspHint
 		}
 		pg := ""
 		if m.pageMsg != "" {
@@ -2236,12 +2335,19 @@ func (m Model) contextHelp() string {
 		if m.inspector.IsFiltering() {
 			return keybinds("type", "to filter", "j/k", "navigate", "enter", "select", "esc", "cancel")
 		}
+		if m.inspector.IsInserting() {
+			return keybinds("j/k", "fields", "enter", "edit", "ctrl+s", "save", "esc", "cancel", "ctrl+o", "close")
+		}
 		if m.results.IsEditable() {
 			discardHint := ""
 			if m.results.HasDirtyCells() {
 				discardHint = "  " + keybind("D", "discard")
 			}
-			return keybinds("j/k", "fields", "/", "find", "enter", "edit", "ctrl+s", "save", "ctrl+o", "close") + discardHint
+			insertHint := ""
+			if !m.results.HasDirtyCells() {
+				insertHint = "  " + keybind("A", "new")
+			}
+			return keybinds("j/k", "fields", "/", "find", "enter", "edit", "ctrl+s", "save", "ctrl+o", "close") + insertHint + discardHint
 		}
 		return keybinds("j/k", "fields", "/", "find", "ctrl+o", "close")
 	default:
