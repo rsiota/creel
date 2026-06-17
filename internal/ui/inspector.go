@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -29,6 +30,8 @@ type Inspector struct {
 	editInput   textinput.Model
 	scrollRow   int
 	pendingG    bool
+	filtering   bool
+	filter      string
 }
 
 // NewInspector creates a new inspector component.
@@ -42,6 +45,8 @@ func (i *Inspector) Toggle() {
 	i.editing = false
 	i.cursorField = 0
 	i.scrollRow = 0
+	i.filtering = false
+	i.filter = ""
 }
 
 // Hide forcibly closes the inspector.
@@ -50,6 +55,8 @@ func (i *Inspector) Hide() {
 	i.editing = false
 	i.cursorField = 0
 	i.scrollRow = 0
+	i.filtering = false
+	i.filter = ""
 }
 
 // IsVisible returns whether the inspector panel is currently shown.
@@ -74,6 +81,107 @@ func (i *Inspector) Reset() {
 	i.cursorField = 0
 	i.scrollRow = 0
 	i.editing = false
+	i.filtering = false
+	i.filter = ""
+}
+
+// IsFiltering returns whether the inspector filter input is active.
+func (i Inspector) IsFiltering() bool {
+	return i.filtering
+}
+
+// StartFilter enters inspector filter mode.
+func (i *Inspector) StartFilter() {
+	i.filtering = true
+	i.filter = ""
+	i.cursorField = 0
+	i.scrollRow = 0
+}
+
+// CancelFilter exits filter mode and clears the query.
+func (i *Inspector) CancelFilter() {
+	i.filtering = false
+	i.filter = ""
+}
+
+// CommitFilter exits filter mode, keeping the cursor on the selected field.
+func (i *Inspector) CommitFilter(results ResultsTable) {
+	col := i.selectedColumn(results)
+	i.filtering = false
+	i.filter = ""
+	i.cursorField = col
+	i.ensureFieldVisible(results)
+}
+
+// FilterAddChar appends a character to the filter.
+func (i *Inspector) FilterAddChar(ch string) {
+	i.filter += ch
+	i.cursorField = 0
+	i.scrollRow = 0
+}
+
+// FilterBackspace removes the last character from the filter.
+func (i *Inspector) FilterBackspace() {
+	if len(i.filter) > 0 {
+		i.filter = i.filter[:len(i.filter)-1]
+	}
+	i.cursorField = 0
+	i.scrollRow = 0
+}
+
+// fieldList returns visible field column indices, filtered and sorted when active.
+func (i Inspector) fieldList(results ResultsTable) []int {
+	n := results.NumCols()
+	if n == 0 {
+		return nil
+	}
+	if !i.filtering {
+		indices := make([]int, n)
+		for j := range indices {
+			indices[j] = j
+		}
+		return indices
+	}
+
+	type scored struct {
+		col   int
+		score int
+	}
+	var matches []scored
+	for c := 0; c < n; c++ {
+		name := results.ColumnName(c)
+		idx, score := fuzzyMatch(i.filter, name)
+		if idx != nil || i.filter == "" {
+			matches = append(matches, scored{col: c, score: score})
+		}
+	}
+	sort.SliceStable(matches, func(a, b int) bool {
+		if matches[a].score != matches[b].score {
+			return matches[a].score < matches[b].score
+		}
+		return results.ColumnName(matches[a].col) < results.ColumnName(matches[b].col)
+	})
+	indices := make([]int, len(matches))
+	for j, m := range matches {
+		indices[j] = m.col
+	}
+	return indices
+}
+
+// selectedColumn returns the result column index for the current field cursor.
+func (i Inspector) selectedColumn(results ResultsTable) int {
+	fields := i.fieldList(results)
+	if len(fields) == 0 {
+		return 0
+	}
+	cf := i.cursorField
+	if cf >= len(fields) {
+		cf = len(fields) - 1
+	}
+	if cf < 0 {
+		cf = 0
+	}
+	return fields[cf]
 }
 
 // CursorTop moves the field cursor to the first field.
@@ -83,11 +191,12 @@ func (i *Inspector) CursorTop() {
 }
 
 // CursorBottom moves the field cursor to the last field.
-func (i *Inspector) CursorBottom(numFields int) {
-	if numFields > 0 {
-		i.cursorField = numFields - 1
+func (i *Inspector) CursorBottom(results ResultsTable) {
+	n := len(i.fieldList(results))
+	if n > 0 {
+		i.cursorField = n - 1
 	}
-	i.ensureFieldVisible()
+	i.ensureFieldVisible(results)
 }
 
 // CursorUp moves the field cursor up by one.
@@ -99,16 +208,21 @@ func (i *Inspector) CursorUp() {
 }
 
 // CursorDown moves the field cursor down by one.
-func (i *Inspector) CursorDown(numFields int) {
-	if i.cursorField < numFields-1 {
+func (i *Inspector) CursorDown(results ResultsTable) {
+	n := len(i.fieldList(results))
+	if n > 0 && i.cursorField < n-1 {
 		i.cursorField++
 	}
-	i.ensureFieldVisible()
+	i.ensureFieldVisible(results)
 }
 
 // visibleFieldCount returns how many complete fields fit in the available height.
 func (i Inspector) visibleFieldCount() int {
-	avail := i.height - 2 // title + blank line
+	reserve := 2
+	if i.filtering {
+		reserve++
+	}
+	avail := i.height - reserve
 	if avail < linesPerField {
 		return 1
 	}
@@ -116,7 +230,7 @@ func (i Inspector) visibleFieldCount() int {
 }
 
 // ensureFieldVisible adjusts scrollRow so the cursor field stays in view.
-func (i *Inspector) ensureFieldVisible() {
+func (i *Inspector) ensureFieldVisible(results ...ResultsTable) {
 	max := i.visibleFieldCount()
 	if i.cursorField < i.scrollRow {
 		i.scrollRow = i.cursorField
@@ -127,6 +241,12 @@ func (i *Inspector) ensureFieldVisible() {
 	if i.scrollRow < 0 {
 		i.scrollRow = 0
 	}
+	if len(results) > 0 {
+		fieldIndices := i.fieldList(results[0])
+		if len(fieldIndices) > 0 && i.scrollRow > len(fieldIndices)-1 {
+			i.scrollRow = len(fieldIndices) - 1
+		}
+	}
 }
 
 // StartFieldEdit begins editing the currently focused field.
@@ -134,13 +254,14 @@ func (i *Inspector) StartFieldEdit(results ResultsTable) {
 	if !results.IsEditable() || results.NumCols() == 0 || results.NumRows() == 0 {
 		return
 	}
-	colName := results.ColumnName(i.cursorField)
+	col := i.selectedColumn(results)
+	colName := results.ColumnName(col)
 	if results.isPKColumn(colName) {
 		return
 	}
 
 	row := results.CursorRow()
-	val := results.RowValue(row, i.cursorField)
+	val := results.RowValue(row, col)
 	if val == "NULL" {
 		val = ""
 	}
@@ -163,6 +284,7 @@ func (i *Inspector) StartFieldEdit(results ResultsTable) {
 	ti.Focus()
 	i.editInput = ti
 	i.editing = true
+	i.cursorField = col
 }
 
 // CommitFieldEdit finalizes the edit and returns the column index and new value.
@@ -196,14 +318,33 @@ func (i Inspector) Update(msg tea.Msg) (Inspector, tea.Cmd) {
 // then a bordered value box. The focused field's box border uses the primary
 // color; all others use the table grid color. Row info is pinned to the bottom.
 func (i Inspector) View(results ResultsTable) string {
-	numFields := results.NumCols()
+	fieldIndices := i.fieldList(results)
+	numFields := len(fieldIndices)
+	filterBar := ""
+	if i.filtering {
+		filterBar = lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+i.filter) +
+			lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
+	}
+
 	if numFields == 0 || results.NumRows() == 0 {
 		fieldsHeight := i.height - 2
+		if i.filtering {
+			fieldsHeight--
+		}
 		if fieldsHeight < 1 {
 			fieldsHeight = 1
 		}
-		empty := lipgloss.NewStyle().Height(fieldsHeight).Render("")
-		return "\n" + empty
+		var body strings.Builder
+		body.WriteString("\n")
+		if i.filtering && numFields == 0 && results.NumCols() > 0 {
+			body.WriteString(mutedStyle.Render(" (no matches)"))
+			body.WriteString("\n")
+		}
+		empty := lipgloss.NewStyle().Height(fieldsHeight).Render(body.String())
+		if filterBar != "" {
+			return empty + "\n" + filterBar
+		}
+		return empty
 	}
 
 	row := results.CursorRow()
@@ -251,13 +392,14 @@ func (i Inspector) View(results ResultsTable) string {
 	pkLabelStyle := lipgloss.NewStyle().Foreground(colorLabel).Bold(true)
 	typeStyle := lipgloss.NewStyle().Foreground(colorMuted)
 
-	var fields strings.Builder
+	var rendered strings.Builder
 
-	for c := start; c < end; c++ {
+	for fi := start; fi < end; fi++ {
+		c := fieldIndices[fi]
 		colName := results.ColumnName(c)
 		isPK := results.isPKColumn(colName)
 		isDirty := results.IsDirty(row, c)
-		isFocused := c == cursorClamp
+		isFocused := fi == cursorClamp
 		val := results.RowValue(row, c)
 
 		// Label line: 1-char left pad + column name (left) + type (right) + 1-char right pad
@@ -284,8 +426,8 @@ func (i Inspector) View(results ResultsTable) string {
 			pad = 1
 		}
 
-		fields.WriteString(" " + labelStr + strings.Repeat(" ", pad) + typeStr + " ")
-		fields.WriteString("\n")
+		rendered.WriteString(" " + labelStr + strings.Repeat(" ", pad) + typeStr + " ")
+		rendered.WriteString("\n")
 
 		// Choose border color for this field's value box.
 		bs := borderNormal
@@ -294,14 +436,14 @@ func (i Inspector) View(results ResultsTable) string {
 		}
 
 		// Top border
-		fields.WriteString(bs.Render("┌" + strings.Repeat("─", borderWidth) + "┐"))
-		fields.WriteString("\n")
+		rendered.WriteString(bs.Render("┌" + strings.Repeat("─", borderWidth) + "┐"))
+		rendered.WriteString("\n")
 
 		// Value line
 		if i.editing && isFocused {
 			// Use textinput's own View() which renders a visible cursor.
 			inputView := i.editInput.View()
-			fields.WriteString(bs.Render("│ ") + inputView + bs.Render(" │"))
+			rendered.WriteString(bs.Render("│ ") + inputView + bs.Render(" │"))
 		} else {
 			displayVal := truncateCell(val, valueWidth)
 			valStyle := lipgloss.NewStyle().Foreground(colorFg)
@@ -311,23 +453,29 @@ func (i Inspector) View(results ResultsTable) string {
 			if isDirty {
 				valStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68"))
 			}
-			fields.WriteString(bs.Render("│ ") + valStyle.Render(displayVal) + bs.Render(" │"))
+			rendered.WriteString(bs.Render("│ ") + valStyle.Render(displayVal) + bs.Render(" │"))
 		}
-		fields.WriteString("\n")
+		rendered.WriteString("\n")
 
 		// Bottom border
-		fields.WriteString(bs.Render("└" + strings.Repeat("─", borderWidth) + "┘"))
-		fields.WriteString("\n")
+		rendered.WriteString(bs.Render("└" + strings.Repeat("─", borderWidth) + "┘"))
+		rendered.WriteString("\n")
 	}
 
 	// Height-constrained fields block fills the panel.
 	fieldsHeight := i.height - 2
+	if i.filtering {
+		fieldsHeight--
+	}
 	if fieldsHeight < linesPerField {
 		fieldsHeight = linesPerField
 	}
 	fieldsBlock := lipgloss.NewStyle().
 		Height(fieldsHeight).
-		Render(strings.TrimRight(fields.String(), "\n"))
+		Render(strings.TrimRight(rendered.String(), "\n"))
 
+	if filterBar != "" {
+		return "\n" + fieldsBlock + "\n" + filterBar
+	}
 	return "\n" + fieldsBlock
 }

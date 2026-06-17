@@ -1098,6 +1098,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebarCursor = 0
 			return m, nil
 		}
+		// Exit inspector filter mode.
+		if m.focus == FocusInspector && m.inspector.IsFiltering() {
+			m.inspector.CancelFilter()
+			m.inspector.cursorField = 0
+			return m, nil
+		}
 		// In insert mode, esc goes to the editor for vim mode switching.
 		// In normal mode, esc is a no-op (or could blur the editor).
 		if m.focus == FocusEditor && m.editor.VimMode() == VimInsert {
@@ -1395,6 +1401,31 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.inspector, cmd = m.inspector.Update(msg)
 			return m, cmd
 		}
+		if m.inspector.IsFiltering() {
+			switch msg.String() {
+			case "esc", "ctrl+c":
+				m.inspector.CancelFilter()
+				m.inspector.cursorField = 0
+				return m, nil
+			case "enter":
+				m.inspector.CommitFilter(m.results)
+				return m, nil
+			case "backspace":
+				m.inspector.FilterBackspace()
+				return m, nil
+			case "up", "k":
+				m.inspector.CursorUp()
+				return m, nil
+			case "down", "j":
+				m.inspector.CursorDown(m.results)
+				return m, nil
+			}
+			if msg.Type == tea.KeyRunes {
+				m.inspector.FilterAddChar(msg.String())
+				return m, nil
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "up", "k":
 			m.inspector.pendingG = false
@@ -1402,11 +1433,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "down", "j":
 			m.inspector.pendingG = false
-			m.inspector.CursorDown(m.results.NumCols())
+			m.inspector.CursorDown(m.results)
 			return m, nil
 		case "G":
 			m.inspector.pendingG = false
-			m.inspector.CursorBottom(m.results.NumCols())
+			m.inspector.CursorBottom(m.results)
 			return m, nil
 		case "g":
 			if m.inspector.pendingG {
@@ -1415,6 +1446,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.inspector.pendingG = true
+			return m, nil
+		case "/":
+			m.inspector.StartFilter()
 			return m, nil
 		case "enter", "e", "i":
 			m.inspector.pendingG = false
@@ -2188,14 +2222,17 @@ func (m Model) contextHelp() string {
 		if m.inspector.IsEditing() {
 			return keybinds("enter", "commit", "esc", "cancel")
 		}
+		if m.inspector.IsFiltering() {
+			return keybinds("type", "to filter", "j/k", "navigate", "enter", "select", "esc", "cancel")
+		}
 		if m.results.IsEditable() {
 			discardHint := ""
 			if m.results.HasDirtyCells() {
 				discardHint = "  " + keybind("D", "discard")
 			}
-			return keybinds("j/k", "fields", "enter", "edit", "ctrl+s", "save", "ctrl+o", "close") + discardHint
+			return keybinds("j/k", "fields", "/", "find", "enter", "edit", "ctrl+s", "save", "ctrl+o", "close") + discardHint
 		}
-		return keybinds("j/k", "fields", "ctrl+o", "close")
+		return keybinds("j/k", "fields", "/", "find", "ctrl+o", "close")
 	default:
 		if m.editor.CompletionVisible() {
 			return keybinds("tab/enter", "accept", "ctrl+p/n", "select", "esc", "cancel")
