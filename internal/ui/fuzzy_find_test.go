@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/ruben/gsql/internal/config"
+	"github.com/ruben/gsql/internal/db"
 )
 
 func TestFuzzyMatch(t *testing.T) {
@@ -144,6 +145,39 @@ func TestSidebarFilterBackspace(t *testing.T) {
 	m = updated.(Model)
 	if m.sidebarFilter != "u" {
 		t.Errorf("expected filter 'u' after backspace, got %q", m.sidebarFilter)
+	}
+}
+
+func TestSidebarFilterSelectWithExpandedTable(t *testing.T) {
+	cfg := &config.Config{}
+	m := NewModel(cfg)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.tables = []string{"users", "user_settings", "orders"}
+	m.state = stateWorkspace
+	m.focus = FocusConnections
+	m.expanded = map[string][]db.Column{
+		"users": {
+			{Name: "id", Type: "INTEGER"},
+			{Name: "name", Type: "TEXT"},
+		},
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(Model)
+	for _, r := range "settings" {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(Model)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+
+	item := m.currentSidebarItem()
+	if item == nil || item.text != "user_settings" {
+		t.Fatalf("expected cursor on user_settings after filter select, got %+v", item)
+	}
+	if item.isColumn {
+		t.Fatal("expected a table item, not a column")
 	}
 }
 

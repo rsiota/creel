@@ -1291,17 +1291,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.sidebarCursor = 0
 				return m, nil
 			case "enter":
-				// Select the highlighted match: find it in the full list.
-				if item := m.currentSidebarItem(); item != nil {
-					for i, t := range m.tables {
-						if t == item.text {
-							m.sidebarCursor = i
-							break
-						}
-					}
+				// Select the highlighted match in the full sidebar list.
+				if item := m.currentSidebarItem(); item != nil && !item.isColumn {
+					selected := item.text
+					m.sidebarFiltering = false
+					m.sidebarFilter = ""
+					m.syncSidebarCursorToTable(selected)
+					return m, nil
 				}
 				m.sidebarFiltering = false
 				m.sidebarFilter = ""
+				m.sidebarCursor = 0
 				return m, nil
 			case "backspace":
 				if len(m.sidebarFilter) > 0 {
@@ -1602,6 +1602,17 @@ func highlightMatches(text string, matchIdx []int) string {
 		}
 	}
 	return b.String()
+}
+
+// syncSidebarCursorToTable moves the cursor to a table in the full sidebar list.
+func (m *Model) syncSidebarCursorToTable(tableName string) {
+	items := m.sidebarItems()
+	for i, item := range items {
+		if !item.isColumn && item.text == tableName {
+			m.sidebarCursor = i
+			return
+		}
+	}
 }
 
 // scrollSidebar moves the cursor through the flat sidebar item list.
