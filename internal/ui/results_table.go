@@ -11,6 +11,12 @@ import (
 
 const maxCellWidth = 40
 
+const (
+	copyFlashInterval    = 150 // milliseconds between flash toggles
+	copyFlashTickCount   = 6   // three on/off cycles
+	copyMessageDuration  = 2   // seconds to show "copied to clipboard"
+)
+
 // cellRef identifies a single cell by row and column index.
 type cellRef struct {
 	row int
@@ -42,6 +48,11 @@ type ResultsTable struct {
 	dirtyCells map[cellRef]string // pending unsaved edits (new values)
 	saved      bool              // all dirty cells were saved (show confirmation)
 	saveError  string            // last save error
+	copied     bool              // show clipboard copy confirmation
+	copyFlash       cellRef
+	copyFlashActive bool
+	copyFlashOn     bool
+	copyFlashTicks  int
 	columnTypes map[string]string // column name -> database type (for inspector)
 }
 
@@ -144,6 +155,39 @@ func (r *ResultsTable) ConfirmSaved() {
 	r.dirtyCells = make(map[cellRef]string)
 	r.saved = true
 	r.saveError = ""
+	r.copied = false
+}
+
+// StartCopyFeedback marks the current cell as copied and begins a flash animation.
+func (r *ResultsTable) StartCopyFeedback() {
+	r.copied = true
+	r.copyFlash = cellRef{row: r.cursorRow, col: r.cursorCol}
+	r.copyFlashActive = true
+	r.copyFlashOn = true
+	r.copyFlashTicks = copyFlashTickCount
+}
+
+// AdvanceCopyFlash toggles the copy flash state. It returns whether more ticks remain.
+func (r *ResultsTable) AdvanceCopyFlash() bool {
+	if !r.copyFlashActive || r.copyFlashTicks <= 0 {
+		return false
+	}
+	r.copyFlashTicks--
+	r.copyFlashOn = !r.copyFlashOn
+	if r.copyFlashTicks <= 0 {
+		r.copyFlashActive = false
+		return false
+	}
+	return true
+}
+
+// ClearCopiedMessage hides the clipboard confirmation in the status line.
+func (r *ResultsTable) ClearCopiedMessage() {
+	r.copied = false
+}
+
+func (r ResultsTable) isCopyFlashCell(row, col int) bool {
+	return r.copyFlashActive && r.copyFlash.row == row && r.copyFlash.col == col
 }
 
 // DiscardEdits clears all pending cell edits.
@@ -174,6 +218,8 @@ func (r *ResultsTable) SetResult(cols []string, rows [][]string, message string)
 	r.editing = false
 	r.saved = false
 	r.saveError = ""
+	r.copied = false
+	r.copyFlashActive = false
 	r.computeColWidths()
 }
 
@@ -198,6 +244,8 @@ func (r *ResultsTable) Clear() {
 	r.cursorCol = 0
 	r.dirtyCells = make(map[cellRef]string)
 	r.editing = false
+	r.copied = false
+	r.copyFlashActive = false
 }
 
 // Message returns the current status message.
@@ -432,7 +480,30 @@ func (r *ResultsTable) ScrollBottom() {
 	}
 }
 
-// CursorDown moves the cell cursor down (editable mode).
+// CursorCellValue returns the full value at the current cell cursor.
+func (r ResultsTable) CursorCellValue() string {
+	return r.RowValue(r.cursorRow, r.cursorCol)
+}
+
+// hasCellCursor reports whether the table shows a cell selection cursor.
+func (r ResultsTable) hasCellCursor() bool {
+	return r.hasResult && len(r.rows) > 0
+}
+
+// CursorTop moves the cell cursor to the first row.
+func (r *ResultsTable) CursorTop() {
+	r.cursorRow = 0
+	r.ensureCursorVisible()
+}
+
+// CursorBottom moves the cell cursor to the last row.
+func (r *ResultsTable) CursorBottom() {
+	r.cursorRow = len(r.rows)
+	r.clampCursor()
+	r.ensureCursorVisible()
+}
+
+// CursorDown moves the cell cursor down.
 func (r *ResultsTable) CursorDown() {
 	if r.cursorRow < len(r.rows)-1 {
 		r.cursorRow++
@@ -440,7 +511,7 @@ func (r *ResultsTable) CursorDown() {
 	r.ensureCursorVisible()
 }
 
-// CursorUp moves the cell cursor up (editable mode).
+// CursorUp moves the cell cursor up.
 func (r *ResultsTable) CursorUp() {
 	if r.cursorRow > 0 {
 		r.cursorRow--
@@ -612,7 +683,7 @@ func (r ResultsTable) View() string {
 		}
 		cell := truncateCell(header, r.colWidths[i])
 		style := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
-		if r.editable && i == r.cursorCol {
+		if r.hasCellCursor() && i == r.cursorCol {
 			style = style.Underline(true)
 		}
 		b.WriteString(style.Render(" " + cell + " "))
@@ -635,12 +706,13 @@ func (r ResultsTable) View() string {
 	// Data rows
 	for rowIdx := rowStart; rowIdx < rowEnd; rowIdx++ {
 		row := r.rows[rowIdx]
-		isCursorRow := r.editable && rowIdx == r.cursorRow
+		isCursorRow := r.hasCellCursor() && rowIdx == r.cursorRow
 		b.WriteString(borderColor.Render("│"))
 		for i := colStart; i < colEnd; i++ {
 			ref := cellRef{row: rowIdx, col: i}
 			dirtyVal, isDirty := r.dirtyCells[ref]
 			isCursorCell := isCursorRow && i == r.cursorCol
+			isCopyFlash := r.isCopyFlashCell(rowIdx, i)
 
 			val := ""
 			if i < len(row) {
@@ -667,6 +739,8 @@ func (r ResultsTable) View() string {
 			// Style the cell
 			var style lipgloss.Style
 			switch {
+			case isCopyFlash && r.copyFlashOn:
+				style = lipgloss.NewStyle().Foreground(colorBg).Background(colorSuccess)
 			case isCursorCell:
 				style = lipgloss.NewStyle().Foreground(colorBg).Background(colorPrimary)
 			case isDirty:
@@ -712,6 +786,8 @@ func (r ResultsTable) View() string {
 			editInfo = mutedStyle.Render("[editing] enter: commit  esc: cancel")
 		case r.saveError != "":
 			editInfo = errorStyle.Render(r.saveError)
+		case r.copied:
+			editInfo = successStyle.Render("copied to clipboard")
 		case r.saved:
 			editInfo = successStyle.Render("saved")
 		case len(r.dirtyCells) > 0:
@@ -721,7 +797,11 @@ func (r ResultsTable) View() string {
 		}
 		statusParts = append(statusParts, editInfo)
 	} else {
-		statusParts = append(statusParts, successStyle.Render(r.message))
+		if r.copied {
+			statusParts = append(statusParts, successStyle.Render("copied to clipboard"))
+		} else {
+			statusParts = append(statusParts, successStyle.Render(r.message))
+		}
 	}
 
 	b.WriteString(strings.Join(statusParts, "  "))
@@ -735,7 +815,7 @@ func (r ResultsTable) HelpText() string {
 		if r.editing {
 			return keybinds("enter", "commit", "esc", "cancel")
 		}
-		return keybinds("h/j/k/l", "move", "enter", "edit", "ctrl+s", "save")
+		return keybinds("h/j/k/l", "move", "yy", "copy", "enter", "edit", "ctrl+s", "save")
 	}
-	return keybinds("j/k", "scroll", "h/l", "horizontal")
+	return keybinds("h/j/k/l", "move", "yy", "copy")
 }

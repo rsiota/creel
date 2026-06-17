@@ -171,3 +171,67 @@ func TestResultsTableNullEdit(t *testing.T) {
 		t.Errorf("unexpected edit: %+v", edits)
 	}
 }
+
+func TestCursorCellValue(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult(
+		[]string{"id", "name"},
+		[][]string{
+			{"1", "alice"},
+			{"2", "bob"},
+		},
+		"2 rows",
+	)
+
+	if got := r.CursorCellValue(); got != "1" {
+		t.Fatalf("at (0,0) want %q, got %q", "1", got)
+	}
+
+	r.CursorDown()
+	r.CursorRight()
+	if got := r.CursorCellValue(); got != "bob" {
+		t.Fatalf("at (1,1) want %q, got %q", "bob", got)
+	}
+
+	r.SetDirtyCell(1, 1, "edited")
+	if got := r.CursorCellValue(); got != "edited" {
+		t.Fatalf("dirty cell want %q, got %q", "edited", got)
+	}
+}
+
+func TestCopyFeedback(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult(
+		[]string{"id", "name"},
+		[][]string{{"1", "alice"}},
+		"1 row",
+	)
+	r.cursorRow = 0
+	r.cursorCol = 1
+
+	r.StartCopyFeedback()
+	if !r.copied {
+		t.Fatal("expected copied confirmation")
+	}
+	if !r.isCopyFlashCell(0, 1) || !r.copyFlashOn {
+		t.Fatal("expected flashing cell to start highlighted")
+	}
+
+	for i := 0; i < copyFlashTickCount-1; i++ {
+		if !r.AdvanceCopyFlash() {
+			t.Fatalf("expected more flash ticks at step %d", i)
+		}
+	}
+	if r.AdvanceCopyFlash() {
+		t.Fatal("expected flash to finish after all ticks")
+	}
+	if r.copyFlashActive || r.isCopyFlashCell(0, 1) {
+		t.Fatal("expected flash to stop after all ticks")
+	}
+
+	r.StartCopyFeedback()
+	r.ClearCopiedMessage()
+	if r.copied {
+		t.Fatal("expected copied confirmation to clear")
+	}
+}

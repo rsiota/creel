@@ -11,6 +11,7 @@ var (
 	colorMuted     = lipgloss.Color("#565f89")
 	colorLabel     = lipgloss.Color("#8089ab")
 	colorBorder    = lipgloss.Color("#3b4261")
+	colorBorderUnfocused = lipgloss.Color("#5e6686") // midpoint between colorBorder and colorLabel
 	colorBg        = lipgloss.Color("#1a1b26")
 	colorFg        = lipgloss.Color("#c0caf5")
 	colorHighlight = lipgloss.Color("#292e42")

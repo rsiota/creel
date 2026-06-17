@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/atotto/clipboard"
 	"github.com/ruben/gsql/internal/config"
 	"github.com/ruben/gsql/internal/db"
 	"github.com/ruben/gsql/internal/history"
@@ -61,6 +63,12 @@ type schemasLoadedMsg struct {
 	schemas map[string][]db.Column
 }
 
+// copyFlashTickMsg advances the cell flash animation after a clipboard copy.
+type copyFlashTickMsg struct{}
+
+// copyCopiedClearMsg clears the clipboard confirmation status message.
+type copyCopiedClearMsg struct{}
+
 // Model is the top-level application model for the Bubble Tea architecture.
 type Model struct {
 	state    state
@@ -87,6 +95,7 @@ type Model struct {
 	// Pending vim operator for sidebar (e.g. 'g' waiting for second 'g')
 	sidebarPendingG bool
 	resultsPendingG bool
+	resultsPendingY bool
 
 	// Discard confirmation dialog
 	discardConfirm bool
@@ -651,6 +660,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.columnCache = msg.schemas
 		m.refreshCompletionCandidates()
 		return m, nil
+
+	case copyFlashTickMsg:
+		if m.results.AdvanceCopyFlash() {
+			return m, copyFlashTickCmd()
+		}
+		return m, nil
+
+	case copyCopiedClearMsg:
+		m.results.ClearCopiedMessage()
+		return m, nil
 	}
 
 	if m.state == stateWorkspace {
@@ -1057,94 +1076,90 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
-		// Editable results: cell cursor navigation.
-		if m.results.IsEditable() {
+		// Cell cursor navigation.
+		if m.results.NumRows() > 0 {
 			switch msg.String() {
 			case "up", "k":
 				m.resultsPendingG = false
+				m.resultsPendingY = false
 				m.results.CursorUp()
 				return m, nil
 			case "down", "j":
 				m.resultsPendingG = false
+				m.resultsPendingY = false
 				m.results.CursorDown()
 				return m, nil
 			case "left", "h", "b":
 				m.resultsPendingG = false
+				m.resultsPendingY = false
 				m.results.CursorLeft()
 				return m, nil
 			case "right", "l", "w":
 				m.resultsPendingG = false
+				m.resultsPendingY = false
 				m.results.CursorRight()
 				return m, nil
 			case "G":
 				m.resultsPendingG = false
-				m.results.cursorRow = len(m.results.rows)
-				m.results.clampCursor()
-				m.results.ensureCursorVisible()
+				m.resultsPendingY = false
+				m.results.CursorBottom()
 				return m, nil
 			case "g":
+				m.resultsPendingY = false
 				if m.resultsPendingG {
 					m.resultsPendingG = false
-					m.results.cursorRow = 0
-					m.results.ensureCursorVisible()
+					m.results.CursorTop()
 					return m, nil
 				}
 				m.resultsPendingG = true
 				return m, nil
-			case "enter", "e", "i":
+			case "y":
 				m.resultsPendingG = false
+				if m.resultsPendingY {
+					m.resultsPendingY = false
+					_ = clipboard.WriteAll(m.results.CursorCellValue())
+					m.results.StartCopyFeedback()
+					return m, copyFeedbackCmd()
+				}
+				m.resultsPendingY = true
+				return m, nil
+			case "enter", "e", "i":
+				if !m.results.IsEditable() {
+					break
+				}
+				m.resultsPendingG = false
+				m.resultsPendingY = false
 				if m.inspector.IsVisible() {
 					return m, nil
 				}
 				m.results.StartEdit()
 				return m, nil
 			case "ctrl+s":
+				if !m.results.IsEditable() {
+					break
+				}
 				m.resultsPendingG = false
+				m.resultsPendingY = false
 				return m, m.saveEdits()
 			case "D":
+				if !m.results.IsEditable() {
+					break
+				}
 				m.resultsPendingG = false
+				m.resultsPendingY = false
 				if m.results.HasDirtyCells() {
 					m.discardConfirm = true
 				}
 				return m, nil
 			}
 			m.resultsPendingG = false
+			m.resultsPendingY = false
 			m.results, cmd = m.results.Update(msg)
 			return m, cmd
 		}
 
-		// Non-editable results: scroll navigation.
-		switch msg.String() {
-		case "up", "k":
-			m.resultsPendingG = false
-			m.results.ScrollUp()
-			return m, nil
-		case "down", "j":
-			m.resultsPendingG = false
-			m.results.ScrollDown()
-			return m, nil
-		case "left", "h", "b":
-			m.resultsPendingG = false
-			m.results.ScrollLeft()
-			return m, nil
-		case "right", "l", "w":
-			m.resultsPendingG = false
-			m.results.ScrollRight()
-			return m, nil
-		case "G":
-			m.resultsPendingG = false
-			m.results.ScrollBottom()
-			return m, nil
-		case "g":
-			if m.resultsPendingG {
-				m.resultsPendingG = false
-				m.results.ScrollTop()
-				return m, nil
-			}
-			m.resultsPendingG = true
-			return m, nil
-		}
 		m.resultsPendingG = false
+		m.resultsPendingY = false
 		m.results, cmd = m.results.Update(msg)
 	case FocusConnections:
 		// Fuzzy filter mode intercepts all keys.
@@ -2037,13 +2052,13 @@ func (m Model) contextHelp() string {
 			if m.results.HasDirtyCells() {
 				discardHint = "  " + keybind("D", "discard")
 			}
-			return keybinds("h/j/k/l", "move", "enter", "edit", "ctrl+s", "save") + discardHint + pg + inspHint
+			return keybinds("h/j/k/l", "move", "yy", "copy", "enter", "edit", "ctrl+s", "save") + discardHint + pg + inspHint
 		}
 		pg := ""
 		if m.pageMsg != "" {
 			pg = "  " + m.pageMsg
 		}
-		return keybinds("j/k", "rows", "h/l", "cols", "ctrl+d/ctrl+u", "page") + pg + inspHint
+		return keybinds("h/j/k/l", "move", "yy", "copy", "ctrl+d/ctrl+u", "page") + pg + inspHint
 	case FocusInspector:
 		if m.inspector.IsEditing() {
 			return keybinds("enter", "commit", "esc", "cancel")
@@ -2068,7 +2083,22 @@ func (m Model) borderForFocus(f Focus) lipgloss.Color {
 	if m.focus == f {
 		return colorPrimary
 	}
-	return colorBorder
+	return colorBorderUnfocused
+}
+
+func copyFlashTickCmd() tea.Cmd {
+	return tea.Tick(time.Duration(copyFlashInterval)*time.Millisecond, func(time.Time) tea.Msg {
+		return copyFlashTickMsg{}
+	})
+}
+
+func copyFeedbackCmd() tea.Cmd {
+	return tea.Batch(
+		copyFlashTickCmd(),
+		tea.Tick(time.Duration(copyMessageDuration)*time.Second, func(time.Time) tea.Msg {
+			return copyCopiedClearMsg{}
+		}),
+	)
 }
 
 // truncateSidebarLine truncates a rendered (possibly ANSI-styled) string
