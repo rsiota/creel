@@ -369,9 +369,9 @@ func (e QueryEditor) FormatQuery() string {
 // HelpText returns keybinding hints for the editor.
 func (e QueryEditor) HelpText() string {
 	if e.vimMode == VimNormal {
-		return keybinds("Ctrl+J", "run", "Ctrl+R", "clear", "h/j/k/l/w/b", "move", "i/a/o", "insert")
+		return keybinds("ctrl+e", "run", "\\", "run", "ctrl+r", "clear", "h/j/k/l/w/b", "move", "i/a/o", "insert")
 	}
-	return keybinds("Ctrl+J", "run", "Ctrl+R", "clear", "Esc", "normal mode")
+	return keybinds("ctrl+e", "run", "ctrl+r", "clear", "esc", "normal mode")
 }
 
 // --- Completion ---

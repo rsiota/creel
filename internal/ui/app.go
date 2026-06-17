@@ -900,8 +900,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
-	case "ctrl+enter", "f5":
+	case "ctrl+e":
 		return m, m.executeQuery()
+	case "\\":
+		if m.focus == FocusEditor && m.editor.VimMode() == VimNormal && !m.editor.CompletionVisible() {
+			return m, m.executeQuery()
+		}
 	case "ctrl+d":
 		// Vim-style page navigation — only when not in the editor
 		// (Ctrl+D/U scroll within the editor in vim normal mode).
@@ -1906,7 +1910,7 @@ func (m Model) viewWorkspace() string {
 				m.connectionInfo(connName),
 				m.focusInfo(),
 				m.contextHelp(),
-				keybinds("ctrl+t", "switch", "ctrl+b", "database", "ctrl+y", "history", "ctrl+o", "inspector", "ctrl+hjkl", "focus", "ctrl+q", "quit"),
+				keybinds("ctrl+e", "run", "\\", "run", "ctrl+t", "switch", "ctrl+b", "database", "ctrl+y", "history", "ctrl+o", "inspector", "ctrl+hjkl", "focus", "ctrl+q", "quit"),
 			),
 		)
 
