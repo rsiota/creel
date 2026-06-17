@@ -30,6 +30,7 @@ type QueryEditor struct {
 	textarea textarea.Model
 	width    int
 	height   int
+	viewYOffset int
 
 	vimMode VimMode
 	pending vimPending
@@ -113,6 +114,7 @@ func (e QueryEditor) Update(msg tea.Msg) (QueryEditor, tea.Cmd) {
 
 	var cmd tea.Cmd
 	e.textarea, cmd = e.textarea.Update(msg)
+	e.syncViewOffset()
 	return e, cmd
 }
 
@@ -324,6 +326,7 @@ func (e *QueryEditor) sendKey(keyStr string) {
 	}
 
 	e.textarea, _ = e.textarea.Update(msg)
+	e.syncViewOffset()
 }
 
 func (e QueryEditor) currentLineText() string {
@@ -338,9 +341,10 @@ func (e QueryEditor) currentLineText() string {
 	return lines[idx]
 }
 
-// View renders the query editor.
-func (e QueryEditor) View() string {
-	return e.textarea.View()
+// View renders the query editor with SQL syntax highlighting.
+func (e *QueryEditor) View() string {
+	e.syncViewOffset()
+	return e.highlightedView()
 }
 
 // SetSize sets the dimensions of the editor.
@@ -349,6 +353,7 @@ func (e *QueryEditor) SetSize(width, height int) {
 	e.height = height
 	e.textarea.SetWidth(width - 2)
 	e.textarea.SetHeight(height)
+	e.syncViewOffset()
 }
 
 // CursorUp moves the cursor up.
