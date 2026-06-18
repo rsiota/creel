@@ -187,7 +187,7 @@ func (h HelpPanel) View() string {
 	panel := lipgloss.NewStyle().
 		Width(maxW).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
+		BorderForeground(colorPrimary).
 		Padding(1, 2).
 		Render(content)
 

@@ -1930,7 +1930,8 @@ func (m Model) View() string {
 }
 
 func (m Model) viewConnections() string {
-	footer := mutedStyle.Render("? for help  ·  esc to quit")
+	footer := lipgloss.NewStyle().Foreground(colorLabel).Render("?") + mutedStyle.Render(" help  ·  ") +
+		lipgloss.NewStyle().Foreground(colorLabel).Render("esc") + mutedStyle.Render(" quit")
 
 	popupW, popupH := popupDim()
 	borderOverhead := 2
@@ -2017,30 +2018,19 @@ func (m Model) viewWorkspace() string {
 	}
 
 	// Build right column first so we can measure its actual rendered height.
-	editorTitle := titleStyle.Render("Query")
-	modeIndicator := mutedStyle.Render(fmt.Sprintf("[%s]", m.editor.VimModeStr()))
-	editorContent := lipgloss.JoinVertical(lipgloss.Left,
-		editorTitle+"  "+modeIndicator,
-		m.editor.View(),
-	)
 	editorPanel := lipgloss.NewStyle().
 		Width(rightWidth).
 		Height(editorHeight - borderOverhead).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.borderForFocus(FocusEditor)).
-		Render(editorContent)
+		Render(m.editor.View())
 
-	resultsTitle := titleStyle.Render("Results")
-	resultsContent := lipgloss.JoinVertical(lipgloss.Left,
-		resultsTitle,
-		m.results.View(),
-	)
 	resultsPanel := lipgloss.NewStyle().
 		Width(rightWidth).
 		Height(resultsHeight).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.borderForFocus(FocusResults)).
-		Render(resultsContent)
+		Render(m.results.View())
 
 	rightPanel := lipgloss.JoinVertical(lipgloss.Left,
 		editorPanel,
@@ -2055,16 +2045,12 @@ func (m Model) viewWorkspace() string {
 			inspectorContentHeight = 3
 		}
 		m.inspector.SetSize(inspectorWidth-borderOverhead, inspectorContentHeight)
-		inspectorContent := lipgloss.JoinVertical(lipgloss.Left,
-			titleStyle.Render("Inspector"),
-			m.inspector.View(m.results),
-		)
 		inspectorPanel = lipgloss.NewStyle().
 			Width(inspectorWidth - borderOverhead).
 			Height(inspectorContentHeight).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(m.borderForFocus(FocusInspector)).
-			Render(inspectorContent)
+			Render(m.inspector.View(m.results))
 	}
 
 	// Sidebar content height = right panel height minus sidebar's own borders.
@@ -2073,10 +2059,8 @@ func (m Model) viewWorkspace() string {
 		sidebarContentHeight = 3
 	}
 
-	sidebarTitle := titleStyle.Render("Tables")
-
-	// Reserve 2 lines: title at top, bottom bar (search/scroll info) at bottom.
-	tableAreaHeight := sidebarContentHeight - 2
+	// Reserve 1 line for bottom bar (search/scroll info).
+	tableAreaHeight := sidebarContentHeight - 1
 	if tableAreaHeight < 1 {
 		tableAreaHeight = 1
 	}
@@ -2170,7 +2154,7 @@ func (m Model) viewWorkspace() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.borderForFocus(FocusConnections)).
 		Render(
-			lipgloss.JoinVertical(lipgloss.Left, sidebarTitle, tableListStyled, scrollInfo),
+			lipgloss.JoinVertical(lipgloss.Left, tableListStyled, scrollInfo),
 		)
 
 	connName := ""
@@ -2319,9 +2303,13 @@ func (m Model) statusBar(connName string) string {
 	sep := mutedStyle.Render("  │  ")
 	parts := []string{m.connectionInfo(connName)}
 
+	if m.focus == FocusEditor {
+		parts = append(parts, mutedStyle.Render(fmt.Sprintf("[%s]", m.editor.VimModeStr())))
+	}
+
 	if t := m.currentTable(); t != "" {
 		parts = append(parts,
-			lipgloss.NewStyle().Foreground(colorAccent).Render(t))
+			lipgloss.NewStyle().Foreground(colorLabel).Render(t))
 	}
 
 	if m.results.HasResult() {
