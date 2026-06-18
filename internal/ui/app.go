@@ -2469,17 +2469,12 @@ func (m Model) statusBar(connName string) string {
 			lipgloss.NewStyle().Foreground(colorLabel).Render(t))
 	}
 
-	if len(m.filters) > 0 {
-		parts = append(parts, mutedStyle.Render(strings.Join(m.filters, " AND ")))
-	}
-
-	if m.results.HasResult() {
-		dims := fmt.Sprintf("%d rows × %d cols", m.results.NumRows(), m.results.NumCols())
-		parts = append(parts, mutedStyle.Render(dims))
-	}
-
 	if msg := m.statusMessage(); msg != "" {
 		parts = append(parts, msg)
+	}
+
+	if len(m.filters) > 0 {
+		parts = append(parts, successStyle.Render(strings.Join(m.filters, " AND ")))
 	}
 
 	parts = append(parts, lipgloss.NewStyle().Foreground(colorLabel).Render("?")+mutedStyle.Render(" help"))
