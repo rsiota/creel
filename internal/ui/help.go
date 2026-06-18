@@ -99,6 +99,8 @@ func helpSections() []helpSection {
 				{"y y", "copy cell"},
 				{"g d", "follow foreign key"},
 				{"g b", "go back"},
+				{"f / F", "filter / exclude value"},
+				{"c", "clear filters"},
 				{"enter / e", "edit cell"},
 				{"ctrl+s", "save edits"},
 				{"A", "insert new row"},

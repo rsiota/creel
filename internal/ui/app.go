@@ -126,6 +126,10 @@ type Model struct {
 	lastQuery string
 	pageMsg  string
 
+	// Quick filters (cell-based, server-side WHERE injection)
+	baseQuery string   // original query without filters
+	filters   []string // active filter expressions, AND-joined
+
 	// Foreign-key navigation stack (gb to go back).
 	queryStack        []queryStackEntry
 	restoreCursor     bool
@@ -335,6 +339,8 @@ func (m *Model) executeQuery() tea.Cmd {
 	}
 
 	m.lastQuery = query
+	m.baseQuery = query
+	m.filters = nil
 	m.page = 0
 	m.queryStack = nil
 	return m.runPageQuery()
@@ -433,6 +439,73 @@ func (m *Model) detectResultMetadata(query string) {
 	m.results.SetForeignKeys(table, fks)
 }
 
+// canFilter reports whether the current results support quick-filtering
+// (i.e. the base query is a simple single-table SELECT).
+func (m Model) canFilter() bool {
+	if m.connection == nil || m.baseQuery == "" {
+		return false
+	}
+	return parseSimpleSelectTable(m.baseQuery) != ""
+}
+
+// buildFilteredQuery reconstructs the query from the known table name with
+// all active filters applied as a WHERE clause. Since canFilter() guarantees
+// a simple SELECT * FROM <table>, we rebuild from scratch to avoid issues
+// with existing LIMIT/ORDER BY clauses in the original query.
+func (m Model) buildFilteredQuery() string {
+	table := parseSimpleSelectTable(m.baseQuery)
+	q := fmt.Sprintf("SELECT * FROM %s", table)
+	if len(m.filters) > 0 {
+		q += " WHERE " + strings.Join(m.filters, " AND ")
+	}
+	return q
+}
+
+// applyCellFilter adds a filter for the current cell's column and value,
+// then re-executes the query.
+func (m *Model) applyCellFilter(negate bool) tea.Cmd {
+	if !m.canFilter() || m.results.NumRows() == 0 {
+		return nil
+	}
+	colName := m.results.ColumnName(m.results.CursorCol())
+	val := m.results.CursorCellValue()
+	if colName == "" {
+		return nil
+	}
+
+	var expr string
+	op := "="
+	if negate {
+		op = "!="
+	}
+	if val == "" || val == "NULL" {
+		if negate {
+			expr = fmt.Sprintf("%s IS NOT NULL", colName)
+		} else {
+			expr = fmt.Sprintf("%s IS NULL", colName)
+		}
+	} else {
+		escaped := strings.ReplaceAll(val, "'", "''")
+		expr = fmt.Sprintf("%s %s '%s'", colName, op, escaped)
+	}
+
+	m.filters = append(m.filters, expr)
+	m.lastQuery = m.buildFilteredQuery()
+	m.page = 0
+	return m.runPageQuery()
+}
+
+// clearFilters removes all active filters and re-executes the base query.
+func (m *Model) clearFilters() tea.Cmd {
+	if len(m.filters) == 0 {
+		return nil
+	}
+	m.filters = nil
+	m.lastQuery = m.buildFilteredQuery()
+	m.page = 0
+	return m.runPageQuery()
+}
+
 func (m *Model) pushQueryStack() {
 	m.queryStack = append(m.queryStack, queryStackEntry{
 		query:     m.lastQuery,
@@ -456,6 +529,8 @@ func (m *Model) followForeignKey() tea.Cmd {
 	query := buildForeignKeyQuery(fk.RefTable, fk.RefColumn, val)
 	m.editor.SetValue(query)
 	m.lastQuery = query
+	m.baseQuery = ""
+	m.filters = nil
 	m.page = 0
 	return m.runPageQuery()
 }
@@ -468,6 +543,8 @@ func (m *Model) goBackQuery() tea.Cmd {
 	m.queryStack = m.queryStack[:len(m.queryStack)-1]
 	m.editor.SetValue(entry.query)
 	m.lastQuery = entry.query
+	m.baseQuery = ""
+	m.filters = nil
 	m.page = entry.page
 	m.restoreCursor = true
 	m.restoreCursorRow = entry.cursorRow
@@ -1166,6 +1243,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.dbPicker.Hide()
 		m.discardConfirm = false
 		m.lastQuery = ""
+		m.baseQuery = ""
+		m.filters = nil
 		m.page = 0
 		m.pageMsg = ""
 		m.queryStack = nil
@@ -1372,6 +1451,24 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.discardConfirm = true
 				}
 				return m, nil
+			case "f":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				if m.canFilter() {
+					return m, m.applyCellFilter(false)
+				}
+			case "F":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				if m.canFilter() {
+					return m, m.applyCellFilter(true)
+				}
+			case "c":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				if len(m.filters) > 0 {
+					return m, m.clearFilters()
+				}
 			}
 			m.resultsPendingG = false
 			m.resultsPendingY = false
@@ -2310,6 +2407,10 @@ func (m Model) statusBar(connName string) string {
 	if t := m.currentTable(); t != "" {
 		parts = append(parts,
 			lipgloss.NewStyle().Foreground(colorLabel).Render(t))
+	}
+
+	if len(m.filters) > 0 {
+		parts = append(parts, mutedStyle.Render(strings.Join(m.filters, " AND ")))
 	}
 
 	if m.results.HasResult() {
