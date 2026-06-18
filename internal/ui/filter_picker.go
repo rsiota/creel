@@ -28,6 +28,7 @@ type FilterPicker struct {
 	height    int
 	column    string // column being filtered
 	loading   bool   // waiting for async query
+	preSelect string // cursor cell value to pre-select on load
 }
 
 // NewFilterPicker creates a hidden filter picker.
@@ -35,8 +36,9 @@ func NewFilterPicker() FilterPicker {
 	return FilterPicker{}
 }
 
-// Show opens the picker for a given column in loading state.
-func (p *FilterPicker) Show(column string) {
+// Show opens the picker for a given column in loading state. The cursorCell
+// value is pre-selected so pressing enter immediately filters to it.
+func (p *FilterPicker) Show(column, cursorCell string) {
 	p.visible = true
 	p.column = column
 	p.filter = ""
@@ -44,12 +46,19 @@ func (p *FilterPicker) Show(column string) {
 	p.scrollRow = 0
 	p.loading = true
 	p.values = nil
+	p.preSelect = cursorCell
 }
 
-// SetValues populates the picker with distinct values. Previously selected
-// values are pre-checked based on any existing equality/IN filter.
+// SetValues populates the picker with distinct values. The cursor cell's
+// value and any values from an existing equality/IN filter are pre-checked.
 func (p *FilterPicker) SetValues(values []string, preSelected map[string]bool) {
 	p.loading = false
+	if preSelected == nil {
+		preSelected = make(map[string]bool)
+	}
+	if p.preSelect != "" {
+		preSelected[p.preSelect] = true
+	}
 	p.values = make([]filterValue, len(values))
 	for i, v := range values {
 		p.values[i] = filterValue{
@@ -59,6 +68,7 @@ func (p *FilterPicker) SetValues(values []string, preSelected map[string]bool) {
 	}
 	p.cursor = 0
 	p.scrollRow = 0
+	p.preSelect = ""
 }
 
 // Hide closes the picker.
@@ -68,6 +78,7 @@ func (p *FilterPicker) Hide() {
 	p.filter = ""
 	p.cursor = 0
 	p.scrollRow = 0
+	p.preSelect = ""
 }
 
 // IsVisible returns whether the picker is shown.

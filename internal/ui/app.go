@@ -490,7 +490,8 @@ func (m *Model) openFilterPicker() tea.Cmd {
 	}
 
 	table := parseSimpleSelectTable(m.baseQuery)
-	m.filterPicker.Show(colName)
+	cursorVal := m.results.CursorCellValue()
+	m.filterPicker.Show(colName, cursorVal)
 
 	conn := m.connection
 	return func() tea.Msg {
