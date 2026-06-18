@@ -262,11 +262,10 @@ func (i *Inspector) CursorDown(results ResultsTable) {
 
 // visibleFieldCount returns how many complete fields fit in the available height.
 func (i Inspector) visibleFieldCount() int {
-	reserve := 2
+	avail := i.height
 	if i.filtering {
-		reserve++
+		avail--
 	}
-	avail := i.height - reserve
 	if avail < linesPerField {
 		return 1
 	}
@@ -390,7 +389,7 @@ func (i Inspector) View(results ResultsTable) string {
 	}
 
 	if numFields == 0 || (!i.inserting && results.NumRows() == 0) {
-		fieldsHeight := i.height - 2
+		fieldsHeight := i.height
 		if i.filtering {
 			fieldsHeight--
 		}
@@ -398,7 +397,6 @@ func (i Inspector) View(results ResultsTable) string {
 			fieldsHeight = 1
 		}
 		var body strings.Builder
-		body.WriteString("\n")
 		if i.filtering && numFields == 0 && results.NumCols() > 0 {
 			body.WriteString(mutedStyle.Render(" (no matches)"))
 			body.WriteString("\n")
@@ -544,7 +542,7 @@ func (i Inspector) View(results ResultsTable) string {
 	}
 
 	// Height-constrained fields block fills the panel.
-	fieldsHeight := i.height - 2
+	fieldsHeight := i.height
 	if i.filtering {
 		fieldsHeight--
 	}
@@ -556,7 +554,7 @@ func (i Inspector) View(results ResultsTable) string {
 		Render(strings.TrimRight(rendered.String(), "\n"))
 
 	if filterBar != "" {
-		return "\n" + fieldsBlock + "\n" + filterBar
+		return fieldsBlock + "\n" + filterBar
 	}
-	return "\n" + fieldsBlock
+	return fieldsBlock
 }

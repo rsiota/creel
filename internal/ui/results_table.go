@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -539,7 +538,7 @@ func (r *ResultsTable) ensureCursorVisible() {
 }
 
 func (r ResultsTable) maxVisibleRows() int {
-	max := r.height - 5
+	max := r.height - 4
 	if max < 1 {
 		max = 1
 	}
@@ -877,51 +876,6 @@ func (r ResultsTable) View() string {
 		}
 	}
 	b.WriteString(borderColor.Render("┘"))
-	b.WriteString("\n")
-
-	// Status line
-	colInfo := fmt.Sprintf("cols %d-%d of %d", colStart+1, colEnd, len(r.columns))
-	if len(r.colWidths) <= colEnd-colStart {
-		colInfo = fmt.Sprintf("%d cols", len(r.columns))
-	}
-	rowInfo := fmt.Sprintf("rows %d-%d of %d", rowStart+1, rowEnd, len(r.rows))
-
-	statusParts := []string{
-		mutedStyle.Render(rowInfo),
-		mutedStyle.Render(colInfo),
-	}
-
-	if r.IsNavigableForeignKey(r.cursorRow, r.cursorCol) {
-		if fk, ok := r.ForeignKeyAtCursor(); ok {
-			statusParts = append(statusParts, mutedStyle.Render(fmt.Sprintf("gd → %s", fk.RefTable)))
-		}
-	}
-
-	// Edit-specific status
-	if r.editable {
-		editInfo := ""
-		switch {
-		case r.editing:
-			editInfo = mutedStyle.Render("[editing]")
-		case r.saveError != "":
-			editInfo = errorStyle.Render(r.saveError)
-		case r.copied:
-			editInfo = successStyle.Render("copied to clipboard")
-		case r.saved:
-			editInfo = successStyle.Render("saved")
-		case len(r.dirtyCells) > 0:
-			editInfo = mutedStyle.Render(fmt.Sprintf("%d unsaved edit(s)", len(r.dirtyCells)))
-		}
-		statusParts = append(statusParts, editInfo)
-	} else {
-		if r.copied {
-			statusParts = append(statusParts, successStyle.Render("copied to clipboard"))
-		} else if r.message != "" {
-			statusParts = append(statusParts, successStyle.Render(r.message))
-		}
-	}
-
-	b.WriteString(strings.Join(statusParts, "  "))
 
 	return b.String()
 }
