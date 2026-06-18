@@ -74,6 +74,12 @@ type copyFlashTickMsg struct{}
 // copyCopiedClearMsg clears the clipboard confirmation status message.
 type copyCopiedClearMsg struct{}
 
+// filterValuesMsg carries the distinct values fetched for the filter picker.
+type filterValuesMsg struct {
+	column string
+	values []string
+}
+
 // queryStackEntry stores navigation state for returning after following a FK.
 type queryStackEntry struct {
 	query     string
@@ -98,6 +104,7 @@ type Model struct {
 	history      HistoryPanel
 	dbPicker     DatabasePicker
 	help         HelpPanel
+	filterPicker FilterPicker
 	sidebarCursor int
 	expanded     map[string][]db.Column
 	columnCache  map[string][]db.Column
@@ -156,6 +163,7 @@ func NewModel(cfg *config.Config) Model {
 		history:      NewHistoryPanel(),
 		dbPicker:     NewDatabasePicker(),
 		help:         NewHelpPanel(),
+		filterPicker: NewFilterPicker(),
 		historyStore: history.NewStore(historyDir()),
 		expanded:     make(map[string][]db.Column),
 		pageSize:     defaultPageSize,
@@ -470,35 +478,56 @@ func (m Model) buildFilteredQuery() string {
 	return q
 }
 
-// applyCellFilter adds a filter for the current cell's column and value,
-// then re-executes the query.
-func (m *Model) applyCellFilter(negate bool) tea.Cmd {
+// openFilterPicker opens the value picker for the current column,
+// fetching distinct values from the database asynchronously.
+func (m *Model) openFilterPicker() tea.Cmd {
 	if !m.canFilter() || m.results.NumRows() == 0 {
 		return nil
 	}
 	colName := m.results.ColumnName(m.results.CursorCol())
-	val := m.results.CursorCellValue()
 	if colName == "" {
 		return nil
 	}
 
-	var expr string
-	op := "="
-	if negate {
-		op = "!="
-	}
-	if val == "" || val == "NULL" {
-		if negate {
-			expr = fmt.Sprintf("%s IS NOT NULL", colName)
-		} else {
-			expr = fmt.Sprintf("%s IS NULL", colName)
+	table := parseSimpleSelectTable(m.baseQuery)
+	m.filterPicker.Show(colName)
+
+	conn := m.connection
+	return func() tea.Msg {
+		result, err := conn.DB().Execute(fmt.Sprintf("SELECT DISTINCT %s FROM %s", colName, table))
+		if err != nil {
+			return filterValuesMsg{column: colName}
 		}
-	} else {
-		escaped := strings.ReplaceAll(val, "'", "''")
-		expr = fmt.Sprintf("%s %s '%s'", colName, op, escaped)
+		values := make([]string, 0, len(result.Rows))
+		for _, row := range result.Rows {
+			if len(row) > 0 {
+				values = append(values, row[0])
+			}
+		}
+		return filterValuesMsg{column: colName, values: values}
+	}
+}
+
+// applyFilterPickerSelection takes the selected values from the picker
+// and applies them as a filter (IN clause or IS NULL), then re-executes.
+func (m *Model) applyFilterPickerSelection() tea.Cmd {
+	colName := m.filterPicker.Column()
+	selected := m.filterPicker.SelectedValues()
+	m.filterPicker.Hide()
+
+	// Remove any existing equality/IN filter on this column.
+	if idx, _, found := findEqualityFilter(m.filters, colName); found {
+		m.filters = append(m.filters[:idx], m.filters[idx+1:]...)
 	}
 
-	m.filters = append(m.filters, expr)
+	if len(selected) > 0 {
+		escaped := make([]string, len(selected))
+		for i, v := range selected {
+			escaped[i] = strings.ReplaceAll(v, "'", "''")
+		}
+		m.filters = append(m.filters, buildInClause(colName, escaped))
+	}
+
 	m.lastQuery = m.buildFilteredQuery()
 	m.page = 0
 	m.preserveCursorCol()
@@ -511,6 +540,18 @@ func (m *Model) clearFilters() tea.Cmd {
 		return nil
 	}
 	m.filters = nil
+	m.lastQuery = m.buildFilteredQuery()
+	m.page = 0
+	m.preserveCursorCol()
+	return m.runPageQuery()
+}
+
+// undoFilter removes the last-added filter and re-executes the query.
+func (m *Model) undoFilter() tea.Cmd {
+	if len(m.filters) == 0 {
+		return nil
+	}
+	m.filters = m.filters[:len(m.filters)-1]
 	m.lastQuery = m.buildFilteredQuery()
 	m.page = 0
 	m.preserveCursorCol()
@@ -549,6 +590,59 @@ func (m *Model) preserveCursorCol() {
 	m.restoreCursor = true
 	m.restoreCursorRow = 0
 	m.restoreCursorCol = m.results.CursorCol()
+}
+
+// findEqualityFilter looks for an existing `=` or `IN` filter on colName.
+// Returns the filter index, the set of values, and whether one was found.
+func findEqualityFilter(filters []string, colName string) (int, []string, bool) {
+	for i, f := range filters {
+		eqPrefix := colName + " = '"
+		if strings.HasPrefix(f, eqPrefix) && strings.HasSuffix(f, "'") {
+			return i, []string{f[len(eqPrefix) : len(f)-1]}, true
+		}
+		inPrefix := colName + " IN ("
+		if strings.HasPrefix(f, inPrefix) && strings.HasSuffix(f, ")") {
+			inner := f[len(inPrefix) : len(f)-1]
+			parts := strings.Split(inner, ", ")
+			vals := make([]string, 0, len(parts))
+			for _, p := range parts {
+				vals = append(vals, strings.Trim(p, "'"))
+			}
+			return i, vals, true
+		}
+	}
+	return -1, nil, false
+}
+
+// buildInClause builds a filter expression for a set of values.
+// Single value → col = 'val', multiple → col IN ('v1', 'v2', ...).
+func buildInClause(colName string, values []string) string {
+	if len(values) == 1 {
+		return fmt.Sprintf("%s = '%s'", colName, values[0])
+	}
+	quoted := make([]string, len(values))
+	for i, v := range values {
+		quoted[i] = fmt.Sprintf("'%s'", v)
+	}
+	return fmt.Sprintf("%s IN (%s)", colName, strings.Join(quoted, ", "))
+}
+
+func containsString(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+func removeString(s []string, v string) []string {
+	for i, x := range s {
+		if x == v {
+			return append(s[:i], s[i+1:]...)
+		}
+	}
+	return s
 }
 
 func (m *Model) pushQueryStack() {
@@ -960,6 +1054,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case copyCopiedClearMsg:
 		m.results.ClearCopiedMessage()
 		return m, nil
+
+	case filterValuesMsg:
+		if m.filterPicker.IsVisible() && m.filterPicker.Column() == msg.column {
+			// Pre-select values that are already in an existing filter.
+			preSelected := make(map[string]bool)
+			if _, vals, found := findEqualityFilter(m.filters, msg.column); found {
+				for _, v := range vals {
+					preSelected[v] = true
+				}
+			}
+			m.filterPicker.SetValues(msg.values, preSelected)
+		}
+		return m, nil
 	}
 
 	if m.state == stateWorkspace {
@@ -1171,6 +1278,68 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if msg.Type == tea.KeyRunes {
 			m.dbPicker.FilterAddChar(msg.String())
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Filter picker is modal — intercept all keys when visible.
+	if m.filterPicker.IsVisible() {
+		// When actively typing a filter, only esc/enter/space/backspace/arrows
+		// are special; letter keys go to the filter.
+		if m.filterPicker.filtering() {
+			switch msg.String() {
+			case "esc", "ctrl+c":
+				m.filterPicker.Hide()
+				return m, nil
+			case "enter":
+				return m, m.applyFilterPickerSelection()
+			case " ":
+				m.filterPicker.ToggleSelected()
+				return m, nil
+			case "up":
+				m.filterPicker.CursorUp()
+				return m, nil
+			case "down":
+				m.filterPicker.CursorDown()
+				return m, nil
+			case "backspace":
+				m.filterPicker.FilterBackspace()
+				return m, nil
+			}
+			if msg.Type == tea.KeyRunes {
+				m.filterPicker.FilterAddChar(msg.String())
+				return m, nil
+			}
+			return m, nil
+		}
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.filterPicker.Hide()
+			return m, nil
+		case "enter":
+			return m, m.applyFilterPickerSelection()
+		case " ":
+			m.filterPicker.ToggleSelected()
+			return m, nil
+		case "a":
+			m.filterPicker.SelectAll()
+			return m, nil
+		case "n":
+			m.filterPicker.SelectNone()
+			return m, nil
+		case "up", "k":
+			m.filterPicker.CursorUp()
+			return m, nil
+		case "down", "j":
+			m.filterPicker.CursorDown()
+			return m, nil
+		case "backspace":
+			m.filterPicker.FilterBackspace()
+			return m, nil
+		}
+		if msg.Type == tea.KeyRunes {
+			m.filterPicker.FilterAddChar(msg.String())
 			return m, nil
 		}
 		return m, nil
@@ -1506,19 +1675,19 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				if m.canFilter() {
-					return m, m.applyCellFilter(false)
-				}
-			case "F":
-				m.resultsPendingG = false
-				m.resultsPendingY = false
-				if m.canFilter() {
-					return m, m.applyCellFilter(true)
+					return m, m.openFilterPicker()
 				}
 			case "c":
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				if len(m.filters) > 0 {
 					return m, m.clearFilters()
+				}
+			case "u":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				if len(m.filters) > 0 {
+					return m, m.undoFilter()
 				}
 			case "o":
 				m.resultsPendingG = false
@@ -2355,6 +2524,18 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, pickerPanel, panelX, panelY)
+	}
+
+	// Overlay filter picker if visible
+	if m.filterPicker.IsVisible() {
+		pw, ph := popupDim()
+		m.filterPicker.SetSize(pw, ph)
+		filterPanel := m.filterPicker.View()
+		panelW := lipgloss.Width(filterPanel)
+		panelH := lipgloss.Height(filterPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, filterPanel, panelX, panelY)
 	}
 
 	// Overlay discard confirmation dialog if visible
