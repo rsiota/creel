@@ -186,7 +186,6 @@ func (f ConnectionForm) View() string {
 	}
 
 	b = append(b, "")
-	b = append(b, helpStyle.Render("tab: next field  enter: save  esc: cancel"))
 
 	return lipgloss.JoinVertical(lipgloss.Left, b...)
 }

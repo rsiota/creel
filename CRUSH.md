@@ -35,6 +35,7 @@ internal/ui/              — All Bubble Tea UI components
   connection_form.go      — Add/edit connection form
   query_editor.go         — SQL editor with vim mode (bubbles/textarea)
   results_table.go        — Query results table (custom renderer)
+  help.go                 — Help overlay panel (toggled with `?`)
   history_panel.go        — Query history overlay panel
   connection_form_test.go — Tests for form validation
   table_scroll_test.go    — Tests for sidebar table/schema scrolling
@@ -58,6 +59,7 @@ internal/ui/              — All Bubble Tea UI components
 - [x] Fuzzy table search in sidebar (press `/`, type to filter, `enter` to select, `esc` to cancel)
 - [x] SSH tunnel support (MySQL via bastion host; key-based auth with passphrase + password auth)
 - [x] Record inspector (Ctrl+O toggles right-side panel; vertical form editor that tracks results cursor)
+- [x] Help overlay (`?` toggles a full keybindings popup; status bar shows only context info — connection, table, dimensions, messages)
 
 ## Config Format (~/.config/gsql/config.yaml)
 ```yaml

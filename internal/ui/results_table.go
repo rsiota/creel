@@ -388,6 +388,15 @@ func (r ResultsTable) DirtyCellCount() int {
 	return len(r.dirtyCells)
 }
 
+// IsCopied reports whether the copy-to-clipboard confirmation is showing.
+func (r ResultsTable) IsCopied() bool { return r.copied }
+
+// IsSaved reports whether the save confirmation is showing.
+func (r ResultsTable) IsSaved() bool { return r.saved }
+
+// SaveError returns the last save error message, if any.
+func (r ResultsTable) SaveError() string { return r.saveError }
+
 // SetDirtyCell records a pending cell edit (e.g. from the inspector).
 func (r *ResultsTable) SetDirtyCell(row, col int, val string) {
 	ref := cellRef{row: row, col: col}
@@ -893,7 +902,7 @@ func (r ResultsTable) View() string {
 		editInfo := ""
 		switch {
 		case r.editing:
-			editInfo = mutedStyle.Render("[editing] enter: commit  esc: cancel")
+			editInfo = mutedStyle.Render("[editing]")
 		case r.saveError != "":
 			editInfo = errorStyle.Render(r.saveError)
 		case r.copied:
@@ -901,15 +910,13 @@ func (r ResultsTable) View() string {
 		case r.saved:
 			editInfo = successStyle.Render("saved")
 		case len(r.dirtyCells) > 0:
-			editInfo = mutedStyle.Render(fmt.Sprintf("%d unsaved edit(s) — ctrl+s: save", len(r.dirtyCells)))
-		default:
-			editInfo = mutedStyle.Render("enter/e: edit cell  ctrl+s: save")
+			editInfo = mutedStyle.Render(fmt.Sprintf("%d unsaved edit(s)", len(r.dirtyCells)))
 		}
 		statusParts = append(statusParts, editInfo)
 	} else {
 		if r.copied {
 			statusParts = append(statusParts, successStyle.Render("copied to clipboard"))
-		} else {
+		} else if r.message != "" {
 			statusParts = append(statusParts, successStyle.Render(r.message))
 		}
 	}
@@ -917,19 +924,4 @@ func (r ResultsTable) View() string {
 	b.WriteString(strings.Join(statusParts, "  "))
 
 	return b.String()
-}
-
-// HelpText returns keybinding hints for the results panel.
-func (r ResultsTable) HelpText() string {
-	if r.editable {
-		if r.editing {
-			return keybinds("enter", "commit", "esc", "cancel")
-		}
-		return keybinds("h/j/k/l", "move", "yy", "copy", "gd", "follow fk", "enter", "edit", "ctrl+s", "save")
-	}
-	hints := []string{"h/j/k/l", "move", "yy", "copy"}
-	if r.HasForeignKeys() {
-		hints = append(hints, "gd", "follow fk")
-	}
-	return keybinds(hints...)
 }

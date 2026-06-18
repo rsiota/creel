@@ -154,16 +154,6 @@ func (h HistoryPanel) View() string {
 	return panel
 }
 
-// HelpText returns keybinding hints for the history panel.
-func (h HistoryPanel) HelpText() string {
-	return fmt.Sprintf("%s/%s navigate  %s select  %s close",
-		mutedStyle.Render("j/k"),
-		mutedStyle.Render(""),
-		mutedStyle.Render("enter"),
-		mutedStyle.Render("Ctrl+H"),
-	)
-}
-
 func truncateForDisplay(s string, max int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 	runes := []rune(s)

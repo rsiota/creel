@@ -49,8 +49,4 @@ var (
 
 	borderStyle = lipgloss.NewStyle().
 			BorderForeground(colorBorder)
-
-	helpStyle = lipgloss.NewStyle().
-			Foreground(colorMuted).
-			Padding(0, 1)
 )

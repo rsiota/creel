@@ -371,14 +371,6 @@ func (e QueryEditor) FormatQuery() string {
 	return strings.TrimSpace(e.Value())
 }
 
-// HelpText returns keybinding hints for the editor.
-func (e QueryEditor) HelpText() string {
-	if e.vimMode == VimNormal {
-		return keybinds("ctrl+e", "run", "\\", "run", "ctrl+r", "clear", "h/j/k/l/w/b", "move", "i/a/o", "insert")
-	}
-	return keybinds("ctrl+e", "run", "ctrl+r", "clear", "esc", "normal mode")
-}
-
 // --- Completion ---
 
 // SetCandidates stores the full candidate list for auto-completion.

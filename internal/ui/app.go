@@ -97,6 +97,7 @@ type Model struct {
 	inspector    Inspector
 	history      HistoryPanel
 	dbPicker     DatabasePicker
+	help         HelpPanel
 	sidebarCursor int
 	expanded     map[string][]db.Column
 	columnCache  map[string][]db.Column
@@ -146,6 +147,7 @@ func NewModel(cfg *config.Config) Model {
 		connList:     NewConnectionList(),
 		history:      NewHistoryPanel(),
 		dbPicker:     NewDatabasePicker(),
+		help:         NewHelpPanel(),
 		historyStore: history.NewStore(historyDir()),
 		expanded:     make(map[string][]db.Column),
 		pageSize:     defaultPageSize,
@@ -855,6 +857,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Help overlay is modal — dismiss on any key.
+	if m.help.IsVisible() {
+		m.help.Hide()
+		return m, nil
+	}
+
 	// Filter mode intercepts all keys.
 	if m.connList.IsFiltering() {
 		switch msg.String() {
@@ -886,6 +894,9 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		return m, m.connectToDB()
+	case "?":
+		m.help.Show()
+		return m, nil
 	case "n":
 		m.state = stateAddConnection
 		m.connForm = NewConnectionForm()
@@ -996,6 +1007,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 
+	// Help overlay is modal — dismiss on any key.
+	if m.help.IsVisible() {
+		m.help.Hide()
+		return m, nil
+	}
+
 	// Database picker is modal — intercept all keys when visible.
 	if m.dbPicker.IsVisible() {
 		switch msg.String() {
@@ -1049,6 +1066,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Global workspace keys
 	switch msg.String() {
+	case "?":
+		m.help.Show()
+		return m, nil
 	case "ctrl+y":
 		if m.connection != nil {
 			if m.history.IsVisible() {
@@ -1910,7 +1930,7 @@ func (m Model) View() string {
 }
 
 func (m Model) viewConnections() string {
-	footer := keybinds("enter", "connect", "n", "new", "e", "edit", "d", "delete", "/", "filter", "esc", "quit")
+	footer := mutedStyle.Render("? for help  ·  esc to quit")
 
 	popupW, popupH := popupDim()
 	borderOverhead := 2
@@ -1949,7 +1969,14 @@ func (m Model) viewConnections() string {
 	panelX := (m.width - panelW2) / 2
 	panelY := (m.height - panelH2) / 2
 	bg := strings.Repeat("\n", m.height-1)
-	return placeOverlay(bg, connPanel, panelX, panelY)
+	view := placeOverlay(bg, connPanel, panelX, panelY)
+
+	// Overlay help panel if visible
+	if m.help.IsVisible() {
+		m.help.SetSize(m.width, m.height)
+		view = m.help.View()
+	}
+	return view
 }
 
 func (m Model) viewAddConnection() string {
@@ -2155,14 +2182,7 @@ func (m Model) viewWorkspace() string {
 		Width(m.width).
 		Height(statusHeight).
 		Foreground(colorMuted).
-		Render(
-			fmt.Sprintf(" %s  │  %s  │  %s  │  %s",
-				m.connectionInfo(connName),
-				m.focusInfo(),
-				m.contextHelp(),
-				keybinds("ctrl+e", "run", "\\", "run", "ctrl+t", "switch", "ctrl+b", "database", "ctrl+y", "history", "ctrl+o", "inspector", "ctrl+hjkl", "focus", "ctrl+q", "quit"),
-			),
-		)
+		Render(" " + m.statusBar(connName))
 
 	var workspace string
 	if m.inspector.IsVisible() {
@@ -2228,29 +2248,18 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, popup, popupX, popupY)
 	}
 
+	// Overlay help panel if visible
+	if m.help.IsVisible() {
+		m.help.SetSize(m.width, m.height-1)
+		view = m.help.View()
+	}
+
 	return view
 }
 
 // popupDim returns the fixed popup dimensions matching the connection form.
 func popupDim() (w, h int) {
 	return 71, 19
-}
-
-// keybind renders a single keybinding: the key in colorLabel, the description
-// in colorMuted, separated by a space (no colon).
-func keybind(key, desc string) string {
-	return lipgloss.NewStyle().Foreground(colorLabel).Render(key) + " " +
-		mutedStyle.Render(desc)
-}
-
-// keybinds renders multiple keybinding pairs joined by double spaces.
-// Arguments are alternating key/description strings.
-func keybinds(pairs ...string) string {
-	var parts []string
-	for i := 0; i+1 < len(pairs); i += 2 {
-		parts = append(parts, keybind(pairs[i], pairs[i+1]))
-	}
-	return strings.Join(parts, "  ")
 }
 
 func (m Model) connectionInfo(name string) string {
@@ -2264,98 +2273,74 @@ func (m Model) connectionInfo(name string) string {
 	return s
 }
 
-func (m Model) fkNavHint() string {
-	hint := ""
-	if m.results.HasForeignKeys() {
-		hint += "  " + keybind("gd", "follow fk")
+// currentTable returns the table the user is currently working with, if known.
+// It prefers the editable results source, then the focused sidebar selection.
+func (m Model) currentTable() string {
+	if t := m.results.SourceTable(); t != "" {
+		return t
 	}
-	if len(m.queryStack) > 0 {
-		hint += "  " + keybind("gb", "back")
+	if m.focus == FocusConnections && !m.sidebarFiltering {
+		if item := m.currentSidebarItem(); item != nil && !item.isColumn {
+			return item.text
+		}
 	}
-	return hint
+	return ""
 }
 
-func (m Model) focusInfo() string {
-	switch m.focus {
-	case FocusConnections:
-		return keybind("focus", "tables")
-	case FocusEditor:
-		return keybind("focus", "editor")
-	case FocusResults:
-		return keybind("focus", "results")
-	case FocusInspector:
-		return keybind("focus", "inspector")
-	default:
-		return ""
+// statusMessage returns the most relevant transient message for the status bar
+// (copy confirmation, save state, errors, pagination), or "" if none.
+func (m Model) statusMessage() string {
+	switch {
+	case m.results.SaveError() != "":
+		return errorStyle.Render(m.results.SaveError())
+	case m.results.IsEditing():
+		return mutedStyle.Render("editing")
+	case m.inspector.IsInserting():
+		return mutedStyle.Render("inserting")
+	case m.results.IsCopied():
+		return successStyle.Render("copied to clipboard")
+	case m.results.IsSaved():
+		return successStyle.Render("saved")
+	case m.results.HasDirtyCells():
+		return mutedStyle.Render(fmt.Sprintf("%d unsaved", m.results.DirtyCellCount()))
+	case m.results.HasResult() && m.results.Message() != "":
+		return successStyle.Render(m.results.Message())
+	case m.pageMsg != "":
+		return mutedStyle.Render(m.pageMsg)
 	}
+	return ""
 }
 
-func (m Model) contextHelp() string {
-	if m.dbPicker.IsVisible() {
-		return keybinds("type", "to filter", "j/k", "navigate", "enter", "select", "esc", "cancel")
+// statusBar renders the single-line status bar shown at the bottom of the
+// workspace. It carries contextual info (connection, database, table, result
+// dimensions, transient messages) plus a single "?" hint for the help overlay.
+// All other keybindings live behind the "?" overlay.
+func (m Model) statusBar(connName string) string {
+	sep := mutedStyle.Render("  │  ")
+	parts := []string{m.connectionInfo(connName)}
+
+	if t := m.currentTable(); t != "" {
+		parts = append(parts,
+			lipgloss.NewStyle().Foreground(colorAccent).Render(t))
 	}
-	switch m.focus {
-	case FocusConnections:
-		if m.sidebarFiltering {
-			return keybinds("type", "to filter", "enter", "select", "esc", "cancel")
-		}
-		return keybinds("enter", "expand", "s", "select", "d", "describe", "/", "find", "j/k", "scroll")
-	case FocusResults:
-		if m.results.IsEditing() {
-			return keybinds("enter", "commit", "esc", "cancel")
-		}
-		inspHint := ""
-		if m.inspector.IsVisible() {
-			inspHint = "  " + keybind("ctrl+o", "close inspector")
-		}
-		if m.results.IsEditable() {
-			pg := ""
-			if m.pageMsg != "" {
-				pg = "  " + m.pageMsg
-			}
-			discardHint := ""
-			if m.results.HasDirtyCells() {
-				discardHint = "  " + keybind("D", "discard")
-			}
-			insertHint := ""
-			if !m.results.HasDirtyCells() && !m.inspector.IsInserting() {
-				insertHint = "  " + keybind("A", "new")
-			}
-			return keybinds("h/j/k/l", "move", "yy", "copy", "enter", "edit", "ctrl+s", "save") + insertHint + m.fkNavHint() + discardHint + pg + inspHint
-		}
-		pg := ""
-		if m.pageMsg != "" {
-			pg = "  " + m.pageMsg
-		}
-		return keybinds("h/j/k/l", "move", "yy", "copy", "ctrl+d/ctrl+u", "page") + m.fkNavHint() + pg + inspHint
-	case FocusInspector:
-		if m.inspector.IsEditing() {
-			return keybinds("enter", "commit", "esc", "cancel")
-		}
-		if m.inspector.IsFiltering() {
-			return keybinds("type", "to filter", "j/k", "navigate", "enter", "select", "esc", "cancel")
-		}
-		if m.inspector.IsInserting() {
-			return keybinds("j/k", "fields", "enter", "edit", "ctrl+s", "save", "esc", "cancel", "ctrl+o", "close")
-		}
-		if m.results.IsEditable() {
-			discardHint := ""
-			if m.results.HasDirtyCells() {
-				discardHint = "  " + keybind("D", "discard")
-			}
-			insertHint := ""
-			if !m.results.HasDirtyCells() {
-				insertHint = "  " + keybind("A", "new")
-			}
-			return keybinds("j/k", "fields", "/", "find", "enter", "edit", "ctrl+s", "save", "ctrl+o", "close") + insertHint + discardHint
-		}
-		return keybinds("j/k", "fields", "/", "find", "ctrl+o", "close")
-	default:
-		if m.editor.CompletionVisible() {
-			return keybinds("tab/enter", "accept", "ctrl+p/n", "select", "esc", "cancel")
-		}
-		return m.editor.HelpText()
+
+	if m.results.HasResult() {
+		dims := fmt.Sprintf("%d rows × %d cols", m.results.NumRows(), m.results.NumCols())
+		parts = append(parts, mutedStyle.Render(dims))
 	}
+
+	if msg := m.statusMessage(); msg != "" {
+		parts = append(parts, msg)
+	}
+
+	parts = append(parts, lipgloss.NewStyle().Foreground(colorLabel).Render("?")+mutedStyle.Render(" help"))
+
+	line := strings.Join(parts, sep)
+	// Clip to the terminal width so the status bar always stays on one line.
+	if lipgloss.Width(line) > m.width {
+		line = lipgloss.NewStyle().MaxWidth(m.width).Render(line)
+	}
+	return line
 }
 
 func (m Model) borderForFocus(f Focus) lipgloss.Color {
