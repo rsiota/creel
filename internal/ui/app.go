@@ -130,6 +130,10 @@ type Model struct {
 	baseQuery string   // original query without filters
 	filters   []string // active filter expressions, AND-joined
 
+	// Quick sort (single-column, server-side ORDER BY)
+	sortCol string // column name, "" = no sort
+	sortDir string // "ASC" or "DESC"
+
 	// Foreign-key navigation stack (gb to go back).
 	queryStack        []queryStackEntry
 	restoreCursor     bool
@@ -341,6 +345,8 @@ func (m *Model) executeQuery() tea.Cmd {
 	m.lastQuery = query
 	m.baseQuery = query
 	m.filters = nil
+	m.sortCol = ""
+	m.sortDir = ""
 	m.page = 0
 	m.queryStack = nil
 	return m.runPageQuery()
@@ -449,14 +455,17 @@ func (m Model) canFilter() bool {
 }
 
 // buildFilteredQuery reconstructs the query from the known table name with
-// all active filters applied as a WHERE clause. Since canFilter() guarantees
-// a simple SELECT * FROM <table>, we rebuild from scratch to avoid issues
-// with existing LIMIT/ORDER BY clauses in the original query.
+// all active filters and sort applied. Since canFilter() guarantees a simple
+// SELECT * FROM <table>, we rebuild from scratch to avoid issues with existing
+// LIMIT/ORDER BY clauses in the original query.
 func (m Model) buildFilteredQuery() string {
 	table := parseSimpleSelectTable(m.baseQuery)
 	q := fmt.Sprintf("SELECT * FROM %s", table)
 	if len(m.filters) > 0 {
 		q += " WHERE " + strings.Join(m.filters, " AND ")
+	}
+	if m.sortCol != "" {
+		q += fmt.Sprintf(" ORDER BY %s %s", m.sortCol, m.sortDir)
 	}
 	return q
 }
@@ -492,6 +501,7 @@ func (m *Model) applyCellFilter(negate bool) tea.Cmd {
 	m.filters = append(m.filters, expr)
 	m.lastQuery = m.buildFilteredQuery()
 	m.page = 0
+	m.preserveCursorCol()
 	return m.runPageQuery()
 }
 
@@ -503,7 +513,42 @@ func (m *Model) clearFilters() tea.Cmd {
 	m.filters = nil
 	m.lastQuery = m.buildFilteredQuery()
 	m.page = 0
+	m.preserveCursorCol()
 	return m.runPageQuery()
+}
+
+// toggleSort cycles the sort direction on the current column:
+// none → ASC → DESC → none.
+func (m *Model) toggleSort() tea.Cmd {
+	if !m.canFilter() || m.results.NumRows() == 0 {
+		return nil
+	}
+	colName := m.results.ColumnName(m.results.CursorCol())
+	if colName == "" {
+		return nil
+	}
+	switch {
+	case m.sortCol == "":
+		m.sortCol = colName
+		m.sortDir = "ASC"
+	case m.sortCol == colName && m.sortDir == "ASC":
+		m.sortDir = "DESC"
+	default:
+		m.sortCol = ""
+		m.sortDir = ""
+	}
+	m.lastQuery = m.buildFilteredQuery()
+	m.page = 0
+	m.preserveCursorCol()
+	return m.runPageQuery()
+}
+
+// preserveCursorCol sets up cursor restoration so the column position
+// survives the query re-execution (row resets to 0 since data order changes).
+func (m *Model) preserveCursorCol() {
+	m.restoreCursor = true
+	m.restoreCursorRow = 0
+	m.restoreCursorCol = m.results.CursorCol()
 }
 
 func (m *Model) pushQueryStack() {
@@ -531,6 +576,8 @@ func (m *Model) followForeignKey() tea.Cmd {
 	m.lastQuery = query
 	m.baseQuery = ""
 	m.filters = nil
+	m.sortCol = ""
+	m.sortDir = ""
 	m.page = 0
 	return m.runPageQuery()
 }
@@ -545,6 +592,8 @@ func (m *Model) goBackQuery() tea.Cmd {
 	m.lastQuery = entry.query
 	m.baseQuery = ""
 	m.filters = nil
+	m.sortCol = ""
+	m.sortDir = ""
 	m.page = entry.page
 	m.restoreCursor = true
 	m.restoreCursorRow = entry.cursorRow
@@ -1245,6 +1294,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.lastQuery = ""
 		m.baseQuery = ""
 		m.filters = nil
+		m.sortCol = ""
+		m.sortDir = ""
 		m.page = 0
 		m.pageMsg = ""
 		m.queryStack = nil
@@ -1468,6 +1519,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingY = false
 				if len(m.filters) > 0 {
 					return m, m.clearFilters()
+				}
+			case "o":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				if m.canFilter() {
+					return m, m.toggleSort()
 				}
 			}
 			m.resultsPendingG = false
@@ -2127,7 +2184,10 @@ func (m Model) viewWorkspace() string {
 		Height(resultsHeight).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.borderForFocus(FocusResults)).
-		Render(m.results.View())
+		Render(func() string {
+			m.results.SetSort(m.sortCol, m.sortDir)
+			return m.results.View()
+		}())
 
 	rightPanel := lipgloss.JoinVertical(lipgloss.Left,
 		editorPanel,

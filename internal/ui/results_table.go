@@ -57,6 +57,8 @@ type ResultsTable struct {
 	foreignKeys     map[string]db.ForeignKey // keyed by lowercase column name
 	columnTypes map[string]string // column name -> database type (for inspector)
 	tableColumns []db.TableColumnInfo
+	sortCol      string // column currently sorted by ("" = none)
+	sortDir      string // "ASC" or "DESC"
 }
 
 // NewResultsTable creates a new results table component.
@@ -408,6 +410,12 @@ func (r *ResultsTable) SetDirtyCell(row, col int, val string) {
 // SetColumnTypes stores column type metadata from the query result.
 func (r *ResultsTable) SetColumnTypes(types map[string]string) {
 	r.columnTypes = types
+}
+
+// SetSort stores the current sort state for header arrow display.
+func (r *ResultsTable) SetSort(col, dir string) {
+	r.sortCol = col
+	r.sortDir = dir
 }
 
 // ColumnType returns the database type for a given column index.
@@ -787,6 +795,13 @@ func (r ResultsTable) View() string {
 		header := r.columns[i]
 		if r.editable && r.isPKColumn(header) {
 			header = header + " 🔑"
+		}
+		if header == r.sortCol && r.sortDir != "" {
+			if r.sortDir == "ASC" {
+				header = header + " ↑"
+			} else {
+				header = header + " ↓"
+			}
 		}
 		cell := truncateCell(header, r.colWidths[i])
 		style := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)

@@ -112,3 +112,58 @@ func TestStatusBarShowsFilters(t *testing.T) {
 		t.Error("status bar should show active filter")
 	}
 }
+
+func TestBuildFilteredQuery_WithSort(t *testing.T) {
+	m := Model{
+		baseQuery: "SELECT * FROM users",
+		sortCol:   "name",
+		sortDir:   "ASC",
+	}
+	got := m.buildFilteredQuery()
+	want := "SELECT * FROM users ORDER BY name ASC"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestBuildFilteredQuery_FiltersAndSort(t *testing.T) {
+	m := Model{
+		baseQuery: "SELECT * FROM users",
+		filters:   []string{"country = 'UK'"},
+		sortCol:   "name",
+		sortDir:   "DESC",
+	}
+	got := m.buildFilteredQuery()
+	want := "SELECT * FROM users WHERE country = 'UK' ORDER BY name DESC"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestToggleSort_Cycle(t *testing.T) {
+	m := &Model{
+		baseQuery:  "SELECT * FROM users",
+		connection: &db.Connection{},
+		results:    NewResultsTable(),
+	}
+	m.results.SetResult([]string{"id", "name"}, [][]string{{"1", "alice"}}, "")
+	m.results.SetCursor(0, 1) // cursor on "name" column
+
+	// First toggle: no sort → ASC
+	m.toggleSort()
+	if m.sortCol != "name" || m.sortDir != "ASC" {
+		t.Errorf("after first toggle: sortCol=%q sortDir=%q, want name/ASC", m.sortCol, m.sortDir)
+	}
+
+	// Second toggle: ASC → DESC
+	m.toggleSort()
+	if m.sortCol != "name" || m.sortDir != "DESC" {
+		t.Errorf("after second toggle: sortCol=%q sortDir=%q, want name/DESC", m.sortCol, m.sortDir)
+	}
+
+	// Third toggle: DESC → none
+	m.toggleSort()
+	if m.sortCol != "" || m.sortDir != "" {
+		t.Errorf("after third toggle: sortCol=%q sortDir=%q, want empty", m.sortCol, m.sortDir)
+	}
+}
