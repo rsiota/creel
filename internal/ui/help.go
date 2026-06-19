@@ -108,6 +108,7 @@ func helpSections() []helpSection {
 				{"u", "undo last filter"},
 				{"c", "clear filters"},
 				{"o", "sort column"},
+				{"g s", "column stats"},
 				{"e", "edit cell"},
 				{"ctrl+s", "save edits"},
 				{"A", "insert new row"},

@@ -709,3 +709,90 @@ func TestCompactFilter_CompositePKIn(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+func TestComputeClientStats_Numeric(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"id", "age"}, [][]string{
+		{"1", "30"},
+		{"2", "40"},
+		{"3", "NULL"},
+		{"4", "50"},
+	}, "")
+	r.SetColumnTypes(map[string]string{"id": "INTEGER", "age": "INTEGER"})
+
+	row := computeClientStats(r, 1, true)
+	stats := formatColumnStats(row, true)
+	// count 3, distinct 3, min 30, max 50, sum 120, avg 40
+	if !strings.Contains(stats, "count 3") {
+		t.Errorf("expected count 3, got: %s", stats)
+	}
+	if !strings.Contains(stats, "min 30") {
+		t.Errorf("expected min 30, got: %s", stats)
+	}
+	if !strings.Contains(stats, "max 50") {
+		t.Errorf("expected max 50, got: %s", stats)
+	}
+	if !strings.Contains(stats, "sum 120") {
+		t.Errorf("expected sum 120, got: %s", stats)
+	}
+	if !strings.Contains(stats, "avg 40") {
+		t.Errorf("expected avg 40, got: %s", stats)
+	}
+}
+
+func TestComputeClientStats_NumericSkipsNulls(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"id", "age"}, [][]string{
+		{"1", "NULL"},
+		{"2", "NULL"},
+	}, "")
+	r.SetColumnTypes(map[string]string{"id": "INTEGER", "age": "INTEGER"})
+
+	row := computeClientStats(r, 1, true)
+	stats := formatColumnStats(row, true)
+	if !strings.Contains(stats, "count 0") {
+		t.Errorf("expected count 0 (all NULL), got: %s", stats)
+	}
+}
+
+func TestComputeClientStats_TextColumn(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"id", "name"}, [][]string{
+		{"1", "alice"},
+		{"2", "bob"},
+		{"3", "alice"},
+	}, "")
+	r.SetColumnTypes(map[string]string{"id": "INTEGER", "name": "TEXT"})
+
+	row := computeClientStats(r, 1, false)
+	stats := formatColumnStats(row, false)
+	// count 3, distinct 2 (alice + bob), min alice, max bob
+	if !strings.Contains(stats, "count 3") {
+		t.Errorf("expected count 3, got: %s", stats)
+	}
+	if !strings.Contains(stats, "distinct 2") {
+		t.Errorf("expected distinct 2, got: %s", stats)
+	}
+	if !strings.Contains(stats, "min alice") {
+		t.Errorf("expected min alice, got: %s", stats)
+	}
+	if !strings.Contains(stats, "max bob") {
+		t.Errorf("expected max bob, got: %s", stats)
+	}
+}
+
+func TestFormatColumnStats_Numeric(t *testing.T) {
+	row := []string{"10", "5", "1.5", "9.9", "42.5", "4.25"}
+	got := formatColumnStats(row, true)
+	if !strings.Contains(got, "count 10") || !strings.Contains(got, "avg 4.25") {
+		t.Errorf("unexpected numeric format: %s", got)
+	}
+}
+
+func TestFormatColumnStats_Text(t *testing.T) {
+	row := []string{"10", "3", "aaa", "zzz"}
+	got := formatColumnStats(row, false)
+	if !strings.Contains(got, "count 10") || !strings.Contains(got, "min aaa") {
+		t.Errorf("unexpected text format: %s", got)
+	}
+}
