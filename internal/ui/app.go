@@ -319,6 +319,7 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	m.statsMsg = ""
 	m.exportMsg = ""
 	m.searchMsg = ""
+	m.results.SetSearchMatcher(nil)
 	m.queryStack = nil
 	m.sidebarCursor = 0
 	m.sidebarFiltering = false
@@ -1204,6 +1205,8 @@ func (m *Model) followForeignKey() tea.Cmd {
 	m.sortCol = ""
 	m.sortDir = ""
 	m.page = 0
+	m.results.SetSearchMatcher(nil)
+	m.lastSearch = ""
 	return m.runPageQuery()
 }
 
@@ -1220,6 +1223,8 @@ func (m *Model) goBackQuery() tea.Cmd {
 	m.sortCol = ""
 	m.sortDir = ""
 	m.page = entry.page
+	m.results.SetSearchMatcher(nil)
+	m.lastSearch = ""
 	m.restoreCursor = true
 	m.restoreCursorRow = entry.cursorRow
 	m.restoreCursorCol = entry.cursorCol
@@ -2011,6 +2016,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.focus = FocusConnections
 		m.results.Clear()
 		m.results.ClearEditable()
+		m.results.SetSearchMatcher(nil)
 		m.inspector.Hide()
 		m.dbPicker.Hide()
 		m.discardConfirm = false
@@ -2155,10 +2161,18 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Search mode (g/) intercepts all keys.
 		if m.searching {
+			updateSearchMatcher := func() {
+				if m.searchQuery == "" {
+					m.results.SetSearchMatcher(nil)
+				} else {
+					m.results.SetSearchMatcher(compileSearchPattern(m.searchQuery))
+				}
+			}
 			switch msg.String() {
 			case "esc":
 				m.searching = false
 				m.searchQuery = ""
+				m.results.SetSearchMatcher(nil)
 				return m, nil
 			case "enter":
 				m.lastSearch = m.searchQuery
@@ -2167,6 +2181,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.searchQuery = ""
 				if query != "" {
 					match := compileSearchPattern(query)
+					m.results.SetSearchMatcher(match)
 					if row, col := findNextMatch(m.results, match, true); row >= 0 {
 						m.results.SetCursor(row, col)
 						n := countMatches(m.results, match)
@@ -2179,15 +2194,18 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case "backspace":
 				if len(m.searchQuery) > 0 {
 					m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
+					updateSearchMatcher()
 				}
 				return m, nil
 			case "ctrl+c":
 				m.searching = false
 				m.searchQuery = ""
+				m.results.SetSearchMatcher(nil)
 				return m, nil
 			}
 			if msg.Type == tea.KeyRunes {
 				m.searchQuery += msg.String()
+				updateSearchMatcher()
 				return m, nil
 			}
 			return m, nil

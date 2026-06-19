@@ -66,6 +66,10 @@ type ResultsTable struct {
 	// survive same-table re-queries but auto-invalidate on table change.
 	markedRows  map[string][]string
 	markedTable string
+
+	// Client-side search highlight: matcher is set while/after g/ search so
+	// View() can tint matching cells. nil when no search is active.
+	searchMatcher func(string) bool
 }
 
 // NewResultsTable creates a new results table component.
@@ -373,6 +377,12 @@ func (r ResultsTable) MarkedPKs() [][]string {
 func (r *ResultsTable) ClearMarks() {
 	r.markedRows = nil
 	r.markedTable = ""
+}
+
+// SetSearchMatcher installs a matcher used by View() to tint matching cells.
+// Pass nil to clear highlighting.
+func (r *ResultsTable) SetSearchMatcher(matcher func(string) bool) {
+	r.searchMatcher = matcher
 }
 
 // ConfirmSaved clears dirty cells and shows a confirmation message.
@@ -998,6 +1008,7 @@ func (r ResultsTable) View() string {
 
 			// Style the cell
 			isMarked := r.IsMarkedRow(rowIdx)
+			isSearchMatch := r.searchMatcher != nil && r.searchMatcher(val)
 			var style lipgloss.Style
 			switch {
 			case isCopyFlash && r.copyFlashOn:
@@ -1008,6 +1019,8 @@ func (r ResultsTable) View() string {
 				style = lipgloss.NewStyle().Foreground(colorBg).Background(lipgloss.Color("#e0af68"))
 			case isMarked:
 				style = lipgloss.NewStyle().Foreground(colorMark)
+			case isSearchMatch:
+				style = lipgloss.NewStyle().Foreground(colorFg).Background(colorSearch)
 			default:
 				style = lipgloss.NewStyle().Foreground(colorFg)
 			}
