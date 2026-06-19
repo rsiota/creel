@@ -849,8 +849,7 @@ func (r ResultsTable) View() string {
 				inputText := r.editInput.Value()
 				cell := truncateCell(inputText, r.colWidths[i])
 				b.WriteString(lipgloss.NewStyle().
-					Foreground(colorBg).
-					Background(colorEdit).
+					Foreground(colorEdit).
 					Render(" " + cell + " "))
 				b.WriteString(borderColor.Render("│"))
 				continue
