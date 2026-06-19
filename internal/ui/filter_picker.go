@@ -161,7 +161,8 @@ func (p *FilterPicker) FilterBackspace() {
 	}
 }
 
-// ToggleSelected flips the selection state of the value at the cursor.
+// ToggleSelected flips the selection state of the value at the cursor, then
+// clears the search filter so the user can immediately find the next value.
 func (p *FilterPicker) ToggleSelected() {
 	items := p.filteredValues()
 	if p.cursor < 0 || p.cursor >= len(items) {
@@ -174,6 +175,9 @@ func (p *FilterPicker) ToggleSelected() {
 			break
 		}
 	}
+	p.filter = ""
+	p.cursor = 0
+	p.scrollRow = 0
 }
 
 // SelectAll marks all values as selected.

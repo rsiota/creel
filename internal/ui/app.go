@@ -1401,6 +1401,16 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Filter picker is modal — intercept all keys when visible.
 	if m.filterPicker.IsVisible() {
+		// ctrl+a / ctrl+n work in any state (empty or filtered) and never
+		// collide with search typing since they're KeyCtrl, not KeyRunes.
+		switch msg.String() {
+		case "ctrl+a":
+			m.filterPicker.SelectAll()
+			return m, nil
+		case "ctrl+n":
+			m.filterPicker.SelectNone()
+			return m, nil
+		}
 		// When actively typing a filter, only esc/enter/space/backspace/arrows
 		// are special; letter keys go to the filter.
 		if m.filterPicker.filtering() {
@@ -1437,12 +1447,6 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.applyFilterPickerSelection()
 		case " ":
 			m.filterPicker.ToggleSelected()
-			return m, nil
-		case "a":
-			m.filterPicker.SelectAll()
-			return m, nil
-		case "n":
-			m.filterPicker.SelectNone()
 			return m, nil
 		case "up", "k":
 			m.filterPicker.CursorUp()
