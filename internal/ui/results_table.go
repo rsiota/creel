@@ -957,7 +957,7 @@ func (r ResultsTable) View() string {
 		row := r.rows[rowIdx]
 		isCursorRow := r.hasCellCursor() && rowIdx == r.cursorRow
 		if r.IsMarkedRow(rowIdx) {
-			b.WriteString(lipgloss.NewStyle().Foreground(colorAccent).Render("◆"))
+			b.WriteString(lipgloss.NewStyle().Foreground(colorMark).Render("◆"))
 		} else {
 			b.WriteString(borderColor.Render("│"))
 		}
@@ -1004,7 +1004,7 @@ func (r ResultsTable) View() string {
 			case isDirty:
 				style = lipgloss.NewStyle().Foreground(colorBg).Background(lipgloss.Color("#e0af68"))
 			case isMarked:
-				style = lipgloss.NewStyle().Foreground(colorAccent)
+				style = lipgloss.NewStyle().Foreground(colorMark)
 			default:
 				style = lipgloss.NewStyle().Foreground(colorFg)
 			}

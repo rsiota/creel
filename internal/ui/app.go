@@ -2893,7 +2893,7 @@ func (m Model) statusBar(connName string) string {
 	}
 
 	if n := m.results.MarkCount(); n > 0 {
-		parts = append(parts, lipgloss.NewStyle().Foreground(colorAccent).Render(fmt.Sprintf("◆ %d", n)))
+		parts = append(parts, lipgloss.NewStyle().Foreground(colorMark).Render(fmt.Sprintf("◆ %d", n)))
 	}
 
 	if msg := m.statusMessage(); msg != "" {
