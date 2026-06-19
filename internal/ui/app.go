@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -149,6 +150,7 @@ type Model struct {
 	pageMsg  string
 	statsMsg string // transient column statistics display
 	exportMsg string // transient CSV export result display
+	searchMsg string // transient regex search result display
 
 	// Quick filters (cell-based, server-side WHERE injection)
 	baseQuery string   // original query without filters
@@ -167,6 +169,11 @@ type Model struct {
 	// Column jump (: to fuzzy-match and move the column cursor).
 	columnJumping bool
 	columnJump    string
+
+	// Client-side regex search (g/ to search, n/N to jump between matches).
+	searching   bool
+	searchQuery string
+	lastSearch  string
 }
 
 const defaultPageSize = 200
@@ -311,6 +318,7 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	m.pageMsg = ""
 	m.statsMsg = ""
 	m.exportMsg = ""
+	m.searchMsg = ""
 	m.queryStack = nil
 	m.sidebarCursor = 0
 	m.sidebarFiltering = false
@@ -1108,6 +1116,15 @@ func firstOr(types []string, i int, fallback string) string {
 		return types[i]
 	}
 	return fallback
+}
+
+// pluralIf returns suffix (e.g. "es") when cond is true, "" otherwise.
+// Used for simple pluralization like "1 match" vs "2 matches".
+func pluralIf(cond bool, suffix string) string {
+	if cond {
+		return suffix
+	}
+	return ""
 }
 
 // compactFilter shortens a raw WHERE fragment for display in the status bar.
@@ -2006,6 +2023,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pageMsg = ""
 		m.statsMsg = ""
 		m.exportMsg = ""
+		m.searchMsg = ""
 		m.queryStack = nil
 		m.expanded = make(map[string][]db.Column)
 		m.columnCache = nil
@@ -2099,10 +2117,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.editor, cmd = m.editor.Update(msg)
 	case FocusResults:
-		// Clear transient stats/export display on the next key press.
-		if m.statsMsg != "" || m.exportMsg != "" {
+		// Clear transient stats/export/search display on the next key press.
+		if m.statsMsg != "" || m.exportMsg != "" || m.searchMsg != "" {
 			m.statsMsg = ""
 			m.exportMsg = ""
+			m.searchMsg = ""
 		}
 		// Column jump mode intercepts all keys.
 		if m.columnJumping {
@@ -2130,6 +2149,45 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			if msg.Type == tea.KeyRunes {
 				m.columnJump += msg.String()
+				return m, nil
+			}
+			return m, nil
+		}
+		// Search mode (g/) intercepts all keys.
+		if m.searching {
+			switch msg.String() {
+			case "esc":
+				m.searching = false
+				m.searchQuery = ""
+				return m, nil
+			case "enter":
+				m.lastSearch = m.searchQuery
+				m.searching = false
+				query := m.searchQuery
+				m.searchQuery = ""
+				if query != "" {
+					match := compileSearchPattern(query)
+					if row, col := findNextMatch(m.results, match, true); row >= 0 {
+						m.results.SetCursor(row, col)
+						n := countMatches(m.results, match)
+						m.searchMsg = fmt.Sprintf("%d match%s (this page)", n, pluralIf(n != 1, "es"))
+					} else {
+						m.searchMsg = "no matches on this page"
+					}
+				}
+				return m, nil
+			case "backspace":
+				if len(m.searchQuery) > 0 {
+					m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
+				}
+				return m, nil
+			case "ctrl+c":
+				m.searching = false
+				m.searchQuery = ""
+				return m, nil
+			}
+			if msg.Type == tea.KeyRunes {
+				m.searchQuery += msg.String()
 				return m, nil
 			}
 			return m, nil
@@ -2232,6 +2290,26 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				m.results.StartEdit()
 				return m, nil
+			case "n":
+				if m.lastSearch != "" {
+					m.resultsPendingG = false
+					m.resultsPendingY = false
+					match := compileSearchPattern(m.lastSearch)
+					if row, col := findNextMatch(m.results, match, false); row >= 0 {
+						m.results.SetCursor(row, col)
+					}
+					return m, nil
+				}
+			case "N":
+				if m.lastSearch != "" {
+					m.resultsPendingG = false
+					m.resultsPendingY = false
+					match := compileSearchPattern(m.lastSearch)
+					if row, col := findPrevMatch(m.results, match); row >= 0 {
+						m.results.SetCursor(row, col)
+					}
+					return m, nil
+				}
 			case "ctrl+s":
 				if !m.results.IsEditable() && !m.inspector.IsInserting() {
 					break
@@ -2257,6 +2335,15 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case "/":
+				if m.resultsPendingG {
+					m.resultsPendingG = false
+					m.resultsPendingY = false
+					if m.results.NumRows() > 0 {
+						m.searching = true
+						m.searchQuery = ""
+					}
+					return m, nil
+				}
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				if m.canFilter() {
@@ -2663,6 +2750,115 @@ func bestColumnMatch(cols []string, query string) int {
 	return bestIdx
 }
 
+// compileSearchPattern compiles a user-typed search string as a regex, falling
+// back to a literal substring match if the regex is invalid. The returned
+// matcher function reports whether a cell value contains a match.
+func compileSearchPattern(query string) func(string) bool {
+	if query == "" {
+		return func(string) bool { return false }
+	}
+	if re, err := regexp.Compile(query); err == nil {
+		return func(s string) bool { return re.MatchString(s) }
+	}
+	// Literal fallback: case-sensitive substring match.
+	q := query
+	return func(s string) bool { return strings.Contains(s, q) }
+}
+
+// findNextMatch scans row-major from the cell after the cursor (inclusive if
+// fromStart) and returns the first matching [row, col], or [-1,-1] if none.
+func findNextMatch(r ResultsTable, match func(string) bool, fromStart bool) (int, int) {
+	rows := r.NumRows()
+	cols := r.NumCols()
+	if rows == 0 || cols == 0 {
+		return -1, -1
+	}
+	startRow, startCol := 0, 0
+	if !fromStart {
+		startRow = r.CursorRow()
+		startCol = r.CursorCol() + 1
+	}
+	for row := startRow; row < rows; row++ {
+		for col := 0; col < cols; col++ {
+			if row == startRow && col < startCol {
+				continue
+			}
+			if match(r.RowValue(row, col)) {
+				return row, col
+			}
+		}
+	}
+	// Wrap around.
+	for row := 0; row < startRow; row++ {
+		for col := 0; col < cols; col++ {
+			if match(r.RowValue(row, col)) {
+				return row, col
+			}
+		}
+	}
+	if !fromStart {
+		// Final partial pass on the start row up to the cursor.
+		for col := 0; col < startCol; col++ {
+			if match(r.RowValue(startRow, col)) {
+				return startRow, col
+			}
+		}
+	}
+	return -1, -1
+}
+
+// findPrevMatch scans row-major backwards from the cell before the cursor and
+// returns the nearest matching [row, col], or [-1,-1] if none. Wraps around.
+func findPrevMatch(r ResultsTable, match func(string) bool) (int, int) {
+	rows := r.NumRows()
+	cols := r.NumCols()
+	if rows == 0 || cols == 0 {
+		return -1, -1
+	}
+	startRow := r.CursorRow()
+	startCol := r.CursorCol() - 1
+	// Scan backwards from cursor.
+	for row := startRow; row >= 0; row-- {
+		cEnd := cols - 1
+		if row == startRow {
+			cEnd = startCol
+		}
+		for col := cEnd; col >= 0; col-- {
+			if match(r.RowValue(row, col)) {
+				return row, col
+			}
+		}
+	}
+	// Wrap around: scan from the last row back to the cursor row.
+	for row := rows - 1; row > startRow; row-- {
+		for col := cols - 1; col >= 0; col-- {
+			if match(r.RowValue(row, col)) {
+				return row, col
+			}
+		}
+	}
+	// Final partial pass on the start row from the last col down to cursor.
+	for col := cols - 1; col >= startCol+1; col-- {
+		if match(r.RowValue(startRow, col)) {
+			return startRow, col
+		}
+	}
+	return -1, -1
+}
+
+// countMatches returns the total number of cells matching across all rows.
+func countMatches(r ResultsTable, match func(string) bool) int {
+	count := 0
+	for row := 0; row < r.NumRows(); row++ {
+		for col := 0; col < r.NumCols(); col++ {
+			if match(r.RowValue(row, col)) {
+				count++
+			}
+		}
+	}
+	return count
+}
+
 // highlightMatches renders text with matched characters in the accent color.
 func highlightMatches(text string, matchIdx []int) string {
 	if len(matchIdx) == 0 {
@@ -3003,6 +3199,11 @@ func (m Model) viewWorkspace() string {
 					lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
 				view = prompt + "\n" + view
 			}
+			if m.searching {
+				prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+m.searchQuery) +
+					lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
+				view = prompt + "\n" + view
+			}
 			return view
 		}())
 
@@ -3275,6 +3476,8 @@ func (m Model) statusMessage() string {
 		return successStyle.Render(m.exportMsg)
 	case m.statsMsg != "":
 		return lipgloss.NewStyle().Foreground(colorPrimary).Render(m.statsMsg)
+	case m.searchMsg != "":
+		return lipgloss.NewStyle().Foreground(colorPrimary).Render(m.searchMsg)
 	case m.results.HasDirtyCells():
 		return mutedStyle.Render(fmt.Sprintf("%d unsaved", m.results.DirtyCellCount()))
 	case m.results.HasResult() && m.results.Message() != "":

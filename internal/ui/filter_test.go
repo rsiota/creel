@@ -940,3 +940,134 @@ func TestBestColumnMatch_PrefersBoundary(t *testing.T) {
 		t.Errorf("expected idx 0 (shorter name), got %d", idx)
 	}
 }
+
+func TestCompileSearchPattern_Regex(t *testing.T) {
+	match := compileSearchPattern("^ali")
+	if !match("alice") {
+		t.Error("expected alice to match ^ali")
+	}
+	if match("bob") {
+		t.Error("bob should not match ^ali")
+	}
+}
+
+func TestCompileSearchPattern_LiteralFallback(t *testing.T) {
+	// "(" is invalid regex → should fall back to literal.
+	match := compileSearchPattern("(test")
+	if !match("this is (test text") {
+		t.Error("expected literal match on fallback")
+	}
+	if match("no match here") {
+		t.Error("should not match literal")
+	}
+}
+
+func TestCompileSearchPattern_Empty(t *testing.T) {
+	match := compileSearchPattern("")
+	if match("anything") {
+		t.Error("empty pattern should match nothing")
+	}
+}
+
+func TestFindNextMatch_FromStart(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"a", "b"}, [][]string{
+		{"x", "y"},
+		{"alice", "bob"},
+	}, "")
+	match := compileSearchPattern("alice")
+	row, col := findNextMatch(r, match, true)
+	if row != 1 || col != 0 {
+		t.Errorf("expected [1,0], got [%d,%d]", row, col)
+	}
+}
+
+func TestFindNextMatch_FromCursor(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"a", "b"}, [][]string{
+		{"alice", "1"},
+		{"2", "alice"},
+		{"alice", "3"},
+	}, "")
+	r.SetCursor(1, 1) // cursor at [1,1]
+	match := compileSearchPattern("alice")
+	row, col := findNextMatch(r, match, false)
+	if row != 2 || col != 0 {
+		t.Errorf("expected [2,0] next match from [1,1], got [%d,%d]", row, col)
+	}
+}
+
+func TestFindNextMatch_WrapAround(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"a", "b"}, [][]string{
+		{"alice", "1"},
+		{"2", "3"},
+	}, "")
+	r.SetCursor(1, 1) // cursor at last cell
+	match := compileSearchPattern("alice")
+	row, col := findNextMatch(r, match, false)
+	if row != 0 || col != 0 {
+		t.Errorf("expected wrap to [0,0], got [%d,%d]", row, col)
+	}
+}
+
+func TestFindNextMatch_NoMatch(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"a"}, [][]string{{"x"}, {"y"}}, "")
+	match := compileSearchPattern("zzz")
+	row, col := findNextMatch(r, match, true)
+	if row != -1 || col != -1 {
+		t.Errorf("expected [-1,-1] no match, got [%d,%d]", row, col)
+	}
+}
+
+func TestFindPrevMatch_Basic(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"a", "b"}, [][]string{
+		{"x", "1"},
+		{"alice", "y"},
+	}, "")
+	r.SetCursor(1, 1) // cursor at last cell
+	match := compileSearchPattern("alice")
+	row, col := findPrevMatch(r, match)
+	if row != 1 || col != 0 {
+		t.Errorf("expected [1,0] prev match from [1,1], got [%d,%d]", row, col)
+	}
+}
+
+func TestFindPrevMatch_WrapAround(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"a"}, [][]string{
+		{"1"},
+		{"alice"},
+	}, "")
+	r.SetCursor(0, 0) // cursor at first cell
+	match := compileSearchPattern("alice")
+	row, col := findPrevMatch(r, match)
+	if row != 1 || col != 0 {
+		t.Errorf("expected wrap to [1,0], got [%d,%d]", row, col)
+	}
+}
+
+func TestCountMatches(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"a", "b"}, [][]string{
+		{"alice", "x"},
+		{"y", "alice"},
+		{"alice", "alice"},
+	}, "")
+	match := compileSearchPattern("alice")
+	n := countMatches(r, match)
+	if n != 4 {
+		t.Errorf("expected 4 matches, got %d", n)
+	}
+}
+
+func TestPluralIf(t *testing.T) {
+	if pluralIf(true, "es") != "es" {
+		t.Error("expected 'es' suffix")
+	}
+	if pluralIf(false, "es") != "" {
+		t.Error("expected empty suffix")
+	}
+}

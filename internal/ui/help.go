@@ -110,6 +110,8 @@ func helpSections() []helpSection {
 				{"o", "sort column"},
 				{"g s", "column stats"},
 				{":", "jump to column"},
+				{"g /", "regex search"},
+				{"n / N", "next / prev match"},
 				{"x", "export to CSV"},
 				{"e", "edit cell"},
 				{"ctrl+s", "save edits"},
