@@ -719,6 +719,79 @@ func (m *Model) quickFilterCell(negate bool) tea.Cmd {
 	return m.runPageQuery()
 }
 
+// filterByMarks builds a WHERE pk IN (...) clause from the marked rows and
+// applies it as a filter, then clears the marks. Marks are consumed because
+// the resulting filter now represents them in the active result set.
+func (m *Model) filterByMarks() tea.Cmd {
+	if !m.canFilter() || !m.results.IsEditable() {
+		return nil
+	}
+	tuples := m.results.MarkedPKs()
+	if len(tuples) == 0 {
+		return nil
+	}
+	pkNames := m.results.PKColumns()
+	pkTypes := m.results.PKTypes()
+
+	clause := buildPKInClause(pkNames, pkTypes, tuples)
+
+	// Replace any existing filter on the PK column(s) so pressing F twice
+	// doesn't stack redundant clauses.
+	for _, pk := range pkNames {
+		m.filters = removeColumnFilters(m.filters, pk)
+	}
+	// For composite PKs the clause starts with "(pk1, pk2) IN ..."; remove
+	// any stale composite clause on the same leading column.
+	if len(pkNames) > 1 {
+		m.filters = removeColumnFilters(m.filters, "("+pkNames[0]+" ")
+	}
+	m.filters = append(m.filters, clause)
+	m.results.ClearMarks()
+
+	m.lastQuery = m.buildFilteredQuery()
+	m.page = 0
+	m.preserveCursorCol()
+	return m.runPageQuery()
+}
+
+// buildPKInClause constructs a type-correct IN filter from PK tuples.
+// Single PK:  pk IN (v1, v2, ...)
+// Composite:  (pk1, pk2) IN ((v1a, v2a), (v1b, v2b))
+func buildPKInClause(pkNames, pkTypes []string, tuples [][]string) string {
+	if len(pkNames) == 1 {
+		parts := make([]string, len(tuples))
+		for i, t := range tuples {
+			v := ""
+			if len(t) > 0 {
+				v = t[0]
+			}
+			parts[i] = formatFilterValue(v, pkTypes[0])
+		}
+		return fmt.Sprintf("%s IN (%s)", pkNames[0], strings.Join(parts, ", "))
+	}
+	rows := make([]string, len(tuples))
+	for i, t := range tuples {
+		vals := make([]string, len(pkNames))
+		for j := range pkNames {
+			v := ""
+			if j < len(t) {
+				v = t[j]
+			}
+			vals[j] = formatFilterValue(v, firstOr(pkTypes, j, ""))
+		}
+		rows[i] = "(" + strings.Join(vals, ", ") + ")"
+	}
+	return fmt.Sprintf("(%s) IN (%s)", strings.Join(pkNames, ", "), strings.Join(rows, ", "))
+}
+
+// firstOr returns types[i] if in range, else fallback.
+func firstOr(types []string, i int, fallback string) string {
+	if i >= 0 && i < len(types) {
+		return types[i]
+	}
+	return fallback
+}
+
 // compactFilter shortens a raw WHERE fragment for display in the status bar.
 // IN (...) lists collapse to "col ∈ (n)" and NULL-safe negates collapse to
 // "col ≠ v", so a handful of filters fit on one line.
@@ -736,8 +809,15 @@ func compactFilter(f string) string {
 	// IN (...) → col ∈ (n)
 	if i := strings.Index(f, " IN ("); i >= 0 && strings.HasSuffix(f, ")") {
 		inner := f[i+len(" IN (") : len(f)-1]
-		count := strings.Count(inner, ",") + 1
-		return f[:i] + fmt.Sprintf(" ∈ (%d)", count)
+		prefix := f[:i]
+		var count int
+		if strings.HasPrefix(prefix, "(") {
+			// Composite PK: (pk1,pk2) IN ((..),(..)) — count tuples, not values.
+			count = strings.Count(inner, "), (") + 1
+		} else {
+			count = strings.Count(inner, ",") + 1
+		}
+		return prefix + fmt.Sprintf(" ∈ (%d)", count)
 	}
 	// IS NULL / IS NOT NULL / equality → keep as-is (short enough).
 	return f
@@ -1819,6 +1899,13 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if len(m.filters) > 0 {
 					return m, m.clearFilters()
 				}
+			case "C":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				if m.results.MarkCount() > 0 {
+					m.results.ClearMarks()
+				}
+				return m, nil
 			case "u":
 				m.resultsPendingG = false
 				m.resultsPendingY = false
@@ -1833,6 +1920,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				return m, m.quickFilterCell(true)
+			case " ":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				if m.results.IsEditable() && m.results.NumRows() > 0 {
+					m.results.ToggleMark()
+				}
+				return m, nil
+			case "F":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				return m, m.filterByMarks()
 			case "o":
 				m.resultsPendingG = false
 				m.resultsPendingY = false
@@ -2792,6 +2890,10 @@ func (m Model) statusBar(connName string) string {
 	if t := m.currentTable(); t != "" {
 		parts = append(parts,
 			lipgloss.NewStyle().Foreground(colorLabel).Render(t))
+	}
+
+	if n := m.results.MarkCount(); n > 0 {
+		parts = append(parts, lipgloss.NewStyle().Foreground(colorAccent).Render(fmt.Sprintf("◆ %d", n)))
 	}
 
 	if msg := m.statusMessage(); msg != "" {

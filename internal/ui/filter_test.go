@@ -523,3 +523,189 @@ func TestQuickFilterCell_ReplacesExisting(t *testing.T) {
 		t.Errorf("country should be replaced with UK, got %q", m.filters[1])
 	}
 }
+
+func TestRowMarks_ToggleAndCount(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"id", "name"}, [][]string{{"1", "alice"}, {"2", "bob"}}, "")
+	r.SetEditable("users", []string{"id"})
+	r.SetColumnTypes(map[string]string{"id": "INTEGER", "name": "TEXT"})
+
+	if r.MarkCount() != 0 {
+		t.Fatalf("expected 0 marks, got %d", r.MarkCount())
+	}
+
+	// Mark row 0.
+	r.ToggleMark()
+	if r.MarkCount() != 1 {
+		t.Errorf("expected 1 mark, got %d", r.MarkCount())
+	}
+	if !r.IsMarkedRow(0) {
+		t.Error("row 0 should be marked")
+	}
+	if r.IsMarkedRow(1) {
+		t.Error("row 1 should not be marked")
+	}
+
+	// Unmark row 0.
+	r.ToggleMark()
+	if r.MarkCount() != 0 {
+		t.Errorf("expected 0 marks after untoggle, got %d", r.MarkCount())
+	}
+}
+
+func TestRowMarks_MoveCursorAndMarkMultiple(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"id", "name"}, [][]string{{"1", "a"}, {"2", "b"}, {"3", "c"}}, "")
+	r.SetEditable("users", []string{"id"})
+
+	r.ToggleMark()       // cursor on row 0 (id=1)
+	r.CursorDown()
+	r.ToggleMark()       // cursor on row 1 (id=2)
+	r.CursorDown()
+	r.ToggleMark()       // cursor on row 2 (id=3)
+
+	if r.MarkCount() != 3 {
+		t.Fatalf("expected 3 marks, got %d", r.MarkCount())
+	}
+	tuples := r.MarkedPKs()
+	if len(tuples) != 3 {
+		t.Fatalf("expected 3 tuples, got %d", len(tuples))
+	}
+}
+
+func TestRowMarks_SurviveRequerySameTable(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"id", "name"}, [][]string{{"1", "a"}, {"2", "b"}}, "")
+	r.SetEditable("users", []string{"id"})
+	r.ToggleMark() // mark id=1
+
+	// Simulate a filtered re-query: new rows but same table/PK.
+	r.SetResult([]string{"id", "name"}, [][]string{{"1", "a"}, {"9", "z"}}, "")
+	// Editability is re-established after the re-query.
+	r.SetEditable("users", []string{"id"})
+
+	if r.MarkCount() != 1 {
+		t.Errorf("mark should survive same-table requery, got %d", r.MarkCount())
+	}
+	if !r.IsMarkedRow(0) {
+		t.Error("row with id=1 should still be marked after requery")
+	}
+}
+
+func TestRowMarks_InvalidateOnTableChange(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"id", "name"}, [][]string{{"1", "a"}}, "")
+	r.SetEditable("users", []string{"id"})
+	r.ToggleMark()
+	if r.MarkCount() != 1 {
+		t.Fatalf("expected 1 mark, got %d", r.MarkCount())
+	}
+
+	// Switch to a different table.
+	r.SetResult([]string{"oid", "label"}, [][]string{{"1", "x"}}, "")
+	r.SetEditable("orders", []string{"oid"})
+
+	if r.MarkCount() != 0 {
+		t.Errorf("marks should invalidate on table change, got %d", r.MarkCount())
+	}
+	if r.IsMarkedRow(0) {
+		t.Error("no rows should be marked after table change")
+	}
+}
+
+func TestRowMarks_NoOpWhenNotEditable(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"id", "name"}, [][]string{{"1", "a"}}, "")
+	// Not editable: no PK.
+	r.ToggleMark()
+	if r.MarkCount() != 0 {
+		t.Errorf("should not mark non-editable table, got %d", r.MarkCount())
+	}
+}
+
+func TestBuildPKInClause_Single(t *testing.T) {
+	got := buildPKInClause([]string{"id"}, []string{"INTEGER"}, [][]string{{"1"}, {"2"}, {"3"}})
+	want := "id IN (1, 2, 3)"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestBuildPKInClause_SingleStringType(t *testing.T) {
+	got := buildPKInClause([]string{"code"}, []string{"VARCHAR"}, [][]string{{"US"}, {"UK"}})
+	want := "code IN ('US', 'UK')"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestBuildPKInClause_Composite(t *testing.T) {
+	got := buildPKInClause([]string{"a", "b"}, []string{"INTEGER", "TEXT"}, [][]string{{"1", "x"}, {"2", "y"}})
+	want := "(a, b) IN ((1, 'x'), (2, 'y'))"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestFilterByMarks_BuildsAndConsumes(t *testing.T) {
+	m := &Model{
+		baseQuery:  "SELECT * FROM users",
+		connection: &db.Connection{},
+		results:    NewResultsTable(),
+	}
+	m.results.SetResult([]string{"id", "name"}, [][]string{{"1", "a"}, {"2", "b"}, {"3", "c"}}, "")
+	m.results.SetColumnTypes(map[string]string{"id": "INTEGER", "name": "TEXT"})
+	m.results.SetEditable("users", []string{"id"})
+
+	// Mark rows 0 and 2 (ids 1 and 3).
+	m.results.ToggleMark()
+	m.results.CursorDown()
+	m.results.CursorDown()
+	m.results.ToggleMark()
+
+	cmd := m.filterByMarks()
+	if cmd == nil {
+		t.Fatal("expected a command from filterByMarks")
+	}
+	if len(m.filters) != 1 {
+		t.Fatalf("expected 1 filter, got %d: %v", len(m.filters), m.filters)
+	}
+	if m.filters[0] != "id IN (1, 3)" {
+		t.Errorf("expected 'id IN (1, 3)', got %q", m.filters[0])
+	}
+	if m.results.MarkCount() != 0 {
+		t.Errorf("marks should be cleared after F, got %d", m.results.MarkCount())
+	}
+}
+
+func TestFilterByMarks_CompositePK(t *testing.T) {
+	m := &Model{
+		baseQuery:  "SELECT * FROM orders",
+		connection: &db.Connection{},
+		results:    NewResultsTable(),
+	}
+	m.results.SetResult([]string{"a", "b"}, [][]string{{"1", "x"}, {"2", "y"}}, "")
+	m.results.SetColumnTypes(map[string]string{"a": "INTEGER", "b": "TEXT"})
+	m.results.SetEditable("orders", []string{"a", "b"})
+
+	m.results.ToggleMark()
+	m.results.CursorDown()
+	m.results.ToggleMark()
+
+	m.filterByMarks()
+	if len(m.filters) != 1 {
+		t.Fatalf("expected 1 filter, got %d", len(m.filters))
+	}
+	want := "(a, b) IN ((1, 'x'), (2, 'y'))"
+	if m.filters[0] != want {
+		t.Errorf("got %q, want %q", m.filters[0], want)
+	}
+}
+
+func TestCompactFilter_CompositePKIn(t *testing.T) {
+	got := compactFilter("(a, b) IN ((1, 'x'), (2, 'y'), (3, 'z'))")
+	want := "(a, b) ∈ (3)"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

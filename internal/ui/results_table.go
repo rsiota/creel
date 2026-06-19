@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -59,6 +60,12 @@ type ResultsTable struct {
 	tableColumns []db.TableColumnInfo
 	sortCol      string // column currently sorted by ("" = none)
 	sortDir      string // "ASC" or "DESC"
+
+	// Row marks (staging area for building WHERE pk IN (...) filters).
+	// keyed by joined PK values; markedTable guards staleness so marks
+	// survive same-table re-queries but auto-invalidate on table change.
+	markedRows  map[string][]string
+	markedTable string
 }
 
 // NewResultsTable creates a new results table component.
@@ -246,6 +253,126 @@ func (r ResultsTable) SourceTable() string {
 // PKColumns returns the primary key column names.
 func (r ResultsTable) PKColumns() []string {
 	return r.pkColumns
+}
+
+// PKTypes returns the database type for each primary key column, aligned
+// with PKColumns, so callers can build type-correct IN clauses.
+func (r ResultsTable) PKTypes() []string {
+	types := make([]string, len(r.pkColumns))
+	for i, pk := range r.pkColumns {
+		for j, c := range r.columns {
+			if strings.EqualFold(c, pk) {
+				types[i] = r.ColumnType(j)
+				break
+			}
+		}
+	}
+	return types
+}
+
+// pkTuple returns the PK column values for a row, aligned with pkColumns.
+// Returns nil if the row or any PK column is out of range.
+func (r ResultsTable) pkTuple(rowIdx int) []string {
+	if rowIdx < 0 || rowIdx >= len(r.rows) || len(r.pkColumns) == 0 {
+		return nil
+	}
+	tuple := make([]string, 0, len(r.pkColumns))
+	for _, pk := range r.pkColumns {
+		found := false
+		for j, c := range r.columns {
+			if strings.EqualFold(c, pk) {
+				if j < len(r.rows[rowIdx]) {
+					tuple = append(tuple, r.rows[rowIdx][j])
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil
+		}
+	}
+	return tuple
+}
+
+// pkKey joins a PK tuple into a stable map key (unit separator delimited).
+func pkKey(tuple []string) string {
+	return strings.Join(tuple, "\x1f")
+}
+
+// marksStale reports whether stored marks belong to a different table.
+func (r ResultsTable) marksStale() bool {
+	return r.markedTable != "" && !strings.EqualFold(r.markedTable, r.sourceTable)
+}
+
+// MarkCount returns the number of marked rows for the current table (0 if
+// marks belong to a different table).
+func (r ResultsTable) MarkCount() int {
+	if r.marksStale() {
+		return 0
+	}
+	return len(r.markedRows)
+}
+
+// IsMarkedRow reports whether the given row is currently marked.
+func (r ResultsTable) IsMarkedRow(rowIdx int) bool {
+	if r.marksStale() || len(r.markedRows) == 0 {
+		return false
+	}
+	tuple := r.pkTuple(rowIdx)
+	if tuple == nil {
+		return false
+	}
+	_, ok := r.markedRows[pkKey(tuple)]
+	return ok
+}
+
+// ToggleMark flips the mark on the cursor row. Marks are keyed by PK tuple,
+// so they survive pagination and same-table re-queries. Switching tables
+// invalidates them.
+func (r *ResultsTable) ToggleMark() {
+	if !r.editable || r.sourceTable == "" || len(r.pkColumns) == 0 {
+		return
+	}
+	// Reset if marks are from a different (or now-empty) table.
+	if r.markedTable == "" || r.marksStale() {
+		r.markedRows = make(map[string][]string)
+		r.markedTable = r.sourceTable
+	}
+	tuple := r.pkTuple(r.cursorRow)
+	if tuple == nil {
+		return
+	}
+	key := pkKey(tuple)
+	if _, ok := r.markedRows[key]; ok {
+		delete(r.markedRows, key)
+	} else {
+		r.markedRows[key] = tuple
+	}
+}
+
+// MarkedPKs returns the marked PK tuples for the current table, sorted by
+// their joined key for deterministic output.
+func (r ResultsTable) MarkedPKs() [][]string {
+	if r.marksStale() {
+		return nil
+	}
+	keys := make([]string, 0, len(r.markedRows))
+	for k := range r.markedRows {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([][]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, r.markedRows[k])
+	}
+	return out
+}
+
+// ClearMarks removes all row marks.
+func (r *ResultsTable) ClearMarks() {
+	r.markedRows = nil
+	r.markedTable = ""
 }
 
 // ConfirmSaved clears dirty cells and shows a confirmation message.
@@ -829,7 +956,11 @@ func (r ResultsTable) View() string {
 	for rowIdx := rowStart; rowIdx < rowEnd; rowIdx++ {
 		row := r.rows[rowIdx]
 		isCursorRow := r.hasCellCursor() && rowIdx == r.cursorRow
-		b.WriteString(borderColor.Render("│"))
+		if r.IsMarkedRow(rowIdx) {
+			b.WriteString(lipgloss.NewStyle().Foreground(colorAccent).Render("◆"))
+		} else {
+			b.WriteString(borderColor.Render("│"))
+		}
 		for i := colStart; i < colEnd; i++ {
 			ref := cellRef{row: rowIdx, col: i}
 			dirtyVal, isDirty := r.dirtyCells[ref]
@@ -863,6 +994,7 @@ func (r ResultsTable) View() string {
 			}
 
 			// Style the cell
+			isMarked := r.IsMarkedRow(rowIdx)
 			var style lipgloss.Style
 			switch {
 			case isCopyFlash && r.copyFlashOn:
@@ -871,6 +1003,8 @@ func (r ResultsTable) View() string {
 				style = lipgloss.NewStyle().Foreground(colorBg).Background(colorPrimary)
 			case isDirty:
 				style = lipgloss.NewStyle().Foreground(colorBg).Background(lipgloss.Color("#e0af68"))
+			case isMarked:
+				style = lipgloss.NewStyle().Foreground(colorAccent)
 			default:
 				style = lipgloss.NewStyle().Foreground(colorFg)
 			}
