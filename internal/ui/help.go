@@ -66,7 +66,7 @@ func helpSections() []helpSection {
 				{"tab / shift+tab", "cycle focus"},
 				{"ctrl+d / ctrl+u", "next / prev page"},
 				{"?", "toggle this help"},
-				{"ctrl+q / ctrl+c", "quit"},
+				{"q / ctrl+q / ctrl+c", "quit (not while editing)"},
 			},
 		},
 		{

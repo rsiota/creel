@@ -1143,7 +1143,7 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		m.connList.StartFilter()
 		return m, nil
-	case "esc":
+	case "esc", "q":
 		m.quitting = true
 		return m, tea.Quit
 	case "up", "k":
@@ -1365,6 +1365,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		m.help.Show()
 		return m, nil
+	case "q":
+		// Quit — but only when no text-input / editing context is active,
+		// otherwise 'q' must remain available for typing.
+		if m.results.IsEditing() ||
+			m.inspector.IsEditing() || m.inspector.IsInserting() || m.inspector.IsFiltering() ||
+			m.sidebarFiltering ||
+			(m.focus == FocusEditor && m.editor.VimMode() == VimInsert) {
+			break
+		}
+		m.quitting = true
+		return m, tea.Quit
 	case "ctrl+y":
 		if m.connection != nil {
 			if m.history.IsVisible() {
