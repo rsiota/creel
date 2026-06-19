@@ -794,7 +794,13 @@ func (r *ResultsTable) StartEdit() {
 	if r.cursorCol < len(r.colWidths) {
 		colWidth = r.colWidths[r.cursorCol]
 	}
-	ti.Width = colWidth
+	// textinput.View() renders Width+1 chars (cursor takes a column), so
+	// subtract 1 to keep cell borders aligned with non-editing rows.
+	ti.Width = colWidth - 1
+
+	ti.TextStyle = lipgloss.NewStyle().Foreground(colorEdit)
+	ti.Cursor.Style = lipgloss.NewStyle().Foreground(colorFg).Background(colorBg)
+
 	ti.Focus()
 	r.editInput = ti
 	r.editing = true
@@ -977,11 +983,8 @@ func (r ResultsTable) View() string {
 
 			// If this is the cell being edited, show the input buffer.
 			if r.editing && isCursorCell {
-				inputText := r.editInput.Value()
-				cell := truncateCell(inputText, r.colWidths[i])
-				b.WriteString(lipgloss.NewStyle().
-					Foreground(colorEdit).
-					Render(" " + cell + " "))
+				inputView := r.editInput.View()
+				b.WriteString(" " + inputView + " ")
 				b.WriteString(borderColor.Render("│"))
 				continue
 			}

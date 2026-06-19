@@ -336,7 +336,9 @@ func (i *Inspector) beginFieldEdit(val string) {
 	if valueWidth < 10 {
 		valueWidth = 10
 	}
-	ti.Width = valueWidth
+	// textinput.View() renders Width+1 chars (cursor takes a column), so
+	// subtract 1 to keep the value line within the bordered field box.
+	ti.Width = valueWidth - 1
 
 	ti.TextStyle = lipgloss.NewStyle().Foreground(colorFg)
 	ti.Cursor.Style = lipgloss.NewStyle().Foreground(colorFg).Background(colorBg)
