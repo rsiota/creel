@@ -3206,14 +3206,14 @@ func (m Model) statusMessage() string {
 		return successStyle.Render("saved")
 	case m.exportMsg != "":
 		return successStyle.Render(m.exportMsg)
+	case m.statsMsg != "":
+		return lipgloss.NewStyle().Foreground(colorPrimary).Render(m.statsMsg)
 	case m.results.HasDirtyCells():
 		return mutedStyle.Render(fmt.Sprintf("%d unsaved", m.results.DirtyCellCount()))
 	case m.results.HasResult() && m.results.Message() != "":
 		return successStyle.Render(m.results.Message())
 	case m.pageMsg != "":
 		return mutedStyle.Render(m.pageMsg)
-	case m.statsMsg != "":
-		return lipgloss.NewStyle().Foreground(colorPrimary).Render(m.statsMsg)
 	}
 	return ""
 }
