@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -794,5 +795,97 @@ func TestFormatColumnStats_Text(t *testing.T) {
 	got := formatColumnStats(row, false)
 	if !strings.Contains(got, "count 10") || !strings.Contains(got, "min aaa") {
 		t.Errorf("unexpected text format: %s", got)
+	}
+}
+
+func TestSerializeCSV_Basic(t *testing.T) {
+	cols := []string{"id", "name", "email"}
+	rows := [][]string{{"1", "alice", "alice@test.com"}, {"2", "bob", "bob@test.com"}}
+	got, err := serializeCSV(cols, rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "id,name,email\n1,alice,alice@test.com\n2,bob,bob@test.com\n"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestSerializeCSV_NullBecomesEmpty(t *testing.T) {
+	cols := []string{"id", "name"}
+	rows := [][]string{{"1", "NULL"}, {"2", "bob"}}
+	got, err := serializeCSV(cols, rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "1,\n") {
+		t.Errorf("NULL should become empty field, got: %q", got)
+	}
+}
+
+func TestSerializeCSV_QuotingCommas(t *testing.T) {
+	cols := []string{"desc"}
+	rows := [][]string{{"value, with comma"}}
+	got, err := serializeCSV(cols, rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "\"value, with comma\"") {
+		t.Errorf("comma values should be quoted, got: %q", got)
+	}
+}
+
+func TestSerializeCSV_QuotingEmbeddedQuotes(t *testing.T) {
+	cols := []string{"desc"}
+	rows := [][]string{{"O'Brien"}}
+	got, err := serializeCSV(cols, rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No commas — should not be quoted. Single quotes are not special in CSV.
+	want := "desc\nO'Brien\n"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestSerializeCSV_EmptyRows(t *testing.T) {
+	cols := []string{"id"}
+	got, err := serializeCSV(cols, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "id\n"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestExportFilename(t *testing.T) {
+	got := exportFilename("users", "20260619_120000")
+	want := "gsql_users_20260619_120000.csv"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestExportFilename_EmptyTable(t *testing.T) {
+	got := exportFilename("", "20260619")
+	if got != "gsql_query_20260619.csv" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestExportStatusMessage_Success(t *testing.T) {
+	got := exportStatusMessage("/Users/x/Downloads/f.csv", 42, nil)
+	if !strings.Contains(got, "exported 42 rows") || !strings.Contains(got, "/Users/x/Downloads/f.csv") {
+		t.Errorf("unexpected success message: %q", got)
+	}
+}
+
+func TestExportStatusMessage_Error(t *testing.T) {
+	got := exportStatusMessage("", 0, fmt.Errorf("disk full"))
+	if !strings.Contains(got, "export failed") || !strings.Contains(got, "disk full") {
+		t.Errorf("unexpected error message: %q", got)
 	}
 }

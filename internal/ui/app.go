@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"bytes"
+	"encoding/csv"
 	"fmt"
 	"log"
 	"os"
@@ -86,6 +88,13 @@ type statsMsg struct {
 	stats  string
 }
 
+// exportDoneMsg carries the result of an async CSV export.
+type exportDoneMsg struct {
+	path  string
+	count int
+	err   error
+}
+
 // queryStackEntry stores navigation state for returning after following a FK.
 type queryStackEntry struct {
 	query     string
@@ -139,6 +148,7 @@ type Model struct {
 	lastQuery string
 	pageMsg  string
 	statsMsg string // transient column statistics display
+	exportMsg string // transient CSV export result display
 
 	// Quick filters (cell-based, server-side WHERE injection)
 	baseQuery string   // original query without filters
@@ -296,6 +306,7 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	m.page = 0
 	m.pageMsg = ""
 	m.statsMsg = ""
+	m.exportMsg = ""
 	m.queryStack = nil
 	m.sidebarCursor = 0
 	m.sidebarFiltering = false
@@ -731,6 +742,134 @@ func maxString(m map[string]bool) string {
 		}
 	}
 	return result
+}
+
+// exportToCSV writes result rows to a CSV file in ~/Downloads. If rows are
+// marked, it re-queries the full set of marked rows by primary key; otherwise
+// it exports the current page. Returns a command that delivers exportDoneMsg.
+func (m *Model) exportToCSV() tea.Cmd {
+	if m.results.NumRows() == 0 {
+		m.exportMsg = "nothing to export"
+		return nil
+	}
+
+	cols := m.results.columns
+	table := m.results.SourceTable()
+
+	// Marked rows: re-query for complete data (may span multiple pages).
+	if m.results.IsEditable() && m.results.MarkCount() > 0 {
+		tuples := m.results.MarkedPKs()
+		pkNames := m.results.PKColumns()
+		pkTypes := m.results.PKTypes()
+		clause := buildPKInClause(pkNames, pkTypes, tuples)
+
+		conn := m.connection
+		query := fmt.Sprintf("SELECT * FROM %s WHERE %s", table, clause)
+		timestamp := time.Now().Format("20060102_150405")
+		filename := exportFilename(table, timestamp)
+
+		return func() tea.Msg {
+			result, err := conn.DB().Execute(query)
+			if err != nil {
+				return exportDoneMsg{err: err}
+			}
+			exportCols := make([]string, len(result.Columns))
+			for i, c := range result.Columns {
+				exportCols[i] = c.Name
+			}
+			path, count, err := writeCSV(exportCols, result.Rows, filename)
+			return exportDoneMsg{path: path, count: count, err: err}
+		}
+	}
+
+	// No marks: export current page in memory.
+	timestamp := time.Now().Format("20060102_150405")
+	filename := exportFilename(table, timestamp)
+	rows := m.results.rows
+	path, count, err := writeCSV(cols, rows, filename)
+	m.exportMsg = exportStatusMessage(path, count, err)
+	return nil
+}
+
+// exportFilename builds a safe filename for a CSV export.
+func exportFilename(table, timestamp string) string {
+	name := table
+	if name == "" {
+		name = "query"
+	}
+	return fmt.Sprintf("gsql_%s_%s.csv", name, timestamp)
+}
+
+// exportStatusMessage renders the result of an export for the status bar.
+func exportStatusMessage(path string, count int, err error) string {
+	if err != nil {
+		return fmt.Sprintf("export failed: %v", err)
+	}
+	return fmt.Sprintf("exported %d rows → %s", count, path)
+}
+
+// writeCSV serializes columns and rows to a CSV file in ~/Downloads and
+// returns the absolute path and row count.
+func writeCSV(cols []string, rows [][]string, filename string) (string, int, error) {
+	dir, err := os.UserHomeDir()
+	if err != nil {
+		return "", 0, err
+	}
+	dir = filepath.Join(dir, "Downloads")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", 0, err
+	}
+	path := filepath.Join(dir, filename)
+	f, err := os.Create(path)
+	if err != nil {
+		return "", 0, err
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	if err := w.Write(cols); err != nil {
+		return path, 0, err
+	}
+	for _, row := range rows {
+		// Normalize NULL display values to empty fields in CSV.
+		out := make([]string, len(row))
+		for i, v := range row {
+			if v == "NULL" {
+				out[i] = ""
+			} else {
+				out[i] = v
+			}
+		}
+		if err := w.Write(out); err != nil {
+			return path, 0, err
+		}
+	}
+	w.Flush()
+	return path, len(rows), w.Error()
+}
+
+// serializeCSV renders columns and rows as CSV to a string, for testing.
+func serializeCSV(cols []string, rows [][]string) (string, error) {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	if err := w.Write(cols); err != nil {
+		return "", err
+	}
+	for _, row := range rows {
+		out := make([]string, len(row))
+		for i, v := range row {
+			if v == "NULL" {
+				out[i] = ""
+			} else {
+				out[i] = v
+			}
+		}
+		if err := w.Write(out); err != nil {
+			return "", err
+		}
+	}
+	w.Flush()
+	return buf.String(), nil
 }
 
 // toggleSort cycles the sort direction on the current column:
@@ -1442,6 +1581,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case statsMsg:
 		m.statsMsg = fmt.Sprintf("%s: %s", msg.column, msg.stats)
 		return m, nil
+
+	case exportDoneMsg:
+		m.exportMsg = exportStatusMessage(msg.path, msg.count, msg.err)
+		return m, nil
 	}
 
 	if m.state == stateWorkspace {
@@ -1858,6 +2001,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.page = 0
 		m.pageMsg = ""
 		m.statsMsg = ""
+		m.exportMsg = ""
 		m.queryStack = nil
 		m.expanded = make(map[string][]db.Column)
 		m.columnCache = nil
@@ -1951,9 +2095,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.editor, cmd = m.editor.Update(msg)
 	case FocusResults:
-		// Clear transient stats display on the next key press.
-		if m.statsMsg != "" {
+		// Clear transient stats/export display on the next key press.
+		if m.statsMsg != "" || m.exportMsg != "" {
 			m.statsMsg = ""
+			m.exportMsg = ""
 		}
 		// If currently editing a cell, intercept keys first.
 		if m.results.IsEditing() {
@@ -2127,6 +2272,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if m.canFilter() {
 					return m, m.toggleSort()
 				}
+			case "x":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				return m, m.exportToCSV()
 			}
 			m.resultsPendingG = false
 			m.resultsPendingY = false
@@ -3063,6 +3212,8 @@ func (m Model) statusMessage() string {
 		return mutedStyle.Render(m.pageMsg)
 	case m.statsMsg != "":
 		return lipgloss.NewStyle().Foreground(colorPrimary).Render(m.statsMsg)
+	case m.exportMsg != "":
+		return successStyle.Render(m.exportMsg)
 	}
 	return ""
 }
