@@ -628,6 +628,122 @@ func buildInClause(colName string, values []string) string {
 	return fmt.Sprintf("%s IN (%s)", colName, strings.Join(quoted, ", "))
 }
 
+// isNumericType reports whether a database column type should be treated as
+// numeric (and therefore left unquoted in generated WHERE fragments).
+func isNumericType(dbType string) bool {
+	if dbType == "" {
+		return false
+	}
+	t := strings.ToLower(dbType)
+	// Strip common "(n)" or "(n,m)" suffixes, e.g. "decimal(10,2)".
+	if i := strings.IndexByte(t, '('); i > 0 {
+		t = t[:i]
+	}
+	switch t {
+	case "int", "integer", "tinyint", "smallint", "mediumint", "bigint",
+		"unsigned", "int unsigned", "unsigned big int",
+		"real", "double", "float", "decimal", "numeric":
+		return true
+	}
+	return false
+}
+
+// formatFilterValue quotes a literal for use in a WHERE fragment, leaving
+// numeric values bare so they don't get string-coerced on MySQL.
+func formatFilterValue(value, dbType string) string {
+	if isNumericType(dbType) {
+		return value
+	}
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+// buildQuickFilter constructs a single-column WHERE fragment for a cell value.
+// negate=true builds a NULL-safe "not equal" form so that pressing `!` on a
+// nullable column does not silently drop NULL rows (the plain `!=` operator
+// treats NULL comparisons as unknown). A NULL cell value maps to IS NULL /
+// IS NOT NULL instead of an equality comparison.
+func buildQuickFilter(colName, value, dbType string, negate bool) string {
+	if value == "NULL" {
+		if negate {
+			return fmt.Sprintf("%s IS NOT NULL", colName)
+		}
+		return fmt.Sprintf("%s IS NULL", colName)
+	}
+	v := formatFilterValue(value, dbType)
+	if negate {
+		return fmt.Sprintf("(%s != %s OR %s IS NULL)", colName, v, colName)
+	}
+	return fmt.Sprintf("%s = %s", colName, v)
+}
+
+// removeColumnFilters drops every filter fragment that belongs to colName.
+// It recognizes all generated shapes: `col = ...`, `col IN (...)`,
+// `col IS [NOT] NULL`, and the NULL-safe negate form `(col != ... OR ...)`,
+// so quick filters and the value picker interoperate cleanly.
+func removeColumnFilters(filters []string, colName string) []string {
+	prefix := colName + " "
+	groupPrefix := "(" + colName + " "
+	out := make([]string, 0, len(filters))
+	for _, f := range filters {
+		if strings.HasPrefix(f, prefix) || strings.HasPrefix(f, groupPrefix) {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+// quickFilterCell builds a single-column filter from the cursor cell value
+// and applies it, replacing any existing filter on that column. negate=false
+// keeps rows matching the value (`*`); negate=true hides them (`!`).
+func (m *Model) quickFilterCell(negate bool) tea.Cmd {
+	if !m.canFilter() || m.results.NumRows() == 0 {
+		return nil
+	}
+	col := m.results.CursorCol()
+	colName := m.results.ColumnName(col)
+	if colName == "" {
+		return nil
+	}
+	value := m.results.CursorCellValue()
+	if value == "" {
+		return nil
+	}
+	dbType := m.results.ColumnType(col)
+
+	m.filters = removeColumnFilters(m.filters, colName)
+	m.filters = append(m.filters, buildQuickFilter(colName, value, dbType, negate))
+
+	m.lastQuery = m.buildFilteredQuery()
+	m.page = 0
+	m.preserveCursorCol()
+	return m.runPageQuery()
+}
+
+// compactFilter shortens a raw WHERE fragment for display in the status bar.
+// IN (...) lists collapse to "col ∈ (n)" and NULL-safe negates collapse to
+// "col ≠ v", so a handful of filters fit on one line.
+func compactFilter(f string) string {
+	// NULL-safe negate: (col != v OR col IS NULL) → col ≠ v
+	if strings.HasPrefix(f, "(") && strings.HasSuffix(f, ")") {
+		inner := f[1 : len(f)-1]
+		if orIdx := strings.Index(inner, " OR "); orIdx >= 0 {
+			left := inner[:orIdx]
+			if eq := strings.Index(left, " != "); eq >= 0 {
+				return left[:eq] + " ≠" + left[eq+3:]
+			}
+		}
+	}
+	// IN (...) → col ∈ (n)
+	if i := strings.Index(f, " IN ("); i >= 0 && strings.HasSuffix(f, ")") {
+		inner := f[i+len(" IN (") : len(f)-1]
+		count := strings.Count(inner, ",") + 1
+		return f[:i] + fmt.Sprintf(" ∈ (%d)", count)
+	}
+	// IS NULL / IS NOT NULL / equality → keep as-is (short enough).
+	return f
+}
+
 func containsString(s []string, v string) bool {
 	for _, x := range s {
 		if x == v {
@@ -1688,7 +1804,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.discardConfirm = true
 				}
 				return m, nil
-			case "f":
+			case "/":
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				if m.canFilter() {
@@ -1706,6 +1822,14 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if len(m.filters) > 0 {
 					return m, m.undoFilter()
 				}
+			case "*":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				return m, m.quickFilterCell(false)
+			case "!":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				return m, m.quickFilterCell(true)
 			case "o":
 				m.resultsPendingG = false
 				m.resultsPendingY = false
@@ -2672,7 +2796,11 @@ func (m Model) statusBar(connName string) string {
 	}
 
 	if len(m.filters) > 0 {
-		parts = append(parts, successStyle.Render(strings.Join(m.filters, " AND ")))
+		short := make([]string, len(m.filters))
+		for i, f := range m.filters {
+			short[i] = compactFilter(f)
+		}
+		parts = append(parts, successStyle.Render(strings.Join(short, " ")))
 	}
 
 	parts = append(parts, lipgloss.NewStyle().Foreground(colorLabel).Render("?")+mutedStyle.Render(" help"))

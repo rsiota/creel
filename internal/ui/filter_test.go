@@ -375,3 +375,151 @@ func TestApplyFilterPickerSelection_Replaces(t *testing.T) {
 		t.Errorf("expected new country filter at 1, got %q", m.filters[1])
 	}
 }
+
+func TestBuildQuickFilter_EqualsString(t *testing.T) {
+	got := buildQuickFilter("country", "UK", "TEXT", false)
+	want := "country = 'UK'"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestBuildQuickFilter_EqualsNumeric(t *testing.T) {
+	got := buildQuickFilter("age", "30", "INTEGER", false)
+	want := "age = 30"
+	if got != want {
+		t.Errorf("numeric should be unquoted: got %q, want %q", got, want)
+	}
+}
+
+func TestBuildQuickFilter_NegateStringNullSafe(t *testing.T) {
+	got := buildQuickFilter("country", "UK", "TEXT", true)
+	want := "(country != 'UK' OR country IS NULL)"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestBuildQuickFilter_NegateNumeric(t *testing.T) {
+	got := buildQuickFilter("age", "30", "INT", true)
+	want := "(age != 30 OR age IS NULL)"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestBuildQuickFilter_NullValue(t *testing.T) {
+	if got := buildQuickFilter("email", "NULL", "TEXT", false); got != "email IS NULL" {
+		t.Errorf("null equals: got %q", got)
+	}
+	if got := buildQuickFilter("email", "NULL", "TEXT", true); got != "email IS NOT NULL" {
+		t.Errorf("null negate: got %q", got)
+	}
+}
+
+func TestBuildQuickFilter_EscapesQuotes(t *testing.T) {
+	got := buildQuickFilter("name", "O'Brien", "VARCHAR", false)
+	want := "name = 'O''Brien'"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestIsNumericType(t *testing.T) {
+	numerics := []string{"INTEGER", "int", "BIGINT", "TINYINT", "REAL", "FLOAT", "DECIMAL(10,2)", "decimal", "numeric"}
+	for _, ty := range numerics {
+		if !isNumericType(ty) {
+			t.Errorf("expected %q to be numeric", ty)
+		}
+	}
+	nonNumerics := []string{"TEXT", "VARCHAR(255)", "", "BLOB", "DATE", "TIMESTAMP"}
+	for _, ty := range nonNumerics {
+		if isNumericType(ty) {
+			t.Errorf("expected %q to NOT be numeric", ty)
+		}
+	}
+}
+
+func TestRemoveColumnFilters(t *testing.T) {
+	filters := []string{
+		"country = 'UK'",
+		"age = 30",
+		"(status != 'active' OR status IS NULL)",
+		"country IS NULL",
+		"email IN ('a@x.com', 'b@x.com')",
+	}
+	got := removeColumnFilters(filters, "country")
+	// Both country filters (equality + IS NULL) removed; others intact.
+	want := []string{"age = 30", "(status != 'active' OR status IS NULL)", "email IN ('a@x.com', 'b@x.com')"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("idx %d: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestRemoveColumnFilters_WordBoundary(t *testing.T) {
+	// Removing "age" must not touch "age_group".
+	filters := []string{"age = 30", "age_group = 'admin'"}
+	got := removeColumnFilters(filters, "age")
+	if len(got) != 1 || got[0] != "age_group = 'admin'" {
+		t.Errorf("word boundary violated: got %v", got)
+	}
+}
+
+func TestCompactFilter_InClause(t *testing.T) {
+	got := compactFilter("country IN ('UK', 'US', 'FR')")
+	want := "country ∈ (3)"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestCompactFilter_Negate(t *testing.T) {
+	got := compactFilter("(status != 'active' OR status IS NULL)")
+	want := "status ≠ 'active'"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestCompactFilter_Plain(t *testing.T) {
+	cases := map[string]string{
+		"country = 'UK'":      "country = 'UK'",
+		"age = 30":            "age = 30",
+		"email IS NULL":       "email IS NULL",
+		"email IS NOT NULL":   "email IS NOT NULL",
+	}
+	for in, want := range cases {
+		if got := compactFilter(in); got != want {
+			t.Errorf("compactFilter(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestQuickFilterCell_ReplacesExisting(t *testing.T) {
+	m := &Model{
+		baseQuery:  "SELECT * FROM users",
+		connection: &db.Connection{},
+		results:    NewResultsTable(),
+	}
+	m.results.SetResult([]string{"id", "country"}, [][]string{{"1", "UK"}, {"2", "US"}}, "")
+	m.results.SetColumnTypes(map[string]string{"id": "INTEGER", "country": "TEXT"})
+	m.results.CursorRight() // move cursor to country column
+	m.filters = []string{"country = 'US'", "age = 30"}
+
+	m.quickFilterCell(false)
+
+	if len(m.filters) != 2 {
+		t.Fatalf("expected 2 filters (country replaced + age kept), got %d: %v", len(m.filters), m.filters)
+	}
+	if m.filters[0] != "age = 30" {
+		t.Errorf("age filter should be preserved at 0, got %q", m.filters[0])
+	}
+	if m.filters[1] != "country = 'UK'" {
+		t.Errorf("country should be replaced with UK, got %q", m.filters[1])
+	}
+}
