@@ -252,7 +252,7 @@ func TestBuildInClause_Multiple(t *testing.T) {
 
 func TestFilterPicker_ToggleSelected(t *testing.T) {
 	p := NewFilterPicker()
-	p.Show("country", "")
+	p.Show("country")
 	p.SetValues([]string{"UK", "US", "FR"}, nil)
 
 	p.ToggleSelected() // toggle cursor on UK (first item)
@@ -268,7 +268,7 @@ func TestFilterPicker_ToggleSelected(t *testing.T) {
 
 func TestFilterPicker_PreSelected(t *testing.T) {
 	p := NewFilterPicker()
-	p.Show("country", "")
+	p.Show("country")
 	p.SetValues([]string{"UK", "US", "FR"}, map[string]bool{"UK": true, "FR": true})
 
 	vals := p.SelectedValues()
@@ -279,7 +279,7 @@ func TestFilterPicker_PreSelected(t *testing.T) {
 
 func TestFilterPicker_SelectAllNone(t *testing.T) {
 	p := NewFilterPicker()
-	p.Show("country", "")
+	p.Show("country")
 	p.SetValues([]string{"UK", "US", "FR"}, nil)
 
 	p.SelectAll()
@@ -295,7 +295,7 @@ func TestFilterPicker_SelectAllNone(t *testing.T) {
 
 func TestFilterPicker_FuzzyFilter(t *testing.T) {
 	p := NewFilterPicker()
-	p.Show("name", "")
+	p.Show("name")
 	p.SetValues([]string{"alice", "bob", "charlie", "andrew"}, nil)
 
 	p.FilterAddChar("a")
@@ -314,7 +314,7 @@ func TestApplyFilterPickerSelection(t *testing.T) {
 	}
 	m.results.SetResult([]string{"id", "country"}, [][]string{{"1", "UK"}}, "")
 
-	m.filterPicker.Show("country", "")
+	m.filterPicker.Show("country")
 	m.filterPicker.SetValues([]string{"UK", "US", "FR"}, nil)
 	m.filterPicker.ToggleSelected() // select UK
 	m.filterPicker.CursorDown()
@@ -338,7 +338,7 @@ func TestApplyFilterPickerSelection_Single(t *testing.T) {
 	}
 	m.results.SetResult([]string{"id", "country"}, [][]string{{"1", "UK"}}, "")
 
-	m.filterPicker.Show("country", "")
+	m.filterPicker.Show("country")
 	m.filterPicker.SetValues([]string{"UK", "US"}, nil)
 	m.filterPicker.ToggleSelected() // select UK
 
@@ -358,7 +358,7 @@ func TestApplyFilterPickerSelection_Replaces(t *testing.T) {
 	}
 	m.results.SetResult([]string{"id", "country"}, [][]string{{"1", "UK"}}, "")
 
-	m.filterPicker.Show("country", "")
+	m.filterPicker.Show("country")
 	m.filterPicker.SetValues([]string{"UK", "US"}, nil)
 	m.filterPicker.ToggleSelected() // select UK
 
