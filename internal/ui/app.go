@@ -1491,6 +1491,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "esc":
+		// If actively editing a cell or inspector field, let the focused
+		// panel handle esc (to cancel the edit) instead of swallowing it.
+		if m.results.IsEditing() || m.inspector.IsEditing() {
+			break
+		}
 		// Exit sidebar fuzzy filter mode.
 		if m.focus == FocusConnections && m.sidebarFiltering {
 			m.sidebarFiltering = false
