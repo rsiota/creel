@@ -1648,7 +1648,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				m.resultsPendingY = true
 				return m, nil
-			case "enter", "e", "i":
+			case "e", "i":
 				if !m.results.IsEditable() {
 					break
 				}
@@ -1886,7 +1886,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "/":
 			m.inspector.StartFilter()
 			return m, nil
-		case "enter", "e", "i":
+		case "e", "i":
 			m.inspector.pendingG = false
 			m.inspector.StartFieldEdit(m.results)
 			return m, nil

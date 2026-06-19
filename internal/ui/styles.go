@@ -7,6 +7,7 @@ var (
 	colorPrimary   = lipgloss.Color("#7aa2f7")
 	colorAccent    = lipgloss.Color("#bb9af7")
 	colorSuccess   = lipgloss.Color("#9ece6a")
+	colorEdit      = lipgloss.Color("#ff9e64")
 	colorError     = lipgloss.Color("#f7768e")
 	colorMuted     = lipgloss.Color("#565f89")
 	colorLabel     = lipgloss.Color("#8089ab")

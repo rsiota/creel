@@ -103,7 +103,7 @@ func helpSections() []helpSection {
 				{"u", "undo last filter"},
 				{"c", "clear filters"},
 				{"o", "sort column"},
-				{"enter / e", "edit cell"},
+				{"e", "edit cell"},
 				{"ctrl+s", "save edits"},
 				{"A", "insert new row"},
 				{"D", "discard edits"},
@@ -114,7 +114,7 @@ func helpSections() []helpSection {
 			bindings: []helpBinding{
 				{"j/k", "move field"},
 				{"/", "filter fields"},
-				{"enter / e", "edit field"},
+				{"e", "edit field"},
 				{"ctrl+s", "save"},
 				{"ctrl+o", "close"},
 			},
