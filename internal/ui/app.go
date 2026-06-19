@@ -1789,7 +1789,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.sidebarPendingG = true
 			return m, nil
-		case "enter", " ":
+		case " ":
 			m.sidebarPendingG = false
 			m.toggleExpand()
 			return m, nil
@@ -1798,7 +1798,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebarFilter = ""
 			m.sidebarCursor = 0
 			return m, nil
-		case "s":
+		case "enter", "s":
 			item := m.currentSidebarItem()
 			if item != nil && !item.isColumn {
 				m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s LIMIT 100;", item.text))

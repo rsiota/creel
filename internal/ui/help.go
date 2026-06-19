@@ -74,8 +74,8 @@ func helpSections() []helpSection {
 			bindings: []helpBinding{
 				{"j/k, ↑/↓", "move"},
 				{"g g / G", "top / bottom"},
-				{"enter / space", "expand columns"},
-				{"s", "select * from table"},
+				{"space", "expand columns"},
+				{"enter / s", "select * from table"},
 				{"d", "describe table"},
 				{"/", "filter tables"},
 			},
