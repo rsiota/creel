@@ -3204,6 +3204,8 @@ func (m Model) statusMessage() string {
 		return successStyle.Render("copied to clipboard")
 	case m.results.IsSaved():
 		return successStyle.Render("saved")
+	case m.exportMsg != "":
+		return successStyle.Render(m.exportMsg)
 	case m.results.HasDirtyCells():
 		return mutedStyle.Render(fmt.Sprintf("%d unsaved", m.results.DirtyCellCount()))
 	case m.results.HasResult() && m.results.Message() != "":
@@ -3212,8 +3214,6 @@ func (m Model) statusMessage() string {
 		return mutedStyle.Render(m.pageMsg)
 	case m.statsMsg != "":
 		return lipgloss.NewStyle().Foreground(colorPrimary).Render(m.statsMsg)
-	case m.exportMsg != "":
-		return successStyle.Render(m.exportMsg)
 	}
 	return ""
 }
