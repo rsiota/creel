@@ -163,6 +163,10 @@ type Model struct {
 	restoreCursor     bool
 	restoreCursorRow  int
 	restoreCursorCol  int
+
+	// Column jump (: to fuzzy-match and move the column cursor).
+	columnJumping bool
+	columnJump    string
 }
 
 const defaultPageSize = 200
@@ -2100,6 +2104,36 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.statsMsg = ""
 			m.exportMsg = ""
 		}
+		// Column jump mode intercepts all keys.
+		if m.columnJumping {
+			switch msg.String() {
+			case "esc":
+				m.columnJumping = false
+				m.columnJump = ""
+				return m, nil
+			case "enter":
+				if idx := bestColumnMatch(m.results.columns, m.columnJump); idx >= 0 {
+					m.results.SetCursor(m.results.CursorRow(), idx)
+				}
+				m.columnJumping = false
+				m.columnJump = ""
+				return m, nil
+			case "backspace":
+				if len(m.columnJump) > 0 {
+					m.columnJump = m.columnJump[:len(m.columnJump)-1]
+				}
+				return m, nil
+			case "ctrl+c":
+				m.columnJumping = false
+				m.columnJump = ""
+				return m, nil
+			}
+			if msg.Type == tea.KeyRunes {
+				m.columnJump += msg.String()
+				return m, nil
+			}
+			return m, nil
+		}
 		// If currently editing a cell, intercept keys first.
 		if m.results.IsEditing() {
 			switch msg.String() {
@@ -2276,6 +2310,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				return m, m.exportToCSV()
+			case ":":
+				if m.results.NumCols() > 0 {
+					m.columnJumping = true
+					m.columnJump = ""
+				}
+				return m, nil
 			}
 			m.resultsPendingG = false
 			m.resultsPendingY = false
@@ -2600,6 +2640,27 @@ func fuzzyMatch(query, s string) ([]int, int) {
 		}
 	}
 	return indices, score
+}
+
+// bestColumnMatch returns the index of the column whose name best matches
+// the fuzzy query, or -1 if nothing matches.
+func bestColumnMatch(cols []string, query string) int {
+	if query == "" {
+		return -1
+	}
+	bestIdx := -1
+	bestScore := 0
+	for i, c := range cols {
+		_, score := fuzzyMatch(query, c)
+		if score == 0 {
+			continue
+		}
+		if bestIdx == -1 || score < bestScore {
+			bestIdx = i
+			bestScore = score
+		}
+	}
+	return bestIdx
 }
 
 // highlightMatches renders text with matched characters in the accent color.
@@ -2936,7 +2997,13 @@ func (m Model) viewWorkspace() string {
 		BorderForeground(m.borderForFocus(FocusResults)).
 		Render(func() string {
 			m.results.SetSort(m.sortCol, m.sortDir)
-			return m.results.View()
+			view := m.results.View()
+			if m.columnJumping {
+				prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render(":"+m.columnJump) +
+					lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
+				view = prompt + "\n" + view
+			}
+			return view
 		}())
 
 	rightPanel := lipgloss.JoinVertical(lipgloss.Left,

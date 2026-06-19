@@ -109,6 +109,7 @@ func helpSections() []helpSection {
 				{"c", "clear filters"},
 				{"o", "sort column"},
 				{"g s", "column stats"},
+				{":", "jump to column"},
 				{"x", "export to CSV"},
 				{"e", "edit cell"},
 				{"ctrl+s", "save edits"},

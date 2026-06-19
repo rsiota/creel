@@ -889,3 +889,54 @@ func TestExportStatusMessage_Error(t *testing.T) {
 		t.Errorf("unexpected error message: %q", got)
 	}
 }
+
+func TestBestColumnMatch_Exact(t *testing.T) {
+	cols := []string{"id", "name", "email", "created_at"}
+	idx := bestColumnMatch(cols, "email")
+	if idx != 2 {
+		t.Errorf("expected idx 2 for 'email', got %d", idx)
+	}
+}
+
+func TestBestColumnMatch_Fuzzy(t *testing.T) {
+	cols := []string{"id", "name", "email_address", "created_at"}
+	// "em" should match "email_address" best.
+	idx := bestColumnMatch(cols, "em")
+	if idx != 2 {
+		t.Errorf("expected idx 2 for 'em', got %d", idx)
+	}
+}
+
+func TestBestColumnMatch_Prefix(t *testing.T) {
+	cols := []string{"id", "user_id", "user_name", "created_at"}
+	// "usn" should match "user_name" via fuzzy.
+	idx := bestColumnMatch(cols, "usn")
+	if idx != 2 {
+		t.Errorf("expected idx 2 for 'usn', got %d", idx)
+	}
+}
+
+func TestBestColumnMatch_NoMatch(t *testing.T) {
+	cols := []string{"id", "name"}
+	idx := bestColumnMatch(cols, "zzz")
+	if idx != -1 {
+		t.Errorf("expected -1 for no match, got %d", idx)
+	}
+}
+
+func TestBestColumnMatch_EmptyQuery(t *testing.T) {
+	cols := []string{"id", "name"}
+	idx := bestColumnMatch(cols, "")
+	if idx != -1 {
+		t.Errorf("expected -1 for empty query, got %d", idx)
+	}
+}
+
+func TestBestColumnMatch_PrefersBoundary(t *testing.T) {
+	cols := []string{"user_id", "user_id_str"}
+	// "uid" matches both, but "user_id" has a boundary match.
+	idx := bestColumnMatch(cols, "uid")
+	if idx != 0 {
+		t.Errorf("expected idx 0 (shorter name), got %d", idx)
+	}
+}
