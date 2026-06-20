@@ -76,10 +76,20 @@ func helpSections() []helpSection {
 				{"g g / G", "top / bottom"},
 				{"space", "expand columns"},
 				{"enter / s", "select * from table"},
-				{"d", "describe table"},
+				{"d", "schema panel"},
 				{"a", "add column"},
 				{"T", "truncate table"},
 				{"/", "filter tables"},
+			},
+		},
+		{
+			title: "Schema Panel",
+			bindings: []helpBinding{
+				{"j/k, ↑/↓", "move"},
+				{"/", "filter columns"},
+				{"a", "add column"},
+				{"enter", "column actions"},
+				{"esc", "close / back"},
 			},
 		},
 		{

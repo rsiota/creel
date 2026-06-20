@@ -135,3 +135,19 @@ func TestBuildAddColumnSQL_MySQL(t *testing.T) {
 		t.Fatalf("sql = %q, want %q", sql, want)
 	}
 }
+
+func TestSchemaSupports(t *testing.T) {
+	if !SchemaSupports(DriverSQLite, SchemaAddColumn) {
+		t.Fatal("sqlite should support add column")
+	}
+	if SchemaSupports(DriverSQLite, SchemaModifyType) {
+		t.Fatal("sqlite should not support modify type")
+	}
+	if !SchemaSupports(DriverMySQL, SchemaDropColumn) {
+		t.Fatal("mysql should support drop column")
+	}
+	actions := ColumnSchemaActions(DriverSQLite)
+	if len(actions) != 1 || actions[0] != SchemaRenameColumn {
+		t.Fatalf("sqlite actions = %v", actions)
+	}
+}

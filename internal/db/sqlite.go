@@ -163,6 +163,7 @@ func (s *SQLite) TableColumnInfo(table string) ([]TableColumnInfo, error) {
 			PrimaryKey:    pk != 0,
 			AutoIncrement: pk != 0 && isIntegerType(dataType),
 			HasDefault:    dfltValue.Valid,
+			DefaultValue:  dfltValue.String,
 		})
 	}
 	return cols, rows.Err()

@@ -87,3 +87,64 @@ func formatDefault(value string) string {
 }
 
 var numericDefaultPattern = regexp.MustCompile(`^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$`)
+
+// SchemaAction identifies a schema change operation on a table or column.
+type SchemaAction string
+
+const (
+	SchemaAddColumn       SchemaAction = "add_column"
+	SchemaRenameColumn    SchemaAction = "rename_column"
+	SchemaModifyType      SchemaAction = "modify_type"
+	SchemaModifyNullable  SchemaAction = "modify_nullable"
+	SchemaModifyDefault   SchemaAction = "modify_default"
+	SchemaDropColumn      SchemaAction = "drop_column"
+)
+
+// SchemaSupports reports whether a driver supports a schema action.
+func SchemaSupports(driver Driver, action SchemaAction) bool {
+	switch action {
+	case SchemaAddColumn, SchemaRenameColumn:
+		return true
+	case SchemaModifyType, SchemaModifyNullable, SchemaModifyDefault, SchemaDropColumn:
+		return driver == DriverMySQL
+	default:
+		return false
+	}
+}
+
+// SchemaActionLabel returns a human-readable label for a schema action.
+func SchemaActionLabel(action SchemaAction) string {
+	switch action {
+	case SchemaAddColumn:
+		return "Add column"
+	case SchemaRenameColumn:
+		return "Rename column"
+	case SchemaModifyType:
+		return "Change type"
+	case SchemaModifyNullable:
+		return "Change nullable"
+	case SchemaModifyDefault:
+		return "Change default"
+	case SchemaDropColumn:
+		return "Drop column"
+	default:
+		return string(action)
+	}
+}
+
+// ColumnSchemaActions returns column-level actions available for a driver.
+func ColumnSchemaActions(driver Driver) []SchemaAction {
+	var actions []SchemaAction
+	for _, a := range []SchemaAction{
+		SchemaRenameColumn,
+		SchemaModifyType,
+		SchemaModifyNullable,
+		SchemaModifyDefault,
+		SchemaDropColumn,
+	} {
+		if SchemaSupports(driver, a) {
+			actions = append(actions, a)
+		}
+	}
+	return actions
+}

@@ -232,6 +232,7 @@ func (m *MySQL) TableColumnInfo(table string) ([]TableColumnInfo, error) {
 			PrimaryKey:    colKey == "PRI",
 			AutoIncrement: strings.Contains(strings.ToLower(extra), "auto_increment"),
 			HasDefault:    colDefault.Valid,
+			DefaultValue:  colDefault.String,
 		})
 	}
 	return cols, rows.Err()

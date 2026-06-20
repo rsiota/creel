@@ -135,6 +135,7 @@ type Model struct {
 	filterPicker FilterPicker
 	columnPicker ColumnPicker
 	addColumnForm AddColumnForm
+	schemaPanel   SchemaPanel
 	sidebarCursor int
 	expanded     map[string][]db.Column
 	columnCache  map[string][]db.Column
@@ -217,6 +218,7 @@ func NewModel(cfg *config.Config) Model {
 		filterPicker: NewFilterPicker(),
 		columnPicker: NewColumnPicker(),
 		addColumnForm: NewAddColumnForm(),
+		schemaPanel:   NewSchemaPanel(),
 		historyStore: history.NewStore(historyDir()),
 		expanded:     make(map[string][]db.Column),
 		pageSize:     defaultPageSize,
@@ -1540,11 +1542,16 @@ func (m *Model) execAddColumn(table, query string) tea.Cmd {
 
 // openAddColumnForm opens the add-column overlay for the selected sidebar table.
 func (m *Model) openAddColumnForm() tea.Cmd {
-	if m.connection == nil {
-		return nil
-	}
 	table := m.sidebarSelectedTable()
-	if table == "" {
+	if table == "" && m.schemaPanel.IsVisible() {
+		table = m.schemaPanel.Table()
+	}
+	return m.openAddColumnFormForTable(table)
+}
+
+// openAddColumnFormForTable opens the add-column overlay for a specific table.
+func (m *Model) openAddColumnFormForTable(table string) tea.Cmd {
+	if m.connection == nil || table == "" {
 		return nil
 	}
 	cols, err := m.connection.DB().TableSchema(table)
@@ -1560,6 +1567,37 @@ func (m *Model) openAddColumnForm() tea.Cmd {
 	m.addColumnConfirmSQL = ""
 	m.addColumnConfirmTable = ""
 	return m.addColumnForm.Focus()
+}
+
+// openSchemaPanel opens the schema overlay for the selected sidebar table.
+func (m *Model) openSchemaPanel() {
+	if m.connection == nil {
+		return
+	}
+	table := m.sidebarSelectedTable()
+	if table == "" {
+		return
+	}
+	cols, err := m.connection.DB().TableColumnInfo(table)
+	if err != nil {
+		m.connError = err.Error()
+		return
+	}
+	m.schemaPanel.Show(table, m.connection.Config().Driver, cols)
+}
+
+// reloadSchemaPanel refreshes column metadata when the panel is open.
+func (m *Model) reloadSchemaPanel(table string) {
+	if !m.schemaPanel.IsVisible() || m.schemaPanel.Table() != table || m.connection == nil {
+		return
+	}
+	cols, err := m.connection.DB().TableColumnInfo(table)
+	if err != nil {
+		m.schemaPanel.SetNotice(err.Error())
+		return
+	}
+	m.schemaPanel.SetColumns(cols)
+	m.schemaPanel.SetNotice("")
 }
 
 // refreshTableSchemaSync updates cached sidebar schema for one table.
@@ -1742,6 +1780,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addColumnConfirmTable = ""
 			m.addColumnForm.Hide()
 			m = m.refreshTableSchemaSync(msg.table)
+			m.reloadSchemaPanel(msg.table)
 			if m.resultsShowTable(msg.table) {
 				return m, tea.Batch(m.prefetchSchemas(), m.runPageQuery())
 			}
@@ -2079,6 +2118,62 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Schema panel is modal.
+	if m.schemaPanel.IsVisible() {
+		if m.schemaPanel.IsFiltering() {
+			switch msg.String() {
+			case "esc", "ctrl+c":
+				m.schemaPanel.CancelFilter()
+				return m, nil
+			case "enter":
+				m.schemaPanel.CancelFilter()
+				return m, nil
+			case "backspace":
+				m.schemaPanel.FilterBackspace()
+				return m, nil
+			case "up", "k":
+				m.schemaPanel.CursorUp()
+				return m, nil
+			case "down", "j":
+				m.schemaPanel.CursorDown()
+				return m, nil
+			}
+			if msg.Type == tea.KeyRunes {
+				m.schemaPanel.FilterAddChar(msg.String())
+				return m, nil
+			}
+			return m, nil
+		}
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			if m.schemaPanel.InActionsMode() {
+				m.schemaPanel.CloseActions()
+				return m, nil
+			}
+			m.schemaPanel.Hide()
+			return m, nil
+		case "enter":
+			if m.schemaPanel.InActionsMode() {
+				m.schemaPanel.SetNotice("Not implemented yet — coming in step 3")
+				return m, nil
+			}
+			m.schemaPanel.OpenActions()
+			return m, nil
+		case "up", "k":
+			m.schemaPanel.CursorUp()
+			return m, nil
+		case "down", "j":
+			m.schemaPanel.CursorDown()
+			return m, nil
+		case "/":
+			m.schemaPanel.StartFilter()
+			return m, nil
+		case "a":
+			return m, m.openAddColumnFormForTable(m.schemaPanel.Table())
+		}
+		return m, nil
+	}
+
 	// Add-column SQL confirmation is modal.
 	if m.addColumnConfirmSQL != "" {
 		switch msg.String() {
@@ -2254,6 +2349,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.discardConfirm = false
 		m.truncateConfirm = ""
 		m.addColumnForm.Hide()
+		m.schemaPanel.Hide()
 		m.addColumnConfirmSQL = ""
 		m.addColumnConfirmTable = ""
 		m.schemaMsg = ""
@@ -2781,18 +2877,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(m.editor.Focus(), m.executeQuery())
 			}
 		case "d":
-			item := m.currentSidebarItem()
-			if item != nil && !item.isColumn {
-				tableName := item.text
-				if m.connection != nil && m.connection.Config().Driver == db.DriverSQLite {
-					m.editor.SetValue(fmt.Sprintf("SELECT name, type, \"notnull\", dflt_value, pk FROM pragma_table_info('%s');", tableName))
-				} else {
-					m.editor.SetValue(fmt.Sprintf("DESCRIBE %s;", tableName))
-				}
-				m.focus = FocusEditor
-				m.applyFocus()
-				return m, m.executeQuery()
+			m.sidebarPendingG = false
+			if m.sidebarSelectedTable() != "" {
+				m.openSchemaPanel()
 			}
+			return m, nil
 		case "T":
 			m.sidebarPendingG = false
 			item := m.currentSidebarItem()
@@ -3722,6 +3811,24 @@ func (m Model) viewWorkspace() string {
 		dlgX := (m.width - dlgW) / 2
 		dlgY := (m.height - 1 - dlgH) / 2
 		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
+	// Overlay schema panel if visible.
+	if m.schemaPanel.IsVisible() {
+		popupW := 76
+		borderOverhead := 2
+		m.schemaPanel.SetSize(popupW, m.height-1)
+		panel := lipgloss.NewStyle().
+			Width(popupW - borderOverhead).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorPrimary).
+			Padding(1, 2).
+			Render(m.schemaPanel.View())
+		panelW := lipgloss.Width(panel)
+		panelH := lipgloss.Height(panel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, panel, panelX, panelY)
 	}
 
 	// Overlay add-column form or SQL confirmation.

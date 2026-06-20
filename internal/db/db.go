@@ -77,7 +77,7 @@ type ForeignKey struct {
 	RefColumn string
 }
 
-// TableColumnInfo describes column metadata needed for inserts.
+// TableColumnInfo describes column metadata needed for inserts and schema display.
 type TableColumnInfo struct {
 	Name          string
 	Type          string
@@ -85,6 +85,7 @@ type TableColumnInfo struct {
 	PrimaryKey    bool
 	AutoIncrement bool
 	HasDefault    bool
+	DefaultValue  string
 }
 
 // Result holds the output of a query execution.
