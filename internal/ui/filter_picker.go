@@ -13,6 +13,7 @@ type filterValue struct {
 	value    string
 	selected bool
 	matchIdx []int
+	score    int
 }
 
 // FilterPicker is a popup overlay for selecting one or more column values
@@ -106,12 +107,25 @@ func (p FilterPicker) filteredValues() []filterValue {
 	}
 	var out []filterValue
 	for _, v := range p.values {
-		idx, _ := fuzzyMatch(p.filter, v.value)
+		idx, score := fuzzyMatch(p.filter, v.value)
 		if idx != nil {
 			v.matchIdx = idx
+			v.score = score
 			out = append(out, v)
 		}
 	}
+	// Sort once here so every consumer (cursor navigation, toggling,
+	// rendering) sees the same order. Selected first, then by fuzzy score
+	// (best match first), then alphabetically.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].selected != out[j].selected {
+			return out[i].selected
+		}
+		if out[i].score != out[j].score {
+			return out[i].score < out[j].score
+		}
+		return out[i].value < out[j].value
+	})
 	return out
 }
 
@@ -218,14 +232,6 @@ func (p FilterPicker) View() string {
 	}
 
 	items := p.filteredValues()
-
-	// Sort: selected first, then alphabetically.
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].selected != items[j].selected {
-			return items[i].selected
-		}
-		return items[i].value < items[j].value
-	})
 
 	maxVisible := p.height - 6
 	if maxVisible < 1 {

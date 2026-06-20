@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -12,6 +13,7 @@ type colItem struct {
 	name     string
 	visible  bool // true = shown in results, false = hidden
 	matchIdx []int
+	score    int
 }
 
 // ColumnPicker is a popup overlay for toggling column visibility. It lists
@@ -95,11 +97,19 @@ func (p ColumnPicker) filteredItems() []colItem {
 	}
 	var out []colItem
 	for _, it := range p.items {
-		if idx, _ := fuzzyMatch(p.filter, it.name); idx != nil {
+		if idx, score := fuzzyMatch(p.filter, it.name); idx != nil {
 			it.matchIdx = idx
+			it.score = score
 			out = append(out, it)
 		}
 	}
+	// Rank best matches first; alphabetical as a tiebreaker.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].score != out[j].score {
+			return out[i].score < out[j].score
+		}
+		return out[i].name < out[j].name
+	})
 	return out
 }
 
