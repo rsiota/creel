@@ -136,6 +136,52 @@ func TestBuildAddColumnSQL_MySQL(t *testing.T) {
 	}
 }
 
+func TestBuildRenameColumnSQL(t *testing.T) {
+	sql, err := BuildRenameColumnSQL(DriverSQLite, "users", "email", "email_addr", []string{"id", "email"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `ALTER TABLE "users" RENAME COLUMN "email" TO "email_addr"`
+	if sql != want {
+		t.Fatalf("sql = %q, want %q", sql, want)
+	}
+}
+
+func TestBuildModifyColumnSQL(t *testing.T) {
+	sql, err := BuildModifyColumnSQL(DriverMySQL, "users", ColumnDef{
+		Name:    "bio",
+		Type:    "VARCHAR(500)",
+		NotNull: true,
+		HasDefault: true,
+		Default: "hello",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ALTER TABLE `users` MODIFY COLUMN `bio` VARCHAR(500) NOT NULL DEFAULT 'hello'"
+	if sql != want {
+		t.Fatalf("sql = %q, want %q", sql, want)
+	}
+}
+
+func TestBuildDropColumnSQL(t *testing.T) {
+	_, err := BuildDropColumnSQL(DriverMySQL, "users", "id", TableColumnInfo{
+		Name: "id", PrimaryKey: true,
+	})
+	if err == nil {
+		t.Fatal("expected error dropping PK")
+	}
+
+	sql, err := BuildDropColumnSQL(DriverMySQL, "users", "nickname", TableColumnInfo{Name: "nickname"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ALTER TABLE `users` DROP COLUMN `nickname`"
+	if sql != want {
+		t.Fatalf("sql = %q, want %q", sql, want)
+	}
+}
+
 func TestSchemaSupports(t *testing.T) {
 	if !SchemaSupports(DriverSQLite, SchemaAddColumn) {
 		t.Fatal("sqlite should support add column")

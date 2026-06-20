@@ -31,3 +31,32 @@ func TestSQLiteAddColumn(t *testing.T) {
 		t.Fatalf("expected nickname column, got %v", cols)
 	}
 }
+
+func TestSQLiteRenameColumn(t *testing.T) {
+	s := setupTestSQLite(t)
+
+	sql, err := BuildRenameColumnSQL(DriverSQLite, "users", "email", "email_addr", []string{"id", "name", "email"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Exec(sql); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+
+	cols, err := s.TableSchema("users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, c := range cols {
+		if c.Name == "email_addr" {
+			found = true
+		}
+		if c.Name == "email" {
+			t.Fatal("old column name still present")
+		}
+	}
+	if !found {
+		t.Fatalf("expected email_addr, got %v", cols)
+	}
+}

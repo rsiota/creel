@@ -207,7 +207,7 @@ func (m *MySQL) ForeignKeys(table string) ([]ForeignKey, error) {
 
 func (m *MySQL) TableColumnInfo(table string) ([]TableColumnInfo, error) {
 	rows, err := m.db.Query(
-		`SELECT column_name, data_type, is_nullable, column_default, column_key, extra
+		`SELECT column_name, column_type, is_nullable, column_default, column_key, extra
 		 FROM information_schema.columns
 		 WHERE table_schema = ? AND table_name = ?
 		 ORDER BY ordinal_position`,

@@ -65,8 +65,9 @@ type truncateResultMsg struct {
 
 // schemaResultMsg carries the result of an async schema change (DDL).
 type schemaResultMsg struct {
-	table string
-	err   error
+	table  string
+	action db.SchemaAction
+	err    error
 }
 
 // queryExecutedMsg is sent when a query finishes executing.
@@ -134,8 +135,9 @@ type Model struct {
 	help         HelpPanel
 	filterPicker FilterPicker
 	columnPicker ColumnPicker
-	addColumnForm AddColumnForm
-	schemaPanel   SchemaPanel
+	addColumnForm  AddColumnForm
+	columnEditForm ColumnEditForm
+	schemaPanel    SchemaPanel
 	sidebarCursor int
 	expanded     map[string][]db.Column
 	columnCache  map[string][]db.Column
@@ -155,9 +157,10 @@ type Model struct {
 	// Truncate confirmation dialog (non-empty table name while pending).
 	truncateConfirm string
 
-	// Add-column form and SQL confirmation.
-	addColumnConfirmSQL   string
-	addColumnConfirmTable string
+	// Schema DDL confirmation (add/edit column, etc.).
+	schemaConfirmSQL    string
+	schemaConfirmTable  string
+	schemaConfirmAction db.SchemaAction
 
 	config       *config.Config
 	connection   *db.Connection
@@ -217,8 +220,9 @@ func NewModel(cfg *config.Config) Model {
 		help:         NewHelpPanel(),
 		filterPicker: NewFilterPicker(),
 		columnPicker: NewColumnPicker(),
-		addColumnForm: NewAddColumnForm(),
-		schemaPanel:   NewSchemaPanel(),
+		addColumnForm:  NewAddColumnForm(),
+		columnEditForm: NewColumnEditForm(),
+		schemaPanel:    NewSchemaPanel(),
 		historyStore: history.NewStore(historyDir()),
 		expanded:     make(map[string][]db.Column),
 		pageSize:     defaultPageSize,
@@ -1528,15 +1532,46 @@ func (m *Model) execTruncate(table string) tea.Cmd {
 	}
 }
 
-// execAddColumn runs a pending ADD COLUMN statement asynchronously.
-func (m *Model) execAddColumn(table, query string) tea.Cmd {
+// execSchemaDDL runs a pending schema statement asynchronously.
+func (m *Model) execSchemaDDL(table, query string, action db.SchemaAction) tea.Cmd {
 	if m.connection == nil || table == "" || query == "" {
 		return nil
 	}
 	conn := m.connection
 	return func() tea.Msg {
 		_, err := conn.DB().Exec(query)
-		return schemaResultMsg{table: table, err: err}
+		return schemaResultMsg{table: table, action: action, err: err}
+	}
+}
+
+func (m *Model) setSchemaConfirm(table, sql string, action db.SchemaAction) {
+	m.schemaConfirmTable = table
+	m.schemaConfirmSQL = sql
+	m.schemaConfirmAction = action
+}
+
+func (m *Model) clearSchemaConfirm() {
+	m.schemaConfirmSQL = ""
+	m.schemaConfirmTable = ""
+	m.schemaConfirmAction = ""
+}
+
+func schemaChangeMessage(action db.SchemaAction, table string) string {
+	switch action {
+	case db.SchemaAddColumn:
+		return fmt.Sprintf("added column to %s", table)
+	case db.SchemaRenameColumn:
+		return fmt.Sprintf("renamed column on %s", table)
+	case db.SchemaModifyType:
+		return fmt.Sprintf("changed column type on %s", table)
+	case db.SchemaModifyNullable:
+		return fmt.Sprintf("changed nullable on %s", table)
+	case db.SchemaModifyDefault:
+		return fmt.Sprintf("changed column default on %s", table)
+	case db.SchemaDropColumn:
+		return fmt.Sprintf("dropped column from %s", table)
+	default:
+		return fmt.Sprintf("updated schema on %s", table)
 	}
 }
 
@@ -1564,8 +1599,7 @@ func (m *Model) openAddColumnFormForTable(table string) tea.Cmd {
 		existing[i] = c.Name
 	}
 	m.addColumnForm.Show(table, m.connection.Config().Driver, existing)
-	m.addColumnConfirmSQL = ""
-	m.addColumnConfirmTable = ""
+	m.clearSchemaConfirm()
 	return m.addColumnForm.Focus()
 }
 
@@ -1598,6 +1632,36 @@ func (m *Model) reloadSchemaPanel(table string) {
 	}
 	m.schemaPanel.SetColumns(cols)
 	m.schemaPanel.SetNotice("")
+}
+
+// handleSchemaPanelAction starts the flow for a column-level schema action.
+func (m *Model) handleSchemaPanelAction(action db.SchemaAction) tea.Cmd {
+	col, ok := m.schemaPanel.SelectedColumn()
+	if !ok {
+		return nil
+	}
+	if msg := GuardColumnAction(action, col); msg != "" {
+		m.schemaPanel.SetNotice(msg)
+		return nil
+	}
+
+	table := m.schemaPanel.Table()
+	driver := m.connection.Config().Driver
+	existing := m.schemaPanel.ColumnNames()
+	m.schemaPanel.CloseActions()
+
+	if action == db.SchemaDropColumn {
+		sql, err := db.BuildDropColumnSQL(driver, table, col.Name, col)
+		if err != nil {
+			m.schemaPanel.SetNotice(err.Error())
+			return nil
+		}
+		m.setSchemaConfirm(table, sql, action)
+		return nil
+	}
+
+	m.columnEditForm.Show(action, table, driver, col, existing)
+	return m.columnEditForm.Focus()
 }
 
 // refreshTableSchemaSync updates cached sidebar schema for one table.
@@ -1771,14 +1835,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case schemaResultMsg:
 		if msg.err != nil {
 			m.schemaMsg = fmt.Sprintf("schema change failed: %v", msg.err)
-			m.addColumnConfirmSQL = ""
-			m.addColumnConfirmTable = ""
-			m.addColumnForm.SetError(msg.err.Error())
+			m.clearSchemaConfirm()
+			switch msg.action {
+			case db.SchemaAddColumn:
+				m.addColumnForm.SetError(msg.err.Error())
+			default:
+				m.columnEditForm.SetError(msg.err.Error())
+			}
 		} else {
-			m.schemaMsg = fmt.Sprintf("added column to %s", msg.table)
-			m.addColumnConfirmSQL = ""
-			m.addColumnConfirmTable = ""
+			m.schemaMsg = schemaChangeMessage(msg.action, msg.table)
+			m.clearSchemaConfirm()
 			m.addColumnForm.Hide()
+			m.columnEditForm.Hide()
 			m = m.refreshTableSchemaSync(msg.table)
 			m.reloadSchemaPanel(msg.table)
 			if m.resultsShowTable(msg.table) {
@@ -2118,6 +2186,65 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Schema DDL confirmation is modal.
+	if m.schemaConfirmSQL != "" {
+		switch msg.String() {
+		case "y", "Y", "enter":
+			table := m.schemaConfirmTable
+			query := m.schemaConfirmSQL
+			action := m.schemaConfirmAction
+			return m, m.execSchemaDDL(table, query, action)
+		case "n", "N", "esc", "ctrl+c":
+			m.clearSchemaConfirm()
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Column edit form is modal.
+	if m.columnEditForm.IsVisible() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.columnEditForm.Hide()
+			m.clearSchemaConfirm()
+			return m, nil
+		case "enter", "ctrl+s":
+			sql, errMsg := m.columnEditForm.Submit()
+			if errMsg != "" {
+				m.columnEditForm.SetError(errMsg)
+				return m, nil
+			}
+			m.setSchemaConfirm(m.columnEditForm.Table(), sql, m.columnEditForm.Action())
+			m.columnEditForm.SetError("")
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.columnEditForm, cmd = m.columnEditForm.Update(msg)
+		return m, cmd
+	}
+
+	// Add-column form is modal.
+	if m.addColumnForm.IsVisible() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.addColumnForm.Hide()
+			m.clearSchemaConfirm()
+			return m, nil
+		case "enter", "ctrl+s":
+			sql, errMsg := m.addColumnForm.Submit()
+			if errMsg != "" {
+				m.addColumnForm.SetError(errMsg)
+				return m, nil
+			}
+			m.setSchemaConfirm(m.addColumnForm.Table(), sql, db.SchemaAddColumn)
+			m.addColumnForm.SetError("")
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.addColumnForm, cmd = m.addColumnForm.Update(msg)
+		return m, cmd
+	}
+
 	// Schema panel is modal.
 	if m.schemaPanel.IsVisible() {
 		if m.schemaPanel.IsFiltering() {
@@ -2154,7 +2281,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "enter":
 			if m.schemaPanel.InActionsMode() {
-				m.schemaPanel.SetNotice("Not implemented yet — coming in step 3")
+				action, ok := m.schemaPanel.SelectedAction()
+				if ok {
+					return m, m.handleSchemaPanelAction(action)
+				}
 				return m, nil
 			}
 			m.schemaPanel.OpenActions()
@@ -2172,45 +2302,6 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.openAddColumnFormForTable(m.schemaPanel.Table())
 		}
 		return m, nil
-	}
-
-	// Add-column SQL confirmation is modal.
-	if m.addColumnConfirmSQL != "" {
-		switch msg.String() {
-		case "y", "Y", "enter":
-			table := m.addColumnConfirmTable
-			query := m.addColumnConfirmSQL
-			return m, m.execAddColumn(table, query)
-		case "n", "N", "esc", "ctrl+c":
-			m.addColumnConfirmSQL = ""
-			m.addColumnConfirmTable = ""
-			return m, nil
-		}
-		return m, nil
-	}
-
-	// Add-column form is modal.
-	if m.addColumnForm.IsVisible() {
-		switch msg.String() {
-		case "esc", "ctrl+c":
-			m.addColumnForm.Hide()
-			m.addColumnConfirmSQL = ""
-			m.addColumnConfirmTable = ""
-			return m, nil
-		case "enter", "ctrl+s":
-			sql, errMsg := m.addColumnForm.Submit()
-			if errMsg != "" {
-				m.addColumnForm.SetError(errMsg)
-				return m, nil
-			}
-			m.addColumnConfirmTable = m.addColumnForm.Table()
-			m.addColumnConfirmSQL = sql
-			m.addColumnForm.SetError("")
-			return m, nil
-		}
-		var cmd tea.Cmd
-		m.addColumnForm, cmd = m.addColumnForm.Update(msg)
-		return m, cmd
 	}
 
 	// Discard / truncate confirmation dialogs are modal — intercept all keys.
@@ -2349,9 +2440,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.discardConfirm = false
 		m.truncateConfirm = ""
 		m.addColumnForm.Hide()
+		m.columnEditForm.Hide()
 		m.schemaPanel.Hide()
-		m.addColumnConfirmSQL = ""
-		m.addColumnConfirmTable = ""
+		m.clearSchemaConfirm()
 		m.schemaMsg = ""
 		m.lastQuery = ""
 		m.baseQuery = ""
@@ -3831,7 +3922,40 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, panel, panelX, panelY)
 	}
 
-	// Overlay add-column form or SQL confirmation.
+	if m.schemaConfirmSQL != "" {
+		prompt := fmt.Sprintf("Run this on %s?", m.schemaConfirmTable)
+		if m.schemaConfirmAction == db.SchemaDropColumn {
+			prompt = fmt.Sprintf("Drop column on %s?\nThis permanently removes the column and its data.", m.schemaConfirmTable)
+		}
+		dialog := renderSQLConfirmDialog(prompt, m.schemaConfirmSQL)
+		dlgW := lipgloss.Width(dialog)
+		dlgH := lipgloss.Height(dialog)
+		dlgX := (m.width - dlgW) / 2
+		dlgY := (m.height - 1 - dlgH) / 2
+		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
+	// Overlay column edit form.
+	if m.columnEditForm.IsVisible() {
+		popupW := 58
+		borderOverhead := 2
+		padding := 4
+		innerW := popupW - borderOverhead - padding
+		m.columnEditForm.SetMaxWidth(innerW)
+		formPanel := lipgloss.NewStyle().
+			Width(popupW - borderOverhead).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorPrimary).
+			Padding(1, 2).
+			Render(m.columnEditForm.View())
+		panelW := lipgloss.Width(formPanel)
+		panelH := lipgloss.Height(formPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, formPanel, panelX, panelY)
+	}
+
+	// Overlay add-column form.
 	if m.addColumnForm.IsVisible() {
 		popupW := 58
 		borderOverhead := 2
@@ -3849,15 +3973,6 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, formPanel, panelX, panelY)
-	}
-	if m.addColumnConfirmSQL != "" {
-		prompt := fmt.Sprintf("Run this on %s?", m.addColumnConfirmTable)
-		dialog := renderSQLConfirmDialog(prompt, m.addColumnConfirmSQL)
-		dlgW := lipgloss.Width(dialog)
-		dlgH := lipgloss.Height(dialog)
-		dlgX := (m.width - dlgW) / 2
-		dlgY := (m.height - 1 - dlgH) / 2
-		view = placeOverlay(view, dialog, dlgX, dlgY)
 	}
 
 	// Overlay completion popup if visible

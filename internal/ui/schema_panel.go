@@ -71,6 +71,20 @@ func (p SchemaPanel) IsFiltering() bool {
 	return p.filtering
 }
 
+// SelectedColumn returns the currently highlighted column.
+func (p SchemaPanel) SelectedColumn() (db.TableColumnInfo, bool) {
+	return p.selectedColumn()
+}
+
+// ColumnNames returns all column names in table order.
+func (p SchemaPanel) ColumnNames() []string {
+	names := make([]string, len(p.columns))
+	for i, c := range p.columns {
+		names[i] = c.Name
+	}
+	return names
+}
+
 // Table returns the table shown in the panel.
 func (p SchemaPanel) Table() string {
 	return p.table
@@ -320,8 +334,6 @@ func (p SchemaPanel) renderActionMenu() string {
 		line := fmt.Sprintf("%s %s", marker, label)
 		if i == p.actionCursor {
 			line = lipgloss.NewStyle().Foreground(colorFg).Render(line)
-		} else {
-			line = mutedStyle.Render(line)
 		}
 		lines = append(lines, line)
 	}
