@@ -60,6 +60,7 @@ internal/ui/              — All Bubble Tea UI components
 - [x] SSH tunnel support (MySQL via bastion host; key-based auth with passphrase + password auth)
 - [x] Record inspector (Ctrl+O toggles right-side panel; vertical form editor that tracks results cursor)
 - [x] Help overlay (`?` toggles a full keybindings popup; status bar shows only context info — connection, table, dimensions, messages)
+- [x] Column hide/visibility (`H` hides cursor column, `g H` shows all, `v` opens a column-visibility overlay; hidden cols are display-only and survive same-table re-queries)
 
 ## Config Format (~/.config/gsql/config.yaml)
 ```yaml

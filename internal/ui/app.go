@@ -121,6 +121,7 @@ type Model struct {
 	dbPicker     DatabasePicker
 	help         HelpPanel
 	filterPicker FilterPicker
+	columnPicker ColumnPicker
 	sidebarCursor int
 	expanded     map[string][]db.Column
 	columnCache  map[string][]db.Column
@@ -192,6 +193,7 @@ func NewModel(cfg *config.Config) Model {
 		dbPicker:     NewDatabasePicker(),
 		help:         NewHelpPanel(),
 		filterPicker: NewFilterPicker(),
+		columnPicker: NewColumnPicker(),
 		historyStore: history.NewStore(historyDir()),
 		expanded:     make(map[string][]db.Column),
 		pageSize:     defaultPageSize,
@@ -508,6 +510,25 @@ func (m Model) buildFilteredQuery() string {
 		q += fmt.Sprintf(" ORDER BY %s %s", m.sortCol, m.sortDir)
 	}
 	return q
+}
+
+// openColumnPicker opens the column-visibility overlay, seeded with the
+// current results columns and their hidden state.
+func (m *Model) openColumnPicker() {
+	hidden := make(map[string]bool)
+	for _, name := range m.results.HiddenColumnNames() {
+		hidden[name] = true
+	}
+	m.columnPicker.Show(m.results.columns, hidden)
+}
+
+// applyColumnVisibility commits the picker's selection to the results table
+// and closes the overlay.
+func (m *Model) applyColumnVisibility() tea.Cmd {
+	hidden := m.columnPicker.HiddenColumns()
+	m.columnPicker.Hide()
+	m.results.SetHiddenColumns(hidden)
+	return nil
 }
 
 // openFilterPicker opens the value picker for the current column,
@@ -1893,6 +1914,70 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Column visibility picker is modal — intercept all keys when visible.
+	if m.columnPicker.IsVisible() {
+		// ctrl+a / ctrl+n work in any state (empty or filtered).
+		switch msg.String() {
+		case "ctrl+a":
+			m.columnPicker.SelectAll()
+			return m, nil
+		case "ctrl+n":
+			m.columnPicker.SelectNone()
+			return m, nil
+		}
+		// While typing a filter, only navigation/confirm/space are special.
+		if m.columnPicker.filtering() {
+			switch msg.String() {
+			case "esc", "ctrl+c":
+				m.columnPicker.Hide()
+				return m, nil
+			case "enter":
+				return m, m.applyColumnVisibility()
+			case " ":
+				m.columnPicker.ToggleSelected()
+				return m, nil
+			case "up":
+				m.columnPicker.CursorUp()
+				return m, nil
+			case "down":
+				m.columnPicker.CursorDown()
+				return m, nil
+			case "backspace":
+				m.columnPicker.FilterBackspace()
+				return m, nil
+			}
+			if msg.Type == tea.KeyRunes {
+				m.columnPicker.FilterAddChar(msg.String())
+				return m, nil
+			}
+			return m, nil
+		}
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.columnPicker.Hide()
+			return m, nil
+		case "enter":
+			return m, m.applyColumnVisibility()
+		case " ":
+			m.columnPicker.ToggleSelected()
+			return m, nil
+		case "up", "k":
+			m.columnPicker.CursorUp()
+			return m, nil
+		case "down", "j":
+			m.columnPicker.CursorDown()
+			return m, nil
+		case "backspace":
+			m.columnPicker.FilterBackspace()
+			return m, nil
+		}
+		if msg.Type == tea.KeyRunes {
+			m.columnPicker.FilterAddChar(msg.String())
+			return m, nil
+		}
+		return m, nil
+	}
+
 	// Discard confirmation dialog is modal — intercept all keys.
 	if m.discardConfirm {
 		switch msg.String() {
@@ -2019,6 +2104,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.results.SetSearchMatcher(nil)
 		m.inspector.Hide()
 		m.dbPicker.Hide()
+		m.columnPicker.Hide()
 		m.discardConfirm = false
 		m.lastQuery = ""
 		m.baseQuery = ""
@@ -2421,6 +2507,29 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.columnJump = ""
 				}
 				return m, nil
+			case "H":
+				if m.resultsPendingG {
+					// g H — show all columns.
+					m.resultsPendingG = false
+					m.resultsPendingY = false
+					m.results.ShowAllColumns()
+					return m, nil
+				}
+				// H — hide the column under the cursor.
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				if m.results.NumCols() > 0 {
+					m.results.HideColumn(m.results.CursorCol())
+				}
+				return m, nil
+			case "v":
+				// v — open the column-visibility overlay.
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				if m.results.NumCols() > 0 {
+					m.openColumnPicker()
+					return m, nil
+				}
 			}
 			m.resultsPendingG = false
 			m.resultsPendingY = false
@@ -2801,7 +2910,7 @@ func findNextMatch(r ResultsTable, match func(string) bool, fromStart bool) (int
 			if row == startRow && col < startCol {
 				continue
 			}
-			if match(r.RowValue(row, col)) {
+			if !r.IsColumnHidden(col) && match(r.RowValue(row, col)) {
 				return row, col
 			}
 		}
@@ -2809,7 +2918,7 @@ func findNextMatch(r ResultsTable, match func(string) bool, fromStart bool) (int
 	// Wrap around.
 	for row := 0; row < startRow; row++ {
 		for col := 0; col < cols; col++ {
-			if match(r.RowValue(row, col)) {
+			if !r.IsColumnHidden(col) && match(r.RowValue(row, col)) {
 				return row, col
 			}
 		}
@@ -2842,7 +2951,7 @@ func findPrevMatch(r ResultsTable, match func(string) bool) (int, int) {
 			cEnd = startCol
 		}
 		for col := cEnd; col >= 0; col-- {
-			if match(r.RowValue(row, col)) {
+			if !r.IsColumnHidden(col) && match(r.RowValue(row, col)) {
 				return row, col
 			}
 		}
@@ -2850,7 +2959,7 @@ func findPrevMatch(r ResultsTable, match func(string) bool) (int, int) {
 	// Wrap around: scan from the last row back to the cursor row.
 	for row := rows - 1; row > startRow; row-- {
 		for col := cols - 1; col >= 0; col-- {
-			if match(r.RowValue(row, col)) {
+			if !r.IsColumnHidden(col) && match(r.RowValue(row, col)) {
 				return row, col
 			}
 		}
@@ -2869,7 +2978,7 @@ func countMatches(r ResultsTable, match func(string) bool) int {
 	count := 0
 	for row := 0; row < r.NumRows(); row++ {
 		for col := 0; col < r.NumCols(); col++ {
-			if match(r.RowValue(row, col)) {
+			if !r.IsColumnHidden(col) && match(r.RowValue(row, col)) {
 				count++
 			}
 		}
@@ -3405,6 +3514,18 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, filterPanel, panelX, panelY)
 	}
 
+	// Overlay column-visibility picker if visible
+	if m.columnPicker.IsVisible() {
+		pw, ph := popupDim()
+		m.columnPicker.SetSize(pw, ph)
+		colPanel := m.columnPicker.View()
+		panelW := lipgloss.Width(colPanel)
+		panelH := lipgloss.Height(colPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, colPanel, panelX, panelY)
+	}
+
 	// Overlay discard confirmation dialog if visible
 	if m.discardConfirm {
 		dialog := lipgloss.NewStyle().
@@ -3525,6 +3646,10 @@ func (m Model) statusBar(connName string) string {
 
 	if n := m.results.MarkCount(); n > 0 {
 		parts = append(parts, lipgloss.NewStyle().Foreground(colorMark).Render(fmt.Sprintf("◆ %d", n)))
+	}
+
+	if n := m.results.HiddenCount(); n > 0 {
+		parts = append(parts, lipgloss.NewStyle().Foreground(colorAccent).Render(fmt.Sprintf("⊫ %d", n)))
 	}
 
 	if msg := m.statusMessage(); msg != "" {

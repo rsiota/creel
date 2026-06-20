@@ -67,6 +67,13 @@ type ResultsTable struct {
 	markedRows  map[string][]string
 	markedTable string
 
+	// Hidden columns (display-only). Keyed by column name so the hidden
+	// set survives same-table re-queries; hiddenTable guards staleness like
+	// markedRows. Hiding never touches the data layer — editing, sort,
+	// stats, and export always see the full column set.
+	hiddenCols  map[string]bool
+	hiddenTable string
+
 	// Client-side search highlight: matcher is set while/after g/ search so
 	// View() can tint matching cells. nil when no search is active.
 	searchMatcher func(string) bool
@@ -379,6 +386,146 @@ func (r *ResultsTable) ClearMarks() {
 	r.markedTable = ""
 }
 
+// hiddenStale reports whether stored hidden columns belong to a different table.
+func (r ResultsTable) hiddenStale() bool {
+	return r.hiddenTable != "" && !strings.EqualFold(r.hiddenTable, r.sourceTable)
+}
+
+// hiddenSet returns the live hidden-cols map, initializing it (and binding it
+// to the current table) on first use or when a new table is detected.
+func (r *ResultsTable) hiddenSet() map[string]bool {
+	if r.hiddenTable == "" || r.hiddenStale() {
+		r.hiddenCols = make(map[string]bool)
+		r.hiddenTable = r.sourceTable
+	}
+	return r.hiddenCols
+}
+
+// HiddenCount returns the number of hidden columns for the current table.
+func (r ResultsTable) HiddenCount() int {
+	if r.hiddenStale() || len(r.hiddenCols) == 0 {
+		return 0
+	}
+	n := 0
+	for _, c := range r.columns {
+		if r.hiddenCols[c] {
+			n++
+		}
+	}
+	return n
+}
+
+// IsColumnHidden reports whether the given column index is hidden.
+func (r ResultsTable) IsColumnHidden(col int) bool {
+	if r.hiddenStale() || len(r.hiddenCols) == 0 || col < 0 || col >= len(r.columns) {
+		return false
+	}
+	return r.hiddenCols[r.columns[col]]
+}
+
+// VisibleColumnCount returns the number of currently visible columns.
+func (r ResultsTable) VisibleColumnCount() int {
+	return len(r.columns) - r.HiddenCount()
+}
+
+// nextVisibleCol returns the first visible column at or after col, or -1.
+func (r ResultsTable) nextVisibleCol(col int) int {
+	for i := col; i < len(r.columns); i++ {
+		if !r.IsColumnHidden(i) {
+			return i
+		}
+	}
+	return -1
+}
+
+// prevVisibleCol returns the first visible column at or before col, or -1.
+func (r ResultsTable) prevVisibleCol(col int) int {
+	for i := col; i >= 0; i-- {
+		if !r.IsColumnHidden(i) {
+			return i
+		}
+	}
+	return -1
+}
+
+// HideColumn hides the column at the given index. It refuses to hide the last
+// visible column so the table is never empty. Returns false if it was a no-op.
+func (r *ResultsTable) HideColumn(col int) bool {
+	if col < 0 || col >= len(r.columns) {
+		return false
+	}
+	if r.VisibleColumnCount() <= 1 {
+		return false
+	}
+	hs := r.hiddenSet()
+	name := r.columns[col]
+	if hs[name] {
+		return false
+	}
+	hs[name] = true
+	r.clampCursor()
+	r.ensureCursorVisible()
+	return true
+}
+
+// ShowColumn makes the column at the given index visible again.
+func (r *ResultsTable) ShowColumn(col int) {
+	if col < 0 || col >= len(r.columns) {
+		return
+	}
+	if r.hiddenStale() {
+		return
+	}
+	delete(r.hiddenCols, r.columns[col])
+}
+
+// ShowAllColumns clears all hidden columns for the current table.
+func (r *ResultsTable) ShowAllColumns() {
+	r.hiddenCols = nil
+	r.hiddenTable = ""
+}
+
+// HiddenColumnNames returns the names of currently hidden columns, in column
+// order. Used to initialize the column-visibility overlay.
+func (r ResultsTable) HiddenColumnNames() []string {
+	var out []string
+	if r.hiddenStale() || len(r.hiddenCols) == 0 {
+		return out
+	}
+	for _, c := range r.columns {
+		if r.hiddenCols[c] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// SetHiddenColumns replaces the hidden set with the given column names. Names
+// not present in the result set are ignored. Hiding all columns is rejected.
+func (r *ResultsTable) SetHiddenColumns(names []string) {
+	hs := r.hiddenSet()
+	for k := range hs {
+		delete(hs, k)
+	}
+	present := make(map[string]bool, len(r.columns))
+	for _, c := range r.columns {
+		present[c] = true
+	}
+	for _, n := range names {
+		if present[n] {
+			hs[n] = true
+		}
+	}
+	if len(hs) >= len(r.columns) {
+		// Never hide everything.
+		for k := range hs {
+			delete(hs, k)
+		}
+	}
+	r.clampCursor()
+	r.ensureCursorVisible()
+}
+
 // SetSearchMatcher installs a matcher used by View() to tint matching cells.
 // Pass nil to clear highlighting.
 func (r *ResultsTable) SetSearchMatcher(matcher func(string) bool) {
@@ -651,6 +798,15 @@ func (r *ResultsTable) clampCursor() {
 	if r.cursorCol < 0 {
 		r.cursorCol = 0
 	}
+	// Never leave the cursor on a hidden column; move to the nearest
+	// visible one.
+	if r.IsColumnHidden(r.cursorCol) {
+		if next := r.nextVisibleCol(r.cursorCol); next >= 0 {
+			r.cursorCol = next
+		} else if prev := r.prevVisibleCol(r.cursorCol); prev >= 0 {
+			r.cursorCol = prev
+		}
+	}
 }
 
 // ensureCursorVisible adjusts scroll so the cursor cell is in view.
@@ -664,17 +820,29 @@ func (r *ResultsTable) ensureCursorVisible() {
 	}
 	r.clampScrollRow()
 
-	// Horizontal: keep cursor column visible
-	colStart, _ := r.visibleColRange()
-	if r.cursorCol < colStart {
-		r.scrollCol = r.cursorCol
-	}
+	// Horizontal: keep cursor column visible (skipping hidden columns).
 	for {
-		cs, ce := r.visibleColRange()
-		if r.cursorCol >= cs && r.cursorCol < ce {
+		vis := r.visibleColRange()
+		if len(vis) == 0 {
 			break
 		}
-		if r.cursorCol >= ce && r.scrollCol < len(r.colWidths)-1 {
+		visible := false
+		for _, c := range vis {
+			if c == r.cursorCol {
+				visible = true
+				break
+			}
+		}
+		if visible {
+			break
+		}
+		if r.cursorCol < vis[0] {
+			// Cursor is left of the visible window; scroll to it.
+			r.scrollCol = r.cursorCol
+			continue
+		}
+		// Cursor is right of the visible window; step right.
+		if r.scrollCol < len(r.colWidths)-1 {
 			r.scrollCol++
 		} else {
 			break
@@ -771,18 +939,18 @@ func (r *ResultsTable) CursorUp() {
 	r.ensureCursorVisible()
 }
 
-// CursorRight moves the cell cursor right (editable mode).
+// CursorRight moves the cell cursor right (editable mode), skipping hidden columns.
 func (r *ResultsTable) CursorRight() {
-	if r.cursorCol < len(r.columns)-1 {
-		r.cursorCol++
+	if next := r.nextVisibleCol(r.cursorCol + 1); next >= 0 {
+		r.cursorCol = next
 	}
 	r.ensureCursorVisible()
 }
 
-// CursorLeft moves the cell cursor left (editable mode).
+// CursorLeft moves the cell cursor left (editable mode), skipping hidden columns.
 func (r *ResultsTable) CursorLeft() {
-	if r.cursorCol > 0 {
-		r.cursorCol--
+	if prev := r.prevVisibleCol(r.cursorCol - 1); prev >= 0 {
+		r.cursorCol = prev
 	}
 	r.ensureCursorVisible()
 }
@@ -859,7 +1027,7 @@ func truncateCell(s string, width int) string {
 
 // visibleColRange returns the start and end column indices that fit
 // within the available width, starting from scrollCol.
-func (r ResultsTable) visibleColRange() (int, int) {
+func (r ResultsTable) visibleColRange() []int {
 	// Each column renders as: " " + value(colWidth) + " " + "│" = colWidth + 3
 	// The leftmost "│" is 1 extra char.
 	available := r.width - 1
@@ -867,20 +1035,21 @@ func (r ResultsTable) visibleColRange() (int, int) {
 		available = 1
 	}
 
-	start := r.scrollCol
 	used := 0
-	end := start
-
-	for i := start; i < len(r.colWidths); i++ {
+	var out []int
+	for i := r.scrollCol; i < len(r.colWidths); i++ {
+		if r.IsColumnHidden(i) {
+			continue
+		}
 		colW := r.colWidths[i] + 3
-		if used+colW > available && end > start {
+		if used+colW > available && len(out) > 0 {
 			break
 		}
 		used += colW
-		end = i + 1
+		out = append(out, i)
 	}
 
-	return start, end
+	return out
 }
 
 // isPKColumn returns true if colName is a primary key column.
@@ -915,17 +1084,17 @@ func (r ResultsTable) View() string {
 		rowEnd = len(r.rows)
 	}
 
-	colStart, colEnd := r.visibleColRange()
+	cols := r.visibleColRange()
 
 	var b strings.Builder
 
 	// Top border
 	borderColor := lipgloss.NewStyle().Foreground(colorBorder)
 	b.WriteString(borderColor.Render("┌"))
-	for i := colStart; i < colEnd; i++ {
+	for j, i := range cols {
 		w := r.colWidths[i] + 2 // match cell content: " " + value + " "
 		b.WriteString(borderColor.Render(strings.Repeat("─", w)))
-		if i < colEnd-1 {
+		if j < len(cols)-1 {
 			b.WriteString(borderColor.Render("┬"))
 		}
 	}
@@ -934,7 +1103,7 @@ func (r ResultsTable) View() string {
 
 	// Header row
 	b.WriteString(borderColor.Render("│"))
-	for i := colStart; i < colEnd; i++ {
+	for _, i := range cols {
 		header := r.columns[i]
 		if r.editable && r.isPKColumn(header) {
 			header = header + " 🔑"
@@ -958,10 +1127,10 @@ func (r ResultsTable) View() string {
 
 	// Header separator
 	b.WriteString(borderColor.Render("├"))
-	for i := colStart; i < colEnd; i++ {
+	for j, i := range cols {
 		w := r.colWidths[i] + 2
 		b.WriteString(borderColor.Render(strings.Repeat("─", w)))
-		if i < colEnd-1 {
+		if j < len(cols)-1 {
 			b.WriteString(borderColor.Render("┼"))
 		}
 	}
@@ -977,7 +1146,7 @@ func (r ResultsTable) View() string {
 		} else {
 			b.WriteString(borderColor.Render("│"))
 		}
-		for i := colStart; i < colEnd; i++ {
+		for _, i := range cols {
 			ref := cellRef{row: rowIdx, col: i}
 			dirtyVal, isDirty := r.dirtyCells[ref]
 			isCursorCell := isCursorRow && i == r.cursorCol
@@ -1032,10 +1201,10 @@ func (r ResultsTable) View() string {
 
 	// Bottom border
 	b.WriteString(borderColor.Render("└"))
-	for i := colStart; i < colEnd; i++ {
+	for j, i := range cols {
 		w := r.colWidths[i] + 2
 		b.WriteString(borderColor.Render(strings.Repeat("─", w)))
-		if i < colEnd-1 {
+		if j < len(cols)-1 {
 			b.WriteString(borderColor.Render("┴"))
 		}
 	}
