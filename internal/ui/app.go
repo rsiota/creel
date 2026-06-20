@@ -522,6 +522,23 @@ func (m Model) buildFilteredQuery() string {
 	return q
 }
 
+// applyFilteredQuery rebuilds lastQuery from active filters/sort and mirrors it
+// into the editor when results-driven actions change the effective SQL.
+func (m *Model) applyFilteredQuery() {
+	m.lastQuery = m.buildFilteredQuery()
+	m.syncEditorQuery()
+}
+
+// syncEditorQuery updates the editor to reflect lastQuery. Skipped while the
+// editor is focused so an in-progress draft is not overwritten.
+func (m *Model) syncEditorQuery() {
+	if m.focus == FocusEditor || m.lastQuery == "" {
+		return
+	}
+	q := strings.TrimRight(strings.TrimSpace(m.lastQuery), ";")
+	m.editor.SetValue(q + ";")
+}
+
 // openColumnPicker opens the column-visibility overlay, seeded with the
 // current results columns and their hidden state.
 func (m *Model) openColumnPicker() {
@@ -591,7 +608,7 @@ func (m *Model) applyFilterPickerSelection() tea.Cmd {
 		m.filters = append(m.filters, buildInClause(colName, escaped))
 	}
 
-	m.lastQuery = m.buildFilteredQuery()
+	m.applyFilteredQuery()
 	m.page = 0
 	m.preserveCursorCol()
 	return m.runPageQuery()
@@ -603,7 +620,7 @@ func (m *Model) clearFilters() tea.Cmd {
 		return nil
 	}
 	m.filters = nil
-	m.lastQuery = m.buildFilteredQuery()
+	m.applyFilteredQuery()
 	m.page = 0
 	m.preserveCursorCol()
 	return m.runPageQuery()
@@ -615,7 +632,7 @@ func (m *Model) undoFilter() tea.Cmd {
 		return nil
 	}
 	m.filters = m.filters[:len(m.filters)-1]
-	m.lastQuery = m.buildFilteredQuery()
+	m.applyFilteredQuery()
 	m.page = 0
 	m.preserveCursorCol()
 	return m.runPageQuery()
@@ -936,7 +953,7 @@ func (m *Model) toggleSort() tea.Cmd {
 		m.sortCol = ""
 		m.sortDir = ""
 	}
-	m.lastQuery = m.buildFilteredQuery()
+	m.applyFilteredQuery()
 	m.page = 0
 	m.preserveCursorCol()
 	return m.runPageQuery()
@@ -1071,7 +1088,7 @@ func (m *Model) quickFilterCell(negate bool) tea.Cmd {
 	m.filters = removeColumnFilters(m.filters, colName)
 	m.filters = append(m.filters, buildQuickFilter(colName, value, dbType, negate))
 
-	m.lastQuery = m.buildFilteredQuery()
+	m.applyFilteredQuery()
 	m.page = 0
 	m.preserveCursorCol()
 	return m.runPageQuery()
@@ -1106,7 +1123,7 @@ func (m *Model) filterByMarks() tea.Cmd {
 	m.filters = append(m.filters, clause)
 	m.results.ClearMarks()
 
-	m.lastQuery = m.buildFilteredQuery()
+	m.applyFilteredQuery()
 	m.page = 0
 	m.preserveCursorCol()
 	return m.runPageQuery()

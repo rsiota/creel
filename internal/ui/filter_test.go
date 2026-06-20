@@ -92,6 +92,7 @@ func TestClearFilters(t *testing.T) {
 	m := &Model{
 		baseQuery: "SELECT * FROM users",
 		filters:   []string{"country = 'UK'", "active = 1"},
+		focus:     FocusEditor,
 	}
 	m.clearFilters()
 	if len(m.filters) != 0 {
@@ -106,6 +107,7 @@ func TestUndoFilter(t *testing.T) {
 	m := &Model{
 		baseQuery: "SELECT * FROM users",
 		filters:   []string{"country = 'UK'", "active = '1'"},
+		focus:     FocusEditor,
 	}
 	m.undoFilter()
 	if len(m.filters) != 1 {
@@ -131,6 +133,7 @@ func TestUndoFilter_AllStripped(t *testing.T) {
 	m := &Model{
 		baseQuery: "SELECT * FROM users",
 		filters:   []string{"country = 'UK'"},
+		focus:     FocusEditor,
 	}
 	m.undoFilter()
 	if len(m.filters) != 0 {
@@ -185,6 +188,7 @@ func TestToggleSort_Cycle(t *testing.T) {
 		baseQuery:  "SELECT * FROM users",
 		connection: &db.Connection{},
 		results:    NewResultsTable(),
+		focus:      FocusEditor,
 	}
 	m.results.SetResult([]string{"id", "name"}, [][]string{{"1", "alice"}}, "")
 	m.results.SetCursor(0, 1) // cursor on "name" column
@@ -312,6 +316,7 @@ func TestApplyFilterPickerSelection(t *testing.T) {
 		baseQuery:  "SELECT * FROM users",
 		connection: &db.Connection{},
 		results:    NewResultsTable(),
+		focus:      FocusEditor,
 	}
 	m.results.SetResult([]string{"id", "country"}, [][]string{{"1", "UK"}}, "")
 
@@ -336,6 +341,7 @@ func TestApplyFilterPickerSelection_Single(t *testing.T) {
 		baseQuery:  "SELECT * FROM users",
 		connection: &db.Connection{},
 		results:    NewResultsTable(),
+		focus:      FocusEditor,
 	}
 	m.results.SetResult([]string{"id", "country"}, [][]string{{"1", "UK"}}, "")
 
@@ -356,6 +362,7 @@ func TestApplyFilterPickerSelection_Replaces(t *testing.T) {
 		connection: &db.Connection{},
 		results:    NewResultsTable(),
 		filters:    []string{"country = 'FR'", "active = '1'"},
+		focus:      FocusEditor,
 	}
 	m.results.SetResult([]string{"id", "country"}, [][]string{{"1", "UK"}}, "")
 
@@ -506,6 +513,7 @@ func TestQuickFilterCell_ReplacesExisting(t *testing.T) {
 		baseQuery:  "SELECT * FROM users",
 		connection: &db.Connection{},
 		results:    NewResultsTable(),
+		focus:      FocusEditor,
 	}
 	m.results.SetResult([]string{"id", "country"}, [][]string{{"1", "UK"}, {"2", "US"}}, "")
 	m.results.SetColumnTypes(map[string]string{"id": "INTEGER", "country": "TEXT"})
@@ -653,6 +661,7 @@ func TestFilterByMarks_BuildsAndConsumes(t *testing.T) {
 		baseQuery:  "SELECT * FROM users",
 		connection: &db.Connection{},
 		results:    NewResultsTable(),
+		focus:      FocusEditor,
 	}
 	m.results.SetResult([]string{"id", "name"}, [][]string{{"1", "a"}, {"2", "b"}, {"3", "c"}}, "")
 	m.results.SetColumnTypes(map[string]string{"id": "INTEGER", "name": "TEXT"})
@@ -684,6 +693,7 @@ func TestFilterByMarks_CompositePK(t *testing.T) {
 		baseQuery:  "SELECT * FROM orders",
 		connection: &db.Connection{},
 		results:    NewResultsTable(),
+		focus:      FocusEditor,
 	}
 	m.results.SetResult([]string{"a", "b"}, [][]string{{"1", "x"}, {"2", "y"}}, "")
 	m.results.SetColumnTypes(map[string]string{"a": "INTEGER", "b": "TEXT"})
