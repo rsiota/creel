@@ -182,6 +182,15 @@ func TestBuildDropColumnSQL(t *testing.T) {
 	}
 }
 
+func TestSchemaActionNeedsConfirm(t *testing.T) {
+	if !SchemaActionNeedsConfirm(SchemaDropColumn) {
+		t.Fatal("drop column should require confirm")
+	}
+	if SchemaActionNeedsConfirm(SchemaRenameColumn) {
+		t.Fatal("rename should run directly from the form")
+	}
+}
+
 func TestSchemaSupports(t *testing.T) {
 	if !SchemaSupports(DriverSQLite, SchemaAddColumn) {
 		t.Fatal("sqlite should support add column")

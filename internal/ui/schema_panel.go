@@ -23,6 +23,7 @@ type SchemaPanel struct {
 	notice     string
 	width      int
 	height     int
+	listRows   int // visible column rows (computed from terminal height)
 }
 
 // NewSchemaPanel creates a hidden schema panel.
@@ -99,10 +100,25 @@ func (p *SchemaPanel) SetColumns(columns []db.TableColumnInfo) {
 	p.scrollRow = 0
 }
 
-// SetSize stores terminal dimensions for scrolling/layout.
-func (p *SchemaPanel) SetSize(width, height int) {
+// SetSize stores terminal dimensions and derives how many column rows fit.
+func (p *SchemaPanel) SetSize(width, terminalHeight int) {
 	p.width = width
-	p.height = height
+	p.height = terminalHeight
+	p.listRows = schemaPanelListRows(terminalHeight)
+}
+
+// schemaPanelListRows returns how many column rows fit in the popup for a terminal height.
+func schemaPanelListRows(terminalHeight int) int {
+	// margin + border(2) + padding(2) + title + header + scroll hint + footer + help
+	const chrome = 1 + 2 + 2 + 5
+	rows := terminalHeight - chrome
+	if rows < 8 {
+		rows = 8
+	}
+	if rows > 28 {
+		rows = 28
+	}
+	return rows
 }
 
 // SetNotice sets a transient message shown in the panel footer.
@@ -177,11 +193,10 @@ func (p *SchemaPanel) adjustScroll() {
 }
 
 func (p SchemaPanel) listHeight() int {
-	h := p.height - 10
-	if h < 3 {
-		h = 3
+	if p.listRows > 0 {
+		return p.listRows
 	}
-	return h
+	return schemaPanelListRows(p.height)
 }
 
 // StartFilter enters column filter mode.
@@ -253,27 +268,56 @@ func (p SchemaPanel) View() string {
 	if !p.visible {
 		return ""
 	}
+	if p.showActions {
+		return p.viewActions()
+	}
+	return p.viewSchema()
+}
 
+func (p SchemaPanel) viewSchema() string {
 	title := titleStyle.Render(fmt.Sprintf("Schema: %s", p.table))
 	header := lipgloss.JoinVertical(lipgloss.Left,
 		title,
 		p.renderColumnHeader(),
 	)
+	body := p.renderColumnList()
+	footer := p.renderSchemaFooter()
+	help := mutedStyle.Render("esc close   / filter   a add column   enter column actions")
+	return lipgloss.JoinVertical(lipgloss.Left, header, body, footer, help)
+}
 
-	var body string
-	if p.showActions {
-		body = p.renderActionMenu()
+func (p SchemaPanel) viewActions() string {
+	col, ok := p.selectedColumn()
+	title := titleStyle.Render(fmt.Sprintf("Actions · %s", p.table))
+	if ok {
+		title = titleStyle.Render(fmt.Sprintf("Actions · %s.%s", p.table, col.Name))
+	}
+
+	var parts []string
+	parts = append(parts, title)
+	if ok {
+		parts = append(parts, lipgloss.NewStyle().Foreground(colorLabel).Render(formatColumnDetail(col)))
 	} else {
-		body = p.renderColumnList()
+		parts = append(parts, mutedStyle.Render("(no column selected)"))
 	}
 
-	footer := p.renderFooter()
-	parts := []string{header, body}
-	if footer != "" {
-		parts = append(parts, footer)
+	body := p.padBody(p.renderActionMenu(), p.listHeight()+1)
+	parts = append(parts, body)
+
+	if p.notice != "" {
+		parts = append(parts, errorStyle.Render(p.notice))
+	} else {
+		parts = append(parts, mutedStyle.Render(" "))
 	}
-	parts = append(parts, mutedStyle.Render("esc close   / filter   a add column   enter column actions"))
+
+	parts = append(parts, mutedStyle.Render("enter select   esc back"))
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+// ContentHeight returns the fixed inner height of the panel in lines.
+func (p SchemaPanel) ContentHeight() int {
+	// title + secondary line + list body + footer + key help
+	return p.listHeight() + 5
 }
 
 func (p SchemaPanel) renderColumnHeader() string {
@@ -284,46 +328,61 @@ func (p SchemaPanel) renderColumnHeader() string {
 func (p SchemaPanel) renderColumnList() string {
 	cols := p.filteredColumns()
 	maxVisible := p.listHeight()
-	end := p.scrollRow + maxVisible
-	if end > len(cols) {
-		end = len(cols)
-	}
 
 	var lines []string
 	if len(cols) == 0 {
 		lines = append(lines, mutedStyle.Render("  (no columns)"))
-	}
-	for i := p.scrollRow; i < end; i++ {
-		col := cols[i]
-		marker := " "
-		if i == p.cursor {
-			marker = lipgloss.NewStyle().Foreground(colorAccent).Render("›")
+		for i := 1; i < maxVisible; i++ {
+			lines = append(lines, "")
 		}
-		name := truncateRunes(col.Name, 18)
-		typ := truncateRunes(col.Type, 14)
-		flags := truncateRunes(formatColumnFlags(col), 12)
-		def := truncateRunes(formatDefaultDisplay(col), 16)
-		line := fmt.Sprintf("%s %-18s %-14s %-12s %s", marker, name, typ, flags, def)
-		if i == p.cursor {
-			line = lipgloss.NewStyle().Foreground(colorFg).Bold(true).Render(line)
+	} else {
+		for row := 0; row < maxVisible; row++ {
+			idx := p.scrollRow + row
+			if idx >= len(cols) {
+				lines = append(lines, "")
+				continue
+			}
+			lines = append(lines, p.renderColumnLine(cols[idx], idx == p.cursor))
 		}
-		lines = append(lines, line)
 	}
-	if len(cols) > maxVisible {
-		lines = append(lines, mutedStyle.Render(fmt.Sprintf("  %d columns", len(cols))))
-	}
+
+	lines = append(lines, p.renderScrollHint(len(cols), maxVisible))
 	return strings.Join(lines, "\n")
 }
 
+func (p SchemaPanel) renderColumnLine(col db.TableColumnInfo, selected bool) string {
+	marker := " "
+	if selected {
+		marker = lipgloss.NewStyle().Foreground(colorAccent).Render("›")
+	}
+	name := truncateRunes(col.Name, 18)
+	typ := truncateRunes(col.Type, 14)
+	flags := truncateRunes(formatColumnFlags(col), 12)
+	def := truncateRunes(formatDefaultDisplay(col), 16)
+	line := fmt.Sprintf("%s %-18s %-14s %-12s %s", marker, name, typ, flags, def)
+	if selected {
+		line = lipgloss.NewStyle().Foreground(colorFg).Bold(true).Render(line)
+	}
+	return line
+}
+
+func (p SchemaPanel) renderScrollHint(total, maxVisible int) string {
+	if total > maxVisible {
+		end := p.scrollRow + maxVisible
+		if end > total {
+			end = total
+		}
+		return mutedStyle.Render(fmt.Sprintf("  %d columns (%d–%d)", total, p.scrollRow+1, end))
+	}
+	return ""
+}
+
 func (p SchemaPanel) renderActionMenu() string {
-	col, ok := p.selectedColumn()
-	if !ok {
+	if _, ok := p.selectedColumn(); !ok {
 		return mutedStyle.Render("  (no column selected)")
 	}
-	lines := []string{
-		lipgloss.NewStyle().Foreground(colorPrimary).Render(fmt.Sprintf("Actions for %s", col.Name)),
-		"",
-	}
+
+	var lines []string
 	actions := p.currentActions()
 	for i, action := range actions {
 		marker := " "
@@ -337,20 +396,27 @@ func (p SchemaPanel) renderActionMenu() string {
 		}
 		lines = append(lines, line)
 	}
-	lines = append(lines, "", mutedStyle.Render("enter select   esc back"))
 	return strings.Join(lines, "\n")
 }
 
-func (p SchemaPanel) renderFooter() string {
+func (p SchemaPanel) padBody(body string, height int) string {
+	lines := strings.Split(body, "\n")
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (p SchemaPanel) renderSchemaFooter() string {
 	if p.notice != "" {
 		return errorStyle.Render(p.notice)
 	}
-	if p.showActions {
-		return ""
-	}
 	col, ok := p.selectedColumn()
 	if !ok {
-		return ""
+		return mutedStyle.Render(" ")
 	}
 	return lipgloss.NewStyle().Foreground(colorLabel).Render(formatColumnDetail(col))
 }

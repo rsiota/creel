@@ -1618,6 +1618,15 @@ func (m *Model) openSchemaPanel() {
 		return
 	}
 	m.schemaPanel.Show(table, m.connection.Config().Driver, cols)
+	m.layoutSchemaPanel()
+}
+
+// layoutSchemaPanel sizes the schema panel from the current terminal dimensions.
+func (m *Model) layoutSchemaPanel() {
+	if !m.schemaPanel.IsVisible() || m.height == 0 {
+		return
+	}
+	m.schemaPanel.SetSize(76, m.height)
 }
 
 // reloadSchemaPanel refreshes column metadata when the panel is open.
@@ -2186,7 +2195,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Schema DDL confirmation is modal.
+	// Destructive schema DDL confirmation (drop column only).
 	if m.schemaConfirmSQL != "" {
 		switch msg.String() {
 		case "y", "Y", "enter":
@@ -2214,9 +2223,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.columnEditForm.SetError(errMsg)
 				return m, nil
 			}
-			m.setSchemaConfirm(m.columnEditForm.Table(), sql, m.columnEditForm.Action())
+			table := m.columnEditForm.Table()
+			action := m.columnEditForm.Action()
 			m.columnEditForm.SetError("")
-			return m, nil
+			return m, m.execSchemaDDL(table, sql, action)
 		}
 		var cmd tea.Cmd
 		m.columnEditForm, cmd = m.columnEditForm.Update(msg)
@@ -2236,9 +2246,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.addColumnForm.SetError(errMsg)
 				return m, nil
 			}
-			m.setSchemaConfirm(m.addColumnForm.Table(), sql, db.SchemaAddColumn)
+			table := m.addColumnForm.Table()
 			m.addColumnForm.SetError("")
-			return m, nil
+			return m, m.execSchemaDDL(table, sql, db.SchemaAddColumn)
 		}
 		var cmd tea.Cmd
 		m.addColumnForm, cmd = m.addColumnForm.Update(msg)
@@ -3908,9 +3918,11 @@ func (m Model) viewWorkspace() string {
 	if m.schemaPanel.IsVisible() {
 		popupW := 76
 		borderOverhead := 2
-		m.schemaPanel.SetSize(popupW, m.height-1)
+		m.layoutSchemaPanel()
+		contentH := m.schemaPanel.ContentHeight()
 		panel := lipgloss.NewStyle().
 			Width(popupW - borderOverhead).
+			Height(contentH).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorPrimary).
 			Padding(1, 2).
@@ -3923,10 +3935,7 @@ func (m Model) viewWorkspace() string {
 	}
 
 	if m.schemaConfirmSQL != "" {
-		prompt := fmt.Sprintf("Run this on %s?", m.schemaConfirmTable)
-		if m.schemaConfirmAction == db.SchemaDropColumn {
-			prompt = fmt.Sprintf("Drop column on %s?\nThis permanently removes the column and its data.", m.schemaConfirmTable)
-		}
+		prompt := fmt.Sprintf("Drop column on %s?\nThis permanently removes the column and its data.", m.schemaConfirmTable)
 		dialog := renderSQLConfirmDialog(prompt, m.schemaConfirmSQL)
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)

@@ -279,3 +279,9 @@ func ColumnSchemaActions(driver Driver) []SchemaAction {
 	}
 	return actions
 }
+
+// SchemaActionNeedsConfirm reports whether an action requires a SQL confirm step.
+// Destructive DDL (e.g. drop column) gets a preview; other changes run from the form.
+func SchemaActionNeedsConfirm(action SchemaAction) bool {
+	return action == SchemaDropColumn
+}

@@ -95,7 +95,7 @@ func helpSections() []helpSection {
 		{
 			title: "Column Edit",
 			bindings: []helpBinding{
-				{"enter", "preview SQL"},
+				{"enter", "run"},
 				{"esc", "cancel"},
 				{"tab", "next field"},
 			},

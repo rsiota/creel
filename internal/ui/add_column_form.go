@@ -227,6 +227,6 @@ func (f AddColumnForm) View() string {
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, mutedStyle.Render("enter submit   esc cancel   tab next field"))
+	lines = append(lines, mutedStyle.Render("enter run   esc cancel   tab next field"))
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
