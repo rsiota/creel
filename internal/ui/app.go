@@ -1831,10 +1831,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			name := m.dbPicker.SelectedDatabase()
 			m.dbPicker.Hide()
 			return m, m.selectDatabase(name)
-		case "up", "k":
+		case "up":
 			m.dbPicker.CursorUp()
 			return m, nil
-		case "down", "j":
+		case "down":
 			m.dbPicker.CursorDown()
 			return m, nil
 		case "backspace":
@@ -1860,34 +1860,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.filterPicker.SelectNone()
 			return m, nil
 		}
-		// When actively typing a filter, only esc/enter/space/backspace/arrows
-		// are special; letter keys go to the filter.
-		if m.filterPicker.filtering() {
-			switch msg.String() {
-			case "esc", "ctrl+c":
-				m.filterPicker.Hide()
-				return m, nil
-			case "enter":
-				return m, m.applyFilterPickerSelection()
-			case " ":
-				m.filterPicker.ToggleSelected()
-				return m, nil
-			case "up":
-				m.filterPicker.CursorUp()
-				return m, nil
-			case "down":
-				m.filterPicker.CursorDown()
-				return m, nil
-			case "backspace":
-				m.filterPicker.FilterBackspace()
-				return m, nil
-			}
-			if msg.Type == tea.KeyRunes {
-				m.filterPicker.FilterAddChar(msg.String())
-				return m, nil
-			}
-			return m, nil
-		}
+		// Navigation is arrow-keys only so every letter (including j/k) can
+		// be typed into the filter at any time.
 		switch msg.String() {
 		case "esc", "ctrl+c":
 			m.filterPicker.Hide()
@@ -1897,10 +1871,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case " ":
 			m.filterPicker.ToggleSelected()
 			return m, nil
-		case "up", "k":
+		case "up":
 			m.filterPicker.CursorUp()
 			return m, nil
-		case "down", "j":
+		case "down":
 			m.filterPicker.CursorDown()
 			return m, nil
 		case "backspace":
@@ -1925,33 +1899,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.columnPicker.SelectNone()
 			return m, nil
 		}
-		// While typing a filter, only navigation/confirm/space are special.
-		if m.columnPicker.filtering() {
-			switch msg.String() {
-			case "esc", "ctrl+c":
-				m.columnPicker.Hide()
-				return m, nil
-			case "enter":
-				return m, m.applyColumnVisibility()
-			case " ":
-				m.columnPicker.ToggleSelected()
-				return m, nil
-			case "up":
-				m.columnPicker.CursorUp()
-				return m, nil
-			case "down":
-				m.columnPicker.CursorDown()
-				return m, nil
-			case "backspace":
-				m.columnPicker.FilterBackspace()
-				return m, nil
-			}
-			if msg.Type == tea.KeyRunes {
-				m.columnPicker.FilterAddChar(msg.String())
-				return m, nil
-			}
-			return m, nil
-		}
+		// Navigation is arrow-keys only so every letter (including j/k) can
+		// be typed into the filter at any time.
 		switch msg.String() {
 		case "esc", "ctrl+c":
 			m.columnPicker.Hide()
@@ -1961,10 +1910,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case " ":
 			m.columnPicker.ToggleSelected()
 			return m, nil
-		case "up", "k":
+		case "up":
 			m.columnPicker.CursorUp()
 			return m, nil
-		case "down", "j":
+		case "down":
 			m.columnPicker.CursorDown()
 			return m, nil
 		case "backspace":
