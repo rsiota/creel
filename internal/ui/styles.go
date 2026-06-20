@@ -53,3 +53,21 @@ var (
 	borderStyle = lipgloss.NewStyle().
 			BorderForeground(colorBorder)
 )
+
+// renderConfirmDialog builds a centered y/n confirmation overlay.
+func renderConfirmDialog(prompt string) string {
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPrimary).
+		Padding(1, 3).
+		Width(46).
+		Align(lipgloss.Center).
+		Render(
+			lipgloss.JoinVertical(lipgloss.Center,
+				lipgloss.NewStyle().Foreground(colorPrimary).Render(prompt),
+				"",
+				lipgloss.NewStyle().Foreground(colorLabel).Render("y")+mutedStyle.Render(" confirm    ")+
+					lipgloss.NewStyle().Foreground(colorLabel).Render("n")+mutedStyle.Render(" cancel"),
+			),
+		)
+}

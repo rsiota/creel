@@ -57,6 +57,12 @@ type insertResultMsg struct {
 	err error
 }
 
+// truncateResultMsg carries the result of an async table truncate.
+type truncateResultMsg struct {
+	table string
+	err   error
+}
+
 // queryExecutedMsg is sent when a query finishes executing.
 type queryExecutedMsg struct {
 	query    string
@@ -138,6 +144,9 @@ type Model struct {
 	// Discard confirmation dialog
 	discardConfirm bool
 
+	// Truncate confirmation dialog (non-empty table name while pending).
+	truncateConfirm string
+
 	config       *config.Config
 	connection   *db.Connection
 	historyStore *history.Store
@@ -150,8 +159,9 @@ type Model struct {
 	lastQuery string
 	pageMsg  string
 	statsMsg string // transient column statistics display
-	exportMsg string // transient CSV export result display
-	searchMsg string // transient regex search result display
+	exportMsg   string // transient CSV export result display
+	searchMsg   string // transient regex search result display
+	truncateMsg string // transient truncate result display
 
 	// Quick filters (cell-based, server-side WHERE injection)
 	baseQuery string   // original query without filters
@@ -1473,6 +1483,33 @@ func (m *Model) saveInsert() tea.Cmd {
 	}
 }
 
+// execTruncate removes all rows from a table asynchronously.
+func (m *Model) execTruncate(table string) tea.Cmd {
+	if m.connection == nil || table == "" {
+		return nil
+	}
+	conn := m.connection
+	query := buildTruncateQuery(conn.Config().Driver, table)
+	return func() tea.Msg {
+		_, err := conn.DB().Exec(query)
+		return truncateResultMsg{table: table, err: err}
+	}
+}
+
+// resultsShowTable reports whether the results panel is showing data from table.
+func (m Model) resultsShowTable(table string) bool {
+	if table == "" {
+		return false
+	}
+	if m.results.SourceTable() == table {
+		return true
+	}
+	if parseSimpleSelectTable(m.lastQuery) == table {
+		return true
+	}
+	return parseSimpleSelectTable(m.baseQuery) == table
+}
+
 // startInsert opens inspector new-record mode for the current editable table.
 func (m *Model) startInsert() {
 	if !m.results.IsEditable() || m.results.HasDirtyCells() || m.inspector.IsInserting() {
@@ -1594,6 +1631,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inspector.CancelInsert()
 			m.results.ConfirmSaved()
 			return m, m.runPageQuery()
+		}
+		return m, nil
+
+	case truncateResultMsg:
+		if msg.err != nil {
+			m.truncateMsg = fmt.Sprintf("truncate failed: %v", msg.err)
+		} else {
+			m.truncateMsg = fmt.Sprintf("truncated %s", msg.table)
+			if m.resultsShowTable(msg.table) {
+				if m.results.HasDirtyCells() {
+					m.results.DiscardEdits()
+				}
+				return m, m.runPageQuery()
+			}
 		}
 		return m, nil
 
@@ -1927,15 +1978,21 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Discard confirmation dialog is modal — intercept all keys.
-	if m.discardConfirm {
+	// Discard / truncate confirmation dialogs are modal — intercept all keys.
+	if m.discardConfirm || m.truncateConfirm != "" {
 		switch msg.String() {
 		case "y", "Y", "enter":
-			m.results.DiscardEdits()
-			m.discardConfirm = false
-			return m, nil
+			if m.discardConfirm {
+				m.results.DiscardEdits()
+				m.discardConfirm = false
+				return m, nil
+			}
+			table := m.truncateConfirm
+			m.truncateConfirm = ""
+			return m, m.execTruncate(table)
 		case "n", "N", "esc", "ctrl+c":
 			m.discardConfirm = false
+			m.truncateConfirm = ""
 			return m, nil
 		}
 		return m, nil
@@ -2055,6 +2112,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.dbPicker.Hide()
 		m.columnPicker.Hide()
 		m.discardConfirm = false
+		m.truncateConfirm = ""
 		m.lastQuery = ""
 		m.baseQuery = ""
 		m.filters = nil
@@ -2590,6 +2648,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.focus = FocusEditor
 				m.applyFocus()
 				return m, m.executeQuery()
+			}
+		case "T":
+			m.sidebarPendingG = false
+			item := m.currentSidebarItem()
+			if item != nil && !item.isColumn {
+				m.truncateConfirm = item.text
 			}
 		}
 		m.connList, cmd = m.connList.Update(msg)
@@ -3477,20 +3541,18 @@ func (m Model) viewWorkspace() string {
 
 	// Overlay discard confirmation dialog if visible
 	if m.discardConfirm {
-		dialog := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorPrimary).
-			Padding(1, 3).
-			Width(46).
-			Align(lipgloss.Center).
-			Render(
-				lipgloss.JoinVertical(lipgloss.Center,
-					lipgloss.NewStyle().Foreground(colorPrimary).Render("Discard all unsaved changes?"),
-					"",
-					lipgloss.NewStyle().Foreground(colorLabel).Render("y") + mutedStyle.Render(" confirm    ") +
-						lipgloss.NewStyle().Foreground(colorLabel).Render("n") + mutedStyle.Render(" cancel"),
-				),
-			)
+		dialog := renderConfirmDialog("Discard all unsaved changes?")
+		dlgW := lipgloss.Width(dialog)
+		dlgH := lipgloss.Height(dialog)
+		dlgX := (m.width - dlgW) / 2
+		dlgY := (m.height - 1 - dlgH) / 2
+		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
+	// Overlay truncate confirmation dialog if visible
+	if m.truncateConfirm != "" {
+		prompt := fmt.Sprintf("Truncate table %s?\nAll rows will be permanently deleted.", m.truncateConfirm)
+		dialog := renderConfirmDialog(prompt)
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)
 		dlgX := (m.width - dlgW) / 2
@@ -3562,6 +3624,11 @@ func (m Model) statusMessage() string {
 		return successStyle.Render("saved")
 	case m.exportMsg != "":
 		return successStyle.Render(m.exportMsg)
+	case m.truncateMsg != "":
+		if strings.HasPrefix(m.truncateMsg, "truncate failed:") {
+			return errorStyle.Render(m.truncateMsg)
+		}
+		return successStyle.Render(m.truncateMsg)
 	case m.statsMsg != "":
 		return lipgloss.NewStyle().Foreground(colorPrimary).Render(m.statsMsg)
 	case m.searchMsg != "":

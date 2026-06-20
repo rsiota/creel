@@ -77,6 +77,7 @@ func helpSections() []helpSection {
 				{"space", "expand columns"},
 				{"enter / s", "select * from table"},
 				{"d", "describe table"},
+				{"T", "truncate table"},
 				{"/", "filter tables"},
 			},
 		},
