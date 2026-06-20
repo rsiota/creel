@@ -65,9 +65,10 @@ type truncateResultMsg struct {
 
 // schemaResultMsg carries the result of an async schema change (DDL).
 type schemaResultMsg struct {
-	table  string
-	action db.SchemaAction
-	err    error
+	table    string
+	newTable string
+	action   db.SchemaAction
+	err      error
 }
 
 // queryExecutedMsg is sent when a query finishes executing.
@@ -135,9 +136,10 @@ type Model struct {
 	help         HelpPanel
 	filterPicker FilterPicker
 	columnPicker ColumnPicker
-	addColumnForm  AddColumnForm
-	columnEditForm ColumnEditForm
-	schemaPanel    SchemaPanel
+	addColumnForm   AddColumnForm
+	columnEditForm  ColumnEditForm
+	tableRenameForm TableRenameForm
+	schemaPanel     SchemaPanel
 	sidebarCursor int
 	expanded     map[string][]db.Column
 	columnCache  map[string][]db.Column
@@ -220,9 +222,10 @@ func NewModel(cfg *config.Config) Model {
 		help:         NewHelpPanel(),
 		filterPicker: NewFilterPicker(),
 		columnPicker: NewColumnPicker(),
-		addColumnForm:  NewAddColumnForm(),
-		columnEditForm: NewColumnEditForm(),
-		schemaPanel:    NewSchemaPanel(),
+		addColumnForm:   NewAddColumnForm(),
+		columnEditForm:  NewColumnEditForm(),
+		tableRenameForm: NewTableRenameForm(),
+		schemaPanel:     NewSchemaPanel(),
 		historyStore: history.NewStore(historyDir()),
 		expanded:     make(map[string][]db.Column),
 		pageSize:     defaultPageSize,
@@ -1400,6 +1403,43 @@ func parseSimpleSelectTable(query string) string {
 	return rest
 }
 
+// replaceSimpleSelectTable rewrites the table name in a simple SELECT ... FROM query.
+func replaceSimpleSelectTable(query, oldName, newName string) string {
+	if parseSimpleSelectTable(query) != oldName {
+		return query
+	}
+	upper := strings.ToUpper(query)
+	fromIdx := strings.Index(upper, " FROM ")
+	if fromIdx == -1 {
+		return query
+	}
+	afterFromStart := fromIdx + len(" FROM ")
+	rest := query[afterFromStart:]
+	restTrim := strings.TrimSpace(rest)
+
+	if len(restTrim) > 0 && (restTrim[0] == '"' || restTrim[0] == '`' || restTrim[0] == '[') {
+		closeCh := restTrim[0]
+		if restTrim[0] == '[' {
+			closeCh = ']'
+		}
+		endIdx := strings.IndexByte(restTrim[1:], closeCh)
+		if endIdx == -1 {
+			return query
+		}
+		suffix := restTrim[1+endIdx+1:]
+		newIdent := string(restTrim[0]) + newName + string(closeCh)
+		return query[:afterFromStart] + newIdent + suffix
+	}
+
+	tableEnd := len(restTrim)
+	for _, term := range []string{" ", ";", "\n", "\t"} {
+		if idx := strings.Index(restTrim, term); idx != -1 && idx < tableEnd {
+			tableEnd = idx
+		}
+	}
+	return query[:afterFromStart] + newName + restTrim[tableEnd:]
+}
+
 // saveEdits writes all pending dirty cells to the database using parameterized
 // UPDATE queries. Each dirty cell generates one UPDATE statement.
 func (m *Model) saveEdits() tea.Cmd {
@@ -1533,14 +1573,14 @@ func (m *Model) execTruncate(table string) tea.Cmd {
 }
 
 // execSchemaDDL runs a pending schema statement asynchronously.
-func (m *Model) execSchemaDDL(table, query string, action db.SchemaAction) tea.Cmd {
+func (m *Model) execSchemaDDL(table, query string, action db.SchemaAction, newTable string) tea.Cmd {
 	if m.connection == nil || table == "" || query == "" {
 		return nil
 	}
 	conn := m.connection
 	return func() tea.Msg {
 		_, err := conn.DB().Exec(query)
-		return schemaResultMsg{table: table, action: action, err: err}
+		return schemaResultMsg{table: table, newTable: newTable, action: action, err: err}
 	}
 }
 
@@ -1560,6 +1600,8 @@ func schemaChangeMessage(action db.SchemaAction, table string) string {
 	switch action {
 	case db.SchemaAddColumn:
 		return fmt.Sprintf("added column to %s", table)
+	case db.SchemaRenameTable:
+		return fmt.Sprintf("renamed table %s", table)
 	case db.SchemaRenameColumn:
 		return fmt.Sprintf("renamed column on %s", table)
 	case db.SchemaModifyType:
@@ -1601,6 +1643,48 @@ func (m *Model) openAddColumnFormForTable(table string) tea.Cmd {
 	m.addColumnForm.Show(table, m.connection.Config().Driver, existing)
 	m.clearSchemaConfirm()
 	return m.addColumnForm.Focus()
+}
+
+// openTableRenameForm opens the rename overlay for a sidebar table.
+func (m *Model) openTableRenameForm(table string) tea.Cmd {
+	if m.connection == nil || table == "" {
+		return nil
+	}
+	m.tableRenameForm.Show(table, m.connection.Config().Driver, m.tables)
+	m.clearSchemaConfirm()
+	return m.tableRenameForm.Focus()
+}
+
+// applyTableRename updates sidebar and workspace state after a successful rename.
+func (m *Model) applyTableRename(oldName, newName string) {
+	if cols, ok := m.expanded[oldName]; ok {
+		delete(m.expanded, oldName)
+		m.expanded[newName] = cols
+	}
+	if cols, ok := m.columnCache[oldName]; ok {
+		delete(m.columnCache, oldName)
+		m.columnCache[newName] = cols
+	}
+
+	m.loadTables()
+	m.syncSidebarCursorToTable(newName)
+
+	if m.schemaPanel.IsVisible() && m.schemaPanel.Table() == oldName {
+		m.schemaPanel.SetTable(newName)
+		m.reloadSchemaPanel(newName)
+	}
+
+	m.results.RenameTableReferences(oldName, newName)
+
+	if parseSimpleSelectTable(m.lastQuery) == oldName {
+		m.lastQuery = replaceSimpleSelectTable(m.lastQuery, oldName, newName)
+	}
+	if parseSimpleSelectTable(m.baseQuery) == oldName {
+		m.baseQuery = replaceSimpleSelectTable(m.baseQuery, oldName, newName)
+	}
+	if m.resultsShowTable(oldName) {
+		m.editor.SetValue(m.lastQuery)
+	}
 }
 
 // openSchemaPanel opens the schema overlay for the selected sidebar table.
@@ -1848,16 +1932,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.action {
 			case db.SchemaAddColumn:
 				m.addColumnForm.SetError(msg.err.Error())
+			case db.SchemaRenameTable:
+				m.tableRenameForm.SetError(msg.err.Error())
 			default:
 				m.columnEditForm.SetError(msg.err.Error())
 			}
 		} else {
-			m.schemaMsg = schemaChangeMessage(msg.action, msg.table)
+			if msg.action == db.SchemaRenameTable {
+				m.schemaMsg = fmt.Sprintf("renamed %s to %s", msg.table, msg.newTable)
+				m.applyTableRename(msg.table, msg.newTable)
+			} else {
+				m.schemaMsg = schemaChangeMessage(msg.action, msg.table)
+				m = m.refreshTableSchemaSync(msg.table)
+				m.reloadSchemaPanel(msg.table)
+			}
 			m.clearSchemaConfirm()
 			m.addColumnForm.Hide()
 			m.columnEditForm.Hide()
-			m = m.refreshTableSchemaSync(msg.table)
-			m.reloadSchemaPanel(msg.table)
+			m.tableRenameForm.Hide()
+			if msg.action == db.SchemaRenameTable && m.resultsShowTable(msg.newTable) {
+				return m, tea.Batch(m.prefetchSchemas(), m.runPageQuery())
+			}
 			if m.resultsShowTable(msg.table) {
 				return m, tea.Batch(m.prefetchSchemas(), m.runPageQuery())
 			}
@@ -2202,7 +2297,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			table := m.schemaConfirmTable
 			query := m.schemaConfirmSQL
 			action := m.schemaConfirmAction
-			return m, m.execSchemaDDL(table, query, action)
+			return m, m.execSchemaDDL(table, query, action, "")
 		case "n", "N", "esc", "ctrl+c":
 			m.clearSchemaConfirm()
 			return m, nil
@@ -2226,7 +2321,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			table := m.columnEditForm.Table()
 			action := m.columnEditForm.Action()
 			m.columnEditForm.SetError("")
-			return m, m.execSchemaDDL(table, sql, action)
+			return m, m.execSchemaDDL(table, sql, action, "")
 		}
 		var cmd tea.Cmd
 		m.columnEditForm, cmd = m.columnEditForm.Update(msg)
@@ -2248,10 +2343,33 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			table := m.addColumnForm.Table()
 			m.addColumnForm.SetError("")
-			return m, m.execSchemaDDL(table, sql, db.SchemaAddColumn)
+			return m, m.execSchemaDDL(table, sql, db.SchemaAddColumn, "")
 		}
 		var cmd tea.Cmd
 		m.addColumnForm, cmd = m.addColumnForm.Update(msg)
+		return m, cmd
+	}
+
+	// Table rename form is modal.
+	if m.tableRenameForm.IsVisible() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.tableRenameForm.Hide()
+			m.clearSchemaConfirm()
+			return m, nil
+		case "enter", "ctrl+s":
+			sql, errMsg := m.tableRenameForm.Submit()
+			if errMsg != "" {
+				m.tableRenameForm.SetError(errMsg)
+				return m, nil
+			}
+			oldTable := m.tableRenameForm.Table()
+			newTable := m.tableRenameForm.NewName()
+			m.tableRenameForm.SetError("")
+			return m, m.execSchemaDDL(oldTable, sql, db.SchemaRenameTable, newTable)
+		}
+		var cmd tea.Cmd
+		m.tableRenameForm, cmd = m.tableRenameForm.Update(msg)
 		return m, cmd
 	}
 
@@ -2451,6 +2569,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.truncateConfirm = ""
 		m.addColumnForm.Hide()
 		m.columnEditForm.Hide()
+		m.tableRenameForm.Hide()
 		m.schemaPanel.Hide()
 		m.clearSchemaConfirm()
 		m.schemaMsg = ""
@@ -2988,6 +3107,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			item := m.currentSidebarItem()
 			if item != nil && !item.isColumn {
 				m.truncateConfirm = item.text
+			}
+		case "r":
+			m.sidebarPendingG = false
+			item := m.currentSidebarItem()
+			if item != nil && !item.isColumn {
+				return m, m.openTableRenameForm(item.text)
 			}
 		case "a":
 			m.sidebarPendingG = false
@@ -3977,6 +4102,26 @@ func (m Model) viewWorkspace() string {
 			BorderForeground(colorPrimary).
 			Padding(1, 2).
 			Render(m.addColumnForm.View())
+		panelW := lipgloss.Width(formPanel)
+		panelH := lipgloss.Height(formPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, formPanel, panelX, panelY)
+	}
+
+	// Overlay table rename form.
+	if m.tableRenameForm.IsVisible() {
+		popupW := 58
+		borderOverhead := 2
+		padding := 4
+		innerW := popupW - borderOverhead - padding
+		m.tableRenameForm.SetMaxWidth(innerW)
+		formPanel := lipgloss.NewStyle().
+			Width(popupW - borderOverhead).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorPrimary).
+			Padding(1, 2).
+			Render(m.tableRenameForm.View())
 		panelW := lipgloss.Width(formPanel)
 		panelH := lipgloss.Height(formPanel)
 		panelX := (m.width - panelW) / 2

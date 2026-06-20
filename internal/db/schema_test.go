@@ -147,6 +147,36 @@ func TestBuildRenameColumnSQL(t *testing.T) {
 	}
 }
 
+func TestBuildRenameTableSQL(t *testing.T) {
+	sql, err := BuildRenameTableSQL(DriverSQLite, "users", "accounts", []string{"users", "orders"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `ALTER TABLE "users" RENAME TO "accounts"`
+	if sql != want {
+		t.Fatalf("sqlite sql = %q, want %q", sql, want)
+	}
+
+	sql, err = BuildRenameTableSQL(DriverMySQL, "users", "accounts", []string{"users", "orders"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = "RENAME TABLE `users` TO `accounts`"
+	if sql != want {
+		t.Fatalf("mysql sql = %q, want %q", sql, want)
+	}
+
+	_, err = BuildRenameTableSQL(DriverSQLite, "users", "users", []string{"users"})
+	if err == nil {
+		t.Fatal("expected error for same name")
+	}
+
+	_, err = BuildRenameTableSQL(DriverSQLite, "users", "orders", []string{"users", "orders"})
+	if err == nil {
+		t.Fatal("expected error for duplicate table")
+	}
+}
+
 func TestBuildModifyColumnSQL(t *testing.T) {
 	sql, err := BuildModifyColumnSQL(DriverMySQL, "users", ColumnDef{
 		Name:    "bio",

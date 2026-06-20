@@ -78,6 +78,7 @@ func helpSections() []helpSection {
 				{"enter / s", "select * from table"},
 				{"d", "schema panel"},
 				{"a", "add column"},
+				{"r", "rename table"},
 				{"T", "truncate table"},
 				{"/", "filter tables"},
 			},

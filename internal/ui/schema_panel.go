@@ -91,6 +91,11 @@ func (p SchemaPanel) Table() string {
 	return p.table
 }
 
+// SetTable updates the table name shown in the panel header.
+func (p *SchemaPanel) SetTable(table string) {
+	p.table = table
+}
+
 // SetColumns replaces column metadata (e.g. after DDL).
 func (p *SchemaPanel) SetColumns(columns []db.TableColumnInfo) {
 	p.columns = append([]db.TableColumnInfo(nil), columns...)

@@ -107,6 +107,48 @@ func ValidateRenameColumn(oldName, newName string, existing []string) error {
 	return nil
 }
 
+// ValidateRenameTable checks a table rename operation.
+func ValidateRenameTable(oldName, newName string, existing []string) error {
+	if err := ValidateIdentifier(oldName); err != nil {
+		return err
+	}
+	if err := ValidateIdentifier(newName); err != nil {
+		return err
+	}
+	if strings.EqualFold(oldName, newName) {
+		return fmt.Errorf("new name is the same as the current name")
+	}
+	for _, ex := range existing {
+		if strings.EqualFold(ex, newName) {
+			return fmt.Errorf("table %q already exists", newName)
+		}
+	}
+	return nil
+}
+
+// BuildRenameTableSQL generates a statement that renames a table.
+func BuildRenameTableSQL(driver Driver, oldName, newName string, existing []string) (string, error) {
+	if err := ValidateRenameTable(oldName, newName, existing); err != nil {
+		return "", err
+	}
+	oldName = strings.TrimSpace(oldName)
+	newName = strings.TrimSpace(newName)
+	switch driver {
+	case DriverSQLite:
+		return fmt.Sprintf("ALTER TABLE %s RENAME TO %s",
+			quoteIdent(driver, oldName),
+			quoteIdent(driver, newName),
+		), nil
+	case DriverMySQL:
+		return fmt.Sprintf("RENAME TABLE %s TO %s",
+			quoteIdent(driver, oldName),
+			quoteIdent(driver, newName),
+		), nil
+	default:
+		return "", fmt.Errorf("rename table is not supported for %s", driver)
+	}
+}
+
 // BuildRenameColumnSQL generates an ALTER TABLE ... RENAME COLUMN statement.
 func BuildRenameColumnSQL(driver Driver, table, oldName, newName string, existing []string) (string, error) {
 	if strings.TrimSpace(table) == "" {
@@ -224,6 +266,7 @@ type SchemaAction string
 
 const (
 	SchemaAddColumn       SchemaAction = "add_column"
+	SchemaRenameTable     SchemaAction = "rename_table"
 	SchemaRenameColumn    SchemaAction = "rename_column"
 	SchemaModifyType      SchemaAction = "modify_type"
 	SchemaModifyNullable  SchemaAction = "modify_nullable"
@@ -234,7 +277,7 @@ const (
 // SchemaSupports reports whether a driver supports a schema action.
 func SchemaSupports(driver Driver, action SchemaAction) bool {
 	switch action {
-	case SchemaAddColumn, SchemaRenameColumn:
+	case SchemaAddColumn, SchemaRenameTable, SchemaRenameColumn:
 		return true
 	case SchemaModifyType, SchemaModifyNullable, SchemaModifyDefault, SchemaDropColumn:
 		return driver == DriverMySQL
@@ -248,6 +291,8 @@ func SchemaActionLabel(action SchemaAction) string {
 	switch action {
 	case SchemaAddColumn:
 		return "Add column"
+	case SchemaRenameTable:
+		return "Rename table"
 	case SchemaRenameColumn:
 		return "Rename column"
 	case SchemaModifyType:

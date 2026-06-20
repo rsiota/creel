@@ -60,3 +60,32 @@ func TestSQLiteRenameColumn(t *testing.T) {
 		t.Fatalf("expected email_addr, got %v", cols)
 	}
 }
+
+func TestSQLiteRenameTable(t *testing.T) {
+	s := setupTestSQLite(t)
+
+	sql, err := BuildRenameTableSQL(DriverSQLite, "users", "accounts", []string{"users", "orders"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Exec(sql); err != nil {
+		t.Fatalf("rename table: %v", err)
+	}
+
+	tables, err := s.Tables()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, name := range tables {
+		if name == "accounts" {
+			found = true
+		}
+		if name == "users" {
+			t.Fatal("old table name still present")
+		}
+	}
+	if !found {
+		t.Fatalf("expected accounts table, got %v", tables)
+	}
+}

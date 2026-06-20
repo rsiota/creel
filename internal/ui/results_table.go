@@ -261,6 +261,22 @@ func (r ResultsTable) SourceTable() string {
 	return r.sourceTable
 }
 
+// RenameTableReferences updates cached table names after a table rename.
+func (r *ResultsTable) RenameTableReferences(oldName, newName string) {
+	if r.sourceTable == oldName {
+		r.sourceTable = newName
+	}
+	if r.resultTable == oldName {
+		r.resultTable = newName
+	}
+	if r.markedTable == oldName {
+		r.markedTable = newName
+	}
+	if r.hiddenTable == oldName {
+		r.hiddenTable = newName
+	}
+}
+
 // PKColumns returns the primary key column names.
 func (r ResultsTable) PKColumns() []string {
 	return r.pkColumns
