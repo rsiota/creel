@@ -71,3 +71,23 @@ func renderConfirmDialog(prompt string) string {
 			),
 		)
 }
+
+// renderSQLConfirmDialog builds a confirmation overlay that includes SQL preview.
+func renderSQLConfirmDialog(prompt, sql string) string {
+	sqlStyled := lipgloss.NewStyle().Foreground(colorLabel).Render(sql)
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPrimary).
+		Padding(1, 3).
+		Width(64).
+		Render(
+			lipgloss.JoinVertical(lipgloss.Left,
+				lipgloss.NewStyle().Foreground(colorPrimary).Render(prompt),
+				"",
+				sqlStyled,
+				"",
+				lipgloss.NewStyle().Foreground(colorLabel).Render("y")+mutedStyle.Render(" run    ")+
+					lipgloss.NewStyle().Foreground(colorLabel).Render("n")+mutedStyle.Render(" back"),
+			),
+		)
+}

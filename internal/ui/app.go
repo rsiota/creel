@@ -63,6 +63,12 @@ type truncateResultMsg struct {
 	err   error
 }
 
+// schemaResultMsg carries the result of an async schema change (DDL).
+type schemaResultMsg struct {
+	table string
+	err   error
+}
+
 // queryExecutedMsg is sent when a query finishes executing.
 type queryExecutedMsg struct {
 	query    string
@@ -128,6 +134,7 @@ type Model struct {
 	help         HelpPanel
 	filterPicker FilterPicker
 	columnPicker ColumnPicker
+	addColumnForm AddColumnForm
 	sidebarCursor int
 	expanded     map[string][]db.Column
 	columnCache  map[string][]db.Column
@@ -147,6 +154,10 @@ type Model struct {
 	// Truncate confirmation dialog (non-empty table name while pending).
 	truncateConfirm string
 
+	// Add-column form and SQL confirmation.
+	addColumnConfirmSQL   string
+	addColumnConfirmTable string
+
 	config       *config.Config
 	connection   *db.Connection
 	historyStore *history.Store
@@ -162,6 +173,7 @@ type Model struct {
 	exportMsg   string // transient CSV export result display
 	searchMsg   string // transient regex search result display
 	truncateMsg string // transient truncate result display
+	schemaMsg   string // transient schema change result display
 
 	// Quick filters (cell-based, server-side WHERE injection)
 	baseQuery string   // original query without filters
@@ -204,6 +216,7 @@ func NewModel(cfg *config.Config) Model {
 		help:         NewHelpPanel(),
 		filterPicker: NewFilterPicker(),
 		columnPicker: NewColumnPicker(),
+		addColumnForm: NewAddColumnForm(),
 		historyStore: history.NewStore(historyDir()),
 		expanded:     make(map[string][]db.Column),
 		pageSize:     defaultPageSize,
@@ -1513,6 +1526,58 @@ func (m *Model) execTruncate(table string) tea.Cmd {
 	}
 }
 
+// execAddColumn runs a pending ADD COLUMN statement asynchronously.
+func (m *Model) execAddColumn(table, query string) tea.Cmd {
+	if m.connection == nil || table == "" || query == "" {
+		return nil
+	}
+	conn := m.connection
+	return func() tea.Msg {
+		_, err := conn.DB().Exec(query)
+		return schemaResultMsg{table: table, err: err}
+	}
+}
+
+// openAddColumnForm opens the add-column overlay for the selected sidebar table.
+func (m *Model) openAddColumnForm() tea.Cmd {
+	if m.connection == nil {
+		return nil
+	}
+	table := m.sidebarSelectedTable()
+	if table == "" {
+		return nil
+	}
+	cols, err := m.connection.DB().TableSchema(table)
+	if err != nil {
+		m.connError = err.Error()
+		return nil
+	}
+	existing := make([]string, len(cols))
+	for i, c := range cols {
+		existing[i] = c.Name
+	}
+	m.addColumnForm.Show(table, m.connection.Config().Driver, existing)
+	m.addColumnConfirmSQL = ""
+	m.addColumnConfirmTable = ""
+	return m.addColumnForm.Focus()
+}
+
+// refreshTableSchemaSync updates cached sidebar schema for one table.
+func (m *Model) refreshTableSchemaSync(table string) Model {
+	if m.connection == nil || table == "" {
+		return *m
+	}
+	cols, err := m.connection.DB().TableSchema(table)
+	if err != nil {
+		return *m
+	}
+	if _, ok := m.expanded[table]; ok {
+		m.expanded[table] = cols
+	}
+	m.refreshCompletionCandidates()
+	return *m
+}
+
 // resultsShowTable reports whether the results panel is showing data from table.
 func (m Model) resultsShowTable(table string) bool {
 	if table == "" {
@@ -1662,6 +1727,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, m.runPageQuery()
 			}
+		}
+		return m, nil
+
+	case schemaResultMsg:
+		if msg.err != nil {
+			m.schemaMsg = fmt.Sprintf("schema change failed: %v", msg.err)
+			m.addColumnConfirmSQL = ""
+			m.addColumnConfirmTable = ""
+			m.addColumnForm.SetError(msg.err.Error())
+		} else {
+			m.schemaMsg = fmt.Sprintf("added column to %s", msg.table)
+			m.addColumnConfirmSQL = ""
+			m.addColumnConfirmTable = ""
+			m.addColumnForm.Hide()
+			m = m.refreshTableSchemaSync(msg.table)
+			if m.resultsShowTable(msg.table) {
+				return m, tea.Batch(m.prefetchSchemas(), m.runPageQuery())
+			}
+			return m, m.prefetchSchemas()
 		}
 		return m, nil
 
@@ -1995,6 +2079,45 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Add-column SQL confirmation is modal.
+	if m.addColumnConfirmSQL != "" {
+		switch msg.String() {
+		case "y", "Y", "enter":
+			table := m.addColumnConfirmTable
+			query := m.addColumnConfirmSQL
+			return m, m.execAddColumn(table, query)
+		case "n", "N", "esc", "ctrl+c":
+			m.addColumnConfirmSQL = ""
+			m.addColumnConfirmTable = ""
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Add-column form is modal.
+	if m.addColumnForm.IsVisible() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.addColumnForm.Hide()
+			m.addColumnConfirmSQL = ""
+			m.addColumnConfirmTable = ""
+			return m, nil
+		case "enter", "ctrl+s":
+			sql, errMsg := m.addColumnForm.Submit()
+			if errMsg != "" {
+				m.addColumnForm.SetError(errMsg)
+				return m, nil
+			}
+			m.addColumnConfirmTable = m.addColumnForm.Table()
+			m.addColumnConfirmSQL = sql
+			m.addColumnForm.SetError("")
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.addColumnForm, cmd = m.addColumnForm.Update(msg)
+		return m, cmd
+	}
+
 	// Discard / truncate confirmation dialogs are modal — intercept all keys.
 	if m.discardConfirm || m.truncateConfirm != "" {
 		switch msg.String() {
@@ -2130,6 +2253,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.columnPicker.Hide()
 		m.discardConfirm = false
 		m.truncateConfirm = ""
+		m.addColumnForm.Hide()
+		m.addColumnConfirmSQL = ""
+		m.addColumnConfirmTable = ""
+		m.schemaMsg = ""
 		m.lastQuery = ""
 		m.baseQuery = ""
 		m.filters = nil
@@ -2672,6 +2799,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if item != nil && !item.isColumn {
 				m.truncateConfirm = item.text
 			}
+		case "a":
+			m.sidebarPendingG = false
+			if m.sidebarSelectedTable() != "" {
+				return m, m.openAddColumnForm()
+			}
 		}
 		m.connList, cmd = m.connList.Update(msg)
 	case FocusInspector:
@@ -3072,6 +3204,21 @@ func (m Model) currentSidebarItem() *sidebarItem {
 		return nil
 	}
 	return &items[m.sidebarCursor]
+}
+
+// sidebarSelectedTable returns the table for the current sidebar cursor,
+// whether it points at the table row or one of its expanded columns.
+func (m Model) sidebarSelectedTable() string {
+	items := m.sidebarItems()
+	if m.sidebarCursor < 0 || m.sidebarCursor >= len(items) {
+		return ""
+	}
+	for i := m.sidebarCursor; i >= 0; i-- {
+		if !items[i].isColumn {
+			return items[i].text
+		}
+	}
+	return ""
 }
 
 // toggleExpand loads or clears the schema for the selected table.
@@ -3577,6 +3724,35 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, dialog, dlgX, dlgY)
 	}
 
+	// Overlay add-column form or SQL confirmation.
+	if m.addColumnForm.IsVisible() {
+		popupW := 58
+		borderOverhead := 2
+		padding := 4
+		innerW := popupW - borderOverhead - padding
+		m.addColumnForm.SetMaxWidth(innerW)
+		formPanel := lipgloss.NewStyle().
+			Width(popupW - borderOverhead).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorPrimary).
+			Padding(1, 2).
+			Render(m.addColumnForm.View())
+		panelW := lipgloss.Width(formPanel)
+		panelH := lipgloss.Height(formPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, formPanel, panelX, panelY)
+	}
+	if m.addColumnConfirmSQL != "" {
+		prompt := fmt.Sprintf("Run this on %s?", m.addColumnConfirmTable)
+		dialog := renderSQLConfirmDialog(prompt, m.addColumnConfirmSQL)
+		dlgW := lipgloss.Width(dialog)
+		dlgH := lipgloss.Height(dialog)
+		dlgX := (m.width - dlgW) / 2
+		dlgY := (m.height - 1 - dlgH) / 2
+		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
 	// Overlay completion popup if visible
 	if m.editor.CompletionVisible() {
 		cursorLine, cursorCol := m.editor.CursorScreenPos()
@@ -3646,6 +3822,11 @@ func (m Model) statusMessage() string {
 			return errorStyle.Render(m.truncateMsg)
 		}
 		return successStyle.Render(m.truncateMsg)
+	case m.schemaMsg != "":
+		if strings.HasPrefix(m.schemaMsg, "schema change failed:") {
+			return errorStyle.Render(m.schemaMsg)
+		}
+		return successStyle.Render(m.schemaMsg)
 	case m.statsMsg != "":
 		return lipgloss.NewStyle().Foreground(colorPrimary).Render(m.statsMsg)
 	case m.searchMsg != "":
