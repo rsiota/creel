@@ -77,6 +77,12 @@ type ResultsTable struct {
 	// Client-side search highlight: matcher is set while/after g/ search so
 	// View() can tint matching cells. nil when no search is active.
 	searchMatcher func(string) bool
+
+	// Visual mode (line-wise selection). When visualActive is true, the range
+	// [min(visualAnchor, cursorRow), max(visualAnchor, cursorRow)] is
+	// highlighted and can be committed to marks with enter.
+	visualActive bool
+	visualAnchor int
 }
 
 // NewResultsTable creates a new results table component.
@@ -94,6 +100,7 @@ func (r *ResultsTable) SetEditable(table string, pkCols []string) {
 	r.dirtyCells = make(map[cellRef]string)
 	r.editing = false
 	r.saveError = ""
+	r.ClearVisualMode()
 }
 
 // SetTableColumns stores schema metadata for inserts.
@@ -196,6 +203,7 @@ func (r *ResultsTable) ClearEditable() {
 	r.dirtyCells = nil
 	r.editing = false
 	r.tableColumns = nil
+	r.ClearVisualMode()
 }
 
 // IsEditable returns whether the current results support inline editing.
@@ -406,6 +414,55 @@ func (r ResultsTable) MarkedPKs() [][]string {
 func (r *ResultsTable) ClearMarks() {
 	r.markedRows = nil
 	r.markedTable = ""
+}
+
+// SetVisualMode activates line-wise visual selection anchored at the cursor row.
+func (r *ResultsTable) SetVisualMode() {
+	r.visualActive = true
+	r.visualAnchor = r.cursorRow
+}
+
+// ClearVisualMode deactivates visual selection.
+func (r *ResultsTable) ClearVisualMode() {
+	r.visualActive = false
+}
+
+// IsVisualMode reports whether visual selection is active.
+func (r ResultsTable) IsVisualMode() bool {
+	return r.visualActive
+}
+
+// VisualRange returns the inclusive [lo, hi] row indices of the visual
+// selection. Returns 0, 0 when visual mode is not active.
+func (r ResultsTable) VisualRange() (int, int) {
+	if !r.visualActive {
+		return 0, 0
+	}
+	lo := r.visualAnchor
+	hi := r.cursorRow
+	if hi < lo {
+		lo, hi = hi, lo
+	}
+	return lo, hi
+}
+
+// VisualRangeSize returns the number of rows in the visual selection (0 if
+// visual mode is not active).
+func (r ResultsTable) VisualRangeSize() int {
+	if !r.visualActive {
+		return 0
+	}
+	lo, hi := r.VisualRange()
+	return hi - lo + 1
+}
+
+// isVisualRow reports whether rowIdx falls within the active visual range.
+func (r ResultsTable) isVisualRow(rowIdx int) bool {
+	if !r.visualActive {
+		return false
+	}
+	lo, hi := r.VisualRange()
+	return rowIdx >= lo && rowIdx <= hi
 }
 
 // hiddenStale reports whether stored hidden columns belong to a different table.
@@ -1165,6 +1222,8 @@ func (r ResultsTable) View() string {
 		isCursorRow := r.hasCellCursor() && rowIdx == r.cursorRow
 		if r.IsMarkedRow(rowIdx) {
 			b.WriteString(lipgloss.NewStyle().Foreground(colorMark).Render("◆"))
+		} else if r.isVisualRow(rowIdx) {
+			b.WriteString(lipgloss.NewStyle().Foreground(colorVisual).Render("│"))
 		} else {
 			b.WriteString(borderColor.Render("│"))
 		}
@@ -1199,6 +1258,7 @@ func (r ResultsTable) View() string {
 
 			// Style the cell
 			isMarked := r.IsMarkedRow(rowIdx)
+			isVisualRow := r.isVisualRow(rowIdx)
 			isSearchMatch := r.searchMatcher != nil && r.searchMatcher(val)
 			var style lipgloss.Style
 			switch {
@@ -1208,6 +1268,8 @@ func (r ResultsTable) View() string {
 				style = lipgloss.NewStyle().Foreground(colorBg).Background(colorPrimary)
 			case isDirty:
 				style = lipgloss.NewStyle().Foreground(colorBg).Background(lipgloss.Color("#e0af68"))
+			case isVisualRow:
+				style = lipgloss.NewStyle().Foreground(colorFg).Background(colorVisual)
 			case isMarked:
 				style = lipgloss.NewStyle().Foreground(colorMark)
 			case isSearchMatch:

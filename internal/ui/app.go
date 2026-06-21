@@ -1639,6 +1639,25 @@ func (m *Model) startDeleteRows() {
 	m.deleteRowsConfirmCount = count
 }
 
+// commitVisualMarks marks every row in the visual selection range.
+func (m *Model) commitVisualMarks() {
+	if !m.results.visualActive {
+		return
+	}
+	lo, hi := m.results.VisualRange()
+	for row := lo; row <= hi; row++ {
+		m.results.cursorRow = row
+		m.results.ToggleMark()
+	}
+	// Restore cursor to the end of the range so the user sees where they left off.
+	if m.results.visualAnchor > lo {
+		m.results.cursorRow = lo
+	} else {
+		m.results.cursorRow = hi
+	}
+	m.results.ensureCursorVisible()
+}
+
 // execSchemaDDL runs a pending schema statement asynchronously.
 func (m *Model) execSchemaDDL(table, query string, action db.SchemaAction, newTable string) tea.Cmd {
 	if m.connection == nil || table == "" || query == "" {
@@ -2692,6 +2711,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "esc":
+		// If in visual mode, let the focused panel handle esc.
+		if m.results.IsVisualMode() {
+			break
+		}
 		// If actively editing a cell or inspector field, let the focused
 		// panel handle esc (to cancel the edit) instead of swallowing it.
 		if m.results.IsEditing() || m.inspector.IsEditing() {
@@ -2860,6 +2883,34 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if msg.Type == tea.KeyRunes {
 				m.searchQuery += msg.String()
 				updateSearchMatcher()
+				return m, nil
+			}
+			return m, nil
+		}
+		// Visual mode intercepts movement and commit/cancel keys.
+		if m.results.IsVisualMode() {
+			switch msg.String() {
+			case "esc", "V":
+				m.results.ClearVisualMode()
+				return m, nil
+			case "enter":
+				m.commitVisualMarks()
+				m.results.ClearVisualMode()
+				return m, nil
+			case "j", "down":
+				m.results.CursorDown()
+				return m, nil
+			case "k", "up":
+				m.results.CursorUp()
+				return m, nil
+			case "g":
+				m.results.CursorTop()
+				return m, nil
+			case "G":
+				m.results.CursorBottom()
+				return m, nil
+			case "ctrl+c":
+				m.results.ClearVisualMode()
 				return m, nil
 			}
 			return m, nil
@@ -3106,10 +3157,20 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				// v — open the column-visibility overlay.
 				m.resultsPendingG = false
 				m.resultsPendingY = false
+				m.resultsPendingD = false
 				if m.results.NumCols() > 0 {
 					m.openColumnPicker()
 					return m, nil
 				}
+			case "V":
+				// V — enter line-wise visual mode for bulk row marking.
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				m.resultsPendingD = false
+				if m.results.IsEditable() && m.results.NumRows() > 0 {
+					m.results.SetVisualMode()
+				}
+				return m, nil
 			}
 			m.resultsPendingG = false
 			m.resultsPendingY = false
@@ -4341,6 +4402,11 @@ func (m Model) statusBar(connName string) string {
 
 	if m.focus == FocusEditor {
 		parts = append(parts, mutedStyle.Render(fmt.Sprintf("[%s]", m.editor.VimModeStr())))
+	}
+
+	if m.results.IsVisualMode() {
+		parts = append(parts, lipgloss.NewStyle().Foreground(colorAccent).Render(
+			fmt.Sprintf("VISUAL %d", m.results.VisualRangeSize())))
 	}
 
 	if t := m.currentTable(); t != "" {
