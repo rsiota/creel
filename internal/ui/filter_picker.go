@@ -10,10 +10,11 @@ import (
 
 // filterValue is a single distinct column value with its selection state.
 type filterValue struct {
-	value    string
-	selected bool
-	matchIdx []int
-	score    int
+	value      string
+	selected   bool
+	selectedAt int // selection sequence; higher = more recently toggled on
+	matchIdx   []int
+	score      int
 }
 
 // FilterPicker is a popup overlay for selecting one or more column values
@@ -29,6 +30,7 @@ type FilterPicker struct {
 	height    int
 	column    string // column being filtered
 	loading   bool   // waiting for async query
+	seq       int    // monotonic counter; stamps selectedAt on each toggle
 }
 
 // NewFilterPicker creates a hidden filter picker.
@@ -102,29 +104,45 @@ func (p FilterPicker) SelectedValues() []string {
 }
 
 func (p FilterPicker) filteredValues() []filterValue {
-	if p.filter == "" {
-		return p.values
-	}
 	var out []filterValue
-	for _, v := range p.values {
-		idx, score := fuzzyMatch(p.filter, v.value)
-		if idx != nil {
-			v.matchIdx = idx
-			v.score = score
-			out = append(out, v)
+	if p.filter == "" {
+		// Copy so we can reorder without mutating p.values, which keeps the
+		// canonical order returned by the database.
+		out = make([]filterValue, len(p.values))
+		copy(out, p.values)
+	} else {
+		for _, v := range p.values {
+			idx, score := fuzzyMatch(p.filter, v.value)
+			if idx != nil {
+				v.matchIdx = idx
+				v.score = score
+				out = append(out, v)
+			}
 		}
 	}
 	// Sort once here so every consumer (cursor navigation, toggling,
-	// rendering) sees the same order. Selected first, then by fuzzy score
-	// (best match first), then alphabetically.
+	// rendering) sees the same order:
+	//   1. Selected items first, most-recently-toggled at the very top so
+	//      the user gets immediate feedback after each space press (the
+	//      cursor resets to 0 and lands on the just-toggled value).
+	//   2. Unselected items keep their database order when no fuzzy filter
+	//      is active, or rank by fuzzy score then alphabetically when the
+	//      user is typing.
+	filtering := p.filter != ""
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].selected != out[j].selected {
 			return out[i].selected
 		}
-		if out[i].score != out[j].score {
-			return out[i].score < out[j].score
+		if out[i].selected {
+			return out[i].selectedAt > out[j].selectedAt
 		}
-		return out[i].value < out[j].value
+		if filtering {
+			if out[i].score != out[j].score {
+				return out[i].score < out[j].score
+			}
+			return out[i].value < out[j].value
+		}
+		return false // preserve DB order
 	})
 	return out
 }
@@ -186,6 +204,12 @@ func (p *FilterPicker) ToggleSelected() {
 	for i := range p.values {
 		if p.values[i].value == target {
 			p.values[i].selected = !p.values[i].selected
+			if p.values[i].selected {
+				p.seq++
+				p.values[i].selectedAt = p.seq
+			} else {
+				p.values[i].selectedAt = 0
+			}
 			break
 		}
 	}
