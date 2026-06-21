@@ -3665,7 +3665,7 @@ func (m *Model) layoutWorkspace() {
 		rightWidth -= inspectorWidth
 	}
 
-	resultsHeight := m.height - editorHeight - statusHeight - (borderOverhead * 2)
+	resultsHeight := m.height - editorHeight - statusHeight - borderOverhead
 	if resultsHeight < 3 {
 		resultsHeight = 3
 	}
@@ -3790,7 +3790,7 @@ func (m Model) viewWorkspace() string {
 	statusHeight := 1
 	borderOverhead := 2
 	editorHeight := 8
-	resultsHeight := m.height - editorHeight - statusHeight - (borderOverhead * 2)
+	resultsHeight := m.height - editorHeight - statusHeight - borderOverhead
 	if resultsHeight < 3 {
 		resultsHeight = 3
 	}
@@ -3804,7 +3804,7 @@ func (m Model) viewWorkspace() string {
 	// it takes over the full editor+results space as a single inline grid.
 	var rightPanel string
 	if m.tableDesigner.IsVisible() {
-		designerHeight := editorHeight + resultsHeight + borderOverhead
+		designerHeight := editorHeight + resultsHeight
 		m.tableDesigner.SetSize(rightWidth-borderOverhead, designerHeight-borderOverhead)
 		rightPanel = lipgloss.NewStyle().
 			Width(rightWidth).
@@ -3813,7 +3813,7 @@ func (m Model) viewWorkspace() string {
 			BorderForeground(colorPrimary).
 			Render(m.tableDesigner.View())
 	} else if m.schemaEditor.IsVisible() {
-		editorH := editorHeight + resultsHeight + borderOverhead
+		editorH := editorHeight + resultsHeight
 		m.schemaEditor.SetSize(rightWidth-borderOverhead, editorH-borderOverhead)
 		rightPanel = lipgloss.NewStyle().
 			Width(rightWidth).
