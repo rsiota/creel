@@ -80,6 +80,7 @@ func helpSections() []helpSection {
 				{"a", "add column"},
 				{"r", "rename table"},
 				{"T", "truncate table"},
+				{"N", "new table (grid editor)"},
 				{"/", "filter tables"},
 			},
 		},
@@ -91,6 +92,17 @@ func helpSections() []helpSection {
 				{"a", "add column"},
 				{"enter", "column actions"},
 				{"esc", "close / back"},
+			},
+		},
+		{
+			title: "Table Designer",
+			bindings: []helpBinding{
+				{"h/j/k/l", "move cell"},
+				{"e / i", "edit cell"},
+				{"o / O", "add row below / above"},
+				{"dd", "remove row"},
+				{"enter", "create table"},
+				{"esc", "cancel"},
 			},
 		},
 		{

@@ -139,6 +139,7 @@ type Model struct {
 	addColumnForm   AddColumnForm
 	columnEditForm  ColumnEditForm
 	tableRenameForm TableRenameForm
+	tableDesigner   TableDesigner
 	schemaPanel     SchemaPanel
 	sidebarCursor int
 	expanded     map[string][]db.Column
@@ -225,6 +226,7 @@ func NewModel(cfg *config.Config) Model {
 		addColumnForm:   NewAddColumnForm(),
 		columnEditForm:  NewColumnEditForm(),
 		tableRenameForm: NewTableRenameForm(),
+		tableDesigner:   NewTableDesigner(),
 		schemaPanel:     NewSchemaPanel(),
 		historyStore: history.NewStore(historyDir()),
 		expanded:     make(map[string][]db.Column),
@@ -1655,6 +1657,16 @@ func (m *Model) openTableRenameForm(table string) tea.Cmd {
 	return m.tableRenameForm.Focus()
 }
 
+// openCreateTableForm opens the inline table designer.
+func (m *Model) openCreateTableForm() tea.Cmd {
+	if m.connection == nil {
+		return nil
+	}
+	m.tableDesigner.Show(m.connection.Config().Driver, m.tables)
+	m.clearSchemaConfirm()
+	return m.tableDesigner.Focus()
+}
+
 // applyTableRename updates sidebar and workspace state after a successful rename.
 func (m *Model) applyTableRename(oldName, newName string) {
 	if cols, ok := m.expanded[oldName]; ok {
@@ -1934,6 +1946,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.addColumnForm.SetError(msg.err.Error())
 			case db.SchemaRenameTable:
 				m.tableRenameForm.SetError(msg.err.Error())
+			case db.SchemaCreateTable:
+				m.tableDesigner.SetError(msg.err.Error())
 			default:
 				m.columnEditForm.SetError(msg.err.Error())
 			}
@@ -1941,6 +1955,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.action == db.SchemaRenameTable {
 				m.schemaMsg = fmt.Sprintf("renamed %s to %s", msg.table, msg.newTable)
 				m.applyTableRename(msg.table, msg.newTable)
+			} else if msg.action == db.SchemaCreateTable {
+				m.schemaMsg = fmt.Sprintf("created table %s", msg.table)
+				m.loadTables()
+				m.syncSidebarCursorToTable(msg.table)
 			} else {
 				m.schemaMsg = schemaChangeMessage(msg.action, msg.table)
 				m = m.refreshTableSchemaSync(msg.table)
@@ -1950,6 +1968,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addColumnForm.Hide()
 			m.columnEditForm.Hide()
 			m.tableRenameForm.Hide()
+			m.tableDesigner.Hide()
 			if msg.action == db.SchemaRenameTable && m.resultsShowTable(msg.newTable) {
 				return m, tea.Batch(m.prefetchSchemas(), m.runPageQuery())
 			}
@@ -2370,6 +2389,37 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.tableRenameForm, cmd = m.tableRenameForm.Update(msg)
+		return m, cmd
+	}
+
+	// Table designer takes over the workspace.
+	if m.tableDesigner.IsVisible() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			if m.tableDesigner.IsEditing() {
+				m.tableDesigner, _ = m.tableDesigner.Update(msg)
+				return m, nil
+			}
+			m.tableDesigner.Hide()
+			m.clearSchemaConfirm()
+			return m, nil
+		case "enter", "ctrl+s":
+			if m.tableDesigner.IsEditing() {
+				// From edit mode, enter commits the cell; submit is
+				// triggered only when not editing.
+				break
+			}
+			sql, errMsg := m.tableDesigner.Submit()
+			if errMsg != "" {
+				m.tableDesigner.SetError(errMsg)
+				return m, nil
+			}
+			table := m.tableDesigner.TableName()
+			m.tableDesigner.SetError("")
+			return m, m.execSchemaDDL(table, sql, db.SchemaCreateTable, "")
+		}
+		var cmd tea.Cmd
+		m.tableDesigner, cmd = m.tableDesigner.Update(msg)
 		return m, cmd
 	}
 
@@ -3119,6 +3169,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.sidebarSelectedTable() != "" {
 				return m, m.openAddColumnForm()
 			}
+		case "N":
+			m.sidebarPendingG = false
+			return m, m.openCreateTableForm()
 		}
 		m.connList, cmd = m.connList.Update(msg)
 	case FocusInspector:
@@ -3797,39 +3850,52 @@ func (m Model) viewWorkspace() string {
 		rightWidth -= inspectorWidth
 	}
 
-	// Build right column first so we can measure its actual rendered height.
-	editorPanel := lipgloss.NewStyle().
-		Width(rightWidth).
-		Height(editorHeight - borderOverhead).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.borderForFocus(FocusEditor)).
-		Render(m.editor.View())
+	// Build right column. When the table designer is active, it takes over
+	// the full editor+results space as a single inline grid editor.
+	var rightPanel string
+	if m.tableDesigner.IsVisible() {
+		designerHeight := editorHeight + resultsHeight + borderOverhead
+		m.tableDesigner.SetSize(rightWidth-borderOverhead, designerHeight-borderOverhead)
+		rightPanel = lipgloss.NewStyle().
+			Width(rightWidth).
+			Height(designerHeight).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorPrimary).
+			Render(m.tableDesigner.View())
+	} else {
+		editorPanel := lipgloss.NewStyle().
+			Width(rightWidth).
+			Height(editorHeight - borderOverhead).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(m.borderForFocus(FocusEditor)).
+			Render(m.editor.View())
 
-	resultsPanel := lipgloss.NewStyle().
-		Width(rightWidth).
-		Height(resultsHeight).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.borderForFocus(FocusResults)).
-		Render(func() string {
-			m.results.SetSort(m.sortCol, m.sortDir)
-			view := m.results.View()
-			if m.columnJumping {
-				prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render(":"+m.columnJump) +
-					lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
-				view = prompt + "\n" + view
-			}
-			if m.searching {
-				prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+m.searchQuery) +
-					lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
-				view = prompt + "\n" + view
-			}
-			return view
-		}())
+		resultsPanel := lipgloss.NewStyle().
+			Width(rightWidth).
+			Height(resultsHeight).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(m.borderForFocus(FocusResults)).
+			Render(func() string {
+				m.results.SetSort(m.sortCol, m.sortDir)
+				view := m.results.View()
+				if m.columnJumping {
+					prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render(":"+m.columnJump) +
+						lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
+					view = prompt + "\n" + view
+				}
+				if m.searching {
+					prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+m.searchQuery) +
+						lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
+					view = prompt + "\n" + view
+				}
+				return view
+			}())
 
-	rightPanel := lipgloss.JoinVertical(lipgloss.Left,
-		editorPanel,
-		resultsPanel,
-	)
+		rightPanel = lipgloss.JoinVertical(lipgloss.Left,
+			editorPanel,
+			resultsPanel,
+		)
+	}
 
 	// Build inspector panel if visible.
 	var inspectorPanel string

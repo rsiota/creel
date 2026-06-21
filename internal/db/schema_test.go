@@ -231,8 +231,163 @@ func TestSchemaSupports(t *testing.T) {
 	if !SchemaSupports(DriverMySQL, SchemaDropColumn) {
 		t.Fatal("mysql should support drop column")
 	}
+	if !SchemaSupports(DriverSQLite, SchemaCreateTable) {
+		t.Fatal("sqlite should support create table")
+	}
+	if !SchemaSupports(DriverMySQL, SchemaCreateTable) {
+		t.Fatal("mysql should support create table")
+	}
 	actions := ColumnSchemaActions(DriverSQLite)
 	if len(actions) != 1 || actions[0] != SchemaRenameColumn {
 		t.Fatalf("sqlite actions = %v", actions)
+	}
+}
+
+func TestValidateCreateTable(t *testing.T) {
+	tests := []struct {
+		name      string
+		table     string
+		cols      []ColumnDef
+		existing  []string
+		wantErr   string
+	}{
+		{
+			name:  "valid single column",
+			table: "accounts",
+			cols:  []ColumnDef{{Name: "id", Type: "INTEGER"}},
+		},
+		{
+			name:  "valid not null without default",
+			table: "accounts",
+			cols:  []ColumnDef{{Name: "id", Type: "INTEGER", NotNull: true}},
+		},
+		{
+			name:  "valid with blank rows skipped",
+			table: "accounts",
+			cols: []ColumnDef{
+				{Name: "id", Type: "INTEGER"},
+				{Name: "name", Type: "TEXT"},
+				{}, // trailing blank row
+			},
+		},
+		{
+			name:    "empty table name",
+			table:   "  ",
+			cols:    []ColumnDef{{Name: "id", Type: "INTEGER"}},
+			wantErr: "name is required",
+		},
+		{
+			name:    "invalid table name",
+			table:   "1bad",
+			cols:    []ColumnDef{{Name: "id", Type: "INTEGER"}},
+			wantErr: "invalid",
+		},
+		{
+			name:     "duplicate table",
+			table:    "users",
+			cols:     []ColumnDef{{Name: "id", Type: "INTEGER"}},
+			existing: []string{"users", "orders"},
+			wantErr:  "already exists",
+		},
+		{
+			name:    "no columns",
+			table:   "accounts",
+			cols:    nil,
+			wantErr: "at least one column",
+		},
+		{
+			name:    "only blank rows",
+			table:   "accounts",
+			cols:    []ColumnDef{{}, {}},
+			wantErr: "at least one column",
+		},
+		{
+			name:    "column missing name",
+			table:   "accounts",
+			cols:    []ColumnDef{{Type: "TEXT"}},
+			wantErr: "column name is required",
+		},
+		{
+			name:    "column missing type",
+			table:   "accounts",
+			cols:    []ColumnDef{{Name: "id"}},
+			wantErr: "type is required",
+		},
+		{
+			name:    "duplicate column",
+			table:   "accounts",
+			cols:    []ColumnDef{{Name: "id", Type: "INT"}, {Name: "ID", Type: "TEXT"}},
+			wantErr: "duplicated",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateCreateTable(tc.table, tc.cols, tc.existing)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("error = %v, want substring %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestBuildCreateTableSQL_SQLite(t *testing.T) {
+	sql, err := BuildCreateTableSQL(DriverSQLite, "accounts", []ColumnDef{
+		{Name: "id", Type: "INTEGER", NotNull: true},
+		{Name: "name", Type: "TEXT"},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `CREATE TABLE "accounts" (
+    "id" INTEGER NOT NULL,
+    "name" TEXT
+)`
+	if sql != want {
+		t.Fatalf("sql = %q, want %q", sql, want)
+	}
+
+	// Defaults and NOT NULL both present, plus a trailing blank row that must
+	// be dropped from the output.
+	sql, err = BuildCreateTableSQL(DriverSQLite, "accounts", []ColumnDef{
+		{Name: "active", Type: "INTEGER", NotNull: true, HasDefault: true, Default: "1"},
+		{Name: "label", Type: "TEXT", HasDefault: true, Default: "draft"},
+		{},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = `CREATE TABLE "accounts" (
+    "active" INTEGER NOT NULL DEFAULT 1,
+    "label" TEXT DEFAULT 'draft'
+)`
+	if sql != want {
+		t.Fatalf("sql = %q, want %q", sql, want)
+	}
+}
+
+func TestBuildCreateTableSQL_MySQL(t *testing.T) {
+	sql, err := BuildCreateTableSQL(DriverMySQL, "accounts", []ColumnDef{
+		{Name: "id", Type: "INT", NotNull: true},
+		{Name: "email", Type: "VARCHAR(255)"},
+	}, []string{"users"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "CREATE TABLE `accounts` (\n    `id` INT NOT NULL,\n    `email` VARCHAR(255)\n)"
+	if sql != want {
+		t.Fatalf("sql = %q, want %q", sql, want)
+	}
+
+	// Duplicate table name is rejected.
+	_, err = BuildCreateTableSQL(DriverMySQL, "users", []ColumnDef{{Name: "id", Type: "INT"}}, []string{"users"})
+	if err == nil {
+		t.Fatal("expected error for duplicate table")
 	}
 }

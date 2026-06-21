@@ -65,6 +65,84 @@ func BuildAddColumnSQL(driver Driver, table string, col ColumnDef, existing []st
 	return b.String(), nil
 }
 
+// ValidateCreateTable checks table metadata before generating CREATE TABLE SQL.
+// Unlike ValidateAddColumn, NOT NULL columns are allowed without a default —
+// CREATE TABLE has no such restriction (the app may supply values on INSERT).
+func ValidateCreateTable(table string, cols []ColumnDef, existingTables []string) error {
+	if err := ValidateIdentifier(table); err != nil {
+		return err
+	}
+	trimmedTable := strings.TrimSpace(table)
+	for _, ex := range existingTables {
+		if strings.EqualFold(ex, trimmedTable) {
+			return fmt.Errorf("table %q already exists", trimmedTable)
+		}
+	}
+	var seen []string
+	nonEmpty := 0
+	for _, col := range cols {
+		name := strings.TrimSpace(col.Name)
+		colType := strings.TrimSpace(col.Type)
+		if name == "" && colType == "" {
+			continue
+		}
+		if name == "" {
+			return fmt.Errorf("column name is required")
+		}
+		if !identPattern.MatchString(name) {
+			return fmt.Errorf("column name %q is invalid", name)
+		}
+		if colType == "" {
+			return fmt.Errorf("column type is required for %q", name)
+		}
+		for _, s := range seen {
+			if strings.EqualFold(s, name) {
+				return fmt.Errorf("column %q is duplicated", name)
+			}
+		}
+		seen = append(seen, name)
+		nonEmpty++
+	}
+	if nonEmpty == 0 {
+		return fmt.Errorf("at least one column is required")
+	}
+	return nil
+}
+
+// BuildCreateTableSQL generates a CREATE TABLE statement. Fully-blank column
+// rows (no name and no type) are skipped silently so the form can keep a
+// trailing empty row without submit failing.
+func BuildCreateTableSQL(driver Driver, table string, cols []ColumnDef, existingTables []string) (string, error) {
+	if err := ValidateCreateTable(table, cols, existingTables); err != nil {
+		return "", err
+	}
+	table = strings.TrimSpace(table)
+	var b strings.Builder
+	fmt.Fprintf(&b, "CREATE TABLE %s (", quoteIdent(driver, table))
+	first := true
+	for _, col := range cols {
+		name := strings.TrimSpace(col.Name)
+		colType := strings.TrimSpace(col.Type)
+		if name == "" && colType == "" {
+			continue
+		}
+		if !first {
+			b.WriteString(",")
+		}
+		first = false
+		fmt.Fprintf(&b, "\n    %s %s", quoteIdent(driver, name), colType)
+		if col.NotNull {
+			b.WriteString(" NOT NULL")
+		}
+		if col.HasDefault {
+			b.WriteString(" DEFAULT ")
+			b.WriteString(formatDefault(col.Default))
+		}
+	}
+	b.WriteString("\n)")
+	return b.String(), nil
+}
+
 // ValidateIdentifier checks that a SQL identifier is safe to use unquoted beyond quoting.
 func ValidateIdentifier(name string) error {
 	name = strings.TrimSpace(name)
@@ -266,6 +344,7 @@ type SchemaAction string
 
 const (
 	SchemaAddColumn       SchemaAction = "add_column"
+	SchemaCreateTable     SchemaAction = "create_table"
 	SchemaRenameTable     SchemaAction = "rename_table"
 	SchemaRenameColumn    SchemaAction = "rename_column"
 	SchemaModifyType      SchemaAction = "modify_type"
@@ -277,7 +356,7 @@ const (
 // SchemaSupports reports whether a driver supports a schema action.
 func SchemaSupports(driver Driver, action SchemaAction) bool {
 	switch action {
-	case SchemaAddColumn, SchemaRenameTable, SchemaRenameColumn:
+	case SchemaAddColumn, SchemaCreateTable, SchemaRenameTable, SchemaRenameColumn:
 		return true
 	case SchemaModifyType, SchemaModifyNullable, SchemaModifyDefault, SchemaDropColumn:
 		return driver == DriverMySQL
@@ -291,6 +370,8 @@ func SchemaActionLabel(action SchemaAction) string {
 	switch action {
 	case SchemaAddColumn:
 		return "Add column"
+	case SchemaCreateTable:
+		return "Create table"
 	case SchemaRenameTable:
 		return "Rename table"
 	case SchemaRenameColumn:
