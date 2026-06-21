@@ -533,12 +533,10 @@ func (e SchemaEditor) View() string {
 		lines = append(lines, mutedStyle.Render(e.notice))
 	}
 
-	lines = append(lines, "")
-	hint := mutedStyle.Render("e edit   o add column   dd drop column   esc done")
 	if e.pendingD {
-		hint = lipgloss.NewStyle().Foreground(colorAccent).Render("d...") + mutedStyle.Render("  press d again to drop column   esc cancel")
+		lines = append(lines, "")
+		lines = append(lines, lipgloss.NewStyle().Foreground(colorAccent).Render("d...")+mutedStyle.Render("  press d again to drop column   esc cancel"))
 	}
-	lines = append(lines, hint)
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }

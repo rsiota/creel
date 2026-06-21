@@ -403,13 +403,11 @@ func (d TableDesigner) View() string {
 		lines = append(lines, errorStyle.Render(d.errMsg))
 	}
 
-	// Footer.
-	lines = append(lines, "")
-	hint := mutedStyle.Render("e edit   o add row   dd remove   tab/enter run   esc cancel")
+	// Pending destructive action indicator.
 	if d.pendingD {
-		hint = lipgloss.NewStyle().Foreground(colorAccent).Render("d...") + mutedStyle.Render("  press d again to remove row   esc cancel")
+		lines = append(lines, "")
+		lines = append(lines, lipgloss.NewStyle().Foreground(colorAccent).Render("d...")+mutedStyle.Render("  press d again to remove row   esc cancel"))
 	}
-	lines = append(lines, hint)
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }

@@ -107,14 +107,6 @@ func helpSections() []helpSection {
 			},
 		},
 		{
-			title: "Column Edit",
-			bindings: []helpBinding{
-				{"enter", "run"},
-				{"esc", "cancel"},
-				{"tab", "next field"},
-			},
-		},
-		{
 			title: "Editor (Vim)",
 			bindings: []helpBinding{
 				{"i/a/o/A/O", "insert mode"},
