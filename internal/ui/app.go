@@ -137,10 +137,9 @@ type Model struct {
 	filterPicker FilterPicker
 	columnPicker ColumnPicker
 	addColumnForm   AddColumnForm
-	columnEditForm  ColumnEditForm
 	tableRenameForm TableRenameForm
 	tableDesigner   TableDesigner
-	schemaPanel     SchemaPanel
+	schemaEditor    SchemaEditor
 	sidebarCursor int
 	expanded     map[string][]db.Column
 	columnCache  map[string][]db.Column
@@ -224,10 +223,9 @@ func NewModel(cfg *config.Config) Model {
 		filterPicker: NewFilterPicker(),
 		columnPicker: NewColumnPicker(),
 		addColumnForm:   NewAddColumnForm(),
-		columnEditForm:  NewColumnEditForm(),
 		tableRenameForm: NewTableRenameForm(),
 		tableDesigner:   NewTableDesigner(),
-		schemaPanel:     NewSchemaPanel(),
+		schemaEditor:    NewSchemaEditor(),
 		historyStore: history.NewStore(historyDir()),
 		expanded:     make(map[string][]db.Column),
 		pageSize:     defaultPageSize,
@@ -1622,8 +1620,8 @@ func schemaChangeMessage(action db.SchemaAction, table string) string {
 // openAddColumnForm opens the add-column overlay for the selected sidebar table.
 func (m *Model) openAddColumnForm() tea.Cmd {
 	table := m.sidebarSelectedTable()
-	if table == "" && m.schemaPanel.IsVisible() {
-		table = m.schemaPanel.Table()
+	if table == "" && m.schemaEditor.IsVisible() {
+		table = m.schemaEditor.Table()
 	}
 	return m.openAddColumnFormForTable(table)
 }
@@ -1681,9 +1679,10 @@ func (m *Model) applyTableRename(oldName, newName string) {
 	m.loadTables()
 	m.syncSidebarCursorToTable(newName)
 
-	if m.schemaPanel.IsVisible() && m.schemaPanel.Table() == oldName {
-		m.schemaPanel.SetTable(newName)
-		m.reloadSchemaPanel(newName)
+	if m.schemaEditor.IsVisible() && m.schemaEditor.Table() == oldName {
+		// Reload under new name by closing + reopening; the editor stores the
+		// table name at Show time.
+		m.schemaEditor.Hide()
 	}
 
 	m.results.RenameTableReferences(oldName, newName)
@@ -1699,7 +1698,7 @@ func (m *Model) applyTableRename(oldName, newName string) {
 	}
 }
 
-// openSchemaPanel opens the schema overlay for the selected sidebar table.
+// openSchemaPanel opens the inline schema editor for the selected sidebar table.
 func (m *Model) openSchemaPanel() {
 	if m.connection == nil {
 		return
@@ -1713,60 +1712,42 @@ func (m *Model) openSchemaPanel() {
 		m.connError = err.Error()
 		return
 	}
-	m.schemaPanel.Show(table, m.connection.Config().Driver, cols)
-	m.layoutSchemaPanel()
+	m.schemaEditor.Show(table, m.connection.Config().Driver, cols)
 }
 
-// layoutSchemaPanel sizes the schema panel from the current terminal dimensions.
-func (m *Model) layoutSchemaPanel() {
-	if !m.schemaPanel.IsVisible() || m.height == 0 {
-		return
+// dropCurrentColumn runs the existing drop-column confirmation flow for the
+// cursor row in the schema editor.
+func (m *Model) dropCurrentColumn() tea.Cmd {
+	col, ok := m.schemaEditor.PendingDropColumn()
+	if !ok || m.connection == nil {
+		return nil
 	}
-	m.schemaPanel.SetSize(76, m.height)
+	if msg := GuardColumnAction(db.SchemaDropColumn, col); msg != "" {
+		m.schemaEditor.SetNotice(msg)
+		return nil
+	}
+	driver := m.connection.Config().Driver
+	sql, err := db.BuildDropColumnSQL(driver, m.schemaEditor.Table(), col.Name, col)
+	if err != nil {
+		m.schemaEditor.SetNotice(err.Error())
+		return nil
+	}
+	m.setSchemaConfirm(m.schemaEditor.Table(), sql, db.SchemaDropColumn)
+	return nil
 }
 
-// reloadSchemaPanel refreshes column metadata when the panel is open.
+// reloadSchemaPanel refreshes column metadata when the editor is open.
 func (m *Model) reloadSchemaPanel(table string) {
-	if !m.schemaPanel.IsVisible() || m.schemaPanel.Table() != table || m.connection == nil {
+	if !m.schemaEditor.IsVisible() || m.schemaEditor.Table() != table || m.connection == nil {
 		return
 	}
 	cols, err := m.connection.DB().TableColumnInfo(table)
 	if err != nil {
-		m.schemaPanel.SetNotice(err.Error())
+		m.schemaEditor.SetNotice(err.Error())
 		return
 	}
-	m.schemaPanel.SetColumns(cols)
-	m.schemaPanel.SetNotice("")
-}
-
-// handleSchemaPanelAction starts the flow for a column-level schema action.
-func (m *Model) handleSchemaPanelAction(action db.SchemaAction) tea.Cmd {
-	col, ok := m.schemaPanel.SelectedColumn()
-	if !ok {
-		return nil
-	}
-	if msg := GuardColumnAction(action, col); msg != "" {
-		m.schemaPanel.SetNotice(msg)
-		return nil
-	}
-
-	table := m.schemaPanel.Table()
-	driver := m.connection.Config().Driver
-	existing := m.schemaPanel.ColumnNames()
-	m.schemaPanel.CloseActions()
-
-	if action == db.SchemaDropColumn {
-		sql, err := db.BuildDropColumnSQL(driver, table, col.Name, col)
-		if err != nil {
-			m.schemaPanel.SetNotice(err.Error())
-			return nil
-		}
-		m.setSchemaConfirm(table, sql, action)
-		return nil
-	}
-
-	m.columnEditForm.Show(action, table, driver, col, existing)
-	return m.columnEditForm.Focus()
+	m.schemaEditor.SetColumns(cols)
+	m.schemaEditor.SetNotice("")
 }
 
 // refreshTableSchemaSync updates cached sidebar schema for one table.
@@ -1948,8 +1929,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tableRenameForm.SetError(msg.err.Error())
 			case db.SchemaCreateTable:
 				m.tableDesigner.SetError(msg.err.Error())
-			default:
-				m.columnEditForm.SetError(msg.err.Error())
+			case db.SchemaRenameColumn, db.SchemaModifyType, db.SchemaModifyNullable, db.SchemaModifyDefault, db.SchemaDropColumn:
+				m.schemaEditor.SetError(msg.err.Error())
 			}
 		} else {
 			if msg.action == db.SchemaRenameTable {
@@ -1966,7 +1947,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.clearSchemaConfirm()
 			m.addColumnForm.Hide()
-			m.columnEditForm.Hide()
 			m.tableRenameForm.Hide()
 			m.tableDesigner.Hide()
 			if msg.action == db.SchemaRenameTable && m.resultsShowTable(msg.newTable) {
@@ -2324,29 +2304,6 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Column edit form is modal.
-	if m.columnEditForm.IsVisible() {
-		switch msg.String() {
-		case "esc", "ctrl+c":
-			m.columnEditForm.Hide()
-			m.clearSchemaConfirm()
-			return m, nil
-		case "enter", "ctrl+s":
-			sql, errMsg := m.columnEditForm.Submit()
-			if errMsg != "" {
-				m.columnEditForm.SetError(errMsg)
-				return m, nil
-			}
-			table := m.columnEditForm.Table()
-			action := m.columnEditForm.Action()
-			m.columnEditForm.SetError("")
-			return m, m.execSchemaDDL(table, sql, action, "")
-		}
-		var cmd tea.Cmd
-		m.columnEditForm, cmd = m.columnEditForm.Update(msg)
-		return m, cmd
-	}
-
 	// Add-column form is modal.
 	if m.addColumnForm.IsVisible() {
 		switch msg.String() {
@@ -2423,63 +2380,57 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	// Schema panel is modal.
-	if m.schemaPanel.IsVisible() {
-		if m.schemaPanel.IsFiltering() {
-			switch msg.String() {
-			case "esc", "ctrl+c":
-				m.schemaPanel.CancelFilter()
-				return m, nil
-			case "enter":
-				m.schemaPanel.CancelFilter()
-				return m, nil
-			case "backspace":
-				m.schemaPanel.FilterBackspace()
-				return m, nil
-			case "up", "k":
-				m.schemaPanel.CursorUp()
-				return m, nil
-			case "down", "j":
-				m.schemaPanel.CursorDown()
-				return m, nil
-			}
-			if msg.Type == tea.KeyRunes {
-				m.schemaPanel.FilterAddChar(msg.String())
-				return m, nil
-			}
-			return m, nil
-		}
+	// Schema editor takes over the workspace.
+	if m.schemaEditor.IsVisible() {
 		switch msg.String() {
 		case "esc", "ctrl+c":
-			if m.schemaPanel.InActionsMode() {
-				m.schemaPanel.CloseActions()
+			if m.schemaEditor.IsEditing() {
+				m.schemaEditor, _ = m.schemaEditor.Update(msg)
 				return m, nil
 			}
-			m.schemaPanel.Hide()
+			m.schemaEditor.Hide()
 			return m, nil
 		case "enter":
-			if m.schemaPanel.InActionsMode() {
-				action, ok := m.schemaPanel.SelectedAction()
-				if ok {
-					return m, m.handleSchemaPanelAction(action)
+			if m.schemaEditor.IsEditing() {
+				m.schemaEditor, _ = m.schemaEditor.Update(msg)
+				// For existing rows, fire per-cell DDL immediately on commit.
+				// For new rows, the user fills in cells one by one and
+				// presses enter again (not editing) to submit ADD COLUMN.
+				if !m.schemaEditor.IsNewRow() {
+					sql, action, errMsg := m.schemaEditor.PendingEditDDL()
+					if errMsg != "" {
+						m.schemaEditor.SetError(errMsg)
+						return m, nil
+					}
+					if sql != "" {
+						m.schemaEditor.SetError("")
+						return m, m.execSchemaDDL(m.schemaEditor.Table(), sql, action, "")
+					}
 				}
 				return m, nil
 			}
-			m.schemaPanel.OpenActions()
-			return m, nil
-		case "up", "k":
-			m.schemaPanel.CursorUp()
-			return m, nil
-		case "down", "j":
-			m.schemaPanel.CursorDown()
-			return m, nil
-		case "/":
-			m.schemaPanel.StartFilter()
-			return m, nil
-		case "a":
-			return m, m.openAddColumnFormForTable(m.schemaPanel.Table())
+			// Not editing: fire pending DDL (ADD COLUMN for new rows).
+			sql, action, errMsg := m.schemaEditor.PendingEditDDL()
+			if errMsg != "" {
+				m.schemaEditor.SetError(errMsg)
+				return m, nil
+			}
+			if sql == "" {
+				return m, nil
+			}
+			m.schemaEditor.SetError("")
+			return m, m.execSchemaDDL(m.schemaEditor.Table(), sql, action, "")
+		case "d":
+			// dd to drop column — only existing rows go through the confirm
+			// flow. New rows are removed locally by the editor's Update.
+			if m.schemaEditor.pendingD && !m.schemaEditor.IsNewRow() {
+				m.schemaEditor.pendingD = false
+				return m, m.dropCurrentColumn()
+			}
 		}
-		return m, nil
+		var cmd tea.Cmd
+		m.schemaEditor, cmd = m.schemaEditor.Update(msg)
+		return m, cmd
 	}
 
 	// Discard / truncate confirmation dialogs are modal — intercept all keys.
@@ -2618,9 +2569,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.discardConfirm = false
 		m.truncateConfirm = ""
 		m.addColumnForm.Hide()
-		m.columnEditForm.Hide()
 		m.tableRenameForm.Hide()
-		m.schemaPanel.Hide()
+		m.schemaEditor.Hide()
 		m.clearSchemaConfirm()
 		m.schemaMsg = ""
 		m.lastQuery = ""
@@ -3850,8 +3800,8 @@ func (m Model) viewWorkspace() string {
 		rightWidth -= inspectorWidth
 	}
 
-	// Build right column. When the table designer is active, it takes over
-	// the full editor+results space as a single inline grid editor.
+	// Build right column. When the table designer or schema editor is active,
+	// it takes over the full editor+results space as a single inline grid.
 	var rightPanel string
 	if m.tableDesigner.IsVisible() {
 		designerHeight := editorHeight + resultsHeight + borderOverhead
@@ -3862,6 +3812,15 @@ func (m Model) viewWorkspace() string {
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorPrimary).
 			Render(m.tableDesigner.View())
+	} else if m.schemaEditor.IsVisible() {
+		editorH := editorHeight + resultsHeight + borderOverhead
+		m.schemaEditor.SetSize(rightWidth-borderOverhead, editorH-borderOverhead)
+		rightPanel = lipgloss.NewStyle().
+			Width(rightWidth).
+			Height(editorH).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorPrimary).
+			Render(m.schemaEditor.View())
 	} else {
 		editorPanel := lipgloss.NewStyle().
 			Width(rightWidth).
@@ -4105,26 +4064,6 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, dialog, dlgX, dlgY)
 	}
 
-	// Overlay schema panel if visible.
-	if m.schemaPanel.IsVisible() {
-		popupW := 76
-		borderOverhead := 2
-		m.layoutSchemaPanel()
-		contentH := m.schemaPanel.ContentHeight()
-		panel := lipgloss.NewStyle().
-			Width(popupW - borderOverhead).
-			Height(contentH).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorPrimary).
-			Padding(1, 2).
-			Render(m.schemaPanel.View())
-		panelW := lipgloss.Width(panel)
-		panelH := lipgloss.Height(panel)
-		panelX := (m.width - panelW) / 2
-		panelY := (m.height - 1 - panelH) / 2
-		view = placeOverlay(view, panel, panelX, panelY)
-	}
-
 	if m.schemaConfirmSQL != "" {
 		prompt := fmt.Sprintf("Drop column on %s?\nThis permanently removes the column and its data.", m.schemaConfirmTable)
 		dialog := renderSQLConfirmDialog(prompt, m.schemaConfirmSQL)
@@ -4133,26 +4072,6 @@ func (m Model) viewWorkspace() string {
 		dlgX := (m.width - dlgW) / 2
 		dlgY := (m.height - 1 - dlgH) / 2
 		view = placeOverlay(view, dialog, dlgX, dlgY)
-	}
-
-	// Overlay column edit form.
-	if m.columnEditForm.IsVisible() {
-		popupW := 58
-		borderOverhead := 2
-		padding := 4
-		innerW := popupW - borderOverhead - padding
-		m.columnEditForm.SetMaxWidth(innerW)
-		formPanel := lipgloss.NewStyle().
-			Width(popupW - borderOverhead).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorPrimary).
-			Padding(1, 2).
-			Render(m.columnEditForm.View())
-		panelW := lipgloss.Width(formPanel)
-		panelH := lipgloss.Height(formPanel)
-		panelX := (m.width - panelW) / 2
-		panelY := (m.height - 1 - panelH) / 2
-		view = placeOverlay(view, formPanel, panelX, panelY)
 	}
 
 	// Overlay add-column form.
