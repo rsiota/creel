@@ -297,6 +297,12 @@ func (r ResultsTable) PKTypes() []string {
 	return types
 }
 
+// CursorPKTuple returns the PK values for the row under the cursor, or nil if
+// the cursor row has no valid PK tuple.
+func (r ResultsTable) CursorPKTuple() []string {
+	return r.pkTuple(r.cursorRow)
+}
+
 // pkTuple returns the PK column values for a row, aligned with pkColumns.
 // Returns nil if the row or any PK column is out of range.
 func (r ResultsTable) pkTuple(rowIdx int) []string {

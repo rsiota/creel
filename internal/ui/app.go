@@ -63,6 +63,13 @@ type truncateResultMsg struct {
 	err   error
 }
 
+// deleteRowsResultMsg carries the result of an async row deletion.
+type deleteRowsResultMsg struct {
+	table string
+	count int
+	err   error
+}
+
 // schemaResultMsg carries the result of an async schema change (DDL).
 type schemaResultMsg struct {
 	table    string
@@ -152,12 +159,18 @@ type Model struct {
 	sidebarPendingG bool
 	resultsPendingG bool
 	resultsPendingY bool
+	resultsPendingD bool // dd double-tap state for row deletion
 
 	// Discard confirmation dialog
 	discardConfirm bool
 
 	// Truncate confirmation dialog (non-empty table name while pending).
 	truncateConfirm string
+
+	// Row deletion confirmation dialog (non-empty table name while pending).
+	deleteRowsConfirmTable string
+	deleteRowsConfirmQuery string
+	deleteRowsConfirmCount int
 
 	// Schema DDL confirmation (add/edit column, etc.).
 	schemaConfirmSQL    string
@@ -178,7 +191,8 @@ type Model struct {
 	statsMsg string // transient column statistics display
 	exportMsg   string // transient CSV export result display
 	searchMsg   string // transient regex search result display
-	truncateMsg string // transient truncate result display
+	truncateMsg   string // transient truncate result display
+	deleteRowsMsg string // transient row deletion result display
 	schemaMsg   string // transient schema change result display
 
 	// Quick filters (cell-based, server-side WHERE injection)
@@ -1572,6 +1586,59 @@ func (m *Model) execTruncate(table string) tea.Cmd {
 	}
 }
 
+// execDeleteRows removes specific rows by PK asynchronously.
+func (m *Model) execDeleteRows(table, query string, count int) tea.Cmd {
+	if m.connection == nil || table == "" || query == "" {
+		return nil
+	}
+	conn := m.connection
+	return func() tea.Msg {
+		res, err := conn.DB().Exec(query)
+		if err != nil {
+			return deleteRowsResultMsg{table: table, err: err}
+		}
+		deleted := int(res.RowsAffected)
+		if deleted == 0 {
+			deleted = count // fallback if driver reports 0
+		}
+		return deleteRowsResultMsg{table: table, count: deleted, err: nil}
+	}
+}
+
+// startDeleteRows prepares a row deletion confirmation. If rows are marked,
+// those are targeted; otherwise the cursor row is targeted. The built DELETE
+// query and metadata are stored in confirmation fields for the modal handler.
+func (m *Model) startDeleteRows() {
+	if !m.results.IsEditable() || m.results.NumRows() == 0 {
+		return
+	}
+	pkNames := m.results.PKColumns()
+	if len(pkNames) == 0 {
+		return
+	}
+	table := m.results.SourceTable()
+	pkTypes := m.results.PKTypes()
+
+	var count int
+	var query string
+	if m.results.MarkCount() > 0 {
+		tuples := m.results.MarkedPKs()
+		count = len(tuples)
+		query = buildDeleteQuery(table, pkNames, pkTypes, tuples)
+	} else {
+		tuple := m.results.CursorPKTuple()
+		if tuple == nil {
+			return
+		}
+		count = 1
+		query = buildDeleteQuery(table, pkNames, pkTypes, [][]string{tuple})
+	}
+
+	m.deleteRowsConfirmTable = table
+	m.deleteRowsConfirmQuery = query
+	m.deleteRowsConfirmCount = count
+}
+
 // execSchemaDDL runs a pending schema statement asynchronously.
 func (m *Model) execSchemaDDL(table, query string, action db.SchemaAction, newTable string) tea.Cmd {
 	if m.connection == nil || table == "" || query == "" {
@@ -1909,6 +1976,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.truncateMsg = fmt.Sprintf("truncate failed: %v", msg.err)
 		} else {
 			m.truncateMsg = fmt.Sprintf("truncated %s", msg.table)
+			if m.resultsShowTable(msg.table) {
+				if m.results.HasDirtyCells() {
+					m.results.DiscardEdits()
+				}
+				return m, m.runPageQuery()
+			}
+		}
+		return m, nil
+
+	case deleteRowsResultMsg:
+		if msg.err != nil {
+			m.deleteRowsMsg = fmt.Sprintf("delete failed: %v", msg.err)
+		} else {
+			m.deleteRowsMsg = fmt.Sprintf("deleted %d row%s from %s", msg.count, pluralIf(msg.count != 1, "s"), msg.table)
+			m.results.ClearMarks()
 			if m.resultsShowTable(msg.table) {
 				if m.results.HasDirtyCells() {
 					m.results.DiscardEdits()
@@ -2433,8 +2515,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	// Discard / truncate confirmation dialogs are modal — intercept all keys.
-	if m.discardConfirm || m.truncateConfirm != "" {
+	// Discard / truncate / delete-rows confirmation dialogs are modal — intercept all keys.
+	if m.discardConfirm || m.truncateConfirm != "" || m.deleteRowsConfirmTable != "" {
 		switch msg.String() {
 		case "y", "Y", "enter":
 			if m.discardConfirm {
@@ -2442,12 +2524,24 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.discardConfirm = false
 				return m, nil
 			}
+			if m.deleteRowsConfirmTable != "" {
+				table := m.deleteRowsConfirmTable
+				query := m.deleteRowsConfirmQuery
+				count := m.deleteRowsConfirmCount
+				m.deleteRowsConfirmTable = ""
+				m.deleteRowsConfirmQuery = ""
+				m.deleteRowsConfirmCount = 0
+				return m, m.execDeleteRows(table, query, count)
+			}
 			table := m.truncateConfirm
 			m.truncateConfirm = ""
 			return m, m.execTruncate(table)
 		case "n", "N", "esc", "ctrl+c":
 			m.discardConfirm = false
 			m.truncateConfirm = ""
+			m.deleteRowsConfirmTable = ""
+			m.deleteRowsConfirmQuery = ""
+			m.deleteRowsConfirmCount = 0
 			return m, nil
 		}
 		return m, nil
@@ -2568,6 +2662,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.columnPicker.Hide()
 		m.discardConfirm = false
 		m.truncateConfirm = ""
+		m.deleteRowsConfirmTable = ""
+		m.deleteRowsConfirmQuery = ""
+		m.deleteRowsConfirmCount = 0
 		m.addColumnForm.Hide()
 		m.tableRenameForm.Hide()
 		m.schemaEditor.Hide()
@@ -2676,6 +2773,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.editor, cmd = m.editor.Update(msg)
 	case FocusResults:
+		// Clear dd pending state on any non-'d' key.
+		if msg.String() != "d" {
+			m.resultsPendingD = false
+		}
 		// Clear transient stats/export/search display on the next key press.
 		if m.statsMsg != "" || m.exportMsg != "" || m.searchMsg != "" {
 			m.statsMsg = ""
@@ -2813,8 +2914,20 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if m.resultsPendingG {
 					m.resultsPendingG = false
 					m.resultsPendingY = false
+					m.resultsPendingD = false
 					return m, m.followForeignKey()
 				}
+				if !m.results.IsEditable() || m.results.NumRows() == 0 {
+					m.resultsPendingD = false
+					return m, nil
+				}
+				if m.resultsPendingD {
+					m.resultsPendingD = false
+					m.startDeleteRows()
+					return m, nil
+				}
+				m.resultsPendingD = true
+				return m, nil
 			case "right", "l", "w":
 				m.resultsPendingG = false
 				m.resultsPendingY = false
@@ -4064,6 +4177,17 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, dialog, dlgX, dlgY)
 	}
 
+	// Overlay row deletion confirmation dialog if visible.
+	if m.deleteRowsConfirmTable != "" {
+		prompt := fmt.Sprintf("Delete %d row%s from %s?\nThis cannot be undone.", m.deleteRowsConfirmCount, pluralIf(m.deleteRowsConfirmCount != 1, "s"), m.deleteRowsConfirmTable)
+		dialog := renderConfirmDialog(prompt)
+		dlgW := lipgloss.Width(dialog)
+		dlgH := lipgloss.Height(dialog)
+		dlgX := (m.width - dlgW) / 2
+		dlgY := (m.height - 1 - dlgH) / 2
+		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
 	if m.schemaConfirmSQL != "" {
 		prompt := fmt.Sprintf("Drop column on %s?\nThis permanently removes the column and its data.", m.schemaConfirmTable)
 		dialog := renderSQLConfirmDialog(prompt, m.schemaConfirmSQL)
@@ -4183,6 +4307,11 @@ func (m Model) statusMessage() string {
 			return errorStyle.Render(m.truncateMsg)
 		}
 		return successStyle.Render(m.truncateMsg)
+	case m.deleteRowsMsg != "":
+		if strings.HasPrefix(m.deleteRowsMsg, "delete failed:") {
+			return errorStyle.Render(m.deleteRowsMsg)
+		}
+		return successStyle.Render(m.deleteRowsMsg)
 	case m.schemaMsg != "":
 		if strings.HasPrefix(m.schemaMsg, "schema change failed:") {
 			return errorStyle.Render(m.schemaMsg)

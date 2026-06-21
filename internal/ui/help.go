@@ -131,6 +131,7 @@ func helpSections() []helpSection {
 				{"space", "toggle row mark"},
 				{"F", "filter by marked rows"},
 				{"C", "clear marks"},
+				{"dd", "delete marked or cursor row"},
 				{"u", "undo last filter"},
 				{"c", "clear filters"},
 				{"o", "sort column"},
