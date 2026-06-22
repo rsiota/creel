@@ -140,6 +140,13 @@ type exportProgressMsg struct {
 	err    error
 }
 
+// importDoneMsg carries the result of a completed SQL import.
+type importDoneMsg struct {
+	result  db.ImportResult
+	filename string
+	err     error
+}
+
 // queryStackEntry stores navigation state for returning after following a FK.
 type queryStackEntry struct {
 	query     string
@@ -167,6 +174,7 @@ type Model struct {
 	filterPicker FilterPicker
 	columnPicker ColumnPicker
 	exportPicker ExportPicker
+	importPrompt ImportPrompt
 	addColumnForm   AddColumnForm
 	tableRenameForm TableRenameForm
 	tableDesigner   TableDesigner
@@ -266,6 +274,7 @@ func NewModel(cfg *config.Config) Model {
 		filterPicker: NewFilterPicker(),
 		columnPicker: NewColumnPicker(),
 		exportPicker: NewExportPicker(),
+		importPrompt: NewImportPrompt(),
 		addColumnForm:   NewAddColumnForm(),
 		tableRenameForm: NewTableRenameForm(),
 		tableDesigner:   NewTableDesigner(),
@@ -1090,6 +1099,37 @@ func dumpFooterCmd(f *os.File, bw *bufio.Writer, driver db.Driver, total int, pa
 		return exportDumpMsg{path: path, tables: total}
 	}
 }
+
+// execImportSQL runs an async SQL import from the given file path, reporting
+// progress via m.exportMsg and the final result via importDoneMsg.
+func (m *Model) execImportSQL(rawPath string) tea.Cmd {
+	if m.connection == nil {
+		return nil
+	}
+	database := m.connection.DB()
+	filename := filepath.Base(rawPath)
+
+	return func() tea.Msg {
+		f, err := os.Open(rawPath)
+		if err != nil {
+			return importDoneMsg{filename: filename, err: err}
+		}
+		defer f.Close()
+
+		stat, err := f.Stat()
+		if err != nil {
+			return importDoneMsg{filename: filename, err: err}
+		}
+		totalSize := stat.Size()
+
+		result, err := db.ImportSQL(f, database, totalSize, nil)
+		if err != nil {
+			return importDoneMsg{filename: filename, err: err}
+		}
+		return importDoneMsg{result: result, filename: filename}
+	}
+}
+
 // none → ASC → DESC → none.
 func (m *Model) toggleSort() tea.Cmd {
 	if !m.canFilter() || m.results.NumRows() == 0 {
@@ -2266,6 +2306,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.exportMsg = fmt.Sprintf("dumped %d table%s → %s", msg.tables, pluralIf(msg.tables != 1, "s"), msg.path)
 		}
 		return m, nil
+
+	case importDoneMsg:
+		if msg.err != nil {
+			m.exportMsg = fmt.Sprintf("import failed: %v", msg.err)
+		} else {
+			m.exportMsg = msg.result.Summary(msg.filename)
+			m.loadTables()
+		}
+		return m, nil
 	}
 
 	if m.state == stateWorkspace {
@@ -2559,6 +2608,26 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, nil
+	}
+
+	// Import prompt is modal — intercept all keys.
+	if m.importPrompt.IsVisible() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.importPrompt.Hide()
+			return m, nil
+		case "enter":
+			path, err := m.importPrompt.ExpandPath()
+			if err != nil {
+				m.exportMsg = fmt.Sprintf("import failed: %v", err)
+				return m, nil
+			}
+			m.importPrompt.Hide()
+			return m, m.execImportSQL(path)
+		}
+		var cmd tea.Cmd
+		m.importPrompt, cmd = m.importPrompt.Update(msg)
+		return m, cmd
 	}
 
 	// Export picker is modal — intercept all keys.
@@ -3542,6 +3611,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "X":
 			m.sidebarPendingG = false
 			m.exportPicker.Show(m.tables, m.currentTable())
+			return m, nil
+		case "I":
+			m.sidebarPendingG = false
+			m.importPrompt.Show("~/Downloads/")
 			return m, nil
 		}
 		m.connList, cmd = m.connList.Update(msg)
@@ -4576,6 +4649,16 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, exportPanel, panelX, panelY)
+	}
+
+	// Overlay import prompt if visible
+	if m.importPrompt.IsVisible() {
+		importPanel := m.importPrompt.View()
+		panelW := lipgloss.Width(importPanel)
+		panelH := lipgloss.Height(importPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, importPanel, panelX, panelY)
 	}
 
 	// Overlay help panel if visible

@@ -83,6 +83,7 @@ func helpSections() []helpSection {
 				{"D", "drop table"},
 				{"N", "new table (grid editor)"},
 				{"X", "export database"},
+				{"I", "import SQL dump"},
 				{"/", "filter tables"},
 			},
 		},
