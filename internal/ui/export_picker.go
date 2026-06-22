@@ -93,7 +93,9 @@ func (p *ExportPicker) adjustScroll() {
 }
 
 func (p ExportPicker) maxVisible() int {
-	mv := p.height - 8
+	// Content area = height - 2 (border) - 2 (padding) = height - 4.
+	// Subtract title (1), blank spacer (1), and footer (1) for the list region.
+	mv := p.height - 7
 	if mv < 1 {
 		mv = 1
 	}
@@ -212,15 +214,13 @@ func (p ExportPicker) View() string {
 	}
 	summary := mutedStyle.Render(fmt.Sprintf("%d of %d selected", p.MarkedCount(), len(p.items)))
 
-	footer := formatLine + "  " + scrollInfo + "  " + summary
-
-	hint := mutedStyle.Render("space toggle  a all  n none  enter export  esc cancel")
+	footer := " " + formatLine + "  " + scrollInfo + "  " + summary
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,
 		listStyled,
+		"",
 		footer,
-		hint,
 	)
 
 	panel := lipgloss.NewStyle().
