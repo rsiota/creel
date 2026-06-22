@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/csv"
 	"fmt"
@@ -121,6 +122,21 @@ type exportDoneMsg struct {
 type exportDumpMsg struct {
 	path   string
 	tables int
+	err    error
+}
+
+// exportProgressMsg carries incremental progress during a table-by-table dump.
+// The open file handle flows through the message stream so the model stays free
+// of file-state. Each message represents one table written; the Update handler
+// chains the next command until the final table, then writes the footer.
+type exportProgressMsg struct {
+	file   *os.File
+	bw     *bufio.Writer
+	path   string
+	index  int // zero-based index of the table just written
+	total  int
+	tables []string
+	name   string // name of the table just written
 	err    error
 }
 
@@ -983,43 +999,95 @@ func serializeCSV(cols []string, rows [][]string) (string, error) {
 	return buf.String(), nil
 }
 
-// execExportDump runs a SQL dump of the selected tables asynchronously,
-// writing to ~/Downloads with a timestamped filename.
+// execExportDump starts a table-by-table SQL dump of the selected tables,
+// writing to ~/Downloads with a timestamped filename. It writes the header and
+// first table, then chains per-table commands via exportProgressMsg so the
+// status bar can show live progress.
 func (m *Model) execExportDump(tables []string) tea.Cmd {
 	if m.connection == nil || len(tables) == 0 {
 		return nil
 	}
 	conn := m.connection
 	driver := conn.Config().Driver
-	format := m.exportPicker.CurrentFormat()
 	realDBName := conn.Config().Database
 	fileLabel := filepath.Base(realDBName)
 	if fileLabel == "" {
 		fileLabel = "database"
 	}
 	timestamp := time.Now().Format("2006-01-02")
-	ext := string(format)
+	ext := string(m.exportPicker.CurrentFormat())
 	filename := fmt.Sprintf("%s_%s.%s", fileLabel, timestamp, ext)
+	total := len(tables)
+	database := conn.DB()
 
 	return func() tea.Msg {
 		dir, err := os.UserHomeDir()
 		if err != nil {
-			return exportDumpMsg{err: err}
+			return exportProgressMsg{err: err, total: total}
 		}
 		dir = filepath.Join(dir, "Downloads")
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return exportDumpMsg{err: err}
+			return exportProgressMsg{err: err, total: total}
 		}
 		path := filepath.Join(dir, filename)
 		f, err := os.Create(path)
 		if err != nil {
-			return exportDumpMsg{err: err}
+			return exportProgressMsg{err: err, total: total}
 		}
-		defer f.Close()
-		if err := db.DumpTables(f, conn.DB(), driver, realDBName, tables, format); err != nil {
+		bw := bufio.NewWriter(f)
+		if err := db.DumpHeader(bw, driver, realDBName, total); err != nil {
+			f.Close()
+			return exportProgressMsg{err: err, path: path, total: total}
+		}
+		if err := db.DumpTable(bw, database, driver, tables[0]); err != nil {
+			f.Close()
+			return exportProgressMsg{err: err, path: path, total: total}
+		}
+		bw.Flush()
+		return exportProgressMsg{
+			file:   f,
+			bw:     bw,
+			path:   path,
+			index:  0,
+			total:  total,
+			tables: tables,
+			name:   tables[0],
+		}
+	}
+}
+
+// dumpTableCmd returns a command that writes a single table to an open dump
+// file and reports progress via exportProgressMsg.
+func dumpTableCmd(f *os.File, bw *bufio.Writer, database db.DB, driver db.Driver, table string, index, total int, tables []string, path string) tea.Cmd {
+	return func() tea.Msg {
+		if err := db.DumpTable(bw, database, driver, table); err != nil {
+			f.Close()
+			return exportProgressMsg{err: err, path: path, index: index, total: total, tables: tables, name: table}
+		}
+		bw.Flush()
+		return exportProgressMsg{
+			file:   f,
+			bw:     bw,
+			path:   path,
+			index:  index,
+			total:  total,
+			tables: tables,
+			name:   table,
+		}
+	}
+}
+
+// dumpFooterCmd returns a command that writes the dump footer, flushes, and
+// closes the file, reporting completion via exportDumpMsg.
+func dumpFooterCmd(f *os.File, bw *bufio.Writer, driver db.Driver, total int, path string) tea.Cmd {
+	return func() tea.Msg {
+		if err := db.DumpFooter(bw, driver); err != nil {
+			f.Close()
 			return exportDumpMsg{path: path, err: err}
 		}
-		return exportDumpMsg{path: path, tables: len(tables)}
+		bw.Flush()
+		f.Close()
+		return exportDumpMsg{path: path, tables: total}
 	}
 }
 // none → ASC → DESC → none.
@@ -2173,6 +2241,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case exportDoneMsg:
 		m.exportMsg = exportStatusMessage(msg.path, msg.count, msg.err)
 		return m, nil
+
+	case exportProgressMsg:
+		if msg.err != nil {
+			if msg.file != nil {
+				msg.file.Close()
+			}
+			m.exportMsg = fmt.Sprintf("export failed: %v", msg.err)
+			return m, nil
+		}
+		percent := (msg.index + 1) * 100 / msg.total
+		m.exportMsg = fmt.Sprintf("Exporting %d/%d: %s (%d%%)", msg.index+1, msg.total, msg.name, percent)
+		if msg.index+1 < msg.total {
+			next := msg.index + 1
+			return m, dumpTableCmd(msg.file, msg.bw, m.connection.DB(), m.connection.Config().Driver,
+				msg.tables[next], next, msg.total, msg.tables, msg.path)
+		}
+		return m, dumpFooterCmd(msg.file, msg.bw, m.connection.Config().Driver, msg.total, msg.path)
 
 	case exportDumpMsg:
 		if msg.err != nil {

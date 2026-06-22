@@ -27,13 +27,10 @@ const insertBatchSize = 100
 // For FormatSQL the output is a logical SQL dump in the source driver's own
 // dialect (SQLite syntax for SQLite sources, MySQL syntax for MySQL sources).
 // Each table is preceded by DROP TABLE IF EXISTS, followed by CREATE TABLE,
-// then batched INSERT statements. The entire dump is wrapped in a transaction
-// for fast, atomic restoration.
+// then batched INSERT statements.
 //
-// dbName is the database name (used to emit a USE statement for MySQL dumps,
-// making them self-contained). Tables is the list of table names to dump; the
-// caller is responsible for deciding the scope (use Tables() on the DB to dump
-// everything).
+// For incremental / streaming use, callers may instead invoke DumpHeader,
+// DumpTable, and DumpFooter directly.
 func DumpTables(w io.Writer, database DB, driver Driver, dbName string, tables []string, format Format) error {
 	switch format {
 	case FormatSQL:
@@ -47,46 +44,59 @@ func dumpSQL(w io.Writer, database DB, driver Driver, dbName string, tables []st
 	bw := bufio.NewWriter(w)
 	defer bw.Flush()
 
-	fmt.Fprintf(bw, "-- gsql SQL dump\n")
-	fmt.Fprintf(bw, "-- driver: %s\n", driver)
-	fmt.Fprintf(bw, "-- database: %s\n", dbName)
-	fmt.Fprintf(bw, "-- tables: %d\n", len(tables))
-	fmt.Fprintf(bw, "\n")
+	if err := DumpHeader(bw, driver, dbName, len(tables)); err != nil {
+		return err
+	}
+	for _, table := range tables {
+		if err := DumpTable(bw, database, driver, table); err != nil {
+			return fmt.Errorf("dump table %s: %w", table, err)
+		}
+	}
+	return DumpFooter(bw, driver)
+}
+
+// DumpHeader writes the dump preamble: comments and (MySQL) session-variable
+// setup comments. It is the first stage of an incremental dump.
+func DumpHeader(w io.Writer, driver Driver, dbName string, tableCount int) error {
+	fmt.Fprintf(w, "-- gsql SQL dump\n")
+	fmt.Fprintf(w, "-- driver: %s\n", driver)
+	fmt.Fprintf(w, "-- database: %s\n", dbName)
+	fmt.Fprintf(w, "-- tables: %d\n", tableCount)
+	fmt.Fprintf(w, "\n")
 
 	// MySQL dumps use version-gated session setup comments (the same header
 	// block emitted by mysqldump) so the dump restores cleanly regardless of
 	// the target server's defaults. SQLite has no analogous session state.
 	if driver == DriverMySQL {
-		fmt.Fprintln(bw, "/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;")
-		fmt.Fprintln(bw, "/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;")
-		fmt.Fprintln(bw, "/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;")
-		fmt.Fprintln(bw, "SET NAMES utf8mb4;")
-		fmt.Fprintln(bw, "/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;")
-		fmt.Fprintln(bw, "/*!40101 SET @OLD_SQL_MODE='NO_AUTO_VALUE_ON_ZERO', SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;")
-		fmt.Fprintln(bw, "/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;")
-		fmt.Fprintln(bw)
-	}
-
-	for _, table := range tables {
-		if err := dumpTableSQL(bw, database, driver, table); err != nil {
-			return fmt.Errorf("dump table %s: %w", table, err)
-		}
-	}
-
-	// Restore the session variables saved in the header block.
-	if driver == DriverMySQL {
-		fmt.Fprintln(bw)
-		fmt.Fprintln(bw, "/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;")
-		fmt.Fprintln(bw, "/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;")
-		fmt.Fprintln(bw, "/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;")
-		fmt.Fprintln(bw, "/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;")
-		fmt.Fprintln(bw, "/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;")
-		fmt.Fprintln(bw, "/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;")
+		fmt.Fprintln(w, "/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;")
+		fmt.Fprintln(w, "/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;")
+		fmt.Fprintln(w, "/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;")
+		fmt.Fprintln(w, "SET NAMES utf8mb4;")
+		fmt.Fprintln(w, "/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;")
+		fmt.Fprintln(w, "/*!40101 SET @OLD_SQL_MODE='NO_AUTO_VALUE_ON_ZERO', SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;")
+		fmt.Fprintln(w, "/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;")
+		fmt.Fprintln(w)
 	}
 	return nil
 }
 
-func dumpTableSQL(bw *bufio.Writer, database DB, driver Driver, table string) error {
+// DumpFooter writes the dump epilogue: (MySQL) session-variable restore. It is
+// the last stage of an incremental dump.
+func DumpFooter(w io.Writer, driver Driver) error {
+	if driver == DriverMySQL {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;")
+		fmt.Fprintln(w, "/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;")
+		fmt.Fprintln(w, "/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;")
+		fmt.Fprintln(w, "/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;")
+		fmt.Fprintln(w, "/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;")
+		fmt.Fprintln(w, "/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;")
+	}
+	return nil
+}
+
+// DumpTable writes a single table's DROP, CREATE, and INSERT statements.
+func DumpTable(w io.Writer, database DB, driver Driver, table string) error {
 	cols, err := database.TableColumnInfo(table)
 	if err != nil {
 		return err
@@ -96,18 +106,18 @@ func dumpTableSQL(bw *bufio.Writer, database DB, driver Driver, table string) er
 		return err
 	}
 
-	fmt.Fprintf(bw, "--\n-- Table: %s\n--\n", table)
-	fmt.Fprintf(bw, "DROP TABLE IF EXISTS %s;\n", quoteIdent(driver, table))
+	fmt.Fprintf(w, "--\n-- Table: %s\n--\n", table)
+	fmt.Fprintf(w, "DROP TABLE IF EXISTS %s;\n", quoteIdent(driver, table))
 
 	createSQL := buildCreateTableFromInfo(driver, table, cols, fks)
-	fmt.Fprintf(bw, "%s;\n\n", createSQL)
+	fmt.Fprintf(w, "%s;\n\n", createSQL)
 
 	result, err := database.Execute("SELECT * FROM " + quoteIdent(driver, table))
 	if err != nil {
 		return err
 	}
 	if len(result.Rows) == 0 {
-		fmt.Fprintln(bw)
+		fmt.Fprintln(w)
 		return nil
 	}
 
@@ -122,30 +132,30 @@ func dumpTableSQL(bw *bufio.Writer, database DB, driver Driver, table string) er
 	// Lock the table for writing during the inserts, then release.
 	tableIdent := quoteIdent(driver, table)
 	if driver == DriverMySQL {
-		fmt.Fprintf(bw, "LOCK TABLES %s WRITE;\n", tableIdent)
-		fmt.Fprintf(bw, "/*!40000 ALTER TABLE %s DISABLE KEYS */;\n", tableIdent)
+		fmt.Fprintf(w, "LOCK TABLES %s WRITE;\n", tableIdent)
+		fmt.Fprintf(w, "/*!40000 ALTER TABLE %s DISABLE KEYS */;\n", tableIdent)
 	}
 	for i, row := range result.Rows {
 		if i%insertBatchSize == 0 {
 			if i > 0 {
-				fmt.Fprintln(bw, ";")
+				fmt.Fprintln(w, ";")
 			}
-			fmt.Fprintf(bw, "INSERT INTO %s (%s) VALUES\n", tableIdent, colList)
+			fmt.Fprintf(w, "INSERT INTO %s (%s) VALUES\n", tableIdent, colList)
 		} else {
-			fmt.Fprintln(bw, ",")
+			fmt.Fprintln(w, ",")
 		}
 		values := make([]string, len(row))
 		for j, val := range row {
 			values[j] = formatSQLValue(val, colTypes[j])
 		}
-		fmt.Fprintf(bw, "  (%s)", strings.Join(values, ", "))
+		fmt.Fprintf(w, "  (%s)", strings.Join(values, ", "))
 	}
-	fmt.Fprintln(bw, ";")
+	fmt.Fprintln(w, ";")
 	if driver == DriverMySQL {
-		fmt.Fprintf(bw, "/*!40000 ALTER TABLE %s ENABLE KEYS */;\n", tableIdent)
-		fmt.Fprintln(bw, "UNLOCK TABLES;")
+		fmt.Fprintf(w, "/*!40000 ALTER TABLE %s ENABLE KEYS */;\n", tableIdent)
+		fmt.Fprintln(w, "UNLOCK TABLES;")
 	}
-	fmt.Fprintln(bw)
+	fmt.Fprintln(w)
 	return nil
 }
 
