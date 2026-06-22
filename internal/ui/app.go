@@ -167,6 +167,11 @@ type Model struct {
 	// Truncate confirmation dialog (non-empty table name while pending).
 	truncateConfirm string
 
+	// Drop-table confirmation dialog (non-empty table name while pending).
+	// Requires the user to type the table name exactly to proceed.
+	dropTableConfirm string
+	dropTableInput   string
+
 	// Row deletion confirmation dialog (non-empty table name while pending).
 	deleteRowsConfirmTable string
 	deleteRowsConfirmQuery string
@@ -1698,6 +1703,8 @@ func schemaChangeMessage(action db.SchemaAction, table string) string {
 		return fmt.Sprintf("changed column default on %s", table)
 	case db.SchemaDropColumn:
 		return fmt.Sprintf("dropped column from %s", table)
+	case db.SchemaDropTable:
+		return fmt.Sprintf("dropped table %s", table)
 	default:
 		return fmt.Sprintf("updated schema on %s", table)
 	}
@@ -2041,6 +2048,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.schemaMsg = fmt.Sprintf("created table %s", msg.table)
 				m.loadTables()
 				m.syncSidebarCursorToTable(msg.table)
+			} else if msg.action == db.SchemaDropTable {
+				m.schemaMsg = fmt.Sprintf("dropped table %s", msg.table)
+				delete(m.expanded, msg.table)
+				delete(m.columnCache, msg.table)
+				m.loadTables()
+				// Clamp the sidebar cursor into the (now shorter) list.
+				items := m.sidebarItems()
+				if len(items) == 0 {
+					m.sidebarCursor = 0
+				} else if m.sidebarCursor >= len(items) {
+					m.sidebarCursor = len(items) - 1
+				}
+				if m.schemaEditor.IsVisible() && m.schemaEditor.Table() == msg.table {
+					m.schemaEditor.Hide()
+				}
+				// If the results panel was showing the dropped table, clear it so
+				// the stale query isn't re-run (which would error).
+				if m.resultsShowTable(msg.table) {
+					m.results.Clear()
+					m.lastQuery = ""
+					m.baseQuery = ""
+					m.filters = nil
+					m.editor.SetValue("")
+				}
 			} else {
 				m.schemaMsg = schemaChangeMessage(msg.action, msg.table)
 				m = m.refreshTableSchemaSync(msg.table)
@@ -2385,6 +2416,39 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if msg.Type == tea.KeyRunes {
 			m.columnPicker.FilterAddChar(msg.String())
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Drop-table typed-name confirmation is modal — intercept all keys.
+	if m.dropTableConfirm != "" {
+		switch msg.String() {
+		case "enter":
+			if m.dropTableInput == m.dropTableConfirm {
+				table := m.dropTableConfirm
+				m.dropTableConfirm = ""
+				m.dropTableInput = ""
+				sql, err := db.BuildDropTableSQL(m.connection.Config().Driver, table)
+				if err != nil {
+					m.schemaMsg = fmt.Sprintf("drop table failed: %v", err)
+					return m, nil
+				}
+				return m, m.execSchemaDDL(table, sql, db.SchemaDropTable, "")
+			}
+			return m, nil
+		case "esc", "ctrl+c":
+			m.dropTableConfirm = ""
+			m.dropTableInput = ""
+			return m, nil
+		case "backspace":
+			if len(m.dropTableInput) > 0 {
+				m.dropTableInput = m.dropTableInput[:len(m.dropTableInput)-1]
+			}
+			return m, nil
+		}
+		if msg.Type == tea.KeyRunes {
+			m.dropTableInput += msg.String()
 			return m, nil
 		}
 		return m, nil
@@ -3281,6 +3345,13 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			item := m.currentSidebarItem()
 			if item != nil && !item.isColumn {
 				m.truncateConfirm = item.text
+			}
+		case "D":
+			m.sidebarPendingG = false
+			item := m.currentSidebarItem()
+			if item != nil && !item.isColumn {
+				m.dropTableConfirm = item.text
+				m.dropTableInput = ""
 			}
 		case "r":
 			m.sidebarPendingG = false
@@ -4231,6 +4302,17 @@ func (m Model) viewWorkspace() string {
 	if m.truncateConfirm != "" {
 		prompt := fmt.Sprintf("Truncate table %s?\nAll rows will be permanently deleted.", m.truncateConfirm)
 		dialog := renderConfirmDialog(prompt)
+		dlgW := lipgloss.Width(dialog)
+		dlgH := lipgloss.Height(dialog)
+		dlgX := (m.width - dlgW) / 2
+		dlgY := (m.height - 1 - dlgH) / 2
+		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
+	// Overlay drop-table typed confirmation dialog if visible.
+	if m.dropTableConfirm != "" {
+		prompt := fmt.Sprintf("Drop table %s?\nThis permanently deletes the table, data, and indexes.", m.dropTableConfirm)
+		dialog := renderTypedConfirmDialog(prompt, m.dropTableConfirm, m.dropTableInput)
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)
 		dlgX := (m.width - dlgW) / 2

@@ -296,6 +296,14 @@ func ValidateDropColumn(info TableColumnInfo) error {
 	return nil
 }
 
+// BuildDropTableSQL generates a DROP TABLE statement.
+func BuildDropTableSQL(driver Driver, table string) (string, error) {
+	if strings.TrimSpace(table) == "" {
+		return "", fmt.Errorf("table name is required")
+	}
+	return fmt.Sprintf("DROP TABLE %s", quoteIdent(driver, table)), nil
+}
+
 // BuildDropColumnSQL generates a MySQL ALTER TABLE ... DROP COLUMN statement.
 func BuildDropColumnSQL(driver Driver, table, column string, info TableColumnInfo) (string, error) {
 	if driver != DriverMySQL {
@@ -351,12 +359,13 @@ const (
 	SchemaModifyNullable  SchemaAction = "modify_nullable"
 	SchemaModifyDefault   SchemaAction = "modify_default"
 	SchemaDropColumn      SchemaAction = "drop_column"
+	SchemaDropTable       SchemaAction = "drop_table"
 )
 
 // SchemaSupports reports whether a driver supports a schema action.
 func SchemaSupports(driver Driver, action SchemaAction) bool {
 	switch action {
-	case SchemaAddColumn, SchemaCreateTable, SchemaRenameTable, SchemaRenameColumn:
+	case SchemaAddColumn, SchemaCreateTable, SchemaRenameTable, SchemaRenameColumn, SchemaDropTable:
 		return true
 	case SchemaModifyType, SchemaModifyNullable, SchemaModifyDefault, SchemaDropColumn:
 		return driver == DriverMySQL
@@ -384,6 +393,8 @@ func SchemaActionLabel(action SchemaAction) string {
 		return "Change default"
 	case SchemaDropColumn:
 		return "Drop column"
+	case SchemaDropTable:
+		return "Drop table"
 	default:
 		return string(action)
 	}

@@ -73,6 +73,36 @@ func renderConfirmDialog(prompt string) string {
 		)
 }
 
+// renderTypedConfirmDialog builds a destructive-action overlay that requires
+// the user to type an exact value (e.g. a table name) before it will proceed.
+func renderTypedConfirmDialog(prompt, hint, input string) string {
+	const w = 52
+	// Each line is rendered at a fixed width with center alignment so the
+	// whole stack stays centered regardless of per-line length.
+	promptBlock := lipgloss.NewStyle().
+		Width(w).Align(lipgloss.Center).Foreground(colorPrimary).
+		Render(prompt)
+	hintLine := lipgloss.NewStyle().
+		Width(w).Align(lipgloss.Center).Foreground(colorMuted).
+		Render("Type " + hint + " to confirm:")
+	inputLine := lipgloss.NewStyle().
+		Width(w).Align(lipgloss.Center).Foreground(colorPrimary).
+		Render("> " + input + "_")
+	footer := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(
+		lipgloss.NewStyle().Foreground(colorLabel).Render("enter") + mutedStyle.Render(" confirm    ") +
+			lipgloss.NewStyle().Foreground(colorLabel).Render("esc") + mutedStyle.Render(" cancel"),
+	)
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPrimary).
+		Padding(1, 3).
+		Render(
+			lipgloss.JoinVertical(lipgloss.Center,
+				promptBlock, "", hintLine, inputLine, "", footer,
+			),
+		)
+}
+
 // renderSQLConfirmDialog builds a confirmation overlay that includes SQL preview.
 func renderSQLConfirmDialog(prompt, sql string) string {
 	sqlStyled := lipgloss.NewStyle().Foreground(colorLabel).Render(sql)

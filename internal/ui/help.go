@@ -80,6 +80,7 @@ func helpSections() []helpSection {
 				{"a", "add column"},
 				{"r", "rename table"},
 				{"T", "truncate table"},
+				{"D", "drop table"},
 				{"N", "new table (grid editor)"},
 				{"/", "filter tables"},
 			},

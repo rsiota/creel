@@ -212,6 +212,31 @@ func TestBuildDropColumnSQL(t *testing.T) {
 	}
 }
 
+func TestBuildDropTableSQL(t *testing.T) {
+	// Empty table name is rejected.
+	if _, err := BuildDropTableSQL(DriverSQLite, "  "); err == nil {
+		t.Fatal("expected error for empty table name")
+	}
+
+	// SQLite uses double-quote identifiers.
+	sql, err := BuildDropTableSQL(DriverSQLite, "users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `DROP TABLE "users"`; sql != want {
+		t.Fatalf("sqlite sql = %q, want %q", sql, want)
+	}
+
+	// MySQL uses backtick identifiers.
+	sql, err = BuildDropTableSQL(DriverMySQL, "users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "DROP TABLE `users`"; sql != want {
+		t.Fatalf("mysql sql = %q, want %q", sql, want)
+	}
+}
+
 func TestSchemaActionNeedsConfirm(t *testing.T) {
 	if !SchemaActionNeedsConfirm(SchemaDropColumn) {
 		t.Fatal("drop column should require confirm")
@@ -236,6 +261,15 @@ func TestSchemaSupports(t *testing.T) {
 	}
 	if !SchemaSupports(DriverMySQL, SchemaCreateTable) {
 		t.Fatal("mysql should support create table")
+	}
+	if !SchemaSupports(DriverSQLite, SchemaDropTable) {
+		t.Fatal("sqlite should support drop table")
+	}
+	if !SchemaSupports(DriverMySQL, SchemaDropTable) {
+		t.Fatal("mysql should support drop table")
+	}
+	if SchemaActionLabel(SchemaDropTable) != "Drop table" {
+		t.Fatal("drop table label mismatch")
 	}
 	actions := ColumnSchemaActions(DriverSQLite)
 	if len(actions) != 1 || actions[0] != SchemaRenameColumn {
