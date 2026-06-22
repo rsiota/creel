@@ -341,8 +341,19 @@ func formatDefault(value string) string {
 	if numericDefaultPattern.MatchString(trimmed) {
 		return trimmed
 	}
+	if isSQLFunctionDefault(trimmed) {
+		return trimmed
+	}
 	escaped := strings.ReplaceAll(trimmed, `'`, `''`)
 	return "'" + escaped + "'"
+}
+
+// isSQLFunctionDefault reports whether a default value is a SQL function
+// expression (e.g. CURRENT_TIMESTAMP, now()) that must be left unquoted.
+var sqlFunctionDefaultPattern = regexp.MustCompile(`(?i)^(?:CURRENT_TIMESTAMP(?:\(\d*\))?|CURRENT_DATE|CURRENT_TIME|NOW\(\)|CURDATE\(\)|CURTIME\(\)|UUID\(\)|UNIX_TIMESTAMP\(\))$`)
+
+func isSQLFunctionDefault(value string) bool {
+	return sqlFunctionDefaultPattern.MatchString(value)
 }
 
 var numericDefaultPattern = regexp.MustCompile(`^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$`)

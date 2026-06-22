@@ -61,6 +61,8 @@ internal/ui/              — All Bubble Tea UI components
 - [x] Record inspector (Ctrl+O toggles right-side panel; vertical form editor that tracks results cursor)
 - [x] Help overlay (`?` toggles a full keybindings popup; status bar shows only context info — connection, table, dimensions, messages)
 - [x] Column hide/visibility (`H` hides cursor column, `g H` shows all, `v` opens a column-visibility overlay; hidden cols are display-only and survive same-table re-queries)
+- [x] Drop table (`D` in sidebar with typed-name confirmation)
+- [ ] DB export (pure-Go dumper: SQL done in `internal/db/dump.go`; CSV/JSON + UI picker pending)
 
 ## Config Format (~/.config/gsql/config.yaml)
 ```yaml

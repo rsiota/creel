@@ -82,6 +82,7 @@ func helpSections() []helpSection {
 				{"T", "truncate table"},
 				{"D", "drop table"},
 				{"N", "new table (grid editor)"},
+				{"X", "export database"},
 				{"/", "filter tables"},
 			},
 		},
@@ -94,6 +95,17 @@ func helpSections() []helpSection {
 				{"enter", "apply change"},
 				{"dd", "drop column"},
 				{"esc", "done"},
+			},
+		},
+		{
+			title: "Export Picker",
+			bindings: []helpBinding{
+				{"j/k", "move"},
+				{"space", "toggle table"},
+				{"a", "select all"},
+				{"n", "select none"},
+				{"enter", "export"},
+				{"esc", "cancel"},
 			},
 		},
 		{

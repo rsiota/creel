@@ -425,3 +425,30 @@ func TestBuildCreateTableSQL_MySQL(t *testing.T) {
 		t.Fatal("expected error for duplicate table")
 	}
 }
+
+func TestFormatDefault(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"NULL", "NULL"},
+		{"null", "NULL"},
+		{"42", "42"},
+		{"3.14", "3.14"},
+		{"hello", "'hello'"},
+		{"it's", "'it''s'"},
+		{"CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP"},
+		{"current_timestamp", "current_timestamp"},
+		{"CURRENT_TIMESTAMP(3)", "CURRENT_TIMESTAMP(3)"},
+		{"CURRENT_DATE", "CURRENT_DATE"},
+		{"now()", "now()"},
+		{"uuid()", "uuid()"},
+		{"2024-01-01 00:00:00", "'2024-01-01 00:00:00'"},
+	}
+	for _, tc := range tests {
+		got := formatDefault(tc.input)
+		if got != tc.want {
+			t.Errorf("formatDefault(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}

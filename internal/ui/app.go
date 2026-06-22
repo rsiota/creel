@@ -117,6 +117,13 @@ type exportDoneMsg struct {
 	err   error
 }
 
+// exportDumpMsg carries the result of an async SQL dump export.
+type exportDumpMsg struct {
+	path   string
+	tables int
+	err    error
+}
+
 // queryStackEntry stores navigation state for returning after following a FK.
 type queryStackEntry struct {
 	query     string
@@ -143,6 +150,7 @@ type Model struct {
 	help         HelpPanel
 	filterPicker FilterPicker
 	columnPicker ColumnPicker
+	exportPicker ExportPicker
 	addColumnForm   AddColumnForm
 	tableRenameForm TableRenameForm
 	tableDesigner   TableDesigner
@@ -241,6 +249,7 @@ func NewModel(cfg *config.Config) Model {
 		help:         NewHelpPanel(),
 		filterPicker: NewFilterPicker(),
 		columnPicker: NewColumnPicker(),
+		exportPicker: NewExportPicker(),
 		addColumnForm:   NewAddColumnForm(),
 		tableRenameForm: NewTableRenameForm(),
 		tableDesigner:   NewTableDesigner(),
@@ -974,7 +983,45 @@ func serializeCSV(cols []string, rows [][]string) (string, error) {
 	return buf.String(), nil
 }
 
-// toggleSort cycles the sort direction on the current column:
+// execExportDump runs a SQL dump of the selected tables asynchronously,
+// writing to ~/Downloads with a timestamped filename.
+func (m *Model) execExportDump(tables []string) tea.Cmd {
+	if m.connection == nil || len(tables) == 0 {
+		return nil
+	}
+	conn := m.connection
+	driver := conn.Config().Driver
+	format := m.exportPicker.CurrentFormat()
+	realDBName := conn.Config().Database
+	fileLabel := filepath.Base(realDBName)
+	if fileLabel == "" {
+		fileLabel = "database"
+	}
+	timestamp := time.Now().Format("20060102_150405")
+	ext := string(format)
+	filename := fmt.Sprintf("gsql_%s_%s.%s", fileLabel, timestamp, ext)
+
+	return func() tea.Msg {
+		dir, err := os.UserHomeDir()
+		if err != nil {
+			return exportDumpMsg{err: err}
+		}
+		dir = filepath.Join(dir, "Downloads")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return exportDumpMsg{err: err}
+		}
+		path := filepath.Join(dir, filename)
+		f, err := os.Create(path)
+		if err != nil {
+			return exportDumpMsg{err: err}
+		}
+		defer f.Close()
+		if err := db.DumpTables(f, conn.DB(), driver, realDBName, tables, format); err != nil {
+			return exportDumpMsg{path: path, err: err}
+		}
+		return exportDumpMsg{path: path, tables: len(tables)}
+	}
+}
 // none → ASC → DESC → none.
 func (m *Model) toggleSort() tea.Cmd {
 	if !m.canFilter() || m.results.NumRows() == 0 {
@@ -2126,6 +2173,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case exportDoneMsg:
 		m.exportMsg = exportStatusMessage(msg.path, msg.count, msg.err)
 		return m, nil
+
+	case exportDumpMsg:
+		if msg.err != nil {
+			m.exportMsg = fmt.Sprintf("export failed: %v", msg.err)
+		} else {
+			m.exportMsg = fmt.Sprintf("dumped %d table%s → %s", msg.tables, pluralIf(msg.tables != 1, "s"), msg.path)
+		}
+		return m, nil
 	}
 
 	if m.state == stateWorkspace {
@@ -2416,6 +2471,38 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if msg.Type == tea.KeyRunes {
 			m.columnPicker.FilterAddChar(msg.String())
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Export picker is modal — intercept all keys.
+	if m.exportPicker.IsVisible() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.exportPicker.Hide()
+			return m, nil
+		case "enter":
+			tables := m.exportPicker.SelectedTables()
+			if len(tables) == 0 {
+				return m, nil
+			}
+			m.exportPicker.Hide()
+			return m, m.execExportDump(tables)
+		case " ":
+			m.exportPicker.ToggleSelected()
+			return m, nil
+		case "a":
+			m.exportPicker.SelectAll()
+			return m, nil
+		case "n":
+			m.exportPicker.SelectNone()
+			return m, nil
+		case "up", "k":
+			m.exportPicker.CursorUp()
+			return m, nil
+		case "down", "j":
+			m.exportPicker.CursorDown()
 			return m, nil
 		}
 		return m, nil
@@ -3367,6 +3454,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "N":
 			m.sidebarPendingG = false
 			return m, m.openCreateTableForm()
+		case "X":
+			m.sidebarPendingG = false
+			m.exportPicker.Show(m.tables)
+			return m, nil
 		}
 		m.connList, cmd = m.connList.Update(msg)
 	case FocusInspector:
@@ -4388,6 +4479,18 @@ func (m Model) viewWorkspace() string {
 		popupX := sidebarWidth + 2 + cursorCol
 		popupY := 2 + cursorLine + 1
 		view = placeOverlay(view, popup, popupX, popupY)
+	}
+
+	// Overlay export picker if visible
+	if m.exportPicker.IsVisible() {
+		pw, ph := popupDim()
+		m.exportPicker.SetSize(pw, ph)
+		exportPanel := m.exportPicker.View()
+		panelW := lipgloss.Width(exportPanel)
+		panelH := lipgloss.Height(exportPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, exportPanel, panelX, panelY)
 	}
 
 	// Overlay help panel if visible
