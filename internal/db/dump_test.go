@@ -49,8 +49,6 @@ func TestDumpSQL_BasicTable(t *testing.T) {
 	// Must contain expected structural elements.
 	for _, want := range []string{
 		"-- gsql SQL dump",
-		"BEGIN;",
-		"COMMIT;",
 		`DROP TABLE IF EXISTS "users";`,
 		`CREATE TABLE "users" (`,
 		`"id" INTEGER PRIMARY KEY`,
@@ -62,6 +60,13 @@ func TestDumpSQL_BasicTable(t *testing.T) {
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in dump:\n%s", want, out)
+		}
+	}
+
+	// The dump must no longer contain these wrapper statements.
+	for _, banned := range []string{"BEGIN;", "COMMIT;", "FOREIGN_KEY_CHECKS", "SET NAMES"} {
+		if strings.Contains(out, banned) {
+			t.Errorf("unexpected %q in dump:\n%s", banned, out)
 		}
 	}
 }
@@ -410,7 +415,13 @@ func splitSQLStatements(dump string) []string {
 		}
 		if c == ';' && !inString {
 			stmt := strings.TrimSpace(current.String())
-			if stmt != "" && stmt != "BEGIN" && stmt != "COMMIT" {
+			// Skip transaction wrappers and MySQL-only statements that SQLite
+			// (used as the restore target in these tests) cannot execute.
+			skip := stmt == "" || stmt == "BEGIN" || stmt == "COMMIT"
+			skip = skip || strings.HasPrefix(stmt, "SET NAMES") ||
+				strings.HasPrefix(stmt, "LOCK TABLES") ||
+				stmt == "UNLOCK TABLES"
+			if !skip {
 				stmts = append(stmts, stmt)
 			}
 			current.Reset()

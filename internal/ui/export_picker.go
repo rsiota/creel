@@ -31,10 +31,11 @@ func NewExportPicker() ExportPicker {
 }
 
 // Show populates the picker with tables and marks them all selected by default.
+// selectedTable (if non-empty) positions the cursor on that table.
 func (p *ExportPicker) Show(tables []string, selectedTable string) {
 	p.items = make([]exportItem, len(tables))
 	for i, t := range tables {
-		p.items[i] = exportItem{name: t, marked: t == selectedTable}
+		p.items[i] = exportItem{name: t, marked: true}
 	}
 	// Position cursor on the selected table if present.
 	p.cursor = 0

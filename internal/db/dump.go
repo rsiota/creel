@@ -53,24 +53,19 @@ func dumpSQL(w io.Writer, database DB, driver Driver, dbName string, tables []st
 	fmt.Fprintf(bw, "-- tables: %d\n", len(tables))
 	fmt.Fprintf(bw, "\n")
 
-	// For MySQL, select the target database so the dump is self-contained.
-	if driver == DriverMySQL && dbName != "" {
-		fmt.Fprintf(bw, "USE %s;\n", quoteIdent(driver, dbName))
+	// MySQL dumps use version-gated session setup comments (the same header
+	// block emitted by mysqldump) so the dump restores cleanly regardless of
+	// the target server's defaults. SQLite has no analogous session state.
+	if driver == DriverMySQL {
+		fmt.Fprintln(bw, "/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;")
+		fmt.Fprintln(bw, "/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;")
+		fmt.Fprintln(bw, "/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;")
+		fmt.Fprintln(bw, "SET NAMES utf8mb4;")
+		fmt.Fprintln(bw, "/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;")
+		fmt.Fprintln(bw, "/*!40101 SET @OLD_SQL_MODE='NO_AUTO_VALUE_ON_ZERO', SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;")
+		fmt.Fprintln(bw, "/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;")
 		fmt.Fprintln(bw)
 	}
-
-	// Disable foreign key checks so tables can be dropped and recreated in
-	// any order without constraint violations.
-	switch driver {
-	case DriverMySQL:
-		fmt.Fprintln(bw, "SET FOREIGN_KEY_CHECKS = 0;")
-	default:
-		fmt.Fprintln(bw, "PRAGMA foreign_keys = OFF;")
-	}
-	fmt.Fprintln(bw)
-
-	fmt.Fprintln(bw, "BEGIN;")
-	fmt.Fprintln(bw)
 
 	for _, table := range tables {
 		if err := dumpTableSQL(bw, database, driver, table); err != nil {
@@ -78,15 +73,15 @@ func dumpSQL(w io.Writer, database DB, driver Driver, dbName string, tables []st
 		}
 	}
 
-	fmt.Fprintln(bw, "COMMIT;")
-	fmt.Fprintln(bw)
-
-	// Re-enable foreign key checks.
-	switch driver {
-	case DriverMySQL:
-		fmt.Fprintln(bw, "SET FOREIGN_KEY_CHECKS = 1;")
-	default:
-		fmt.Fprintln(bw, "PRAGMA foreign_keys = ON;")
+	// Restore the session variables saved in the header block.
+	if driver == DriverMySQL {
+		fmt.Fprintln(bw)
+		fmt.Fprintln(bw, "/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;")
+		fmt.Fprintln(bw, "/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;")
+		fmt.Fprintln(bw, "/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;")
+		fmt.Fprintln(bw, "/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;")
+		fmt.Fprintln(bw, "/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;")
+		fmt.Fprintln(bw, "/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;")
 	}
 	return nil
 }
@@ -124,7 +119,12 @@ func dumpTableSQL(bw *bufio.Writer, database DB, driver Driver, table string) er
 	}
 	colList := strings.Join(colNames, ", ")
 
+	// Lock the table for writing during the inserts, then release.
 	tableIdent := quoteIdent(driver, table)
+	if driver == DriverMySQL {
+		fmt.Fprintf(bw, "LOCK TABLES %s WRITE;\n", tableIdent)
+		fmt.Fprintf(bw, "/*!40000 ALTER TABLE %s DISABLE KEYS */;\n", tableIdent)
+	}
 	for i, row := range result.Rows {
 		if i%insertBatchSize == 0 {
 			if i > 0 {
@@ -141,6 +141,10 @@ func dumpTableSQL(bw *bufio.Writer, database DB, driver Driver, table string) er
 		fmt.Fprintf(bw, "  (%s)", strings.Join(values, ", "))
 	}
 	fmt.Fprintln(bw, ";")
+	if driver == DriverMySQL {
+		fmt.Fprintf(bw, "/*!40000 ALTER TABLE %s ENABLE KEYS */;\n", tableIdent)
+		fmt.Fprintln(bw, "UNLOCK TABLES;")
+	}
 	fmt.Fprintln(bw)
 	return nil
 }

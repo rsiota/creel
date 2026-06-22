@@ -997,9 +997,9 @@ func (m *Model) execExportDump(tables []string) tea.Cmd {
 	if fileLabel == "" {
 		fileLabel = "database"
 	}
-	timestamp := time.Now().Format("20060102_150405")
+	timestamp := time.Now().Format("2006-01-02")
 	ext := string(format)
-	filename := fmt.Sprintf("gsql_%s_%s.%s", fileLabel, timestamp, ext)
+	filename := fmt.Sprintf("%s_%s.%s", fileLabel, timestamp, ext)
 
 	return func() tea.Msg {
 		dir, err := os.UserHomeDir()
@@ -3456,7 +3456,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.openCreateTableForm()
 		case "X":
 			m.sidebarPendingG = false
-			m.exportPicker.Show(m.tables)
+			m.exportPicker.Show(m.tables, m.currentTable())
 			return m, nil
 		}
 		m.connList, cmd = m.connList.Update(msg)

@@ -8,7 +8,7 @@ import (
 
 func TestExportPicker_ShowAllMarked(t *testing.T) {
 	p := NewExportPicker()
-	p.Show([]string{"users", "orders", "items"})
+	p.Show([]string{"users", "orders", "items"}, "orders")
 
 	if !p.IsVisible() {
 		t.Fatal("picker should be visible after Show")
@@ -24,7 +24,7 @@ func TestExportPicker_ShowAllMarked(t *testing.T) {
 
 func TestExportPicker_Toggle(t *testing.T) {
 	p := NewExportPicker()
-	p.Show([]string{"a", "b", "c"})
+	p.Show([]string{"a", "b", "c"}, "")
 
 	// Cursor starts at 0 — toggle it off.
 	p.ToggleSelected()
@@ -41,7 +41,7 @@ func TestExportPicker_Toggle(t *testing.T) {
 
 func TestExportPicker_SelectAllNone(t *testing.T) {
 	p := NewExportPicker()
-	p.Show([]string{"a", "b"})
+	p.Show([]string{"a", "b"}, "")
 
 	p.SelectNone()
 	if p.MarkedCount() != 0 {
@@ -59,7 +59,7 @@ func TestExportPicker_SelectAllNone(t *testing.T) {
 
 func TestExportPicker_Hide(t *testing.T) {
 	p := NewExportPicker()
-	p.Show([]string{"a"})
+	p.Show([]string{"a"}, "")
 	p.Hide()
 
 	if p.IsVisible() {
@@ -79,7 +79,7 @@ func TestExportPicker_Format(t *testing.T) {
 
 func TestExportPicker_CursorNavigation(t *testing.T) {
 	p := NewExportPicker()
-	p.Show([]string{"a", "b", "c"})
+	p.Show([]string{"a", "b", "c"}, "")
 
 	p.CursorDown()
 	if p.cursor != 1 {
