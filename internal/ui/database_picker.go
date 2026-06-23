@@ -208,7 +208,9 @@ func (p DatabasePicker) View() string {
 		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", p.scrollRow+1, end, len(items)))
 	}
 
-	footer := filterLine + "  " + scrollInfo
+	hint := mutedStyle.Render("D drop database")
+
+	footer := filterLine + "  " + scrollInfo + "  " + hint
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,

@@ -304,6 +304,26 @@ func BuildDropTableSQL(driver Driver, table string) (string, error) {
 	return fmt.Sprintf("DROP TABLE %s", quoteIdent(driver, table)), nil
 }
 
+// BuildDropDatabaseSQL generates a DROP DATABASE statement (MySQL only).
+// Dropping a database permanently deletes every table and all data within it.
+func BuildDropDatabaseSQL(driver Driver, name string) (string, error) {
+	if driver != DriverMySQL {
+		return "", fmt.Errorf("drop database is not supported for %s", driver)
+	}
+	if strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("database name is required")
+	}
+	if err := ValidateIdentifier(name); err != nil {
+		return "", err
+	}
+	// Guard against dropping system schemas.
+	switch strings.ToLower(name) {
+	case "mysql", "information_schema", "performance_schema", "sys":
+		return "", fmt.Errorf("cannot drop system database %q", name)
+	}
+	return fmt.Sprintf("DROP DATABASE %s", quoteIdent(driver, name)), nil
+}
+
 // BuildDropColumnSQL generates a MySQL ALTER TABLE ... DROP COLUMN statement.
 func BuildDropColumnSQL(driver Driver, table, column string, info TableColumnInfo) (string, error) {
 	if driver != DriverMySQL {

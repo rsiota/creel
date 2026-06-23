@@ -79,6 +79,12 @@ type schemaResultMsg struct {
 	err      error
 }
 
+// dropDBResultMsg carries the result of a DROP DATABASE operation.
+type dropDBResultMsg struct {
+	database string
+	err      error
+}
+
 // queryExecutedMsg is sent when a query finishes executing.
 type queryExecutedMsg struct {
 	query    string
@@ -220,6 +226,10 @@ type Model struct {
 	// Requires the user to type the table name exactly to proceed.
 	dropTableConfirm string
 	dropTableInput   string
+
+	// Drop-database typed confirmation (triggered from the database picker).
+	dropDBConfirm string
+	dropDBInput   string
 
 	// Row deletion confirmation dialog (non-empty table name while pending).
 	deleteRowsConfirmTable string
@@ -1900,6 +1910,27 @@ func (m *Model) setSchemaConfirm(table, sql string, action db.SchemaAction) {
 	m.schemaConfirmAction = action
 }
 
+// execDropDatabase runs DROP DATABASE asynchronously and returns a
+// dropDBResultMsg. After the drop, the caller is responsible for refreshing the
+// database picker (and reconnecting if the current database was dropped).
+func (m *Model) execDropDatabase(name string) tea.Cmd {
+	if m.connection == nil || name == "" {
+		return nil
+	}
+	driver := m.connection.Config().Driver
+	sql, err := db.BuildDropDatabaseSQL(driver, name)
+	if err != nil {
+		return func() tea.Msg {
+			return dropDBResultMsg{database: name, err: err}
+		}
+	}
+	conn := m.connection
+	return func() tea.Msg {
+		_, err := conn.DB().Exec(sql)
+		return dropDBResultMsg{database: name, err: err}
+	}
+}
+
 func (m *Model) clearSchemaConfirm() {
 	m.schemaConfirmSQL = ""
 	m.schemaConfirmTable = ""
@@ -2415,6 +2446,23 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.clearFlash()
 		}
 		return m, nil
+
+	case dropDBResultMsg:
+		if msg.err != nil {
+			m.exportMsg = fmt.Sprintf("drop database failed: %v", msg.err)
+			return m, nil
+		}
+		m.exportMsg = fmt.Sprintf("dropped database %s", msg.database)
+		// If the dropped database was the current one, reconnect without a
+		// default database so the picker forces a new selection.
+		wasCurrent := m.connection != nil &&
+			m.connection.Config().Database == msg.database
+		if wasCurrent {
+			if err := m.connection.UseDatabase(""); err != nil {
+				m.connError = err.Error()
+			}
+		}
+		return m, m.openDatabasePicker(wasCurrent)
 	}
 
 	if m.state == stateWorkspace {
@@ -2596,6 +2644,33 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.help.Hide()
 		return m, nil
 	}
+	// Drop-database typed confirmation — intercepts all keys when active.
+	if m.dropDBConfirm != "" {
+		switch msg.String() {
+		case "enter":
+			if m.dropDBInput == m.dropDBConfirm {
+				dbName := m.dropDBConfirm
+				m.dropDBConfirm = ""
+				m.dropDBInput = ""
+				return m, m.execDropDatabase(dbName)
+			}
+			return m, nil
+		case "esc", "ctrl+c":
+			m.dropDBConfirm = ""
+			m.dropDBInput = ""
+			return m, nil
+		case "backspace":
+			if len(m.dropDBInput) > 0 {
+				m.dropDBInput = m.dropDBInput[:len(m.dropDBInput)-1]
+			}
+			return m, nil
+		}
+		if msg.Type == tea.KeyRunes {
+			m.dropDBInput += msg.String()
+			return m, nil
+		}
+		return m, nil
+	}
 
 	// Database picker is modal — intercept all keys when visible.
 	if m.dbPicker.IsVisible() {
@@ -2617,6 +2692,13 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			name := m.dbPicker.SelectedDatabase()
 			m.dbPicker.Hide()
 			return m, m.selectDatabase(name)
+		case "D":
+			name := m.dbPicker.SelectedDatabase()
+			if name != "" {
+				m.dropDBConfirm = name
+				m.dropDBInput = ""
+			}
+			return m, nil
 		case "up":
 			m.dbPicker.CursorUp()
 			return m, nil
@@ -4659,6 +4741,17 @@ func (m Model) viewWorkspace() string {
 	if m.dropTableConfirm != "" {
 		prompt := fmt.Sprintf("Drop table %s?\nThis permanently deletes the table, data, and indexes.", m.dropTableConfirm)
 		dialog := renderTypedConfirmDialog(prompt, m.dropTableConfirm, m.dropTableInput)
+		dlgW := lipgloss.Width(dialog)
+		dlgH := lipgloss.Height(dialog)
+		dlgX := (m.width - dlgW) / 2
+		dlgY := (m.height - 1 - dlgH) / 2
+		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
+	// Overlay drop-database typed confirmation dialog if visible.
+	if m.dropDBConfirm != "" {
+		prompt := fmt.Sprintf("Drop database %s?\nThis permanently deletes every table and all data in the database.", m.dropDBConfirm)
+		dialog := renderTypedConfirmDialog(prompt, m.dropDBConfirm, m.dropDBInput)
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)
 		dlgX := (m.width - dlgW) / 2
