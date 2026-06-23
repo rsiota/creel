@@ -4740,7 +4740,7 @@ func (m Model) viewWorkspace() string {
 	// Overlay drop-table typed confirmation dialog if visible.
 	if m.dropTableConfirm != "" {
 		prompt := fmt.Sprintf("Drop table %s?\nThis permanently deletes the table, data, and indexes.", m.dropTableConfirm)
-		dialog := renderTypedConfirmDialog(prompt, m.dropTableConfirm, m.dropTableInput)
+		dialog := renderTypedConfirmDialog(prompt, m.dropTableConfirm, m.dropTableInput, 52, 0)
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)
 		dlgX := (m.width - dlgW) / 2
@@ -4748,10 +4748,13 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, dialog, dlgX, dlgY)
 	}
 
-	// Overlay drop-database typed confirmation dialog if visible.
+	// Overlay drop-database typed confirmation dialog if visible. Sized to
+	// match the database picker so it replaces it cleanly, not a smaller box
+	// floating on top.
 	if m.dropDBConfirm != "" {
 		prompt := fmt.Sprintf("Drop database %s?\nThis permanently deletes every table and all data in the database.", m.dropDBConfirm)
-		dialog := renderTypedConfirmDialog(prompt, m.dropDBConfirm, m.dropDBInput)
+		pw, ph := popupDim()
+		dialog := renderTypedConfirmDialog(prompt, m.dropDBConfirm, m.dropDBInput, pw, ph)
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)
 		dlgX := (m.width - dlgW) / 2

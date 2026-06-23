@@ -75,32 +75,46 @@ func renderConfirmDialog(prompt string) string {
 
 // renderTypedConfirmDialog builds a destructive-action overlay that requires
 // the user to type an exact value (e.g. a table name) before it will proceed.
-func renderTypedConfirmDialog(prompt, hint, input string) string {
-	const w = 52
-	// Each line is rendered at a fixed width with center alignment so the
-	// whole stack stays centered regardless of per-line length.
+// renderTypedConfirmDialog builds a confirmation overlay requiring the user to
+// type an exact string. width/height are the desired TOTAL dimensions (including
+// border and padding); pass 0 for height for auto-sizing. When width/height
+// match a triggering modal (e.g. the database picker), the dialog replaces it
+// at the same size instead of appearing as a smaller box on top.
+func renderTypedConfirmDialog(prompt, hint, input string, width, height int) string {
+	// Content width = total width - border(2) - horizontal padding(3*2=6)
+	contentW := width - 2 - 6
+	if contentW < 30 {
+		contentW = 30
+	}
 	promptBlock := lipgloss.NewStyle().
-		Width(w).Align(lipgloss.Center).Foreground(colorPrimary).
+		Width(contentW).Align(lipgloss.Center).Foreground(colorPrimary).
 		Render(prompt)
 	hintLine := lipgloss.NewStyle().
-		Width(w).Align(lipgloss.Center).Foreground(colorMuted).
+		Width(contentW).Align(lipgloss.Center).Foreground(colorMuted).
 		Render("Type " + hint + " to confirm:")
 	inputLine := lipgloss.NewStyle().
-		Width(w).Align(lipgloss.Center).Foreground(colorPrimary).
+		Width(contentW).Align(lipgloss.Center).Foreground(colorPrimary).
 		Render("> " + input + "_")
-	footer := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(
+	footer := lipgloss.NewStyle().Width(contentW).Align(lipgloss.Center).Render(
 		lipgloss.NewStyle().Foreground(colorLabel).Render("enter") + mutedStyle.Render(" confirm    ") +
 			lipgloss.NewStyle().Foreground(colorLabel).Render("esc") + mutedStyle.Render(" cancel"),
 	)
-	return lipgloss.NewStyle().
+	content := lipgloss.JoinVertical(lipgloss.Center,
+		promptBlock, "", hintLine, inputLine, "", footer,
+	)
+	style := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
-		Padding(1, 3).
-		Render(
-			lipgloss.JoinVertical(lipgloss.Center,
-				promptBlock, "", hintLine, inputLine, "", footer,
-			),
-		)
+		Padding(1, 3)
+	if width > 0 {
+		// Width includes padding but not border; subtract border to match total.
+		style = style.Width(width - 2)
+	}
+	if height > 0 {
+		// Height includes padding but not border; subtract border to match total.
+		style = style.Height(height - 2)
+	}
+	return style.Render(content)
 }
 
 // renderSQLConfirmDialog builds a confirmation overlay that includes SQL preview.
