@@ -309,7 +309,7 @@ func (i *Inspector) StartFieldEdit(results ResultsTable) {
 		return
 	}
 
-	if !results.IsEditable() || results.NumRows() == 0 {
+	if !results.IsEditable() || !results.HasPrimaryKey() || results.NumRows() == 0 {
 		return
 	}
 	colName := results.ColumnName(col)

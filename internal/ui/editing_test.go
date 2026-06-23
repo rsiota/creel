@@ -66,6 +66,18 @@ func TestResultsTableEditState(t *testing.T) {
 	if !r.IsEditable() {
 		t.Error("should be editable after SetEditable")
 	}
+	if !r.HasPrimaryKey() {
+		t.Error("should have primary key after SetEditable with pk cols")
+	}
+
+	rNoPK := NewResultsTable()
+	rNoPK.SetEditable("notes", nil)
+	if !rNoPK.IsEditable() {
+		t.Error("should be editable without primary key")
+	}
+	if rNoPK.HasPrimaryKey() {
+		t.Error("should not report primary key when none configured")
+	}
 
 	// Cursor starts at (0,0)
 	if r.cursorRow != 0 || r.cursorCol != 0 {

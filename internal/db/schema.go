@@ -13,6 +13,7 @@ type ColumnDef struct {
 	NotNull    bool
 	HasDefault bool
 	Default    string
+	PrimaryKey bool
 }
 
 var identPattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
@@ -131,6 +132,9 @@ func BuildCreateTableSQL(driver Driver, table string, cols []ColumnDef, existing
 		}
 		first = false
 		fmt.Fprintf(&b, "\n    %s %s", quoteIdent(driver, name), colType)
+		if col.PrimaryKey {
+			b.WriteString(" PRIMARY KEY")
+		}
 		if col.NotNull {
 			b.WriteString(" NOT NULL")
 		}

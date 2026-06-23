@@ -1585,18 +1585,21 @@ func (m *Model) detectEditability(query string) {
 	}
 
 	pkCols, err := m.connection.DB().PrimaryKeys(table)
-	if err != nil || len(pkCols) == 0 {
+	if err != nil {
 		return
 	}
 
-	// Verify PK columns are present in the result set.
-	colSet := make(map[string]bool)
-	for _, c := range m.results.columns {
-		colSet[strings.ToLower(c)] = true
-	}
-	for _, pk := range pkCols {
-		if !colSet[strings.ToLower(pk)] {
-			return
+	// Row updates and deletes need PK columns in the result set. Inserts only
+	// need table metadata, so tables without a primary key stay insertable.
+	if len(pkCols) > 0 {
+		colSet := make(map[string]bool)
+		for _, c := range m.results.columns {
+			colSet[strings.ToLower(c)] = true
+		}
+		for _, pk := range pkCols {
+			if !colSet[strings.ToLower(pk)] {
+				return
+			}
 		}
 	}
 
@@ -3495,6 +3498,16 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		// Insert row must work on empty editable tables too.
+		if msg.String() == "A" {
+			if m.results.IsEditable() && !m.results.HasDirtyCells() && !m.inspector.IsInserting() {
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				m.startInsert()
+				return m, nil
+			}
+		}
+
 		// Cell cursor navigation.
 		if m.results.NumRows() > 0 {
 			switch msg.String() {
@@ -3577,7 +3590,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					return m, m.fetchColumnStats()
 				}
 			case "e", "i":
-				if !m.results.IsEditable() {
+				if !m.results.IsEditable() || !m.results.HasPrimaryKey() {
 					break
 				}
 				m.resultsPendingG = false
@@ -3614,13 +3627,6 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				return m, m.saveChanges()
-			case "A":
-				if m.results.IsEditable() && !m.results.HasDirtyCells() && !m.inspector.IsInserting() {
-					m.resultsPendingG = false
-					m.resultsPendingY = false
-					m.startInsert()
-					return m, nil
-				}
 			case "D":
 				if !m.results.IsEditable() {
 					break

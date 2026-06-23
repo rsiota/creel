@@ -23,7 +23,7 @@ func TestTableDesignerSubmit(t *testing.T) {
 		t.Fatalf("unexpected error: %s", errMsg)
 	}
 	want := `CREATE TABLE "accounts" (
-    "id" INTEGER NOT NULL,
+    "id" INTEGER PRIMARY KEY NOT NULL,
     "name" TEXT
 )`
 	if sql != want {
@@ -41,7 +41,7 @@ func TestTableDesignerSubmitBlankRowsSkipped(t *testing.T) {
 	if errMsg != "" {
 		t.Fatalf("unexpected error: %s", errMsg)
 	}
-	if !strings.Contains(sql, `"id" INTEGER NOT NULL`) {
+	if !strings.Contains(sql, `"id" INTEGER PRIMARY KEY NOT NULL`) {
 		t.Fatalf("expected id column in sql, got %q", sql)
 	}
 	if strings.Count(sql, "\n") != 2 {

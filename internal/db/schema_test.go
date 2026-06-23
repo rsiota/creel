@@ -371,6 +371,23 @@ func TestValidateCreateTable(t *testing.T) {
 	}
 }
 
+func TestBuildCreateTableSQL_PrimaryKey(t *testing.T) {
+	sql, err := BuildCreateTableSQL(DriverSQLite, "accounts", []ColumnDef{
+		{Name: "id", Type: "INTEGER", NotNull: true, PrimaryKey: true},
+		{Name: "name", Type: "TEXT"},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `CREATE TABLE "accounts" (
+    "id" INTEGER PRIMARY KEY NOT NULL,
+    "name" TEXT
+)`
+	if sql != want {
+		t.Fatalf("sql = %q, want %q", sql, want)
+	}
+}
+
 func TestBuildCreateTableSQL_SQLite(t *testing.T) {
 	sql, err := BuildCreateTableSQL(DriverSQLite, "accounts", []ColumnDef{
 		{Name: "id", Type: "INTEGER", NotNull: true},

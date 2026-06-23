@@ -350,6 +350,9 @@ func (d TableDesigner) columnDefs() []db.ColumnDef {
 			Type:    colType,
 			NotNull: !nullable,
 		}
+		if strings.EqualFold(name, "id") {
+			col.PrimaryKey = true
+		}
 		if dv := strings.TrimSpace(row[tdColDefault]); dv != "" {
 			col.HasDefault = true
 			col.Default = dv

@@ -211,6 +211,12 @@ func (r ResultsTable) IsEditable() bool {
 	return r.editable
 }
 
+// HasPrimaryKey reports whether the editable table has primary key columns.
+// Row updates and deletes require a primary key; inserts do not.
+func (r ResultsTable) HasPrimaryKey() bool {
+	return len(r.pkColumns) > 0
+}
+
 // IsEditing returns whether a cell is currently being edited inline.
 func (r ResultsTable) IsEditing() bool {
 	return r.editing
@@ -1036,7 +1042,7 @@ func (r *ResultsTable) CursorLeft() {
 
 // StartEdit enters inline edit mode on the current cell.
 func (r *ResultsTable) StartEdit() {
-	if !r.editable || len(r.rows) == 0 {
+	if !r.editable || !r.HasPrimaryKey() || len(r.rows) == 0 {
 		return
 	}
 	ti := textinput.New()
