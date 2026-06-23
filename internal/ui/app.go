@@ -140,11 +140,18 @@ type exportProgressMsg struct {
 	err    error
 }
 
+// importProgressMsg carries a live progress update during an SQL import.
+type importProgressMsg struct {
+	filename string
+	read     int64
+	total    int64
+}
+
 // importDoneMsg carries the result of a completed SQL import.
 type importDoneMsg struct {
-	result  db.ImportResult
+	result   db.ImportResult
 	filename string
-	err     error
+	err      error
 }
 
 // queryStackEntry stores navigation state for returning after following a FK.
@@ -1101,7 +1108,10 @@ func dumpFooterCmd(f *os.File, bw *bufio.Writer, driver db.Driver, total int, pa
 }
 
 // execImportSQL runs an async SQL import from the given file path, reporting
-// progress via m.exportMsg and the final result via importDoneMsg.
+// execImportSQL starts an async SQL import from the given file path. It runs
+// ImportSQL in a goroutine that streams byte-progress over a channel; a polling
+// command turns each update into an importProgressMsg for the status bar, and
+// the final result is delivered as importDoneMsg.
 func (m *Model) execImportSQL(rawPath string) tea.Cmd {
 	if m.connection == nil {
 		return nil
@@ -1109,25 +1119,63 @@ func (m *Model) execImportSQL(rawPath string) tea.Cmd {
 	database := m.connection.DB()
 	filename := filepath.Base(rawPath)
 
-	return func() tea.Msg {
+	// progress is a buffered channel: ImportSQL writes progress updates, and
+	// waitForImportProgress reads them. A buffer of 1 lets the first update
+	// land without blocking if the receiver hasn't been scheduled yet.
+	progress := make(chan importProgressMsg, 1)
+	done := make(chan importDoneMsg, 1)
+
+	// Run the import in a goroutine so the TUI stays responsive.
+	go func() {
 		f, err := os.Open(rawPath)
 		if err != nil {
-			return importDoneMsg{filename: filename, err: err}
+			done <- importDoneMsg{filename: filename, err: err}
+			return
 		}
 		defer f.Close()
 
 		stat, err := f.Stat()
 		if err != nil {
-			return importDoneMsg{filename: filename, err: err}
+			done <- importDoneMsg{filename: filename, err: err}
+			return
 		}
 		totalSize := stat.Size()
 
-		result, err := db.ImportSQL(f, database, totalSize, nil)
+		result, err := db.ImportSQL(f, database, totalSize, func(read int64, total int64) {
+			progress <- importProgressMsg{filename: filename, read: read, total: total}
+		})
 		if err != nil {
-			return importDoneMsg{filename: filename, err: err}
+			done <- importDoneMsg{filename: filename, err: err}
+			return
 		}
-		return importDoneMsg{result: result, filename: filename}
+		done <- importDoneMsg{result: result, filename: filename}
+	}()
+
+	// Start polling for progress / completion.
+	return waitForImportProgress(progress, done)
+}
+
+// waitForImportProgress is a tea.Cmd that blocks until either a progress update
+// or the final result arrives from the import goroutine. It returns the
+// appropriate message and, for progress updates, re-issues itself to continue
+// polling.
+func waitForImportProgress(progress <-chan importProgressMsg, done <-chan importDoneMsg) tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case msg := <-done:
+			return msg
+		case msg := <-progress:
+			return importProgressWrapper{msg: msg, progress: progress, done: done}
+		}
 	}
+}
+
+// importProgressWrapper carries a progress update together with the channels
+// needed to re-issue the polling command.
+type importProgressWrapper struct {
+	msg      importProgressMsg
+	progress <-chan importProgressMsg
+	done     <-chan importDoneMsg
 }
 
 // none → ASC → DESC → none.
@@ -2306,6 +2354,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.exportMsg = fmt.Sprintf("dumped %d table%s → %s", msg.tables, pluralIf(msg.tables != 1, "s"), msg.path)
 		}
 		return m, nil
+
+	case importProgressWrapper:
+		percent := 0
+		if msg.msg.total > 0 {
+			percent = int(msg.msg.read * 100 / msg.msg.total)
+		}
+		m.exportMsg = fmt.Sprintf("Importing %s… %d%%", msg.msg.filename, percent)
+		return m, waitForImportProgress(msg.progress, msg.done)
 
 	case importDoneMsg:
 		if msg.err != nil {
