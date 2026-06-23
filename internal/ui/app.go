@@ -154,6 +154,16 @@ type importDoneMsg struct {
 	err      error
 }
 
+// flashTickMsg is emitted by a timer to auto-expire transient status-bar
+// messages. It carries the generation counter from when it was armed; the
+// handler only clears the flash if no newer message has arrived (i.e. the
+// generation still matches).
+type flashTickMsg struct{ gen uint64 }
+
+// flashExpiry is how long a transient status-bar message stays visible before
+// auto-clearing.
+const flashExpiry = 5 * time.Second
+
 // queryStackEntry stores navigation state for returning after following a FK.
 type queryStackEntry struct {
 	query     string
@@ -238,6 +248,12 @@ type Model struct {
 	truncateMsg   string // transient truncate result display
 	deleteRowsMsg string // transient row deletion result display
 	schemaMsg   string // transient schema change result display
+
+	// flashGen tracks the current "generation" of the transient status message.
+	// Each time a new flash is set, the wrapper increments this and arms a
+	// flashTickMsg. When the tick fires it only clears the flash if the
+	// generation still matches, preventing it from wiping a newer message.
+	flashGen uint64
 
 	// Quick filters (cell-based, server-side WHERE injection)
 	baseQuery string   // original query without filters
@@ -2089,8 +2105,29 @@ func (m *Model) startInsert() {
 	m.applyFocus()
 }
 
-// Update handles all application messages.
+// Update is the top-level Bubble Tea update handler. It wraps the real
+// handler (update) with transient-flash auto-expiry: after processing any
+// message, if a flash field changed, a timer is armed to clear the status bar
+// after flashExpiry unless a newer message supersedes it.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	prev := m.flashSnapshot()
+	model, cmd := m.update(msg)
+	m = model.(Model)
+	if m.flashChanged(prev) && m.anyFlashActive() {
+		m.flashGen++
+		gen := m.flashGen
+		tick := tea.Tick(flashExpiry, func(time.Time) tea.Msg {
+			return flashTickMsg{gen: gen}
+		})
+		if cmd != nil {
+			return m, tea.Batch(cmd, tick)
+		}
+		return m, tick
+	}
+	return m, cmd
+}
+
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -2371,6 +2408,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadTables()
 		}
 		return m, nil
+
+	case flashTickMsg:
+		// Only clear if no newer flash has arrived since this tick was armed.
+		if msg.gen == m.flashGen {
+			m.clearFlash()
+		}
+		return m, nil
 	}
 
 	if m.state == stateWorkspace {
@@ -2543,6 +2587,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.layoutWorkspace()
 
 	var cmd tea.Cmd
+
+	// Clear transient status-bar messages on any key press.
+	m.clearFlash()
 
 	// Help overlay is modal — dismiss on any key.
 	if m.help.IsVisible() {
@@ -3160,12 +3207,6 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Clear dd pending state on any non-'d' key.
 		if msg.String() != "d" {
 			m.resultsPendingD = false
-		}
-		// Clear transient stats/export/search display on the next key press.
-		if m.statsMsg != "" || m.exportMsg != "" || m.searchMsg != "" {
-			m.statsMsg = ""
-			m.exportMsg = ""
-			m.searchMsg = ""
 		}
 		// Column jump mode intercepts all keys.
 		if m.columnJumping {
@@ -4754,6 +4795,46 @@ func (m Model) currentTable() string {
 		}
 	}
 	return ""
+}
+
+// flashSnapshot captures all transient status-bar fields as an opaque value
+// so the Update wrapper can detect whether a message changed them.
+func (m Model) flashSnapshot() [6]string {
+	return [6]string{
+		m.statsMsg, m.exportMsg, m.searchMsg,
+		m.truncateMsg, m.deleteRowsMsg, m.schemaMsg,
+	}
+}
+
+// flashChanged reports whether any transient field differs from a prior
+// snapshot taken by flashSnapshot.
+func (m Model) flashChanged(prev [6]string) bool {
+	return m.statsMsg != prev[0] ||
+		m.exportMsg != prev[1] ||
+		m.searchMsg != prev[2] ||
+		m.truncateMsg != prev[3] ||
+		m.deleteRowsMsg != prev[4] ||
+		m.schemaMsg != prev[5]
+}
+
+// anyFlashActive reports whether any transient status-bar field is non-empty.
+func (m Model) anyFlashActive() bool {
+	return m.statsMsg != "" ||
+		m.exportMsg != "" ||
+		m.searchMsg != "" ||
+		m.truncateMsg != "" ||
+		m.deleteRowsMsg != "" ||
+		m.schemaMsg != ""
+}
+
+// clearFlash empties every transient status-bar field.
+func (m *Model) clearFlash() {
+	m.statsMsg = ""
+	m.exportMsg = ""
+	m.searchMsg = ""
+	m.truncateMsg = ""
+	m.deleteRowsMsg = ""
+	m.schemaMsg = ""
 }
 
 // statusMessage returns the most relevant transient message for the status bar
