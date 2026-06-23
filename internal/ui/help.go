@@ -195,10 +195,43 @@ func (h HelpPanel) View() string {
 		}
 	}
 
-	// Build two columns of sections to keep the overlay compact.
-	half := (len(sections) + 1) / 2
-	left := sections[:half]
-	right := sections[half:]
+	// sectionHeight returns the rendered line count of a single section
+	// (title + one line per binding).
+	sectionHeight := func(s helpSection) int { return 1 + len(s.bindings) }
+
+	// Available content height inside the panel (terminal minus border(2),
+	// padding(2), header(1), blank(1), footer(1), blank(1)).
+	availH := h.height - 8
+	if availH < 20 {
+		availH = 20
+	}
+
+	// Greedily distribute sections across columns so no column exceeds
+	// availH. This avoids the tall Results section dominating one column.
+	var columns [][]helpSection
+	colHeights := []int{0}
+	for _, s := range sections {
+		sh := sectionHeight(s) + 2 // section + blank separator
+		// Find the shortest column that can still fit this section.
+		bestCol := 0
+		for ci := range colHeights {
+			if colHeights[ci] < colHeights[bestCol] {
+				bestCol = ci
+			}
+		}
+		// If the shortest column is full and this section won't fit, start a
+		// new column (unless we're already on the last one).
+		if colHeights[bestCol]+sh > availH && colHeights[bestCol] > 0 {
+			columns = append(columns, nil)
+			colHeights = append(colHeights, 0)
+			bestCol = len(colHeights) - 1
+		}
+		if bestCol >= len(columns) {
+			columns = append(columns, nil)
+		}
+		columns[bestCol] = append(columns[bestCol], s)
+		colHeights[bestCol] += sh
+	}
 
 	renderCol := func(cols []helpSection) string {
 		var b strings.Builder
@@ -218,11 +251,16 @@ func (h HelpPanel) View() string {
 		return b.String()
 	}
 
-	body := lipgloss.JoinHorizontal(lipgloss.Top,
-		renderCol(left),
-		"    ",
-		renderCol(right),
-	)
+	// Join all columns horizontally.
+	colStrs := make([]string, len(columns))
+	for i, c := range columns {
+		colStrs[i] = renderCol(c)
+	}
+	seps := make([]string, len(colStrs)-1)
+	for i := range seps {
+		seps[i] = "    "
+	}
+	body := lipgloss.JoinHorizontal(lipgloss.Top, joinInterleaved(colStrs, seps)...)
 
 	header := lipgloss.NewStyle().
 		Foreground(colorPrimary).
@@ -238,13 +276,18 @@ func (h HelpPanel) View() string {
 		footer,
 	)
 
-	// Constrain to terminal size with a max width.
-	maxW := h.width - 6
+	// Constrain to terminal size.
+	maxW := h.width - 4
 	if maxW < 40 {
 		maxW = 40
 	}
+	maxH := h.height - 2
+	if maxH < 10 {
+		maxH = 10
+	}
 	panel := lipgloss.NewStyle().
 		Width(maxW).
+		Height(maxH).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
 		Padding(1, 2).
@@ -255,4 +298,20 @@ func (h HelpPanel) View() string {
 		panel,
 		lipgloss.WithWhitespaceChars(" "),
 	)
+}
+
+// joinInterleaved interleaves items and separators into a single slice,
+// e.g. [a,b,c] + [s1,s2] → [a,s1,b,s2,c].
+func joinInterleaved(items, seps []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(items)+len(seps))
+	for i, item := range items {
+		result = append(result, item)
+		if i < len(seps) {
+			result = append(result, seps[i])
+		}
+	}
+	return result
 }
