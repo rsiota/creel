@@ -254,6 +254,38 @@ INSERT INTO t (id) VALUES (3);`
 	}
 }
 
+func TestImportSQL_SessionPinsConnection(t *testing.T) {
+	// ImportSQL now runs via DB.Session() so per-connection session state
+	// persists across statements. On SQLite (single connection) this is
+	// behaviorally identical, but we verify the runner path works: a PRAGMA
+	// set in one statement is visible in the next within the same session.
+	dst := newTestSQLiteDB(t)
+
+	session, err := dst.Session()
+	if err != nil {
+		t.Fatalf("Session() error: %v", err)
+	}
+	defer session.Close()
+
+	if _, err := session.Exec(`CREATE TABLE t (id INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatalf("create via session: %v", err)
+	}
+	// foreign_keys is a per-connection PRAGMA; it should persist on the pinned
+	// connection across these two Exec calls.
+	if _, err := session.Exec(`PRAGMA foreign_keys = ON`); err != nil {
+		t.Fatalf("pragma via session: %v", err)
+	}
+	res, err := dst.Execute(`PRAGMA foreign_keys`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// SQLite is single-connection (SetMaxOpenConns(1)), so the session and the
+	// pool share it; the PRAGMA value should be 1 (enabled).
+	if len(res.Rows) == 0 || res.Rows[0][0] != "1" {
+		t.Errorf("expected foreign_keys=1 on shared connection, got %v", res.Rows)
+	}
+}
+
 func TestImportSQL_MySQLConditionalComments(t *testing.T) {
 	dst := newTestSQLiteDB(t)
 	_, err := dst.Exec(`CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)`)
@@ -261,22 +293,58 @@ func TestImportSQL_MySQLConditionalComments(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// MySQL conditional comments should be parsed and their interior executed.
-	// Session wrappers (@OLD_...) should be skipped.
+	// MySQL conditional comments (/*!VERSION ... */) must be preserved intact
+	// so MySQL executes them; on SQLite they are comment-only and skipped.
+	// Critically, the version number (40101) must NOT leak into the executed
+	// SQL (regression: previously emitted "40101 SET ..." → syntax error).
+	// This also covers a conditional comment containing a quoted string.
 	dump := `/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_SQL_MODE='NO_AUTO_VALUE_ON_ZERO', SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
 INSERT INTO t (id, val) VALUES (1, 'a');
+/*!40000 ALTER TABLE t DISABLE KEYS */;
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;`
 
 	result, err := ImportSQL(strings.NewReader(dump), dst, int64(len(dump)), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The two /*!40101 SET @OLD_... */ wrappers should be skipped, only the
-	// INSERT counted. SET @OLD_... wrappers are skipped but the non-wrapper
-	// "SET CHARACTER_SET_CLIENT=@OLD..." is still attempted (and may fail on
-	// SQLite, which is fine — it's collected as an error, not fatal).
-	if result.Statements == 0 {
-		t.Error("expected at least 1 statement imported")
+	// Only the INSERT is real SQL; the four conditional comments are skipped.
+	if result.Statements != 1 {
+		t.Errorf("expected 1 statement, got %d", result.Statements)
+	}
+	if len(result.Errors) != 0 {
+		t.Errorf("expected 0 errors (no version-number leak), got: %v", result.Errors)
+	}
+
+	res, err := dst.Execute(`SELECT val FROM t WHERE id = 1`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Rows) != 1 || res.Rows[0][0] != "a" {
+		t.Errorf("expected row 'a', got %v", res.Rows)
+	}
+}
+
+func TestHasExecutableSQL(t *testing.T) {
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		{"", false},
+		{"   ", false},
+		{"/*!40101 SET @OLD_X=@@X */", false},
+		{"/* block */ /* another */", false},
+		{"-- line comment\n", false},
+		{"# mysql line comment", false},
+		{"INSERT INTO t VALUES (1)", true},
+		{"/* leading */ SELECT 1", true},
+		{"DROP TABLE /*!...*/ x", true},
+		{"INSERT INTO t VALUES ('a*/b')", true},
+	}
+	for _, tc := range tests {
+		if got := hasExecutableSQL(tc.in); got != tc.want {
+			t.Errorf("hasExecutableSQL(%q) = %v, want %v", tc.in, got, tc.want)
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -312,4 +313,15 @@ func (m *MySQL) Exec(query string, args ...interface{}) (ExecResult, error) {
 		return ExecResult{}, err
 	}
 	return ExecResult{RowsAffected: affected}, nil
+}
+
+// Session returns a runner pinned to a single pooled connection so that
+// session-scoped settings (FOREIGN_KEY_CHECKS, SQL_MODE, ...) set by a dump
+// persist across statements instead of being lost across the connection pool.
+func (m *MySQL) Session() (SessionRunner, error) {
+	conn, err := m.db.Conn(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	return &sqlConnSession{conn: conn}, nil
 }

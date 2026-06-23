@@ -360,11 +360,34 @@ func TestFormatSQLValue(t *testing.T) {
 		{"it's", "TEXT", "'it''s'"},
 		{"", "TEXT", "''"},
 		{"true", "BOOLEAN", "true"},
+		// Datetime types normalize ISO-8601 (as emitted by parseTime) to a
+		// MySQL/SQLite-compatible 'YYYY-MM-DD HH:MM:SS' literal.
+		{"2026-05-08T18:38:00Z", "TIMESTAMP", "'2026-05-08 18:38:00'"},
+		{"2026-05-08T18:38:00.123Z", "DATETIME", "'2026-05-08 18:38:00'"},
+		// A non-ISO value on a datetime column is left as-is (already plain).
+		{"2026-05-08 18:38:00", "DATETIME", "'2026-05-08 18:38:00'"},
+		// ISO-ish value on a non-datetime column is NOT reformatted.
+		{"2026-05-08T18:38:00Z", "TEXT", "'2026-05-08T18:38:00Z'"},
 	}
 	for _, tc := range tests {
 		got := formatSQLValue(tc.value, tc.colType)
 		if got != tc.want {
 			t.Errorf("formatSQLValue(%q, %q) = %q, want %q", tc.value, tc.colType, got, tc.want)
+		}
+	}
+}
+
+func TestIsDateTimeType(t *testing.T) {
+	dateTime := []string{"TIMESTAMP", "timestamp", "DATETIME", "DATETIME(6)", "DATE", "TIME"}
+	for _, ty := range dateTime {
+		if !isDateTimeType(ty) {
+			t.Errorf("isDateTimeType(%q) = false, want true", ty)
+		}
+	}
+	other := []string{"TEXT", "VARCHAR(255)", "INT", "", "BLOB", "YEAR"}
+	for _, ty := range other {
+		if isDateTimeType(ty) {
+			t.Errorf("isDateTimeType(%q) = true, want false", ty)
 		}
 	}
 }

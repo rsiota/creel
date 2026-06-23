@@ -244,3 +244,12 @@ func (s *SQLite) Exec(query string, args ...interface{}) (ExecResult, error) {
 	}
 	return ExecResult{RowsAffected: affected}, nil
 }
+
+// Session returns a runner for import. SQLite uses SetMaxOpenConns(1), so
+// every statement already runs on the same connection and session state
+// persists without — and must not — pinning a dedicated connection (which
+// would starve the single-connection pool and deadlock concurrent UI queries
+// during a long import).
+func (s *SQLite) Session() (SessionRunner, error) {
+	return &sqlDBSession{db: s.db}, nil
+}

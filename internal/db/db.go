@@ -1,6 +1,8 @@
 package db
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 )
 
@@ -62,7 +64,66 @@ type DB interface {
 	Databases() ([]string, error)
 	// UseDatabase switches the active database, re-opening the connection if needed.
 	UseDatabase(name string) error
+	// Session returns a runner that executes statements on a single pinned
+	// connection so session-scoped settings persist across calls. This matters
+	// for imports: a MySQL dump sets FOREIGN_KEY_CHECKS=0, SQL_MODE, etc., which
+	// are per-connection and would otherwise be lost across a connection pool.
+	// The caller must Close the returned runner when done.
+	Session() (SessionRunner, error)
 }
+
+// SessionRunner executes statements on a single underlying connection and is
+// returned by DB.Session. Closing it releases the pinned connection.
+type SessionRunner interface {
+	// Exec runs a statement that doesn't return rows.
+	Exec(query string, args ...interface{}) (ExecResult, error)
+	// Close releases the pinned connection.
+	Close() error
+}
+
+// sqlConnSession is a SessionRunner backed by a single pooled *sql.Conn.
+// All statements run on the same physical connection, so per-connection
+// session state (MySQL FOREIGN_KEY_CHECKS, SQL_MODE, ...) persists.
+type sqlConnSession struct {
+	conn *sql.Conn
+}
+
+func (s *sqlConnSession) Exec(query string, args ...interface{}) (ExecResult, error) {
+	res, err := s.conn.ExecContext(context.Background(), query, args...)
+	if err != nil {
+		return ExecResult{}, fmt.Errorf("exec error: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return ExecResult{}, err
+	}
+	return ExecResult{RowsAffected: affected}, nil
+}
+
+func (s *sqlConnSession) Close() error { return s.conn.Close() }
+
+// sqlDBSession is a SessionRunner that delegates to a *sql.DB without pinning a
+// single connection. It is used by drivers (e.g. SQLite with
+// SetMaxOpenConns(1)) that already guarantee all statements run on one
+// connection, so session state persists without — and must not — hold a
+// dedicated connection that would starve the pool. Close is a no-op.
+type sqlDBSession struct {
+	db *sql.DB
+}
+
+func (s *sqlDBSession) Exec(query string, args ...interface{}) (ExecResult, error) {
+	res, err := s.db.Exec(query, args...)
+	if err != nil {
+		return ExecResult{}, fmt.Errorf("exec error: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return ExecResult{}, err
+	}
+	return ExecResult{RowsAffected: affected}, nil
+}
+
+func (s *sqlDBSession) Close() error { return nil }
 
 // Column describes a single column in a table or result set.
 type Column struct {

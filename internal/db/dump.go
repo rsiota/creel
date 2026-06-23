@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 )
 
 // Format identifies an export format for table data.
@@ -223,8 +224,10 @@ func buildCreateTableFromInfo(driver Driver, table string, cols []TableColumnInf
 
 // formatSQLValue renders a cell value as a SQL literal. The string "NULL" is
 // treated as SQL NULL (consistent with how Execute represents null cells).
-// Numeric column types are left unquoted; all other values are single-quoted
-// with embedded single quotes doubled.
+// Numeric column types are left unquoted; date/time types are normalized from
+// the ISO-8601 format the driver emits (parseTime) to 'YYYY-MM-DD HH:MM:SS',
+// which both MySQL and SQLite accept; all other values are single-quoted with
+// embedded single quotes doubled.
 func formatSQLValue(value, colType string) string {
 	if value == "NULL" {
 		return "NULL"
@@ -232,7 +235,47 @@ func formatSQLValue(value, colType string) string {
 	if isNumericType(colType) {
 		return value
 	}
-	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+	v := value
+	if isDateTimeType(colType) {
+		v = formatDateTimeLiteral(v)
+	}
+	return "'" + strings.ReplaceAll(v, "'", "''") + "'"
+}
+
+// isDateTimeType reports whether a column type stores a date, time, or
+// timestamp. Values of these types may arrive as ISO-8601 strings (the driver
+// formats parsed time.Time values that way when scanned into a string) and must
+// be re-rendered as plain SQL datetime literals.
+func isDateTimeType(dbType string) bool {
+	t := strings.ToLower(strings.TrimSpace(dbType))
+	if i := strings.IndexByte(t, '('); i > 0 {
+		t = t[:i]
+	}
+	switch t {
+	case "datetime", "timestamp", "date", "time":
+		return true
+	}
+	return false
+}
+
+// formatDateTimeLiteral converts an ISO-8601 timestamp (e.g.
+// "2026-05-08T18:38:00Z") into a 'YYYY-MM-DD HH:MM:SS' literal accepted by both
+// MySQL and SQLite. The wall-clock time is preserved exactly (no timezone
+// conversion), so dumps round-trip. Values that don't look like ISO timestamps
+// are returned unchanged.
+func formatDateTimeLiteral(value string) string {
+	if !strings.Contains(value, "T") {
+		return value
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed.Format("2006-01-02 15:04:05")
+		}
+	}
+	// Mechanical fallback: 'T' → space, drop trailing 'Z'.
+	v := strings.Replace(value, "T", " ", 1)
+	v = strings.TrimSuffix(v, "Z")
+	return v
 }
 
 // isNumericType reports whether a database column type should be treated as

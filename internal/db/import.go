@@ -43,6 +43,15 @@ func ImportSQL(r io.Reader, database DB, totalSize int64, onProgress func(bytesR
 	scanner := bufio.NewReader(r)
 	var result ImportResult
 
+	// Pin to a single connection so session-scoped settings set by the dump
+	// (MySQL FOREIGN_KEY_CHECKS=0, SQL_MODE, ...) persist across statements
+	// instead of being lost across a connection pool.
+	session, err := database.Session()
+	if err != nil {
+		return result, fmt.Errorf("acquire session: %w", err)
+	}
+	defer session.Close()
+
 	var stmt strings.Builder
 	var inSingleQuote, inDoubleQuote bool
 	var inLineComment, inBlockComment, inMySQLComment bool
@@ -54,13 +63,17 @@ func ImportSQL(r io.Reader, database DB, totalSize int64, onProgress func(bytesR
 		if s == "" {
 			return
 		}
-		// Skip MySQL session-save/restore wrappers that are meaningless when
-		// importing (they reference @@ session variables from the dump host).
-		if isSessionWrapper(s) {
+		// Skip comment-only statements. A MySQL conditional comment
+		// (/*!...*/) is executable SQL on MySQL (it carries session setup like
+		// FOREIGN_KEY_CHECKS=0), so send it through there; on other engines it
+		// is an inert comment whose execution can return a nil driver result
+		// and panic on RowsAffected, so skip it.
+		_, isMySQL := database.(*MySQL)
+		if !hasExecutableSQL(s) && !(isMySQL && strings.HasPrefix(s, "/*!")) {
 			return
 		}
 		result.Statements++
-		if _, err := database.Exec(s); err != nil {
+		if _, err := session.Exec(s); err != nil {
 			result.Errors = append(result.Errors, ImportError{
 				Statement: truncate(s, 120),
 				Err:       err,
@@ -104,28 +117,32 @@ func ImportSQL(r io.Reader, database DB, totalSize int64, onProgress func(bytesR
 			}
 			continue
 		}
-		// MySQL conditional comments (/*! ... */) are executable — treat the
-		// interior as regular SQL, only the opening and closing markers are
-		// stripped (they pass through as comment markers that MySQL understands).
+		// MySQL conditional comments (/*! ... */) are preserved verbatim —
+		// including the markers and version number — so MySQL executes them
+		// (version-gated) and SQLite ignores them as ordinary comments. Quote
+		// state is tracked so a */ inside a string literal doesn't end the
+		// comment prematurely; semicolons inside do NOT terminate the statement.
 		if inMySQLComment {
-			if b == '*' && ch == '/' {
-				scanner.ReadByte()
-				bytesRead++
-				inMySQLComment = false
-				continue
-			}
-			// Everything inside is normal SQL, so handle quotes and semicolons.
 			if b == '\'' && !inDoubleQuote {
+				if inSingleQuote && ch == '\'' {
+					stmt.WriteByte(b)
+					stmt.WriteByte(ch)
+					scanner.ReadByte()
+					bytesRead++
+					continue
+				}
 				inSingleQuote = !inSingleQuote
 			}
 			if b == '"' && !inSingleQuote {
 				inDoubleQuote = !inDoubleQuote
 			}
-			if b == ';' && !inSingleQuote && !inDoubleQuote {
-				flush()
-				continue
-			}
 			stmt.WriteByte(b)
+			if b == '*' && ch == '/' && !inSingleQuote && !inDoubleQuote {
+				scanner.ReadByte()
+				bytesRead++
+				stmt.WriteByte('/')
+				inMySQLComment = false
+			}
 			continue
 		}
 
@@ -140,11 +157,12 @@ func ImportSQL(r io.Reader, database DB, totalSize int64, onProgress func(bytesR
 			if b == '/' && ch == '*' {
 				scanner.ReadByte()
 				bytesRead++
-				// Check if this is /*! (MySQL conditional comment).
+				// /*! starts a MySQL conditional comment: preserve it verbatim.
 				peek2, err := scanner.Peek(1)
 				if err == nil && peek2[0] == '!' {
 					scanner.ReadByte()
 					bytesRead++
+					stmt.WriteString("/*!")
 					inMySQLComment = true
 				} else {
 					inBlockComment = true
@@ -181,17 +199,44 @@ func ImportSQL(r io.Reader, database DB, totalSize int64, onProgress func(bytesR
 	return result, nil
 }
 
-// isSessionWrapper reports whether a statement is a mysqldump session
-// save/restore wrapper (e.g. "/*!40101 SET @OLD_SQL_MODE=@OLD_SQL_MODE */")
-// that should be skipped during import. These reference session variables
-// from the dump host and have no meaning on restore.
-func isSessionWrapper(stmt string) bool {
-	upper := strings.ToUpper(stmt)
-	// Skip SET @OLD_... = ... wrappers.
-	if strings.HasPrefix(upper, "/*!") && strings.Contains(upper, "SET @OLD_") {
-		return true
+// hasExecutableSQL reports whether stmt contains any SQL once all comments
+// (block /*...*/, MySQL conditional /*!...*/, line -- and #) and surrounding
+// whitespace are removed. Comment-only statements are skipped during import.
+// The first non-comment, non-whitespace byte short-circuits to true, so string
+// literals are never misinterpreted as comments.
+func hasExecutableSQL(stmt string) bool {
+	for i := 0; i < len(stmt); {
+		switch stmt[i] {
+		case ' ', '\t', '\n', '\r', '\f', '\v':
+			i++
+		case '/':
+			if i+1 >= len(stmt) || stmt[i+1] != '*' {
+				return true
+			}
+			end := strings.Index(stmt[i+2:], "*/")
+			if end < 0 {
+				return false
+			}
+			i += end + 4
+		case '-':
+			if i+1 >= len(stmt) || stmt[i+1] != '-' {
+				return true
+			}
+			nl := strings.IndexByte(stmt[i:], '\n')
+			if nl < 0 {
+				return false
+			}
+			i += nl + 1
+		case '#':
+			nl := strings.IndexByte(stmt[i:], '\n')
+			if nl < 0 {
+				return false
+			}
+			i += nl + 1
+		default:
+			return true
+		}
 	}
-	// Skip SET NAMES on non-MySQL... actually let it through, harmless.
 	return false
 }
 
