@@ -208,7 +208,7 @@ func (p DatabasePicker) View() string {
 		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", p.scrollRow+1, end, len(items)))
 	}
 
-	hint := mutedStyle.Render("D drop database")
+	hint := mutedStyle.Render("D drop  N new")
 
 	footer := filterLine + "  " + scrollInfo + "  " + hint
 

@@ -324,6 +324,20 @@ func BuildDropDatabaseSQL(driver Driver, name string) (string, error) {
 	return fmt.Sprintf("DROP DATABASE %s", quoteIdent(driver, name)), nil
 }
 
+// BuildCreateDatabaseSQL generates a CREATE DATABASE statement (MySQL only).
+func BuildCreateDatabaseSQL(driver Driver, name string) (string, error) {
+	if driver != DriverMySQL {
+		return "", fmt.Errorf("create database is not supported for %s", driver)
+	}
+	if strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("database name is required")
+	}
+	if err := ValidateIdentifier(name); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("CREATE DATABASE %s", quoteIdent(driver, name)), nil
+}
+
 // BuildDropColumnSQL generates a MySQL ALTER TABLE ... DROP COLUMN statement.
 func BuildDropColumnSQL(driver Driver, table, column string, info TableColumnInfo) (string, error) {
 	if driver != DriverMySQL {

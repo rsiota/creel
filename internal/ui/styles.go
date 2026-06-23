@@ -117,6 +117,51 @@ func renderTypedConfirmDialog(prompt, hint, input string, width, height int) str
 	return style.Render(content)
 }
 
+// renderInputDialog builds a simple name-entry overlay for operations like
+// creating a database. It shows a prompt, an input field, an optional error
+// line, and a footer with key hints. width/height are the desired TOTAL
+// dimensions (including border and padding), matching popupDim when needed.
+func renderInputDialog(prompt, input, errMsg string, width, height int) string {
+	contentW := width - 2 - 6
+	if contentW < 30 {
+		contentW = 30
+	}
+	promptBlock := lipgloss.NewStyle().
+		Width(contentW).Align(lipgloss.Center).Foreground(colorPrimary).
+		Render(prompt)
+	inputLine := lipgloss.NewStyle().
+		Width(contentW).Align(lipgloss.Center).Foreground(colorPrimary).
+		Render("> " + input + "_")
+
+	lines := []string{promptBlock, "", inputLine}
+
+	if errMsg != "" {
+		lines = append(lines, "",
+			lipgloss.NewStyle().
+				Width(contentW).Align(lipgloss.Center).Foreground(colorError).
+				Render(errMsg))
+	}
+
+	lines = append(lines, "",
+		lipgloss.NewStyle().Width(contentW).Align(lipgloss.Center).Render(
+			lipgloss.NewStyle().Foreground(colorLabel).Render("enter") + mutedStyle.Render(" confirm    ") +
+				lipgloss.NewStyle().Foreground(colorLabel).Render("esc") + mutedStyle.Render(" cancel"),
+		))
+
+	content := lipgloss.JoinVertical(lipgloss.Center, lines...)
+	style := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPrimary).
+		Padding(1, 3)
+	if width > 0 {
+		style = style.Width(width - 2)
+	}
+	if height > 0 {
+		style = style.Height(height - 2)
+	}
+	return style.Render(content)
+}
+
 // renderSQLConfirmDialog builds a confirmation overlay that includes SQL preview.
 func renderSQLConfirmDialog(prompt, sql string) string {
 	sqlStyled := lipgloss.NewStyle().Foreground(colorLabel).Render(sql)

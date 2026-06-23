@@ -85,6 +85,12 @@ type dropDBResultMsg struct {
 	err      error
 }
 
+// createDBResultMsg carries the result of a CREATE DATABASE operation.
+type createDBResultMsg struct {
+	database string
+	err      error
+}
+
 // queryExecutedMsg is sent when a query finishes executing.
 type queryExecutedMsg struct {
 	query    string
@@ -230,6 +236,11 @@ type Model struct {
 	// Drop-database typed confirmation (triggered from the database picker).
 	dropDBConfirm string
 	dropDBInput   string
+
+	// Create-database name input (triggered from the database picker).
+	createDBActive bool
+	createDBInput   string
+	createDBErr     string
 
 	// Row deletion confirmation dialog (non-empty table name while pending).
 	deleteRowsConfirmTable string
@@ -1931,6 +1942,27 @@ func (m *Model) execDropDatabase(name string) tea.Cmd {
 	}
 }
 
+// execCreateDatabase runs CREATE DATABASE asynchronously and returns a
+// createDBResultMsg. The caller is responsible for switching to the new
+// database after a successful creation.
+func (m *Model) execCreateDatabase(name string) tea.Cmd {
+	if m.connection == nil || name == "" {
+		return nil
+	}
+	driver := m.connection.Config().Driver
+	sql, err := db.BuildCreateDatabaseSQL(driver, name)
+	if err != nil {
+		return func() tea.Msg {
+			return createDBResultMsg{database: name, err: err}
+		}
+	}
+	conn := m.connection
+	return func() tea.Msg {
+		_, err := conn.DB().Exec(sql)
+		return createDBResultMsg{database: name, err: err}
+	}
+}
+
 func (m *Model) clearSchemaConfirm() {
 	m.schemaConfirmSQL = ""
 	m.schemaConfirmTable = ""
@@ -2463,6 +2495,16 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, m.openDatabasePicker(wasCurrent)
+
+	case createDBResultMsg:
+		if msg.err != nil {
+			m.exportMsg = fmt.Sprintf("create database failed: %v", msg.err)
+			return m, nil
+		}
+		m.exportMsg = fmt.Sprintf("created database %s", msg.database)
+		// Switch to the newly created database.
+		m.dbPicker.Hide()
+		return m, m.selectDatabase(msg.database)
 	}
 
 	if m.state == stateWorkspace {
@@ -2672,6 +2714,37 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Create-database name input — intercepts all keys when active.
+	if m.createDBActive {
+		switch msg.String() {
+		case "enter":
+			name := strings.TrimSpace(m.createDBInput)
+			if name == "" {
+				return m, nil
+			}
+			m.createDBInput = ""
+			m.createDBActive = false
+			return m, m.execCreateDatabase(name)
+		case "esc", "ctrl+c":
+			m.createDBActive = false
+			m.createDBInput = ""
+			m.createDBErr = ""
+			return m, nil
+		case "backspace":
+			if len(m.createDBInput) > 0 {
+				m.createDBInput = m.createDBInput[:len(m.createDBInput)-1]
+			}
+			m.createDBErr = ""
+			return m, nil
+		}
+		if msg.Type == tea.KeyRunes {
+			m.createDBInput += msg.String()
+			m.createDBErr = ""
+			return m, nil
+		}
+		return m, nil
+	}
+
 	// Database picker is modal — intercept all keys when visible.
 	if m.dbPicker.IsVisible() {
 		switch msg.String() {
@@ -2698,6 +2771,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.dropDBConfirm = name
 				m.dropDBInput = ""
 			}
+			return m, nil
+		case "N":
+			m.createDBActive = true
+			m.createDBInput = ""
+			m.createDBErr = ""
 			return m, nil
 		case "up":
 			m.dbPicker.CursorUp()
@@ -4755,6 +4833,17 @@ func (m Model) viewWorkspace() string {
 		prompt := fmt.Sprintf("Drop database %s?\nThis permanently deletes every table and all data in the database.", m.dropDBConfirm)
 		pw, ph := popupDim()
 		dialog := renderTypedConfirmDialog(prompt, m.dropDBConfirm, m.dropDBInput, pw, ph)
+		dlgW := lipgloss.Width(dialog)
+		dlgH := lipgloss.Height(dialog)
+		dlgX := (m.width - dlgW) / 2
+		dlgY := (m.height - 1 - dlgH) / 2
+		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
+	// Overlay create-database name input dialog if visible.
+	if m.createDBActive {
+		pw, ph := popupDim()
+		dialog := renderInputDialog("Create new database", m.createDBInput, m.createDBErr, pw, ph)
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)
 		dlgX := (m.width - dlgW) / 2
