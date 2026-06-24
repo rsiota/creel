@@ -18,6 +18,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/atotto/clipboard"
+	"github.com/ruben/gsql/internal/bookmarks"
 	"github.com/ruben/gsql/internal/config"
 	"github.com/ruben/gsql/internal/db"
 	"github.com/ruben/gsql/internal/history"
@@ -205,6 +206,7 @@ type Model struct {
 	results      ResultsTable
 	inspector    Inspector
 	history      HistoryPanel
+	bookmarks    BookmarkPanel
 	dbPicker     DatabasePicker
 	help         HelpPanel
 	filterPicker FilterPicker
@@ -262,9 +264,13 @@ type Model struct {
 	// Clear-history confirmation dialog.
 	clearHistoryConfirm bool
 
-	config       *config.Config
-	connection   *db.Connection
-	historyStore *history.Store
+	// Clear-bookmarks confirmation dialog.
+	clearBookmarksConfirm bool
+
+	config        *config.Config
+	connection    *db.Connection
+	historyStore  *history.Store
+	bookmarkStore *bookmarks.Store
 	connError    string
 	tables       []string
 
@@ -281,6 +287,7 @@ type Model struct {
 	truncateMsg   string // transient truncate result display
 	deleteRowsMsg string // transient row deletion result display
 	schemaMsg   string // transient schema change result display
+	bookmarkMsg string // transient bookmark result display
 
 	// flashGen tracks the current "generation" of the transient status message.
 	// Each time a new flash is set, the wrapper increments this and arms a
@@ -325,6 +332,7 @@ func NewModel(cfg *config.Config) Model {
 		inspector:    NewInspector(),
 		connList:     NewConnectionList(),
 		history:      NewHistoryPanel(),
+		bookmarks:    NewBookmarkPanel(),
 		dbPicker:     NewDatabasePicker(),
 		help:         NewHelpPanel(),
 		filterPicker: NewFilterPicker(),
@@ -335,7 +343,8 @@ func NewModel(cfg *config.Config) Model {
 		tableRenameForm: NewTableRenameForm(),
 		tableDesigner:   NewTableDesigner(),
 		schemaEditor:    NewSchemaEditor(),
-		historyStore: history.NewStore(historyDir()),
+		historyStore:  history.NewStore(historyDir()),
+		bookmarkStore: bookmarks.NewStore(historyDir()),
 		expanded:     make(map[string][]db.Column),
 		pageSize:     defaultPageSize,
 	}
@@ -3199,7 +3208,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Discard / truncate / delete-rows confirmation dialogs are modal — intercept all keys.
-	if m.discardConfirm || m.truncateConfirm != "" || m.deleteRowsConfirmTable != "" || m.clearHistoryConfirm {
+	if m.discardConfirm || m.truncateConfirm != "" || m.deleteRowsConfirmTable != "" || m.clearHistoryConfirm || m.clearBookmarksConfirm {
 		switch msg.String() {
 		case "y", "Y", "enter":
 			if m.discardConfirm {
@@ -3225,6 +3234,15 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.history.Toggle()
 				return m, nil
 			}
+			if m.clearBookmarksConfirm {
+				m.clearBookmarksConfirm = false
+				if m.connection != nil && m.bookmarkStore != nil {
+					m.bookmarkStore.Clear(m.connection.Config().Name)
+				}
+				m.bookmarks.SetEntries(nil)
+				m.bookmarks.Toggle()
+				return m, nil
+			}
 			table := m.truncateConfirm
 			m.truncateConfirm = ""
 			return m, m.execTruncate(table)
@@ -3235,6 +3253,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.deleteRowsConfirmQuery = ""
 			m.deleteRowsConfirmCount = 0
 			m.clearHistoryConfirm = false
+			m.clearBookmarksConfirm = false
 			return m, nil
 		}
 		return m, nil
@@ -3299,6 +3318,34 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Browse databases (MySQL only).
 		if m.connection != nil && m.connection.Config().Driver == db.DriverMySQL {
 			return m, m.openDatabasePicker(false)
+		}
+		return m, nil
+	case "ctrl+g":
+		// Toggle bookmarks panel.
+		if m.connection != nil {
+			if m.bookmarks.IsVisible() {
+				m.bookmarks.Toggle()
+			} else {
+				entries, err := m.bookmarkStore.Get(m.connection.Config().Name)
+				if err == nil {
+					m.bookmarks.SetEntries(entries)
+				}
+				m.bookmarks.Toggle()
+			}
+		}
+		return m, nil
+	case "B":
+		// Bookmark the current editor query.
+		if m.focus == FocusEditor && m.editor.VimMode() == VimInsert {
+			break
+		}
+		q := m.editor.FormatQuery()
+		if q != "" && m.connection != nil && m.bookmarkStore != nil {
+			if err := m.bookmarkStore.Add(m.connection.Config().Name, q); err == nil {
+				m.bookmarkMsg = "bookmarked"
+			} else {
+				m.bookmarkMsg = "already bookmarked"
+			}
 		}
 		return m, nil
 	case "ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l":
@@ -3385,6 +3432,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "esc":
+		// Close bookmarks panel if visible.
+		if m.bookmarks.IsVisible() {
+			m.bookmarks.Toggle()
+			return m, nil
+		}
 		// Close history panel if visible.
 		if m.history.IsVisible() {
 			m.history.Toggle()
@@ -3449,6 +3501,50 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "D":
 			m.clearHistoryConfirm = true
+			return m, nil
+		case "b":
+			// Promote the selected history entry to bookmarks.
+			q := m.history.SelectedQuery()
+			if q != "" && m.connection != nil && m.bookmarkStore != nil {
+				m.bookmarkStore.Add(m.connection.Config().Name, q)
+			}
+			m.history.Toggle()
+			return m, nil
+		}
+	}
+
+	// Bookmarks panel takes over navigation when visible
+	if m.bookmarks.IsVisible() {
+		switch msg.String() {
+		case "j", "down":
+			m.bookmarks.CursorDown()
+			return m, nil
+		case "k", "up":
+			m.bookmarks.CursorUp()
+			return m, nil
+		case "enter":
+			q := m.bookmarks.SelectedQuery()
+			if q != "" {
+				m.editor.SetValue(q)
+				m.focus = FocusEditor
+				m.applyFocus()
+			}
+			m.bookmarks.Toggle()
+			return m, m.editor.Focus()
+		case "esc":
+			m.bookmarks.Toggle()
+			return m, nil
+		case "d":
+			// Delete the bookmark under the cursor.
+			if m.connection != nil && m.bookmarkStore != nil && m.bookmarks.CursorIndex() >= 0 {
+				idx := len(m.bookmarks.entries) - 1 - m.bookmarks.CursorIndex()
+				m.bookmarkStore.RemoveAt(m.connection.Config().Name, idx)
+				entries, _ := m.bookmarkStore.Get(m.connection.Config().Name)
+				m.bookmarks.SetEntries(entries)
+			}
+			return m, nil
+		case "D":
+			m.clearBookmarksConfirm = true
 			return m, nil
 		}
 	}
@@ -4875,6 +4971,17 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, histPanel, panelX, panelY)
 	}
 
+	// Overlay bookmarks panel if visible
+	if m.bookmarks.IsVisible() {
+		m.bookmarks.SetSize(m.width/2, m.height/2)
+		bmPanel := m.bookmarks.View()
+		panelW := lipgloss.Width(bmPanel)
+		panelH := lipgloss.Height(bmPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, bmPanel, panelX, panelY)
+	}
+
 	// Overlay database picker if visible
 	if m.dbPicker.IsVisible() {
 		pw, ph := popupDim()
@@ -4999,6 +5106,16 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, dialog, dlgX, dlgY)
 	}
 
+	// Overlay clear-bookmarks confirmation dialog if visible.
+	if m.clearBookmarksConfirm {
+		dialog := renderConfirmDialog("Clear all bookmarks?\nThis cannot be undone.")
+		dlgW := lipgloss.Width(dialog)
+		dlgH := lipgloss.Height(dialog)
+		dlgX := (m.width - dlgW) / 2
+		dlgY := (m.height - 1 - dlgH) / 2
+		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
 	// Overlay add-column form.
 	if m.addColumnForm.IsVisible() {
 		popupW := 58
@@ -5111,22 +5228,24 @@ func (m Model) currentTable() string {
 
 // flashSnapshot captures all transient status-bar fields as an opaque value
 // so the Update wrapper can detect whether a message changed them.
-func (m Model) flashSnapshot() [6]string {
-	return [6]string{
+func (m Model) flashSnapshot() [7]string {
+	return [7]string{
 		m.statsMsg, m.exportMsg, m.searchMsg,
 		m.truncateMsg, m.deleteRowsMsg, m.schemaMsg,
+		m.bookmarkMsg,
 	}
 }
 
 // flashChanged reports whether any transient field differs from a prior
 // snapshot taken by flashSnapshot.
-func (m Model) flashChanged(prev [6]string) bool {
+func (m Model) flashChanged(prev [7]string) bool {
 	return m.statsMsg != prev[0] ||
 		m.exportMsg != prev[1] ||
 		m.searchMsg != prev[2] ||
 		m.truncateMsg != prev[3] ||
 		m.deleteRowsMsg != prev[4] ||
-		m.schemaMsg != prev[5]
+		m.schemaMsg != prev[5] ||
+		m.bookmarkMsg != prev[6]
 }
 
 // anyFlashActive reports whether any transient status-bar field is non-empty.
@@ -5136,7 +5255,8 @@ func (m Model) anyFlashActive() bool {
 		m.searchMsg != "" ||
 		m.truncateMsg != "" ||
 		m.deleteRowsMsg != "" ||
-		m.schemaMsg != ""
+		m.schemaMsg != "" ||
+		m.bookmarkMsg != ""
 }
 
 // clearFlash empties every transient status-bar field.
@@ -5147,6 +5267,7 @@ func (m *Model) clearFlash() {
 	m.truncateMsg = ""
 	m.deleteRowsMsg = ""
 	m.schemaMsg = ""
+	m.bookmarkMsg = ""
 }
 
 // statusMessage returns the most relevant transient message for the status bar
@@ -5180,6 +5301,8 @@ func (m Model) statusMessage() string {
 			return errorStyle.Render(m.schemaMsg)
 		}
 		return successStyle.Render(m.schemaMsg)
+	case m.bookmarkMsg != "":
+		return successStyle.Render(m.bookmarkMsg)
 	case m.statsMsg != "":
 		return lipgloss.NewStyle().Foreground(colorPrimary).Render(m.statsMsg)
 	case m.searchMsg != "":

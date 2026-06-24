@@ -37,6 +37,11 @@ var (
 			Background(colorPrimary).
 			Padding(0, 1)
 
+	panelSelectedStyle = lipgloss.NewStyle().
+				Foreground(colorPrimary).
+				Bold(true).
+				Padding(0, 1)
+
 	normalStyle = lipgloss.NewStyle().
 			Foreground(colorFg).
 			Padding(0, 1)

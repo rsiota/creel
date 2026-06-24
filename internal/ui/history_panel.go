@@ -122,7 +122,7 @@ func (h HistoryPanel) View() string {
 		lineStyle := normalStyle
 		if i == h.cursor {
 			marker = "→"
-			lineStyle = selectedStyle
+			lineStyle = panelSelectedStyle
 		}
 
 		line := fmt.Sprintf("%s %s %s  %s", marker, status, ts, queryStr)

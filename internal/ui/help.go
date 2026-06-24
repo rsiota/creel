@@ -61,6 +61,8 @@ func helpSections() []helpSection {
 				{"ctrl+t", "switch connection"},
 				{"ctrl+b", "browse databases (MySQL)"},
 				{"ctrl+y", "query history"},
+				{"ctrl+g", "bookmarks"},
+				{"B", "bookmark current query"},
 				{"ctrl+o", "toggle inspector"},
 				{"ctrl+h/j/k/l", "move focus"},
 				{"tab / shift+tab", "cycle focus"},
@@ -114,7 +116,18 @@ func helpSections() []helpSection {
 			bindings: []helpBinding{
 				{"j/k", "move"},
 				{"enter", "load query into editor"},
+				{"b", "bookmark selected query"},
 				{"D", "clear history"},
+				{"esc", "close"},
+			},
+		},
+		{
+			title: "Bookmarks Panel",
+			bindings: []helpBinding{
+				{"j/k", "move"},
+				{"enter", "load query into editor"},
+				{"d", "delete bookmark"},
+				{"D", "clear bookmarks"},
 				{"esc", "close"},
 			},
 		},
