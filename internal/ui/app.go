@@ -527,9 +527,11 @@ func (m Model) prefetchSchemas() tea.Cmd {
 	}
 }
 
-// executeQuery runs the current query asynchronously with pagination.
+// executeQuery runs the query under the cursor asynchronously with pagination.
+// When the editor contains multiple statements, only the one under the cursor
+// is executed.
 func (m *Model) executeQuery() tea.Cmd {
-	query := m.editor.FormatQuery()
+	query := m.editor.StatementAtCursor()
 	if query == "" {
 		return nil
 	}

@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ruben/gsql/internal/db"
 )
 
 // VimMode represents the current vim editing mode.
@@ -369,6 +370,36 @@ func (e *QueryEditor) CursorDown() {
 // FormatQuery returns the query with surrounding whitespace trimmed.
 func (e QueryEditor) FormatQuery() string {
 	return strings.TrimSpace(e.Value())
+}
+
+// StatementAtCursor returns the SQL statement under the cursor when the
+// editor contains multiple statements, or the full buffer if there is only
+// one (or none). Returns "" for an empty editor.
+func (e QueryEditor) StatementAtCursor() string {
+	value := e.Value()
+	stmts := db.SplitStatements(value)
+	if len(stmts) <= 1 {
+		return strings.TrimSpace(value)
+	}
+
+	// Compute the cursor's global rune offset.
+	cursorLine, cursorCol := e.cursorLineCol()
+	lines := strings.Split(value, "\n")
+	offset := 0
+	for i := 0; i < cursorLine && i < len(lines); i++ {
+		offset += len([]rune(lines[i])) + 1 // +1 for \n
+	}
+	offset += cursorCol
+
+	// Find the statement containing the cursor offset.
+	for _, s := range stmts {
+		if offset >= s.Start && offset <= s.End+1 {
+			return s.Text
+		}
+	}
+
+	// Cursor is past the last statement's end — return the last one.
+	return stmts[len(stmts)-1].Text
 }
 
 // --- Completion ---

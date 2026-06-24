@@ -56,7 +56,7 @@ func helpSections() []helpSection {
 		{
 			title: "Global",
 			bindings: []helpBinding{
-				{"ctrl+e / \\", "run query"},
+				{"ctrl+e / \\", "run statement under cursor"},
 				{"ctrl+r", "clear editor"},
 				{"ctrl+t", "switch connection"},
 				{"ctrl+b", "browse databases (MySQL)"},
