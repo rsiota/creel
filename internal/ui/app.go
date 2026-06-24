@@ -3854,7 +3854,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter", "s":
 			item := m.currentSidebarItem()
 			if item != nil && !item.isColumn {
-				m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s LIMIT 100;", item.text))
+				m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s;", item.text))
 				m.focus = FocusEditor
 				m.applyFocus()
 				return m, tea.Batch(m.editor.Focus(), m.executeQuery())
