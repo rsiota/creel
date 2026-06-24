@@ -1226,12 +1226,16 @@ func (r ResultsTable) View() string {
 	for rowIdx := rowStart; rowIdx < rowEnd; rowIdx++ {
 		row := r.rows[rowIdx]
 		isCursorRow := r.hasCellCursor() && rowIdx == r.cursorRow
+		rowBorderStyle := borderColor
+		if isCursorRow {
+			rowBorderStyle = lipgloss.NewStyle().Foreground(colorBorder).Background(colorCursorRow)
+		}
 		if r.IsMarkedRow(rowIdx) {
 			b.WriteString(lipgloss.NewStyle().Foreground(colorMark).Render("◆"))
 		} else if r.isVisualRow(rowIdx) {
 			b.WriteString(lipgloss.NewStyle().Foreground(colorVisual).Render("│"))
 		} else {
-			b.WriteString(borderColor.Render("│"))
+			b.WriteString(rowBorderStyle.Render("│"))
 		}
 		for _, i := range cols {
 			ref := cellRef{row: rowIdx, col: i}
@@ -1251,7 +1255,7 @@ func (r ResultsTable) View() string {
 			if r.editing && isCursorCell {
 				inputView := r.editInput.View()
 				b.WriteString(" " + inputView + " ")
-				b.WriteString(borderColor.Render("│"))
+				b.WriteString(rowBorderStyle.Render("│"))
 				continue
 			}
 
@@ -1280,11 +1284,13 @@ func (r ResultsTable) View() string {
 				style = lipgloss.NewStyle().Foreground(colorMark)
 			case isSearchMatch:
 				style = lipgloss.NewStyle().Foreground(colorFg).Background(colorSearch)
+			case isCursorRow:
+				style = lipgloss.NewStyle().Foreground(colorFg).Background(colorCursorRow)
 			default:
 				style = lipgloss.NewStyle().Foreground(colorFg)
 			}
 			b.WriteString(style.Render(" " + cell + " "))
-			b.WriteString(borderColor.Render("│"))
+			b.WriteString(rowBorderStyle.Render("│"))
 		}
 		b.WriteString("\n")
 	}

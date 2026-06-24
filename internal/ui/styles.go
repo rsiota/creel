@@ -10,6 +10,7 @@ var (
 	colorMark      = lipgloss.Color("#73daca")
 	colorSearch    = lipgloss.Color("#4c4c6e")
 	colorVisual    = lipgloss.Color("#283457")
+	colorCursorRow = lipgloss.Color("#3B4252") // Nord nord1 — ambient cursor-row tint
 	colorEdit      = lipgloss.Color("#ff9e64")
 	colorError     = lipgloss.Color("#f7768e")
 	colorMuted     = lipgloss.Color("#565f89")
