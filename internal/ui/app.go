@@ -2361,11 +2361,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.restoreCursor = false
 			}
 		}
-		// Switch focus to results after a query completes.
-		if m.focus != FocusInspector {
-			m.focus = FocusResults
-			m.applyFocus()
-		}
 		return m, cmd
 
 	case saveResultMsg:
