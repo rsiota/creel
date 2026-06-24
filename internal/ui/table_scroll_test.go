@@ -119,7 +119,7 @@ func TestSelectFromTable(t *testing.T) {
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
 	m = updated.(Model)
 
-	if m.editor.Value() != "SELECT * FROM users LIMIT 100;" {
+	if m.editor.Value() != "SELECT * FROM users;" {
 		t.Errorf("unexpected query: %s", m.editor.Value())
 	}
 	if m.focus != FocusEditor {

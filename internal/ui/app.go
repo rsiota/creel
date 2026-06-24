@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -121,6 +122,12 @@ type filterValuesMsg struct {
 type statsMsg struct {
 	column string
 	stats  string
+}
+
+// countMsg carries the total row count for the current table.
+type countMsg struct {
+	total int
+	err   error
 }
 
 // exportDoneMsg carries the result of an async CSV export.
@@ -266,6 +273,8 @@ type Model struct {
 	pageSize int
 	lastQuery string
 	pageMsg  string
+	totalRows    int  // total rows in the current table (0 = unknown)
+	totalRowsSet bool // whether totalRows has been fetched for this query
 	statsMsg string // transient column statistics display
 	exportMsg   string // transient CSV export result display
 	searchMsg   string // transient regex search result display
@@ -523,6 +532,8 @@ func (m *Model) executeQuery() tea.Cmd {
 	m.sortDir = ""
 	m.page = 0
 	m.queryStack = nil
+	m.totalRows = 0
+	m.totalRowsSet = false
 	return m.runPageQuery()
 }
 
@@ -542,6 +553,48 @@ func (m *Model) prevPage() tea.Cmd {
 	}
 	m.page--
 	return m.runPageQuery()
+}
+
+// buildPageMsg constructs the pagination status string using the current
+// page position, row count, and total rows (if known).
+func (m Model) buildPageMsg(page, pageSize, rowCount int, hasNext bool) string {
+	offset := page * pageSize
+	if m.totalRowsSet {
+		if hasNext {
+			return fmt.Sprintf("page %d (rows %d-%d of %s)", page+1, offset+1, offset+rowCount, formatCount(m.totalRows))
+		}
+		if page > 0 {
+			return fmt.Sprintf("page %d (rows %d-%d of %s)", page+1, offset+1, offset+rowCount, formatCount(m.totalRows))
+		}
+		return fmt.Sprintf("%s rows", formatCount(m.totalRows))
+	}
+	if page > 0 || hasNext {
+		pgInfo := fmt.Sprintf("page %d (rows %d-%d)", page+1, offset+1, offset+rowCount)
+		if hasNext {
+			pgInfo += " · more available"
+		}
+		return pgInfo
+	}
+	return ""
+}
+
+// formatCount formats an integer with thousands separators.
+func formatCount(n int) string {
+	s := strconv.Itoa(n)
+	if n < 0 {
+		return "-" + formatCount(-n)
+	}
+	if len(s) <= 3 {
+		return s
+	}
+	var result []byte
+	for i, c := range []byte(s) {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			result = append(result, ',')
+		}
+		result = append(result, c)
+	}
+	return string(result)
 }
 
 // runPageQuery wraps the original query with LIMIT/OFFSET and executes it.
@@ -811,6 +864,31 @@ func (m *Model) fetchColumnStats() tea.Cmd {
 	stats := formatColumnStats(row, numeric)
 	m.statsMsg = fmt.Sprintf("%s: %s  (page only)", colName, stats)
 	return nil
+}
+
+// fetchTotalRows runs an async COUNT(*) on the current table and returns a
+// countMsg. Returns nil if no table can be resolved.
+func (m *Model) fetchTotalRows() tea.Cmd {
+	if m.connection == nil || !m.canFilter() {
+		return nil
+	}
+	table := parseSimpleSelectTable(m.baseQuery)
+	if table == "" {
+		return nil
+	}
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s", table)
+	if len(m.filters) > 0 {
+		countQuery += " WHERE " + strings.Join(m.filters, " AND ")
+	}
+	conn := m.connection
+	return func() tea.Msg {
+		result, err := conn.DB().Execute(countQuery)
+		if err != nil || len(result.Rows) == 0 {
+			return countMsg{total: 0, err: fmt.Errorf("count failed")}
+		}
+		n, _ := strconv.Atoi(result.Rows[0][0])
+		return countMsg{total: n}
+	}
 }
 
 // computeClientStats iterates the visible rows for a column and returns a
@@ -2228,6 +2306,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.connection != nil && m.historyStore != nil {
 			m.historyStore.Record(m.connection.Config().Name, msg.query, msg.err == nil)
 		}
+		var cmd tea.Cmd
 		if msg.err != nil {
 			m.results.SetError(msg.err.Error())
 			if m.restoreCursor {
@@ -2256,15 +2335,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.page = msg.page
 
 			// Build pagination status message
-			pgInfo := ""
-			if msg.page > 0 || hasNext {
-				offset := msg.page * msg.pageSize
-				pgInfo = fmt.Sprintf("page %d (rows %d-%d)", msg.page+1, offset+1, offset+len(rows))
-				if hasNext {
-					pgInfo += " · more available"
-				}
+			m.pageMsg = m.buildPageMsg(msg.page, msg.pageSize, len(rows), hasNext)
+
+			// Fire a background COUNT(*) on the first page of a table browse.
+			if msg.page == 0 {
+				cmd = m.fetchTotalRows()
 			}
-			m.pageMsg = pgInfo
 
 			// Enable inline editing and foreign-key navigation for simple table SELECTs.
 			m.detectResultMetadata(msg.query)
@@ -2279,7 +2355,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focus = FocusResults
 			m.applyFocus()
 		}
-		return m, nil
+		return m, cmd
 
 	case saveResultMsg:
 		if msg.err != nil {
@@ -2430,6 +2506,20 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case statsMsg:
 		m.statsMsg = fmt.Sprintf("%s: %s", msg.column, msg.stats)
+		return m, nil
+
+	case countMsg:
+		if msg.err == nil {
+			m.totalRows = msg.total
+			m.totalRowsSet = true
+			// Rebuild pageMsg now that the total is known.
+			rowCount := m.results.NumRows()
+			hasNext := rowCount > m.pageSize
+			if hasNext {
+				rowCount = m.pageSize
+			}
+			m.pageMsg = m.buildPageMsg(m.page, m.pageSize, rowCount, hasNext)
+		}
 		return m, nil
 
 	case exportDoneMsg:
@@ -5096,6 +5186,8 @@ func (m Model) statusMessage() string {
 		return lipgloss.NewStyle().Foreground(colorPrimary).Render(m.searchMsg)
 	case m.results.HasDirtyCells():
 		return mutedStyle.Render(fmt.Sprintf("%d unsaved", m.results.DirtyCellCount()))
+	case m.totalRowsSet && m.pageMsg != "":
+		return mutedStyle.Render(m.pageMsg)
 	case m.results.HasResult() && m.results.Message() != "":
 		return successStyle.Render(m.results.Message())
 	case m.pageMsg != "":
