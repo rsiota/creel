@@ -148,7 +148,7 @@ func (h HistoryPanel) View() string {
 		Width(h.width - 2).
 		Height(h.height - 2).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
+		BorderForeground(colorPrimary).
 		Render(content)
 
 	return panel

@@ -110,6 +110,15 @@ func helpSections() []helpSection {
 			},
 		},
 		{
+			title: "History Panel",
+			bindings: []helpBinding{
+				{"j/k", "move"},
+				{"enter", "load query into editor"},
+				{"D", "clear history"},
+				{"esc", "close"},
+			},
+		},
+		{
 			title: "Table Designer",
 			bindings: []helpBinding{
 				{"h/j/k/l", "move cell"},

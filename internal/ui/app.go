@@ -252,6 +252,9 @@ type Model struct {
 	schemaConfirmTable  string
 	schemaConfirmAction db.SchemaAction
 
+	// Clear-history confirmation dialog.
+	clearHistoryConfirm bool
+
 	config       *config.Config
 	connection   *db.Connection
 	historyStore *history.Store
@@ -3106,7 +3109,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Discard / truncate / delete-rows confirmation dialogs are modal — intercept all keys.
-	if m.discardConfirm || m.truncateConfirm != "" || m.deleteRowsConfirmTable != "" {
+	if m.discardConfirm || m.truncateConfirm != "" || m.deleteRowsConfirmTable != "" || m.clearHistoryConfirm {
 		switch msg.String() {
 		case "y", "Y", "enter":
 			if m.discardConfirm {
@@ -3123,6 +3126,15 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.deleteRowsConfirmCount = 0
 				return m, m.execDeleteRows(table, query, count)
 			}
+			if m.clearHistoryConfirm {
+				m.clearHistoryConfirm = false
+				if m.connection != nil && m.historyStore != nil {
+					m.historyStore.Clear(m.connection.Config().Name)
+				}
+				m.history.SetEntries(nil)
+				m.history.Toggle()
+				return m, nil
+			}
 			table := m.truncateConfirm
 			m.truncateConfirm = ""
 			return m, m.execTruncate(table)
@@ -3132,6 +3144,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.deleteRowsConfirmTable = ""
 			m.deleteRowsConfirmQuery = ""
 			m.deleteRowsConfirmCount = 0
+			m.clearHistoryConfirm = false
 			return m, nil
 		}
 		return m, nil
@@ -3282,6 +3295,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "esc":
+		// Close history panel if visible.
+		if m.history.IsVisible() {
+			m.history.Toggle()
+			return m, nil
+		}
 		// If in visual mode, let the focused panel handle esc.
 		if m.results.IsVisualMode() {
 			break
@@ -3338,6 +3356,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.editor.Focus()
 		case "esc":
 			m.history.Toggle()
+			return m, nil
+		case "D":
+			m.clearHistoryConfirm = true
 			return m, nil
 		}
 	}
@@ -4755,13 +4776,13 @@ func (m Model) viewWorkspace() string {
 
 	// Overlay history panel if visible
 	if m.history.IsVisible() {
-		m.history.SetSize(m.width/2, m.height-4)
+		m.history.SetSize(m.width/2, m.height/2)
 		histPanel := m.history.View()
-		view = lipgloss.Place(m.width, m.height-1,
-			lipgloss.Center, lipgloss.Center,
-			histPanel,
-			lipgloss.WithWhitespaceChars(" "),
-		)
+		panelW := lipgloss.Width(histPanel)
+		panelH := lipgloss.Height(histPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, histPanel, panelX, panelY)
 	}
 
 	// Overlay database picker if visible
@@ -4871,6 +4892,16 @@ func (m Model) viewWorkspace() string {
 	if m.schemaConfirmSQL != "" {
 		prompt := fmt.Sprintf("Drop column on %s?\nThis permanently removes the column and its data.", m.schemaConfirmTable)
 		dialog := renderSQLConfirmDialog(prompt, m.schemaConfirmSQL)
+		dlgW := lipgloss.Width(dialog)
+		dlgH := lipgloss.Height(dialog)
+		dlgX := (m.width - dlgW) / 2
+		dlgY := (m.height - 1 - dlgH) / 2
+		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
+	// Overlay clear-history confirmation dialog if visible.
+	if m.clearHistoryConfirm {
+		dialog := renderConfirmDialog("Clear all query history?\nThis cannot be undone.")
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)
 		dlgX := (m.width - dlgW) / 2
