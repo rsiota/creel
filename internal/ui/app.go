@@ -4690,18 +4690,15 @@ func (m Model) View() string {
 }
 
 func (m Model) viewConnections() string {
-	footer := lipgloss.NewStyle().Foreground(colorLabel).Render("?") + mutedStyle.Render(" help  ·  ") +
-		lipgloss.NewStyle().Foreground(colorLabel).Render("esc") + mutedStyle.Render(" quit")
-
 	popupW, popupH := popupDim()
 	borderOverhead := 2
-	padH, padW := 2, 4 // Padding(1, 2) → 2 rows, 4 cols
+	padH, padW := 0, 2 // Padding(0, 1) → 0 rows, 2 cols
 
 	panelW := popupW - borderOverhead
 	panelH := popupH - borderOverhead
 
-	connTitle := titleStyle.Render("Connections")
-	listH := panelH - 3 - padH // title + scroll info + footer + padding
+	prompt := m.connList.Prompt()
+	listH := panelH - 2 - padH // prompt + scroll info
 	m.connList.SetSize(panelW-padW, listH)
 
 	// Pin the list to a fixed height so ScrollInfo sits at the bottom.
@@ -4714,13 +4711,12 @@ func (m Model) viewConnections() string {
 		Height(panelH).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
-		Padding(1, 2).
+		Padding(0, 1).
 		Render(
 			lipgloss.JoinVertical(lipgloss.Left,
-				connTitle,
+				prompt,
 				listStyled,
 				m.connList.ScrollInfo(),
-				footer,
 			),
 		)
 

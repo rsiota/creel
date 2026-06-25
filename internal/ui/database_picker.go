@@ -119,7 +119,7 @@ func (p *DatabasePicker) CursorDown() {
 }
 
 func (p *DatabasePicker) adjustScroll() {
-	maxVisible := p.height - 5
+	maxVisible := p.height - 1
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -155,10 +155,9 @@ func (p DatabasePicker) View() string {
 
 	items := p.filteredDatabases()
 
-	title := titleStyle.Render("Select Database")
 	prompt := renderPalettePrompt(p.filter)
 
-	maxVisible := p.height - 6 // border(2) + title(1) + prompt(1) + hint(1) + padding(2)
+	maxVisible := p.height - 2 // border(2) + prompt(1) - 1
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -172,10 +171,14 @@ func (p DatabasePicker) View() string {
 	for i := p.scrollRow; i < end; i++ {
 		item := items[i]
 		name := item.name
-		if p.filter != "" && i != p.cursor {
+		if p.filter != "" {
 			name = highlightMatches(item.name, item.matchIdx)
 		}
-		rows = append(rows, renderPaletteRow(name, i == p.cursor))
+		if i == p.cursor {
+			rows = append(rows, lipgloss.NewStyle().Bold(true).Padding(0, 1).Render(name))
+		} else {
+			rows = append(rows, normalStyle.Render(name))
+		}
 	}
 
 	if len(items) == 0 {
@@ -191,13 +194,9 @@ func (p DatabasePicker) View() string {
 		Height(maxVisible).
 		Render(strings.Join(rows, "\n"))
 
-	hint := mutedStyle.Render("enter select  D drop  N new")
-
 	content := lipgloss.JoinVertical(lipgloss.Left,
-		title,
 		prompt,
 		listStyled,
-		hint,
 	)
 
 	panel := lipgloss.NewStyle().
@@ -205,7 +204,7 @@ func (p DatabasePicker) View() string {
 		Height(p.height - 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
-		Padding(1, 2).
+		Padding(0, 1).
 		Render(content)
 
 	return panel

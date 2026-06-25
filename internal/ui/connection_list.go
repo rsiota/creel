@@ -151,7 +151,8 @@ func (c *ConnectionList) ensureVisible() {
 }
 
 func (c ConnectionList) maxVisibleItems() int {
-	// Reserve: title (1) + blank (1) + bottom info (1) = 3
+	// Each entry renders as 2 lines (name + detail). Reserve margin for
+	// the bottom scroll-info line.
 	max := c.height - 3
 	if max < 1 {
 		max = 1
@@ -256,14 +257,7 @@ func (c ConnectionList) View() string {
 		item := items[i]
 		isCursor := i == c.cursor
 
-		// Name line with cursor indicator and driver badge
-		indicator := " "
-		nameStyle := lipgloss.NewStyle().Foreground(colorFg)
-		if isCursor {
-			indicator = "▶"
-			nameStyle = lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
-		}
-
+		// Name line with driver badge
 		nameText := item.name
 		if c.filtering {
 			nameText = highlightMatches(item.name, item.matchIdx)
@@ -273,11 +267,14 @@ func (c ConnectionList) View() string {
 			fmt.Sprintf("[%s]", strings.ToUpper(item.driver)),
 		)
 
-		b.WriteString(fmt.Sprintf("%s %s %s\n",
-			lipgloss.NewStyle().Foreground(colorPrimary).Render(indicator),
-			nameStyle.Render(nameText),
-			driverBadge,
-		))
+		nameLine := nameText + "  " + driverBadge
+		if isCursor {
+			nameLine = lipgloss.NewStyle().Bold(true).Padding(0, 1).Render(nameLine)
+		} else {
+			nameLine = normalStyle.Render(nameLine)
+		}
+		b.WriteString(nameLine)
+		b.WriteString("\n")
 
 		// Detail line
 		detailStyle := lipgloss.NewStyle().Foreground(colorMuted)
@@ -292,12 +289,14 @@ func (c ConnectionList) View() string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// ScrollInfo returns the bottom-bar text (filter prompt or scroll position).
+// Prompt returns the filter prompt line shown at the top of the panel.
+func (c ConnectionList) Prompt() string {
+	return renderPalettePrompt(c.filter)
+}
+
+// ScrollInfo returns the bottom-bar text (scroll position).
 func (c ConnectionList) ScrollInfo() string {
 	items := c.visibleItems()
-	if c.filtering {
-		return renderPalettePrompt(c.filter)
-	}
 	if len(items) == 0 {
 		return ""
 	}
