@@ -268,16 +268,16 @@ func (p FilterPicker) View() string {
 	for i := p.scrollRow; i < end; i++ {
 		item := items[i]
 		name := item.value
-		if p.filter != "" {
+		if p.filter != "" && i != p.cursor {
 			name = highlightMatches(item.value, item.matchIdx)
 		}
 
-		check := " "
+		tick := ""
 		if item.selected {
-			check = lipgloss.NewStyle().Foreground(colorSuccess).Render("✓")
+			tick = lipgloss.NewStyle().Foreground(colorFg).Render("●")
 		}
 
-		rows = append(rows, renderPaletteRow(check+" "+name, i == p.cursor))
+		rows = append(rows, renderPaletteRowWithTick(name, tick, i == p.cursor, p.width-6))
 	}
 
 	if len(items) == 0 {

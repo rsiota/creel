@@ -181,12 +181,12 @@ func (p ExportPicker) View() string {
 	for i := p.scrollRow; i < end; i++ {
 		item := p.items[i]
 
-		check := "□"
+		tick := ""
 		if item.marked {
-			check = lipgloss.NewStyle().Foreground(colorSuccess).Render("✓")
+			tick = lipgloss.NewStyle().Foreground(colorFg).Render("●")
 		}
 
-		rows = append(rows, renderPaletteRow(check+"  "+item.name, i == p.cursor))
+		rows = append(rows, renderPaletteRowWithTick(item.name, tick, i == p.cursor, p.width-6))
 	}
 
 	if len(p.items) == 0 {

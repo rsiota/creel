@@ -172,7 +172,7 @@ func (p DatabasePicker) View() string {
 	for i := p.scrollRow; i < end; i++ {
 		item := items[i]
 		name := item.name
-		if p.filter != "" {
+		if p.filter != "" && i != p.cursor {
 			name = highlightMatches(item.name, item.matchIdx)
 		}
 		rows = append(rows, renderPaletteRow(name, i == p.cursor))
