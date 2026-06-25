@@ -186,35 +186,25 @@ func (p ExportPicker) View() string {
 			check = lipgloss.NewStyle().Foreground(colorSuccess).Render("✓")
 		}
 
-		marker := " "
-		if i == p.cursor {
-			marker = lipgloss.NewStyle().Foreground(colorPrimary).Render("▶")
-		}
-
-		line := fmt.Sprintf("%s %s  %s", marker, check, item.name)
-		if i == p.cursor {
-			line = lipgloss.NewStyle().Bold(true).Render(line)
-		} else {
-			line = normalStyle.Render(line)
-		}
-		rows = append(rows, line)
+		rows = append(rows, renderPaletteRow(check+"  "+item.name, i == p.cursor))
 	}
 
 	if len(p.items) == 0 {
-		rows = append(rows, mutedStyle.Render("  (no tables)"))
+		rows = append(rows, mutedStyle.Render("  no tables"))
+	}
+
+	// Pad to fixed height.
+	for len(rows) < maxVisible {
+		rows = append(rows, "")
 	}
 
 	listStyled := lipgloss.NewStyle().
 		Height(maxVisible).
 		Render(strings.Join(rows, "\n"))
 
-	scrollInfo := ""
-	if len(p.items) > maxVisible {
-		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", p.scrollRow+1, end, len(p.items)))
-	}
 	summary := mutedStyle.Render(fmt.Sprintf("%d of %d selected", p.MarkedCount(), len(p.items)))
 
-	footer := " " + formatLine + "  " + scrollInfo + "  " + summary
+	footer := " " + formatLine + "  " + summary
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,

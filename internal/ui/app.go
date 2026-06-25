@@ -4933,9 +4933,7 @@ func (m Model) viewWorkspace() string {
 
 	scrollInfo := ""
 	if m.sidebarFiltering {
-		prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+m.sidebarFilter) +
-			lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
-		scrollInfo = prompt
+		scrollInfo = renderPalettePrompt(m.sidebarFilter)
 	} else if len(items) > maxVisible {
 		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", start+1, end, len(items)))
 	}

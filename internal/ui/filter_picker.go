@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
@@ -238,12 +237,8 @@ func (p FilterPicker) View() string {
 		return ""
 	}
 
-	title := titleStyle.Render(fmt.Sprintf("Filter: %s", p.column))
-
 	if p.loading {
 		content := lipgloss.JoinVertical(lipgloss.Left,
-			title,
-			"",
 			mutedStyle.Render("  Loading values..."),
 		)
 		return lipgloss.NewStyle().
@@ -251,13 +246,15 @@ func (p FilterPicker) View() string {
 			Height(p.height-2).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorPrimary).
-			Padding(1, 2).
+			Padding(0, 1).
 			Render(content)
 	}
 
+	prompt := renderPalettePrompt(p.filter)
+
 	items := p.filteredValues()
 
-	maxVisible := p.height - 6
+	maxVisible := p.height - 3 // border(2) + prompt(1)
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -280,53 +277,27 @@ func (p FilterPicker) View() string {
 			check = lipgloss.NewStyle().Foreground(colorSuccess).Render("✓")
 		}
 
-		marker := " "
-		if i == p.cursor {
-			marker = lipgloss.NewStyle().Foreground(colorPrimary).Render("▶")
-		}
-
-		line := fmt.Sprintf("%s %s  %s", marker, check, name)
-		if i == p.cursor {
-			line = lipgloss.NewStyle().Bold(true).Render(line)
-		} else {
-			line = normalStyle.Render(line)
-		}
-		rows = append(rows, line)
+		rows = append(rows, renderPaletteRow(check+" "+name, i == p.cursor))
 	}
 
 	if len(items) == 0 {
-		rows = append(rows, mutedStyle.Render("  (no matches)"))
+		rows = append(rows, mutedStyle.Render("  no matches"))
 	}
 
-	listStyled := lipgloss.NewStyle().
-		Height(maxVisible).
-		Render(strings.Join(rows, "\n"))
-
-	filterLine := lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+p.filter) +
-		lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
-
-	selectedCount := len(p.SelectedValues())
-	scrollInfo := ""
-	if len(items) > maxVisible {
-		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", p.scrollRow+1, end, len(items)))
+	// Pad to fixed height.
+	for len(rows) < maxVisible {
+		rows = append(rows, "")
 	}
-	summary := mutedStyle.Render(fmt.Sprintf("%d selected", selectedCount))
 
-	footer := filterLine + "  " + scrollInfo + "  " + summary
-
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		title,
-		listStyled,
-		footer,
-	)
+	body := prompt + "\n" + strings.Join(rows, "\n")
 
 	panel := lipgloss.NewStyle().
 		Width(p.width - 2).
 		Height(p.height - 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
-		Padding(1, 2).
-		Render(content)
+		Padding(0, 1).
+		Render(body)
 
 	return panel
 }

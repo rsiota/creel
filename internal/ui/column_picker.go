@@ -223,10 +223,11 @@ func (p ColumnPicker) View() string {
 	}
 
 	title := titleStyle.Render("Column Visibility")
+	prompt := renderPalettePrompt(p.filter)
 
 	items := p.filteredItems()
 
-	maxVisible := p.height - 6
+	maxVisible := p.height - 7 // border(2) + title(1) + prompt(1) + hint(1) + padding(2)
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -249,46 +250,30 @@ func (p ColumnPicker) View() string {
 			check = lipgloss.NewStyle().Foreground(colorSuccess).Render("✓")
 		}
 
-		marker := " "
-		if i == p.cursor {
-			marker = lipgloss.NewStyle().Foreground(colorPrimary).Render("▶")
-		}
-
-		line := fmt.Sprintf("%s %s  %s", marker, check, name)
-		if i == p.cursor {
-			line = lipgloss.NewStyle().Bold(true).Render(line)
-		} else {
-			line = normalStyle.Render(line)
-		}
-		rows = append(rows, line)
+		rows = append(rows, renderPaletteRow(check+"  "+name, i == p.cursor))
 	}
 
 	if len(items) == 0 {
-		rows = append(rows, mutedStyle.Render("  (no matches)"))
+		rows = append(rows, mutedStyle.Render("  no matches"))
+	}
+
+	// Pad to fixed height.
+	for len(rows) < maxVisible {
+		rows = append(rows, "")
 	}
 
 	listStyled := lipgloss.NewStyle().
 		Height(maxVisible).
 		Render(strings.Join(rows, "\n"))
 
-	filterLine := lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+p.filter) +
-		lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
-
-	scrollInfo := ""
-	if len(items) > maxVisible {
-		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", p.scrollRow+1, end, len(items)))
-	}
 	summary := mutedStyle.Render(fmt.Sprintf("%d shown", p.VisibleCount()))
-
-	footer := filterLine + "  " + scrollInfo + "  " + summary
-
 	hint := mutedStyle.Render("space toggle  ctrl+a all  ctrl+n none  enter apply  esc cancel")
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,
+		prompt,
 		listStyled,
-		footer,
-		hint,
+		summary+"  "+hint,
 	)
 
 	panel := lipgloss.NewStyle().

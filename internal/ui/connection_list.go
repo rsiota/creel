@@ -296,9 +296,7 @@ func (c ConnectionList) View() string {
 func (c ConnectionList) ScrollInfo() string {
 	items := c.visibleItems()
 	if c.filtering {
-		prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+c.filter) +
-			lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
-		return prompt
+		return renderPalettePrompt(c.filter)
 	}
 	if len(items) == 0 {
 		return ""

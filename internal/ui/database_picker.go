@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
@@ -157,8 +156,9 @@ func (p DatabasePicker) View() string {
 	items := p.filteredDatabases()
 
 	title := titleStyle.Render("Select Database")
+	prompt := renderPalettePrompt(p.filter)
 
-	maxVisible := p.height - 6 // border(2) + title(1) + footer(1) + padding(2)
+	maxVisible := p.height - 6 // border(2) + title(1) + prompt(1) + hint(1) + padding(2)
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -175,47 +175,29 @@ func (p DatabasePicker) View() string {
 		if p.filter != "" {
 			name = highlightMatches(item.name, item.matchIdx)
 		}
-
-		marker := " "
-		if i == p.cursor {
-			marker = lipgloss.NewStyle().Foreground(colorPrimary).Render("▶")
-		}
-
-		line := fmt.Sprintf("%s  %s", marker, name)
-		if i == p.cursor {
-			line = lipgloss.NewStyle().Bold(true).Render(line)
-		} else {
-			line = normalStyle.Render(line)
-		}
-		rows = append(rows, line)
+		rows = append(rows, renderPaletteRow(name, i == p.cursor))
 	}
 
 	if len(items) == 0 {
-		rows = append(rows, mutedStyle.Render("  (no matches)"))
+		rows = append(rows, mutedStyle.Render("  no matches"))
 	}
 
-	// Pin list to a fixed height so the filter line sits at the bottom,
-	// matching the sidebar layout.
+	// Pad to fixed height.
+	for len(rows) < maxVisible {
+		rows = append(rows, "")
+	}
+
 	listStyled := lipgloss.NewStyle().
 		Height(maxVisible).
 		Render(strings.Join(rows, "\n"))
 
-	filterLine := lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+p.filter) +
-		lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
-
-	scrollInfo := ""
-	if len(items) > maxVisible {
-		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", p.scrollRow+1, end, len(items)))
-	}
-
-	hint := mutedStyle.Render("D drop  N new")
-
-	footer := filterLine + "  " + scrollInfo + "  " + hint
+	hint := mutedStyle.Render("enter select  D drop  N new")
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,
+		prompt,
 		listStyled,
-		footer,
+		hint,
 	)
 
 	panel := lipgloss.NewStyle().
