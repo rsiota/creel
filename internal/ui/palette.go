@@ -29,7 +29,7 @@ type palette struct {
 }
 
 // maxPaletteItems is the maximum number of results shown at once.
-const maxPaletteItems = 9
+const maxPaletteItems = 16
 
 // Open shows the palette, building the item list from the keybinding registry.
 func (p *palette) Open() {
@@ -177,7 +177,7 @@ func (p palette) Update(msg tea.KeyMsg) (palette, tea.Cmd) {
 }
 
 // View renders the palette panel (without background — the caller overlays it).
-func (p palette) View(width int) string {
+func (p palette) View(width, height int) string {
 	if !p.visible {
 		return ""
 	}
@@ -222,18 +222,19 @@ func (p palette) View(width int) string {
 	if len(lines) == 0 {
 		lines = append(lines, mutedStyle.Render("  no matches"))
 	}
+	// Pad to a fixed row count so the panel height never changes.
+	for len(lines) < maxPaletteItems {
+		lines = append(lines, "")
+	}
 
 	prompt := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("❯ ") +
 		p.input + lipgloss.NewStyle().Foreground(colorMuted).Render("▏")
 
 	body := prompt + "\n" + strings.Join(lines, "\n")
 
-	maxW := width - 6
-	if maxW < 50 {
-		maxW = 50
-	}
 	panel := lipgloss.NewStyle().
-		Width(maxW).
+		Width(width-2).
+		Height(height-2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).

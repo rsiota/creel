@@ -5202,14 +5202,12 @@ func (m Model) viewWorkspace() string {
 
 	// Overlay command palette if visible
 	if m.palette.IsVisible() {
-		palPanel := m.palette.View(m.width)
+		pw, ph := popupDim()
+		palPanel := m.palette.View(pw, ph)
 		panelW := lipgloss.Width(palPanel)
 		panelH := lipgloss.Height(palPanel)
 		panelX := (m.width - panelW) / 2
-		panelY := 1
-		if panelY+panelH > m.height-1 {
-			panelY = max(0, m.height-1-panelH)
-		}
+		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, palPanel, panelX, panelY)
 	}
 

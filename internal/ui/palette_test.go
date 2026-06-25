@@ -157,7 +157,7 @@ func TestPaletteEnterNonExecutable(t *testing.T) {
 func TestPaletteView(t *testing.T) {
 	var p palette
 	p.Open()
-	out := p.View(120)
+	out := p.View(71, 19)
 	if out == "" {
 		t.Fatal("palette view should not be empty when visible")
 	}
@@ -166,7 +166,7 @@ func TestPaletteView(t *testing.T) {
 	}
 
 	p.Hide()
-	if p.View(120) != "" {
+	if p.View(71, 19) != "" {
 		t.Fatal("palette view should be empty when hidden")
 	}
 }
