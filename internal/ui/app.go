@@ -217,6 +217,7 @@ type Model struct {
 	tableRenameForm TableRenameForm
 	tableDesigner   TableDesigner
 	schemaEditor    SchemaEditor
+	palette         palette
 	sidebarCursor int
 	expanded     map[string][]db.Column
 	columnCache  map[string][]db.Column
@@ -3256,10 +3257,25 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Command palette is modal — intercept all keys when visible.
+	if m.palette.visible {
+		var cmd tea.Cmd
+		m.palette, cmd = m.palette.Update(msg)
+		return m, cmd
+	}
+
 	// Global workspace keys
 	switch msg.String() {
 	case "?":
 		m.help.Show()
+		return m, nil
+	case "ctrl+p":
+		// Command palette — but not while the editor is in insert mode,
+		// where ctrl+p navigates the completion popup.
+		if m.focus == FocusEditor && m.editor.VimMode() == VimInsert {
+			break
+		}
+		m.palette.Open()
 		return m, nil
 	case "q":
 		// Quit — but only when no text-input / editing context is active,
@@ -5182,6 +5198,19 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, importPanel, panelX, panelY)
+	}
+
+	// Overlay command palette if visible
+	if m.palette.IsVisible() {
+		palPanel := m.palette.View(m.width)
+		panelW := lipgloss.Width(palPanel)
+		panelH := lipgloss.Height(palPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := 1
+		if panelY+panelH > m.height-1 {
+			panelY = max(0, m.height-1-panelH)
+		}
+		view = placeOverlay(view, palPanel, panelX, panelY)
 	}
 
 	// Overlay help panel if visible

@@ -48,6 +48,7 @@ func registry() []Section {
 				{"ctrl+h/j/k/l", []string{"ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"}, "move focus"},
 				{"tab / shift+tab", []string{"tab", "shift+tab"}, "cycle focus"},
 				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "next / prev page"},
+				{"ctrl+p", []string{"ctrl+p"}, "command palette"},
 				{"?", []string{"?"}, "toggle this help"},
 				{"q / ctrl+q / ctrl+c", []string{"q", "ctrl+q", "ctrl+c"}, "quit (not while editing)"},
 			},

@@ -37,6 +37,8 @@ internal/ui/              — All Bubble Tea UI components
   results_table.go        — Query results table (custom renderer)
   help.go                 — Help overlay panel (toggled with `?`); renders from `registry()`
   registry.go             — Single source of truth for keybinding help (Binding/Section types)
+  palette.go              — Fuzzy command palette overlay (Ctrl+P); searches registry, replays keys
+  keymsg.go               — synthesizeKeyMsg: maps dispatch token strings → tea.KeyMsg for replay
   history_panel.go        — Query history overlay panel
   connection_form_test.go — Tests for form validation
   table_scroll_test.go    — Tests for sidebar table/schema scrolling
@@ -48,7 +50,8 @@ internal/ui/              — All Bubble Tea UI components
 - **Pure Go SQLite** (`modernc.org/sqlite`) — no CGO, simpler cross-compilation
 - **lipgloss v1.1.0** — colors must use `lipgloss.Color()` not raw strings
 - **Bubbles v1.0.0** — list delegate `Render` signature is `Render(w io.Writer, m Model, index int, item Item)`
-- **Keybinding registry** (`internal/ui/registry.go`) is the single source of truth for the help overlay: each `Binding` carries a `Display` string + `Tokens` (the dispatch tokens) + `Desc`. `help.go` only renders it. The `TestKeybindingsMatchDispatch` test parses the dispatch (`case` literals + `key.WithKeys` args) via `go/parser` and asserts every documented token is implemented, preventing help/dispatch drift.
+- **Keybinding registry** (`internal/ui/registry.go`) is the single source of truth for the help overlay AND the command palette: each `Binding` carries a `Display` string + `Tokens` (the dispatch tokens) + `Desc`. `help.go` only renders it. The `TestKeybindingsMatchDispatch` test parses the dispatch (`case` literals + `key.WithKeys` args) via `go/parser` and asserts every documented token is implemented, preventing help/dispatch drift.
+- **Command palette** (`internal/ui/palette.go`, Ctrl+P) fuzzy-searches the registry and replays single-key bindings via synthetic `tea.KeyMsg` (see `keymsg.go`), avoiding action closures or a dispatch refactor. Multi-action bundles and double-press chords are discoverable but not auto-executable.
 
 ## Vertical Slices Progress
 - [x] Slice 1: Project scaffold + DB abstraction + CLI mode
