@@ -35,7 +35,8 @@ internal/ui/              — All Bubble Tea UI components
   connection_form.go      — Add/edit connection form
   query_editor.go         — SQL editor with vim mode (bubbles/textarea)
   results_table.go        — Query results table (custom renderer)
-  help.go                 — Help overlay panel (toggled with `?`)
+  help.go                 — Help overlay panel (toggled with `?`); renders from `registry()`
+  registry.go             — Single source of truth for keybinding help (Binding/Section types)
   history_panel.go        — Query history overlay panel
   connection_form_test.go — Tests for form validation
   table_scroll_test.go    — Tests for sidebar table/schema scrolling
@@ -47,6 +48,7 @@ internal/ui/              — All Bubble Tea UI components
 - **Pure Go SQLite** (`modernc.org/sqlite`) — no CGO, simpler cross-compilation
 - **lipgloss v1.1.0** — colors must use `lipgloss.Color()` not raw strings
 - **Bubbles v1.0.0** — list delegate `Render` signature is `Render(w io.Writer, m Model, index int, item Item)`
+- **Keybinding registry** (`internal/ui/registry.go`) is the single source of truth for the help overlay: each `Binding` carries a `Display` string + `Tokens` (the dispatch tokens) + `Desc`. `help.go` only renders it. The `TestKeybindingsMatchDispatch` test parses the dispatch (`case` literals + `key.WithKeys` args) via `go/parser` and asserts every documented token is implemented, preventing help/dispatch drift.
 
 ## Vertical Slices Progress
 - [x] Slice 1: Project scaffold + DB abstraction + CLI mode
