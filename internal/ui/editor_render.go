@@ -85,7 +85,6 @@ func (e QueryEditor) highlightedView() string {
 			plain := dl.segment
 			plainWidth := uniseg.StringWidth(plain)
 
-			contentWidth := plainWidth
 			if dl.hasCursor {
 				segRunes := []rune(plain)
 				absCol := dl.cursorCol
@@ -93,38 +92,27 @@ func (e QueryEditor) highlightedView() string {
 					absCol = len(segRunes)
 				}
 
-				before := highlightSubstring(plain, 0, absCol)
+				s.WriteString(highlightSubstring(plain, 0, absCol))
 
-				if e.vimMode == VimInsert {
-					after := highlightSubstring(plain, absCol, len(segRunes))
-					bar := lipgloss.NewStyle().Foreground(colorFg).Render("▏")
-					s.WriteString(before)
-					s.WriteString(bar)
-					s.WriteString(after)
-					contentWidth++
-				} else {
-					// Normal mode: the cursor renders the char at absCol in
-					// reverse, so "after" must start at absCol+1 to avoid
-					// duplicating it.
-					if absCol < len(segRunes) {
-						ta.Cursor.SetChar(string(segRunes[absCol]))
-						after := highlightSubstring(plain, absCol+1, len(segRunes))
-						ta.Cursor.TextStyle = lineStyle
-						s.WriteString(before)
-						s.WriteString(ta.Cursor.View())
-						s.WriteString(after)
-					} else {
-						ta.Cursor.SetChar(" ")
-						ta.Cursor.TextStyle = lineStyle
-						s.WriteString(before)
-						s.WriteString(ta.Cursor.View())
-					}
+				cursorChar := " "
+				if absCol < len(segRunes) {
+					cursorChar = string(segRunes[absCol])
 				}
+
+				cursorStyle := lipgloss.NewStyle()
+				if e.vimMode == VimInsert {
+					cursorStyle = cursorStyle.Underline(true).Foreground(colorFg)
+				} else {
+					cursorStyle = cursorStyle.Reverse(true)
+				}
+				s.WriteString(cursorStyle.Render(cursorChar))
+
+				s.WriteString(highlightSubstring(plain, absCol+1, len(segRunes)))
 			} else {
 				s.WriteString(highlightSegment(plain))
 			}
 
-			padding := ta.Width() - contentWidth
+			padding := ta.Width() - plainWidth
 			if padding > 0 {
 				s.WriteString(lineStyle.Render(strings.Repeat(" ", padding)))
 			}
@@ -150,11 +138,13 @@ func (e QueryEditor) highlightedPlaceholderView(style *textarea.Style) string {
 		s.WriteString(lineStyle.Render(prompt))
 
 		if i == 0 {
-			cursor := "█"
+			cursorStyle := lipgloss.NewStyle()
 			if e.vimMode == VimInsert {
-				cursor = "▏"
+				cursorStyle = cursorStyle.Underline(true).Foreground(colorFg)
+			} else {
+				cursorStyle = cursorStyle.Reverse(true)
 			}
-			s.WriteString(lipgloss.NewStyle().Foreground(colorFg).Render(cursor))
+			s.WriteString(cursorStyle.Render(" "))
 			s.WriteString(lineStyle.Render(strings.Repeat(" ", e.textarea.Width()-1)))
 		} else {
 			s.WriteString(lineStyle.Render(strings.Repeat(" ", e.textarea.Width())))

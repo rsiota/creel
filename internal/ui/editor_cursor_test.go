@@ -5,8 +5,15 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
+
+func init() {
+	// Force ANSI output so styling is present in test-rendered views.
+	lipgloss.SetColorProfile(termenv.ANSI)
+}
 
 // runeKey builds a KeyRunes message for driving vim normal/insert mode.
 func runeKey(r rune) tea.KeyMsg {
@@ -36,30 +43,42 @@ func TestEditorEmptyShowsCursor(t *testing.T) {
 	e.SetSize(40, 5)
 	e.Focus()
 
+	// Normal mode: reverse-video cursor on empty buffer.
 	view := e.View()
-	if !strings.Contains(view, "█") {
-		t.Fatalf("empty editor missing normal-mode block cursor")
+	if !strings.Contains(view, "\x1b[7m") {
+		t.Fatalf("empty editor missing normal-mode reverse cursor")
 	}
 
-	// Enter insert mode; cursor should switch to a bar.
+	// Enter insert mode: cursor should switch to underline.
 	e, _ = e.Update(runeKey('i'))
 	view = e.View()
-	if !strings.Contains(view, "▏") {
-		t.Fatalf("empty editor missing insert-mode bar cursor")
+	if !strings.Contains(view, ";4m") {
+		t.Fatalf("empty editor missing insert-mode underline cursor")
 	}
 }
 
-func TestEditorInsertModeBarCursor(t *testing.T) {
+func TestEditorInsertModeUnderlineCursor(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(40, 5)
 	e.SetValue("select")
 	e.Focus()
 
-	// Enter insert mode; the editor should render a bar cursor glyph.
 	e, _ = e.Update(runeKey('i'))
 
-	if !strings.Contains(e.View(), "▏") {
-		t.Fatalf("insert mode missing bar cursor")
+	if !strings.Contains(e.View(), ";4m") {
+		t.Fatalf("insert mode missing underline cursor")
+	}
+}
+
+func TestEditorNormalModeReverseCursor(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(40, 5)
+	e.SetValue("select")
+	e.Focus()
+
+	// Default is normal mode: reverse-video on the char under cursor.
+	if !strings.Contains(e.View(), "\x1b[7m") {
+		t.Fatalf("normal mode missing reverse cursor")
 	}
 }
 
@@ -70,10 +89,10 @@ func TestEditorOpenLineShowsCursor(t *testing.T) {
 	e.Focus()
 
 	// 'o' opens a new line below and enters insert mode. The new line is
-	// empty, so the cursor must still be visible (as a bar).
+	// empty, so the cursor (underline on space) must still be visible.
 	e, _ = e.Update(runeKey('o'))
 
-	if !strings.Contains(e.View(), "▏") {
+	if !strings.Contains(e.View(), ";4m") {
 		t.Fatalf("cursor invisible after 'o' on empty line")
 	}
 }
