@@ -10,11 +10,10 @@ import (
 )
 
 type editorDisplayLine struct {
-	segment     string
-	cursorLine  bool
-	cursorCol   int
-	hasCursor   bool
-	atEndOfLine bool
+	segment    string
+	cursorLine bool
+	cursorCol  int
+	hasCursor  bool
 }
 
 func (e *QueryEditor) syncViewOffset() {
@@ -87,6 +86,7 @@ func (e QueryEditor) highlightedView() string {
 			plain := dl.segment
 			plainWidth := uniseg.StringWidth(plain)
 
+			contentWidth := plainWidth
 			if dl.hasCursor {
 				segRunes := []rune(plain)
 				absCol := dl.cursorCol
@@ -95,26 +95,37 @@ func (e QueryEditor) highlightedView() string {
 				}
 
 				before := highlightSubstring(plain, 0, absCol)
-				after := highlightSubstring(plain, absCol, len(segRunes))
 
-				ta.Cursor.TextStyle = lineStyle
-				if dl.atEndOfLine {
-					ta.Cursor.SetChar(" ")
+				if e.vimMode == VimInsert {
+					after := highlightSubstring(plain, absCol, len(segRunes))
+					bar := lipgloss.NewStyle().Foreground(colorFg).Render("▏")
 					s.WriteString(before)
-					s.WriteString(ta.Cursor.View())
+					s.WriteString(bar)
+					s.WriteString(after)
+					contentWidth++
 				} else {
+					// Normal mode: the cursor renders the char at absCol in
+					// reverse, so "after" must start at absCol+1 to avoid
+					// duplicating it.
 					if absCol < len(segRunes) {
 						ta.Cursor.SetChar(string(segRunes[absCol]))
+						after := highlightSubstring(plain, absCol+1, len(segRunes))
+						ta.Cursor.TextStyle = lineStyle
+						s.WriteString(before)
+						s.WriteString(ta.Cursor.View())
+						s.WriteString(after)
+					} else {
+						ta.Cursor.SetChar(" ")
+						ta.Cursor.TextStyle = lineStyle
+						s.WriteString(before)
+						s.WriteString(ta.Cursor.View())
 					}
-					s.WriteString(before)
-					s.WriteString(ta.Cursor.View())
-					s.WriteString(after)
 				}
 			} else {
 				s.WriteString(highlightSegment(plain))
 			}
 
-			padding := ta.Width() - plainWidth
+			padding := ta.Width() - contentWidth
 			if padding > 0 {
 				s.WriteString(lineStyle.Render(strings.Repeat(" ", padding)))
 			}
@@ -193,10 +204,6 @@ func (e QueryEditor) buildDisplayLines() []editorDisplayLine {
 			if lineIdx == cursorRow && info.RowOffset == wrapIdx {
 				dl.hasCursor = true
 				dl.cursorCol = info.ColumnOffset
-				lineRunes := []rune(line)
-				if info.CharOffset >= len(lineRunes) && info.ColumnOffset >= width {
-					dl.atEndOfLine = true
-				}
 			}
 
 			out = append(out, dl)

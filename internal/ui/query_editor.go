@@ -109,23 +109,10 @@ func (e *QueryEditor) Reset() {
 // Update handles messages for the query editor.
 func (e QueryEditor) Update(msg tea.Msg) (QueryEditor, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		prevMode := e.vimMode
-		var cmd tea.Cmd
 		if e.vimMode == VimNormal {
-			e, cmd = e.handleNormalMode(keyMsg)
-		} else {
-			e, cmd = e.handleInsertMode(keyMsg)
+			return e.handleNormalMode(keyMsg)
 		}
-		if e.vimMode != prevMode {
-			var cursorCmd tea.Cmd
-			if e.vimMode == VimInsert {
-				cursorCmd = e.textarea.Cursor.SetMode(cursor.CursorBlink)
-			} else {
-				cursorCmd = e.textarea.Cursor.SetMode(cursor.CursorStatic)
-			}
-			cmd = tea.Batch(cmd, cursorCmd)
-		}
-		return e, cmd
+		return e.handleInsertMode(keyMsg)
 	}
 
 	var cmd tea.Cmd
