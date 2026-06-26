@@ -361,14 +361,13 @@ func (m *Model) loadConnections() {
 	for _, conn := range m.config.Connections {
 		detail := conn.Database
 		if conn.Driver == "mysql" {
-			detail = fmt.Sprintf("%s@%s:%d/%s", conn.Username, conn.Host, conn.Port, conn.Database)
+			detail = conn.Host
+			if conn.Port != 0 && conn.Port != 3306 {
+				detail = fmt.Sprintf("%s:%d", detail, conn.Port)
+			}
 		}
 		if conn.SSHHost != "" {
-			sshUser := conn.SSHUser
-			if sshUser == "" {
-				sshUser = "ssh"
-			}
-			detail = fmt.Sprintf("%s via %s@%s", detail, sshUser, conn.SSHHost)
+			detail = fmt.Sprintf("%s via %s", detail, conn.SSHHost)
 		}
 		entries = append(entries, ConnectionEntry{
 			Name:   conn.Name,
