@@ -4685,6 +4685,19 @@ func (m Model) View() string {
 		return m.viewConnections()
 	}
 
+	// Database picker: render on a blank background (like the connection picker).
+	if m.dbPicker.IsVisible() {
+		pw, ph := popupDim()
+		m.dbPicker.SetSize(pw, ph)
+		pickerPanel := m.dbPicker.View()
+		panelW := lipgloss.Width(pickerPanel)
+		panelH := lipgloss.Height(pickerPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		bg := strings.Repeat("\n", m.height-1)
+		return placeOverlay(bg, pickerPanel, panelX, panelY)
+	}
+
 	return m.viewWorkspace()
 }
 
@@ -4986,18 +4999,6 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, bmPanel, panelX, panelY)
-	}
-
-	// Overlay database picker if visible
-	if m.dbPicker.IsVisible() {
-		pw, ph := popupDim()
-		m.dbPicker.SetSize(pw, ph)
-		pickerPanel := m.dbPicker.View()
-		panelW := lipgloss.Width(pickerPanel)
-		panelH := lipgloss.Height(pickerPanel)
-		panelX := (m.width - panelW) / 2
-		panelY := (m.height - 1 - panelH) / 2
-		view = placeOverlay(view, pickerPanel, panelX, panelY)
 	}
 
 	// Overlay filter picker if visible

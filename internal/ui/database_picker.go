@@ -157,7 +157,7 @@ func (p DatabasePicker) View() string {
 
 	prompt := renderPalettePrompt(p.filter, true)
 
-	maxVisible := p.height - 2 // border(2) + prompt(1) - 1
+	maxVisible := p.height - 3 // border(2) + prompt(1)
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
