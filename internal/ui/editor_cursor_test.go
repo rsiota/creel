@@ -31,6 +31,24 @@ func TestEditorNormalModeNoCharDoublingAtEnd(t *testing.T) {
 	}
 }
 
+func TestEditorEmptyShowsCursor(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(40, 5)
+	e.Focus()
+
+	view := e.View()
+	if !strings.Contains(view, "█") {
+		t.Fatalf("empty editor missing normal-mode block cursor")
+	}
+
+	// Enter insert mode; cursor should switch to a bar.
+	e, _ = e.Update(runeKey('i'))
+	view = e.View()
+	if !strings.Contains(view, "▏") {
+		t.Fatalf("empty editor missing insert-mode bar cursor")
+	}
+}
+
 func TestEditorInsertModeBarCursor(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(40, 5)

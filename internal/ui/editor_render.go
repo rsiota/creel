@@ -5,7 +5,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 )
 
@@ -63,7 +62,7 @@ func (e QueryEditor) highlightedView() string {
 	ta := e.textarea
 	style := e.editorStyle()
 
-	if ta.Value() == "" && ta.Line() == 0 && ta.Placeholder != "" {
+	if ta.Value() == "" && ta.Line() == 0 {
 		return e.highlightedPlaceholderView(style)
 	}
 
@@ -142,42 +141,28 @@ func (e QueryEditor) highlightedView() string {
 }
 
 func (e QueryEditor) highlightedPlaceholderView(style *textarea.Style) string {
-	p := placeholderLines(e.textarea.Placeholder, e.textarea.Width())
 	var s strings.Builder
 
 	for i := 0; i < e.height; i++ {
-		lineStyle := inheritStyle(style.Base, style.Placeholder)
-		if i == 0 {
-			lineStyle = inheritStyle(style.Base, style.CursorLine)
-		}
+		lineStyle := inheritStyle(style.Base, style.CursorLine)
 
 		prompt := inheritStyle(style.Base, style.Prompt).Render(e.textarea.Prompt)
 		s.WriteString(lineStyle.Render(prompt))
 
-		if i < len(p) {
-			s.WriteString(lineStyle.Render(mutedStyle.Render(p[i])))
-		}
-
-		padding := e.textarea.Width()
-		if i < len(p) {
-			padding -= uniseg.StringWidth(p[i])
-		}
-		if padding > 0 {
-			s.WriteString(lineStyle.Render(strings.Repeat(" ", padding)))
+		if i == 0 {
+			cursor := "█"
+			if e.vimMode == VimInsert {
+				cursor = "▏"
+			}
+			s.WriteString(lipgloss.NewStyle().Foreground(colorFg).Render(cursor))
+			s.WriteString(lineStyle.Render(strings.Repeat(" ", e.textarea.Width()-1)))
+		} else {
+			s.WriteString(lineStyle.Render(strings.Repeat(" ", e.textarea.Width())))
 		}
 		s.WriteRune('\n')
 	}
 
 	return style.Base.Render(strings.TrimSuffix(s.String(), "\n"))
-}
-
-func placeholderLines(placeholder string, width int) []string {
-	if placeholder == "" {
-		return nil
-	}
-	pwordwrap := ansi.Wordwrap(placeholder, width, "")
-	pwrap := ansi.Hardwrap(pwordwrap, width, true)
-	return strings.Split(strings.TrimSpace(pwrap), "\n")
 }
 
 func (e QueryEditor) buildDisplayLines() []editorDisplayLine {

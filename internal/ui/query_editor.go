@@ -44,14 +44,12 @@ type QueryEditor struct {
 // NewQueryEditor creates a new SQL query editor with vim mode.
 func NewQueryEditor() QueryEditor {
 	ta := textarea.New()
-	ta.Placeholder = "SELECT * FROM ..."
 	ta.Prompt = " "
 	ta.ShowLineNumbers = false
 	ta.CharLimit = 0
 	ta.SetHeight(5)
 
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
-	ta.FocusedStyle.Placeholder = lipgloss.NewStyle().Foreground(colorMuted)
 	ta.FocusedStyle.Text = lipgloss.NewStyle().Foreground(colorFg)
 	ta.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(colorPrimary)
 	ta.BlurredStyle = ta.FocusedStyle
