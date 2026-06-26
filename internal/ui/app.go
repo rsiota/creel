@@ -4693,7 +4693,7 @@ func (m Model) View() string {
 		panelW := lipgloss.Width(pickerPanel)
 		panelH := lipgloss.Height(pickerPanel)
 		panelX := (m.width - panelW) / 2
-		panelY := (m.height - 1 - panelH) / 2
+		panelY := (m.height - panelH) / 2
 		bg := strings.Repeat("\n", m.height-1)
 		return placeOverlay(bg, pickerPanel, panelX, panelY)
 	}
