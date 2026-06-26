@@ -250,7 +250,7 @@ func (p FilterPicker) View() string {
 			Render(content)
 	}
 
-	prompt := renderPalettePrompt(p.filter)
+	prompt := renderPalettePrompt(p.filter, true)
 
 	items := p.filteredValues()
 

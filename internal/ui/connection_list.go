@@ -268,11 +268,11 @@ func (c ConnectionList) View() string {
 		)
 
 		nameLine := nameText + "  " + driverBadge
+		nameRowStyle := lipgloss.NewStyle().Foreground(colorFg).Padding(0, 1, 0, 2)
 		if isCursor {
-			nameLine = lipgloss.NewStyle().Bold(true).Padding(0, 1).Render(nameLine)
-		} else {
-			nameLine = normalStyle.Render(nameLine)
+			nameRowStyle = nameRowStyle.Bold(true)
 		}
+		nameLine = nameRowStyle.Render(nameLine)
 		b.WriteString(nameLine)
 		b.WriteString("\n")
 
@@ -291,7 +291,7 @@ func (c ConnectionList) View() string {
 
 // Prompt returns the filter prompt line shown at the top of the panel.
 func (c ConnectionList) Prompt() string {
-	return renderPalettePrompt(c.filter)
+	return renderPalettePrompt(c.filter, c.filtering)
 }
 
 // ScrollInfo returns the bottom-bar text (scroll position).

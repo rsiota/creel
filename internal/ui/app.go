@@ -4929,7 +4929,7 @@ func (m Model) viewWorkspace() string {
 
 	scrollInfo := ""
 	if m.sidebarFiltering {
-		scrollInfo = renderPalettePrompt(m.sidebarFilter)
+		scrollInfo = renderPalettePrompt(m.sidebarFilter, true)
 	} else if len(items) > maxVisible {
 		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", start+1, end, len(items)))
 	}

@@ -227,7 +227,7 @@ func (p palette) View(width, height int) string {
 		lines = append(lines, "")
 	}
 
-	prompt := renderPalettePrompt(p.input)
+	prompt := renderPalettePrompt(p.input, true)
 
 	body := prompt + "\n" + strings.Join(lines, "\n")
 
@@ -244,9 +244,13 @@ func (p palette) View(width, height int) string {
 
 // renderPalettePrompt renders the chevron-style fuzzy-search prompt used by
 // all pickers: a bold "❯ " followed by the current input and a cursor bar.
-func renderPalettePrompt(input string) string {
+func renderPalettePrompt(input string, filtering bool) string {
+	cursor := lipgloss.NewStyle().Foreground(colorFg).Render("█")
+	if filtering {
+		cursor = lipgloss.NewStyle().Foreground(colorFg).Render("▏")
+	}
 	return lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("❯ ") +
-		input + lipgloss.NewStyle().Foreground(colorMuted).Render("▏")
+		input + cursor
 }
 
 // renderPaletteRow renders a single list row with the palette's selection

@@ -223,7 +223,7 @@ func (p ColumnPicker) View() string {
 	}
 
 	title := titleStyle.Render("Column Visibility")
-	prompt := renderPalettePrompt(p.filter)
+	prompt := renderPalettePrompt(p.filter, true)
 
 	items := p.filteredItems()
 

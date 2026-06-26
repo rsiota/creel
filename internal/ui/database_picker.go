@@ -155,7 +155,7 @@ func (p DatabasePicker) View() string {
 
 	items := p.filteredDatabases()
 
-	prompt := renderPalettePrompt(p.filter)
+	prompt := renderPalettePrompt(p.filter, true)
 
 	maxVisible := p.height - 2 // border(2) + prompt(1) - 1
 	if maxVisible < 1 {
@@ -174,11 +174,11 @@ func (p DatabasePicker) View() string {
 		if p.filter != "" {
 			name = highlightMatches(item.name, item.matchIdx)
 		}
+		rowStyle := lipgloss.NewStyle().Foreground(colorFg).Padding(0, 1, 0, 2)
 		if i == p.cursor {
-			rows = append(rows, lipgloss.NewStyle().Bold(true).Padding(0, 1).Render(name))
-		} else {
-			rows = append(rows, normalStyle.Render(name))
+			rowStyle = rowStyle.Bold(true)
 		}
+		rows = append(rows, rowStyle.Render(name))
 	}
 
 	if len(items) == 0 {

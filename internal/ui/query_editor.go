@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -54,6 +55,7 @@ func NewQueryEditor() QueryEditor {
 	ta.FocusedStyle.Text = lipgloss.NewStyle().Foreground(colorFg)
 	ta.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(colorPrimary)
 	ta.BlurredStyle = ta.FocusedStyle
+	ta.Cursor.SetMode(cursor.CursorStatic)
 
 	return QueryEditor{
 		textarea: ta,
@@ -107,10 +109,23 @@ func (e *QueryEditor) Reset() {
 // Update handles messages for the query editor.
 func (e QueryEditor) Update(msg tea.Msg) (QueryEditor, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		prevMode := e.vimMode
+		var cmd tea.Cmd
 		if e.vimMode == VimNormal {
-			return e.handleNormalMode(keyMsg)
+			e, cmd = e.handleNormalMode(keyMsg)
+		} else {
+			e, cmd = e.handleInsertMode(keyMsg)
 		}
-		return e.handleInsertMode(keyMsg)
+		if e.vimMode != prevMode {
+			var cursorCmd tea.Cmd
+			if e.vimMode == VimInsert {
+				cursorCmd = e.textarea.Cursor.SetMode(cursor.CursorBlink)
+			} else {
+				cursorCmd = e.textarea.Cursor.SetMode(cursor.CursorStatic)
+			}
+			cmd = tea.Batch(cmd, cursorCmd)
+		}
+		return e, cmd
 	}
 
 	var cmd tea.Cmd

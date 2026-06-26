@@ -386,7 +386,7 @@ func (i Inspector) View(results ResultsTable) string {
 	numFields := len(fieldIndices)
 	filterBar := ""
 	if i.filtering {
-		filterBar = renderPalettePrompt(i.filter)
+		filterBar = renderPalettePrompt(i.filter, true)
 	}
 
 	if numFields == 0 || (!i.inserting && results.NumRows() == 0) {
