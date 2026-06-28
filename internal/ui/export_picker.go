@@ -93,9 +93,8 @@ func (p *ExportPicker) adjustScroll() {
 }
 
 func (p ExportPicker) maxVisible() int {
-	// Content area = height - 2 (border) - 2 (padding) = height - 4.
-	// Subtract title (1), blank spacer (1), and footer (1) for the list region.
-	mv := p.height - 7
+	// Content area = height - 2 (border) - 1 (spacer) - 1 (footer).
+	mv := p.height - 4
 	if mv < 1 {
 		mv = 1
 	}
@@ -165,12 +164,6 @@ func (p ExportPicker) View() string {
 		return ""
 	}
 
-	title := titleStyle.Render("Export Database")
-
-	formatLabel := strings.ToUpper(string(p.format))
-	formatLine := lipgloss.NewStyle().Foreground(colorLabel).Render("Format: ") +
-		lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(formatLabel)
-
 	maxVisible := p.maxVisible()
 	end := p.scrollRow + maxVisible
 	if end > len(p.items) {
@@ -186,7 +179,7 @@ func (p ExportPicker) View() string {
 			tick = lipgloss.NewStyle().Foreground(colorFg).Render("●")
 		}
 
-		rows = append(rows, renderPaletteRowWithTick(item.name, tick, i == p.cursor, p.width-6))
+		rows = append(rows, renderPaletteRowWithTick(item.name, tick, i == p.cursor, p.width-4))
 	}
 
 	if len(p.items) == 0 {
@@ -202,12 +195,10 @@ func (p ExportPicker) View() string {
 		Height(maxVisible).
 		Render(strings.Join(rows, "\n"))
 
-	summary := mutedStyle.Render(fmt.Sprintf("%d of %d selected", p.MarkedCount(), len(p.items)))
-
-	footer := " " + formatLine + "  " + summary
+	formatLabel := strings.ToUpper(string(p.format))
+	footer := mutedStyle.Render("  Export | " + formatLabel + " | " + fmt.Sprintf("%d-%d", p.MarkedCount(), len(p.items)))
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
-		title,
 		listStyled,
 		"",
 		footer,
@@ -218,7 +209,7 @@ func (p ExportPicker) View() string {
 		Height(p.height - 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
-		Padding(1, 2).
+		Padding(0, 1).
 		Render(content)
 
 	return panel

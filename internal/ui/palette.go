@@ -267,10 +267,14 @@ func renderPaletteRow(content string, selected bool) string {
 }
 
 // renderPaletteRowWithTick renders a row like renderPaletteRow, but places
-// the tick (✓ or space) right-aligned within the given width. content stays
-// aligned with the prompt text.
+// the tick (✓ or space) right-aligned within the given width. width is the
+// total available content width (the area between the panel's padding); the
+// 2-char "❯ "/"  " prefix is reserved internally so the rendered row never
+// exceeds width and the tick stays on the same line.
 func renderPaletteRowWithTick(content string, tick string, selected bool, width int) string {
-	gap := width - lipgloss.Width(content) - lipgloss.Width(tick)
+	const prefixW = 2 // "❯ " when selected, "  " otherwise
+	avail := width - prefixW
+	gap := avail - lipgloss.Width(content) - lipgloss.Width(tick)
 	if gap < 1 {
 		gap = 1
 	}
