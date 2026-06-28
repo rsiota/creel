@@ -2679,7 +2679,7 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openEditForm()
 	case "d":
 		return m.deleteSelectedConnection()
-	case "/":
+	case "/", "i":
 		m.connList.StartFilter()
 		return m, nil
 	case "esc", "q":

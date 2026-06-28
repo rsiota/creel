@@ -250,7 +250,7 @@ func (p ColumnPicker) View() string {
 			tick = lipgloss.NewStyle().Foreground(colorFg).Render("●")
 		}
 
-		rows = append(rows, renderPaletteRowWithTick(name, tick, i == p.cursor, p.width-6))
+		rows = append(rows, renderPaletteRowWithTick(name, tick, i == p.cursor, p.width-4))
 	}
 
 	if len(items) == 0 {

@@ -160,11 +160,11 @@ func (f ConnectionForm) View() string {
 			Width(12).
 			Render(label)
 
-		inputRendered := f.fields[i].View()
+		var inputRendered string
 		if i == f.active {
-			inputRendered = lipgloss.NewStyle().
-				Foreground(colorFg).
-				Render(inputRendered)
+			inputRendered = renderEditInput(f.fields[i], f.fields[i].Width, colorFg)
+		} else {
+			inputRendered = f.fields[i].View()
 		}
 
 		line := fmt.Sprintf("%s %s", labelStyled, inputRendered)
