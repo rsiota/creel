@@ -5393,12 +5393,36 @@ func (m Model) statusBar(connName string) string {
 
 	parts = append(parts, lipgloss.NewStyle().Foreground(colorLabel).Render("?")+mutedStyle.Render(" help"))
 
-	line := strings.Join(parts, sep)
-	// Clip to the terminal width so the status bar always stays on one line.
-	if lipgloss.Width(line) > m.width {
-		line = lipgloss.NewStyle().MaxWidth(m.width).Render(line)
+	left := strings.Join(parts, sep)
+
+	// Right-align context keybinding hints.
+	// The caller prepends a single space, so effective width is m.width-1.
+	hintsStr := m.contextHints()
+	if hintsStr != "" {
+		keyStyle := lipgloss.NewStyle().Foreground(colorLabel)
+		sepStyle := lipgloss.NewStyle().Foreground(colorMuted)
+		var hintsStyled string
+		for i, part := range strings.Split(hintsStr, "/") {
+			if i > 0 {
+				hintsStyled += sepStyle.Render("/")
+			}
+			hintsStyled += keyStyle.Render(part)
+		}
+		gapW := m.width - 1 - lipgloss.Width(left) - lipgloss.Width(hintsStyled)
+		if gapW < 1 {
+			gapW = 1
+		}
+		line := left + strings.Repeat(" ", gapW) + hintsStyled
+		if lipgloss.Width(line) > m.width {
+			line = lipgloss.NewStyle().MaxWidth(m.width).Render(line)
+		}
+		return line
 	}
-	return line
+
+	if lipgloss.Width(left) > m.width {
+		left = lipgloss.NewStyle().MaxWidth(m.width).Render(left)
+	}
+	return left
 }
 
 func (m Model) borderForFocus(f Focus) lipgloss.Color {
