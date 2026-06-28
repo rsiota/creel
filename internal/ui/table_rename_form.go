@@ -106,22 +106,17 @@ func (f TableRenameForm) View() string {
 	}
 
 	var lines []string
-	title := fmt.Sprintf("Rename Table: %s", f.table)
-	lines = append(lines, titleStyle.Render(title))
-
 	labelStyled := lipgloss.NewStyle().
 		Foreground(colorPrimary).
 		Bold(true).
 		Width(10).
 		Render("New name")
-	inputRendered := lipgloss.NewStyle().Foreground(colorFg).Render(f.field.View())
-	lines = append(lines, fmt.Sprintf("%s %s %s", mutedStyle.Render("→"), labelStyled, inputRendered))
+	inputRendered := renderEditInput(f.field, f.field.Width, colorFg)
+	lines = append(lines, fmt.Sprintf("%s %s", labelStyled, inputRendered))
 
 	if f.errMsg != "" {
 		lines = append(lines, errorStyle.Render(f.errMsg))
 	}
 
-	lines = append(lines, "")
-	lines = append(lines, mutedStyle.Render("enter run   esc cancel"))
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }

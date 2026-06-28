@@ -518,7 +518,7 @@ func (i Inspector) View(results ResultsTable) string {
 
 		// Value line
 		if i.editing && isFocused {
-			inputView := renderEditInput(i.editInput, valueWidth, colorFg)
+			inputView := renderEditInput(i.editInput, valueWidth, colorEdit)
 			rendered.WriteString(bs.Render("│ ") + inputView + bs.Render(" │"))
 		} else {
 			displayVal := truncateCell(val, valueWidth)

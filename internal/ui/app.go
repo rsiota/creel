@@ -5178,12 +5178,21 @@ func (m Model) viewWorkspace() string {
 		padding := 4
 		innerW := popupW - borderOverhead - padding
 		m.tableRenameForm.SetMaxWidth(innerW)
+		content := m.tableRenameForm.View()
+		hintsStyled := lipgloss.NewStyle().Foreground(colorLabel).Render("enter") +
+			lipgloss.NewStyle().Foreground(colorMuted).Render("/") +
+			lipgloss.NewStyle().Foreground(colorLabel).Render("esc")
+		gapW := innerW - lipgloss.Width(content) - lipgloss.Width(hintsStyled)
+		if gapW < 1 {
+			gapW = 1
+		}
+		content += strings.Repeat(" ", gapW) + hintsStyled
 		formPanel := lipgloss.NewStyle().
 			Width(popupW - borderOverhead).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorPrimary).
 			Padding(1, 2).
-			Render(m.tableRenameForm.View())
+			Render(content)
 		panelW := lipgloss.Width(formPanel)
 		panelH := lipgloss.Height(formPanel)
 		panelX := (m.width - panelW) / 2
