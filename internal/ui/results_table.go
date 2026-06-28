@@ -1110,6 +1110,47 @@ func truncateCell(s string, width int) string {
 	return string(runes[:width-1]) + "…"
 }
 
+// renderEditInput renders the textinput value with a bar cursor ("▏") at the
+// cursor position instead of the textinput's default reverse-video block. width
+// is the total display width to fill, matching the cell's column width.
+func renderEditInput(ti textinput.Model, width int) string {
+	value := ti.Value()
+	pos := ti.Position()
+	runes := []rune(value)
+
+	// The bar cursor occupies 1 column; the remaining space is for text.
+	textW := width - 1
+	if textW < 0 {
+		textW = 0
+	}
+
+	// Scroll window: keep the cursor visible, biasing toward the right edge.
+	textStart := 0
+	if pos > textW {
+		textStart = pos - textW
+	}
+	textEnd := textStart + textW
+	if textEnd > len(runes) {
+		textEnd = len(runes)
+	}
+
+	before := string(runes[textStart:pos])
+	after := string(runes[pos:textEnd])
+
+	pad := width - runeLen(before) - 1 - runeLen(after)
+	if pad < 0 {
+		pad = 0
+	}
+
+	textStyle := lipgloss.NewStyle().Foreground(colorEdit)
+	barStyle := lipgloss.NewStyle().Foreground(colorFg)
+
+	return textStyle.Render(before) +
+		barStyle.Render("▏") +
+		textStyle.Render(after) +
+		strings.Repeat(" ", pad)
+}
+
 // visibleColRange returns the start and end column indices that fit
 // within the available width, starting from scrollCol.
 func (r ResultsTable) visibleColRange() []int {
@@ -1253,7 +1294,7 @@ func (r ResultsTable) View() string {
 
 			// If this is the cell being edited, show the input buffer.
 			if r.editing && isCursorCell {
-				inputView := r.editInput.View()
+				inputView := renderEditInput(r.editInput, r.colWidths[i])
 				b.WriteString(" " + inputView + " ")
 				b.WriteString(rowBorderStyle.Render("│"))
 				continue
