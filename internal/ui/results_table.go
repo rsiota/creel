@@ -1112,8 +1112,9 @@ func truncateCell(s string, width int) string {
 
 // renderEditInput renders the textinput value with a bar cursor ("▏") at the
 // cursor position instead of the textinput's default reverse-video block. width
-// is the total display width to fill, matching the cell's column width.
-func renderEditInput(ti textinput.Model, width int) string {
+// is the total display width to fill, matching the cell's column width. fg is
+// the foreground color applied to the text (the bar cursor always uses colorFg).
+func renderEditInput(ti textinput.Model, width int, fg lipgloss.Color) string {
 	value := ti.Value()
 	pos := ti.Position()
 	runes := []rune(value)
@@ -1142,7 +1143,7 @@ func renderEditInput(ti textinput.Model, width int) string {
 		pad = 0
 	}
 
-	textStyle := lipgloss.NewStyle().Foreground(colorEdit)
+	textStyle := lipgloss.NewStyle().Foreground(fg)
 	barStyle := lipgloss.NewStyle().Foreground(colorFg)
 
 	return textStyle.Render(before) +
@@ -1294,7 +1295,7 @@ func (r ResultsTable) View() string {
 
 			// If this is the cell being edited, show the input buffer.
 			if r.editing && isCursorCell {
-				inputView := renderEditInput(r.editInput, r.colWidths[i])
+				inputView := renderEditInput(r.editInput, r.colWidths[i], colorEdit)
 				b.WriteString(" " + inputView + " ")
 				b.WriteString(rowBorderStyle.Render("│"))
 				continue
