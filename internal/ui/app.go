@@ -184,6 +184,9 @@ type flashTickMsg struct{ gen uint64 }
 // auto-clearing.
 const flashExpiry = 5 * time.Second
 
+// hintFlashDuration is how long a hint group stays highlighted white.
+const hintFlashDuration = 300 * time.Millisecond
+
 // queryStackEntry stores navigation state for returning after following a FK.
 type queryStackEntry struct {
 	query     string
@@ -318,6 +321,10 @@ type Model struct {
 	searching   bool
 	searchQuery string
 	lastSearch  string
+
+	// hintFlash is the individual key currently highlighted white on the status bar.
+	hintFlash   string
+	hintFlashAt time.Time
 }
 
 const defaultPageSize = 200
@@ -2301,6 +2308,15 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+q"))):
 			m.quitting = true
 			return m, tea.Quit
+		}
+
+		// Flash the matching hint group on the status bar (set before
+		// dispatch so the value survives the value-receiver copy).
+		if matched := matchHint(m.hintList(), msg.String()); matched != "" {
+			m.hintFlash = matched
+			m.hintFlashAt = time.Now()
+		} else {
+			m.hintFlash = ""
 		}
 
 		if m.state == stateConnections {
@@ -5397,16 +5413,27 @@ func (m Model) statusBar(connName string) string {
 
 	// Right-align context keybinding hints.
 	// The caller prepends a single space, so effective width is m.width-1.
-	hintsStr := m.contextHints()
-	if hintsStr != "" {
+	hints := m.hintList()
+	if len(hints) > 0 {
+		flashActive := m.hintFlash != "" && time.Since(m.hintFlashAt) < hintFlashDuration
 		keyStyle := lipgloss.NewStyle().Foreground(colorLabel)
+		flashStyle := lipgloss.NewStyle().Foreground(colorFg)
 		sepStyle := lipgloss.NewStyle().Foreground(colorMuted)
 		var hintsStyled string
-		for i, part := range strings.Split(hintsStr, "/") {
-			if i > 0 {
-				hintsStyled += sepStyle.Render("/")
+		for i, group := range hints {
+			for ki, k := range strings.Split(group, "/") {
+				if i > 0 && ki == 0 {
+					hintsStyled += sepStyle.Render("/")
+				}
+				if ki > 0 {
+					hintsStyled += sepStyle.Render("/")
+				}
+				if flashActive && k == m.hintFlash {
+					hintsStyled += flashStyle.Render(k)
+				} else {
+					hintsStyled += keyStyle.Render(k)
+				}
 			}
-			hintsStyled += keyStyle.Render(part)
 		}
 		gapW := m.width - 1 - lipgloss.Width(left) - lipgloss.Width(hintsStyled)
 		if gapW < 1 {
