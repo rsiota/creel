@@ -103,6 +103,7 @@ func newForm(mode formMode, name string) ConnectionForm {
 func newTextInput(placeholder, def string, masked bool) textinput.Model {
 	ti := textinput.New()
 	ti.Placeholder = placeholder
+	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(colorMuted)
 	ti.Prompt = ""
 	if masked {
 		ti.EchoMode = textinput.EchoPassword
@@ -147,12 +148,6 @@ func (f ConnectionForm) Update(msg tea.Msg) (ConnectionForm, tea.Cmd) {
 func (f ConnectionForm) View() string {
 	var b []string
 
-	title := "Add New Connection"
-	if f.mode == formModeEdit {
-		title = "Edit Connection: " + f.editing
-	}
-	b = append(b, titleStyle.Render(title))
-
 	labels := []string{
 		"Name", "Driver", "Database", "Host", "Port", "Username", "Password",
 		"SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass",
@@ -165,11 +160,6 @@ func (f ConnectionForm) View() string {
 			Width(12).
 			Render(label)
 
-		marker := " "
-		if i == f.active {
-			marker = mutedStyle.Render("→")
-		}
-
 		inputRendered := f.fields[i].View()
 		if i == f.active {
 			inputRendered = lipgloss.NewStyle().
@@ -177,7 +167,7 @@ func (f ConnectionForm) View() string {
 				Render(inputRendered)
 		}
 
-		line := fmt.Sprintf("%s %s %s", marker, labelStyled, inputRendered)
+		line := fmt.Sprintf("%s %s", labelStyled, inputRendered)
 		b = append(b, line)
 	}
 

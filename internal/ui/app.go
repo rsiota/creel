@@ -4760,17 +4760,18 @@ func (m Model) viewConnections() string {
 }
 
 func (m Model) viewAddConnection() string {
-	popupW, _ := popupDim()
+	popupW, popupH := popupDim()
 	borderOverhead := 2
-	padding := 4 // padding(1,2) = 2 left + 2 right
+	padding := 2 // padding(0,1) = 1 left + 1 right
 	innerW := popupW - borderOverhead - padding
 	m.connForm.SetMaxWidth(innerW)
 
 	formPanel := lipgloss.NewStyle().
 		Width(popupW - borderOverhead).
+		Height(popupH - borderOverhead).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
-		Padding(1, 2).
+		Padding(0, 1).
 		Render(m.connForm.View())
 
 	return lipgloss.Place(m.width, m.height,
