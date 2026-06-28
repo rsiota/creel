@@ -3458,6 +3458,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.results.IsVisualMode() {
 			break
 		}
+		// If in search mode, let the focused panel handle esc.
+		if m.searching {
+			break
+		}
+		// Clear committed search highlighting (vim :nohl).
+		if m.lastSearch != "" {
+			m.lastSearch = ""
+			m.results.SetSearchMatcher(nil)
+			m.searchMsg = ""
+			return m, nil
+		}
 		// If actively editing a cell or inspector field, let the focused
 		// panel handle esc (to cancel the edit) instead of swallowing it.
 		if m.results.IsEditing() || m.inspector.IsEditing() {
