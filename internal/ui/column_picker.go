@@ -222,12 +222,11 @@ func (p ColumnPicker) View() string {
 		return ""
 	}
 
-	title := titleStyle.Render("Column Visibility")
 	prompt := renderPalettePrompt(p.filter, true)
 
 	items := p.filteredItems()
 
-	maxVisible := p.height - 7 // border(2) + title(1) + prompt(1) + hint(1) + padding(2)
+	maxVisible := p.height - 5 // border(2) + prompt(1) + spacer(1) + footer(1)
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -266,22 +265,21 @@ func (p ColumnPicker) View() string {
 		Height(maxVisible).
 		Render(strings.Join(rows, "\n"))
 
-	summary := mutedStyle.Render(fmt.Sprintf("%d shown", p.VisibleCount()))
-	hint := mutedStyle.Render("space toggle  ctrl+a all  ctrl+n none  enter apply  esc cancel")
+	footer := mutedStyle.Render("  Columns | " + fmt.Sprintf("%d-%d", p.VisibleCount(), len(items)))
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
-		title,
 		prompt,
 		listStyled,
-		summary+"  "+hint,
+		"",
+		footer,
 	)
 
 	panel := lipgloss.NewStyle().
 		Width(p.width - 2).
 		Height(p.height - 2).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
-		Padding(1, 2).
+		BorderForeground(colorPrimary).
+		Padding(0, 1).
 		Render(content)
 
 	return panel
