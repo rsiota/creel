@@ -122,7 +122,7 @@ func (p CellEditPopup) View() string {
 
 	// Render each textarea line inside the bordered frame.
 	var lines []string
-	lines = append(lines, label, top)
+	lines = append(lines, " "+label, top)
 	for _, line := range strings.Split(p.ta.View(), "\n") {
 		lines = append(lines, bs.Render("│ ")+line+bs.Render(" │"))
 	}

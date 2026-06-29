@@ -5074,9 +5074,15 @@ func (m Model) viewWorkspace() string {
 
 	view := lipgloss.JoinVertical(lipgloss.Left, workspace, statusBar)
 
+	// Dim the workspace behind long-lived editing overlays.
+	if m.cellEdit.IsVisible() || m.addColumnForm.IsVisible() || m.tableRenameForm.IsVisible() ||
+		m.history.IsVisible() || m.bookmarks.IsVisible() {
+		view = dimBackground(view)
+	}
+
 	// Overlay history panel if visible
 	if m.history.IsVisible() {
-		m.history.SetSize(m.width/2, m.height/2)
+		m.history.SetSize(m.width*65/100, (m.height-1)*65/100)
 		histPanel := m.history.View()
 		panelW := lipgloss.Width(histPanel)
 		panelH := lipgloss.Height(histPanel)
@@ -5087,7 +5093,7 @@ func (m Model) viewWorkspace() string {
 
 	// Overlay bookmarks panel if visible
 	if m.bookmarks.IsVisible() {
-		m.bookmarks.SetSize(m.width/2, m.height/2)
+		m.bookmarks.SetSize(m.width*65/100, (m.height-1)*65/100)
 		bmPanel := m.bookmarks.View()
 		panelW := lipgloss.Width(bmPanel)
 		panelH := lipgloss.Height(bmPanel)
@@ -5261,10 +5267,12 @@ func (m Model) viewWorkspace() string {
 
 	// Overlay cell-edit popup (expanded editor for truncated cells).
 	if m.cellEdit.IsVisible() {
-		// Size the popup to ~70% of the screen.
+		// Size the popup to ~65% of the screen, matching history/bookmarks.
 		availW := m.width * 65 / 100
 		availH := (m.height - 1) * 65 / 100
-		m.cellEdit.SetMaxSize(availW, availH)
+		// Subtract the cell editor's fixed overhead: label (1) + inner border
+		// top/bottom (2) + outer rounded border top/bottom (2) = 5 rows.
+		m.cellEdit.SetMaxSize(availW, availH-5)
 		panel := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorPrimary).
