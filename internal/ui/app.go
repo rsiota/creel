@@ -3221,7 +3221,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Discard / truncate / delete-rows confirmation dialogs are modal — intercept all keys.
-	if m.discardConfirm || m.truncateConfirm != "" || m.deleteRowsConfirmTable != "" || m.clearHistoryConfirm || m.clearBookmarksConfirm {
+	if m.discardConfirm || m.deleteRowsConfirmTable != "" || m.clearHistoryConfirm || m.clearBookmarksConfirm {
 		switch msg.String() {
 		case "y", "Y", "enter":
 			if m.discardConfirm {
@@ -3256,17 +3256,27 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.bookmarks.Toggle()
 				return m, nil
 			}
-			table := m.truncateConfirm
-			m.truncateConfirm = ""
-			return m, m.execTruncate(table)
 		case "n", "N", "esc", "ctrl+c":
 			m.discardConfirm = false
-			m.truncateConfirm = ""
 			m.deleteRowsConfirmTable = ""
 			m.deleteRowsConfirmQuery = ""
 			m.deleteRowsConfirmCount = 0
 			m.clearHistoryConfirm = false
 			m.clearBookmarksConfirm = false
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Truncate confirmation is modal — uses enter/esc (not y/n).
+	if m.truncateConfirm != "" {
+		switch msg.String() {
+		case "enter":
+			table := m.truncateConfirm
+			m.truncateConfirm = ""
+			return m, m.execTruncate(table)
+		case "esc", "ctrl+c":
+			m.truncateConfirm = ""
 			return m, nil
 		}
 		return m, nil
@@ -5066,7 +5076,7 @@ func (m Model) viewWorkspace() string {
 	// Overlay truncate confirmation dialog if visible
 	if m.truncateConfirm != "" {
 		prompt := fmt.Sprintf("Truncate table %s?\nAll rows will be permanently deleted.", m.truncateConfirm)
-		dialog := renderConfirmDialog(prompt)
+		dialog := renderConfirmDialogBare(prompt)
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)
 		dlgX := (m.width - dlgW) / 2
@@ -5179,14 +5189,6 @@ func (m Model) viewWorkspace() string {
 		innerW := popupW - borderOverhead - padding
 		m.tableRenameForm.SetMaxWidth(innerW)
 		content := m.tableRenameForm.View()
-		hintsStyled := lipgloss.NewStyle().Foreground(colorLabel).Render("enter") +
-			lipgloss.NewStyle().Foreground(colorMuted).Render("/") +
-			lipgloss.NewStyle().Foreground(colorLabel).Render("esc")
-		gapW := innerW - lipgloss.Width(content) - lipgloss.Width(hintsStyled)
-		if gapW < 1 {
-			gapW = 1
-		}
-		content += strings.Repeat(" ", gapW) + hintsStyled
 		formPanel := lipgloss.NewStyle().
 			Width(popupW - borderOverhead).
 			Border(lipgloss.RoundedBorder()).

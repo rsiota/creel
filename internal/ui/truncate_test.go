@@ -65,8 +65,8 @@ func TestTruncateTableFlow(t *testing.T) {
 		t.Fatalf("expected truncateConfirm=users, got %q", m.truncateConfirm)
 	}
 
-	// Cancel with n.
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	// Cancel with esc.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	if m.truncateConfirm != "" {
 		t.Fatalf("expected truncateConfirm cleared after cancel, got %q", m.truncateConfirm)
@@ -74,7 +74,7 @@ func TestTruncateTableFlow(t *testing.T) {
 
 	// Confirm truncate.
 	m.truncateConfirm = "users"
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(Model)
 	if m.truncateConfirm != "" {
 		t.Fatalf("expected truncateConfirm cleared after confirm, got %q", m.truncateConfirm)

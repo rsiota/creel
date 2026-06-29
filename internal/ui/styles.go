@@ -1,6 +1,10 @@
 package ui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 // Color palette - Tokyo Night inspired.
 var (
@@ -63,20 +67,35 @@ var (
 
 // renderConfirmDialog builds a centered y/n confirmation overlay.
 func renderConfirmDialog(prompt string) string {
+	return renderConfirmDialogFooter(prompt, true)
+}
+
+// renderConfirmDialogBare builds a centered confirmation overlay without the
+// keybinding footer.
+func renderConfirmDialogBare(prompt string) string {
+	return renderConfirmDialogFooter(prompt, false)
+}
+
+func renderConfirmDialogFooter(prompt string, showFooter bool) string {
+	primary := lipgloss.NewStyle().Foreground(colorPrimary)
+	parts := strings.SplitN(prompt, "\n", 2)
+	promptLines := []string{primary.Render(parts[0])}
+	if len(parts) > 1 {
+		promptLines = append(promptLines, mutedStyle.Render(parts[1]))
+	}
+	lines := []string{lipgloss.JoinVertical(lipgloss.Center, promptLines...)}
+	if showFooter {
+		lines = append(lines, "",
+			lipgloss.NewStyle().Foreground(colorLabel).Render("y")+mutedStyle.Render(" confirm    ")+
+				lipgloss.NewStyle().Foreground(colorLabel).Render("n")+mutedStyle.Render(" cancel"))
+	}
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
 		Padding(1, 3).
 		Width(46).
 		Align(lipgloss.Center).
-		Render(
-			lipgloss.JoinVertical(lipgloss.Center,
-				lipgloss.NewStyle().Foreground(colorPrimary).Render(prompt),
-				"",
-				lipgloss.NewStyle().Foreground(colorLabel).Render("y")+mutedStyle.Render(" confirm    ")+
-					lipgloss.NewStyle().Foreground(colorLabel).Render("n")+mutedStyle.Render(" cancel"),
-			),
-		)
+		Render(lipgloss.JoinVertical(lipgloss.Center, lines...))
 }
 
 // renderTypedConfirmDialog builds a destructive-action overlay that requires
@@ -101,12 +120,8 @@ func renderTypedConfirmDialog(prompt, hint, input string, width, height int) str
 	inputLine := lipgloss.NewStyle().
 		Width(contentW).Align(lipgloss.Center).Foreground(colorPrimary).
 		Render("> " + input + "_")
-	footer := lipgloss.NewStyle().Width(contentW).Align(lipgloss.Center).Render(
-		lipgloss.NewStyle().Foreground(colorLabel).Render("enter") + mutedStyle.Render(" confirm    ") +
-			lipgloss.NewStyle().Foreground(colorLabel).Render("esc") + mutedStyle.Render(" cancel"),
-	)
 	content := lipgloss.JoinVertical(lipgloss.Center,
-		promptBlock, "", hintLine, inputLine, "", footer,
+		promptBlock, "", hintLine, inputLine,
 	)
 	style := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
