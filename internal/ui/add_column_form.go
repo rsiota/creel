@@ -85,6 +85,7 @@ func newAddColumnFields(driver db.Driver) []textinput.Model {
 func newAddColumnInput(placeholder, def string) textinput.Model {
 	ti := textinput.New()
 	ti.Placeholder = placeholder
+	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(colorMuted)
 	ti.Prompt = ""
 	if def != "" {
 		ti.SetValue(def)
@@ -201,15 +202,9 @@ func (f AddColumnForm) View() string {
 	}
 
 	var lines []string
-	title := fmt.Sprintf("Add Column to %s", f.table)
-	lines = append(lines, titleStyle.Render(title))
 
 	labels := []string{"Name", "Type", "Nullable", "Default"}
 	for i, label := range labels {
-		marker := " "
-		if i == f.active {
-			marker = mutedStyle.Render("→")
-		}
 		labelStyled := lipgloss.NewStyle().
 			Foreground(colorPrimary).
 			Bold(true).
@@ -219,14 +214,12 @@ func (f AddColumnForm) View() string {
 		if i == f.active {
 			inputRendered = lipgloss.NewStyle().Foreground(colorFg).Render(inputRendered)
 		}
-		lines = append(lines, fmt.Sprintf("%s %s %s", marker, labelStyled, inputRendered))
+		lines = append(lines, fmt.Sprintf("%s %s", labelStyled, inputRendered))
 	}
 
 	if f.errMsg != "" {
 		lines = append(lines, errorStyle.Render(f.errMsg))
 	}
 
-	lines = append(lines, "")
-	lines = append(lines, mutedStyle.Render("enter run   esc cancel   tab next field"))
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
