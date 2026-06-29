@@ -176,6 +176,7 @@ func registry() []Section {
 				{"n / N", []string{"n", "N"}, "next / prev match", "n"},
 				{"x", []string{"x"}, "export to CSV", "x"},
 				{"e", []string{"e"}, "edit cell", "e"},
+				{"E", []string{"E"}, "expand cell (large values)", "E"},
 				{"ctrl+s", []string{"ctrl+s"}, "save edits", "ctrl+s"},
 				{"A", []string{"A"}, "insert new row", "A"},
 				{"D", []string{"D"}, "discard edits", ""},
@@ -188,8 +189,17 @@ func registry() []Section {
 				{"j/k", []string{"j", "k"}, "move field", "j/k"},
 				{"/", []string{"/"}, "filter fields", "/"},
 				{"e", []string{"e"}, "edit field", "e"},
+				{"E", []string{"E"}, "expand field (large values)", "E"},
 				{"ctrl+s", []string{"ctrl+s"}, "save", "ctrl+s"},
 				{"ctrl+o", []string{"ctrl+o"}, "close", ""},
+			},
+		},
+		{
+			Title:  "Cell Editor",
+			Source: "app.go",
+			Items: []Binding{
+				{"ctrl+s", []string{"ctrl+s"}, "stage edit & close", "ctrl+s"},
+				{"esc", []string{"esc"}, "cancel", "esc"},
 			},
 		},
 	}

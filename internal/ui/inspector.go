@@ -228,6 +228,23 @@ func (i Inspector) selectedColumn(results ResultsTable) int {
 	return fields[cf]
 }
 
+// IsFieldTruncated reports whether the value of the currently selected field
+// is wider than the inspector's value box (shown with an ellipsis). This is
+// the condition under which the expanded cell popup replaces the inline editor.
+func (i Inspector) IsFieldTruncated(results ResultsTable) bool {
+	row := results.CursorRow()
+	col := i.selectedColumn(results)
+	if row < 0 || row >= results.NumRows() || col < 0 || col >= results.NumCols() {
+		return false
+	}
+	val := results.RowValue(row, col)
+	valueWidth := i.width - 4
+	if valueWidth < 5 {
+		valueWidth = 5
+	}
+	return runeLen(val) > valueWidth
+}
+
 // CursorTop moves the field cursor to the first field.
 func (i *Inspector) CursorTop() {
 	i.cursorField = 0

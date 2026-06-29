@@ -177,6 +177,23 @@ func (r ResultsTable) IsNavigableForeignKey(row, col int) bool {
 	return val != "" && val != "NULL"
 }
 
+// IsCellTruncated reports whether the value at (row, col) is wider than the
+// rendered column cell (i.e. shown with an ellipsis). This is the condition
+// under which the inline editor is replaced by the expanded cell popup.
+func (r ResultsTable) IsCellTruncated(row, col int) bool {
+	if row < 0 || row >= len(r.rows) || col < 0 || col >= len(r.colWidths) {
+		return false
+	}
+	w := r.colWidths[col]
+	if r.IsNavigableForeignKey(row, col) {
+		w -= 2 // " →" arrow suffix
+	}
+	if w < 1 {
+		w = 1
+	}
+	return runeLen(r.RowValue(row, col)) > w
+}
+
 // ResultTable returns the source table for the current results, if known.
 func (r ResultsTable) ResultTable() string {
 	return r.resultTable

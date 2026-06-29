@@ -220,6 +220,7 @@ type Model struct {
 	tableRenameForm TableRenameForm
 	tableDesigner   TableDesigner
 	schemaEditor    SchemaEditor
+	cellEdit        CellEditPopup
 	palette         palette
 	sidebarCursor int
 	expanded     map[string][]db.Column
@@ -351,6 +352,7 @@ func NewModel(cfg *config.Config) Model {
 		tableRenameForm: NewTableRenameForm(),
 		tableDesigner:   NewTableDesigner(),
 		schemaEditor:    NewSchemaEditor(),
+		cellEdit:        NewCellEditPopup(),
 		historyStore:  history.NewStore(historyDir()),
 		bookmarkStore: bookmarks.NewStore(historyDir()),
 		expanded:     make(map[string][]db.Column),
@@ -2132,6 +2134,23 @@ func (m *Model) openTableRenameForm(table string) tea.Cmd {
 	return m.tableRenameForm.Focus()
 }
 
+// openCellEditPopup opens the expanded cell editor for a results cell. It is
+// used from both the grid (row/col from the results cursor) and the inspector
+// (col from the inspector's selected field). The edited value is staged into
+// the same dirtyCells pipeline used by the inline editor.
+func (m *Model) openCellEditPopup(row, col int) tea.Cmd {
+	if row < 0 || row >= m.results.NumRows() || col < 0 || col >= m.results.NumCols() {
+		return nil
+	}
+	colName := m.results.ColumnName(col)
+	val := m.results.RowValue(row, col)
+	if val == "NULL" {
+		val = ""
+	}
+	m.cellEdit.Show(val, row, col, colName)
+	return m.cellEdit.Focus()
+}
+
 // openCreateTableForm opens the inline table designer.
 func (m *Model) openCreateTableForm() tea.Cmd {
 	if m.connection == nil {
@@ -3282,6 +3301,24 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Cell-edit popup is modal — ctrl+s stages the value into dirtyCells (same
+	// as pressing enter on the inline editor) and closes the popup; esc cancels.
+	// All other keys go to the textarea.
+	if m.cellEdit.IsVisible() {
+		switch msg.String() {
+		case "ctrl+s":
+			m.results.SetDirtyCell(m.cellEdit.Row(), m.cellEdit.Col(), m.cellEdit.Value())
+			m.cellEdit.Hide()
+			return m, nil
+		case "esc", "ctrl+c":
+			m.cellEdit.Hide()
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.cellEdit, cmd = m.cellEdit.Update(msg)
+		return m, cmd
+	}
+
 	// Command palette is modal — intercept all keys when visible.
 	if m.palette.visible {
 		var cmd tea.Cmd
@@ -3854,8 +3891,18 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if m.inspector.IsVisible() {
 					return m, nil
 				}
+				if m.results.IsCellTruncated(m.results.CursorRow(), m.results.CursorCol()) {
+					return m, m.openCellEditPopup(m.results.CursorRow(), m.results.CursorCol())
+				}
 				m.results.StartEdit()
 				return m, nil
+			case "E":
+				if !m.results.IsEditable() || !m.results.HasPrimaryKey() || m.inspector.IsVisible() {
+					break
+				}
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				return m, m.openCellEditPopup(m.results.CursorRow(), m.results.CursorCol())
 			case "n":
 				if m.lastSearch != "" {
 					m.resultsPendingG = false
@@ -4204,8 +4251,18 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "e", "i":
 			m.inspector.pendingG = false
+			col := m.inspector.selectedColumn(m.results)
+			if !m.inspector.IsInserting() && m.inspector.IsFieldTruncated(m.results) {
+				return m, m.openCellEditPopup(m.results.CursorRow(), col)
+			}
 			m.inspector.StartFieldEdit(m.results)
 			return m, nil
+		case "E":
+			m.inspector.pendingG = false
+			if !m.inspector.IsInserting() {
+				col := m.inspector.selectedColumn(m.results)
+				return m, m.openCellEditPopup(m.results.CursorRow(), col)
+			}
 		case "ctrl+s":
 			m.inspector.pendingG = false
 			if m.results.IsEditable() || m.inspector.IsInserting() {
@@ -5200,6 +5257,23 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, formPanel, panelX, panelY)
+	}
+
+	// Overlay cell-edit popup (expanded editor for truncated cells).
+	if m.cellEdit.IsVisible() {
+		// Size the popup to ~70% of the screen.
+		availW := m.width * 65 / 100
+		availH := (m.height - 1) * 65 / 100
+		m.cellEdit.SetMaxSize(availW, availH)
+		panel := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorPrimary).
+			Render(m.cellEdit.View())
+		panelW := lipgloss.Width(panel)
+		panelH := lipgloss.Height(panel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, panel, panelX, panelY)
 	}
 
 	// Overlay completion popup if visible
