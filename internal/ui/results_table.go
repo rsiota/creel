@@ -1286,8 +1286,12 @@ func (r ResultsTable) View() string {
 		row := r.rows[rowIdx]
 		isCursorRow := r.hasCellCursor() && rowIdx == r.cursorRow
 		rowBorderStyle := borderColor
-		if isCursorRow {
+		if r.isVisualRow(rowIdx) {
+			rowBorderStyle = lipgloss.NewStyle().Foreground(colorBorder).Background(colorVisual)
+		} else if isCursorRow {
 			rowBorderStyle = lipgloss.NewStyle().Foreground(colorBorder).Background(colorCursorRow)
+		} else if rowIdx%2 == 1 {
+			rowBorderStyle = lipgloss.NewStyle().Foreground(colorBorder).Background(colorStripe)
 		}
 		if r.IsMarkedRow(rowIdx) {
 			b.WriteString(lipgloss.NewStyle().Foreground(colorMark).Render("◆"))
@@ -1347,6 +1351,9 @@ func (r ResultsTable) View() string {
 				style = lipgloss.NewStyle().Foreground(colorFg).Background(colorCursorRow)
 			default:
 				style = lipgloss.NewStyle().Foreground(colorFg)
+				if rowIdx%2 == 1 {
+					style = style.Background(colorStripe)
+				}
 			}
 			b.WriteString(style.Render(" " + cell + " "))
 			b.WriteString(rowBorderStyle.Render("│"))

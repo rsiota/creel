@@ -22,6 +22,7 @@ var (
 	colorBorder    = lipgloss.Color("#3b4261")
 	colorBorderUnfocused = lipgloss.Color("#5e6686") // midpoint between colorBorder and colorLabel
 	colorBg        = lipgloss.Color("#1a1b26")
+	colorStripe    = lipgloss.Color("#323946") // subtle zebra tint: ~35% between Nord nord0 (bg) and nord1 (cursor row)
 	colorFg        = lipgloss.Color("#c0caf5")
 	colorHighlight = lipgloss.Color("#292e42")
 )
