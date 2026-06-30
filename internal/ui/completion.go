@@ -33,8 +33,9 @@ const (
 
 // completionItem is a single autocomplete candidate.
 type completionItem struct {
-	text string
-	kind completionKind
+	text     string
+	kind     completionKind
+	matchIdx []int
 }
 
 // completion holds the popup state for editor autocompletion.
@@ -97,7 +98,9 @@ func overlayLine(bgLine, fgLine string, x int) string {
 func dimBackground(view string) string {
 	return lipgloss.NewStyle().Foreground(colorBorder).Render(ansi.Strip(view))
 }
-// (case-insensitive), sorted alphabetically with keywords last.
+// filterCandidates returns candidates whose text fuzzy-matches partial
+// (case-insensitive subsequence), sorted by match score (lower = better).
+// When partial is empty, all candidates are returned sorted by kind then text.
 func filterCandidates(all []completionItem, partial string) []completionItem {
 	if partial == "" {
 		out := make([]completionItem, len(all))
@@ -110,20 +113,28 @@ func filterCandidates(all []completionItem, partial string) []completionItem {
 		})
 		return out
 	}
-	lower := strings.ToLower(partial)
-	var filtered []completionItem
+	type scored struct {
+		item  completionItem
+		score int
+	}
+	var results []scored
 	for _, item := range all {
-		if strings.HasPrefix(strings.ToLower(item.text), lower) {
-			filtered = append(filtered, item)
+		idx, score := fuzzyMatch(partial, item.text)
+		if idx != nil {
+			results = append(results, scored{completionItem{text: item.text, kind: item.kind, matchIdx: idx}, score})
 		}
 	}
-	sort.SliceStable(filtered, func(i, j int) bool {
-		if filtered[i].kind != filtered[j].kind {
-			return filtered[i].kind < filtered[j].kind
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].score != results[j].score {
+			return results[i].score < results[j].score
 		}
-		return filtered[i].text < filtered[j].text
+		return results[i].item.text < results[j].item.text
 	})
-	return filtered
+	out := make([]completionItem, len(results))
+	for i, r := range results {
+		out[i] = r.item
+	}
+	return out
 }
 
 // move adjusts the selection, wrapping around.
@@ -138,7 +149,7 @@ func (c *completion) move(delta int) {
 // maxCompletionItems is the maximum visible rows in the popup.
 const maxCompletionItems = 8
 
-// renderCompletion renders the popup box.
+// renderCompletion renders the popup box styled like the sidebar fuzzy picker.
 func (c completion) renderCompletion() string {
 	if !c.visible || len(c.candidates) == 0 {
 		return ""
@@ -156,33 +167,27 @@ func (c completion) renderCompletion() string {
 	var lines []string
 	for i := start; i < end; i++ {
 		item := c.candidates[i]
+		text := item.text
+		if len(item.matchIdx) > 0 {
+			text = highlightMatches(item.text, item.matchIdx)
+		}
 		var line string
 		if i == c.selected {
-			line = lipgloss.NewStyle().
-				Background(colorPrimary).
-				Foreground(colorBg).
-				Bold(true).
-				Render("→ " + item.text)
+			line = lipgloss.NewStyle().Bold(true).Padding(0, 1).Render(text)
 		} else {
-			style := lipgloss.NewStyle()
-			switch item.kind {
-			case kindTable:
-				style = style.Foreground(colorFg)
-			case kindColumn:
-				style = style.Foreground(colorSuccess)
-			default:
-				style = style.Foreground(colorPrimary)
-			}
-			line = "  " + style.Render(item.text)
+			line = normalStyle.Render(text)
 		}
 		lines = append(lines, line)
 	}
+
+	content := strings.Join(lines, "\n")
+	content = lipgloss.JoinVertical(lipgloss.Left, content, renderPalettePrompt(c.partial, true))
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 0).
-		Render(strings.Join(lines, "\n"))
+		Render(content)
 
 	return box
 }

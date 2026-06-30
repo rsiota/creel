@@ -3263,7 +3263,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.historyStore.Clear(m.connection.Config().Name)
 				}
 				m.history.SetEntries(nil)
-				m.history.Toggle()
+				m.history.StartFilter()
 				return m, nil
 			}
 			if m.clearBookmarksConfirm {
@@ -3567,11 +3567,13 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// History panel takes over navigation when visible
 	if m.history.IsVisible() {
 		switch msg.String() {
-		case "j", "down":
-			m.history.CursorDown()
+		case "esc":
+			m.history.CancelFilter()
+			m.history.Toggle()
 			return m, nil
-		case "k", "up":
-			m.history.CursorUp()
+		case "ctrl+c":
+			m.history.CancelFilter()
+			m.history.Toggle()
 			return m, nil
 		case "enter":
 			q := m.history.SelectedQuery()
@@ -3580,10 +3582,21 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.focus = FocusEditor
 				m.applyFocus()
 			}
+			m.history.CancelFilter()
 			m.history.Toggle()
 			return m, m.editor.Focus()
-		case "esc":
-			m.history.Toggle()
+		case "backspace":
+			if len(m.history.filter) > 0 {
+				m.history.filter = m.history.filter[:len(m.history.filter)-1]
+				m.history.cursor = 0
+				m.history.scrollRow = 0
+			}
+			return m, nil
+		case "up", "k":
+			m.history.CursorUp()
+			return m, nil
+		case "down", "j":
+			m.history.CursorDown()
 			return m, nil
 		case "D":
 			m.clearHistoryConfirm = true
@@ -3594,7 +3607,15 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if q != "" && m.connection != nil && m.bookmarkStore != nil {
 				m.bookmarkStore.Add(m.connection.Config().Name, q)
 			}
+			m.history.CancelFilter()
 			m.history.Toggle()
+			return m, nil
+		}
+		// Printable characters extend the filter.
+		if msg.Type == tea.KeyRunes {
+			m.history.filter += msg.String()
+			m.history.cursor = 0
+			m.history.scrollRow = 0
 			return m, nil
 		}
 	}
@@ -5206,7 +5227,7 @@ func (m Model) viewWorkspace() string {
 
 	// Overlay clear-history confirmation dialog if visible.
 	if m.clearHistoryConfirm {
-		dialog := renderConfirmDialog("Clear all query history?\nThis cannot be undone.")
+		dialog := renderConfirmDialogBare("Clear all query history?\nThis cannot be undone.")
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)
 		dlgX := (m.width - dlgW) / 2

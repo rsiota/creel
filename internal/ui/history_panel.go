@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -16,6 +17,9 @@ type HistoryPanel struct {
 	width     int
 	height    int
 	visible   bool
+
+	filter     string
+	filtering  bool
 }
 
 // NewHistoryPanel creates a new history panel.
@@ -34,11 +38,34 @@ func (h *HistoryPanel) SetEntries(entries []history.Entry) {
 	h.scrollRow = 0
 }
 
+// IsFiltering returns whether the panel is in fuzzy-filter mode.
+func (h HistoryPanel) IsFiltering() bool {
+	return h.filtering
+}
+
+// StartFilter begins fuzzy-filter mode.
+func (h *HistoryPanel) StartFilter() {
+	h.filtering = true
+	h.filter = ""
+	h.cursor = 0
+	h.scrollRow = 0
+}
+
+// CancelFilter exits fuzzy-filter mode.
+func (h *HistoryPanel) CancelFilter() {
+	h.filtering = false
+	h.filter = ""
+	h.cursor = 0
+	h.scrollRow = 0
+}
+
 // Toggle shows or hides the panel.
 func (h *HistoryPanel) Toggle() {
 	h.visible = !h.visible
 	h.cursor = 0
 	h.scrollRow = 0
+	h.filtering = true
+	h.filter = ""
 }
 
 // IsVisible returns whether the panel is currently shown.
@@ -54,10 +81,50 @@ func (h *HistoryPanel) SetSize(width, height int) {
 
 // SelectedQuery returns the query at the cursor, or empty string if none.
 func (h HistoryPanel) SelectedQuery() string {
-	if len(h.entries) == 0 || h.cursor < 0 || h.cursor >= len(h.entries) {
+	entries := h.filteredEntries()
+	if len(entries) == 0 || h.cursor < 0 || h.cursor >= len(entries) {
 		return ""
 	}
-	return h.entries[h.cursor].Query
+	return entries[h.cursor].entry.Query
+}
+
+// filteredEntry holds an entry plus the fuzzy match indices for highlighting.
+type filteredEntry struct {
+	entry    history.Entry
+	matchIdx []int
+}
+
+// filteredEntries returns entries matching the fuzzy filter, best match first.
+func (h HistoryPanel) filteredEntries() []filteredEntry {
+	if h.filter == "" {
+		out := make([]filteredEntry, len(h.entries))
+		for i, e := range h.entries {
+			out[i] = filteredEntry{entry: e}
+		}
+		return out
+	}
+	type scored struct {
+		item  filteredEntry
+		score int
+	}
+	var results []scored
+	for _, e := range h.entries {
+		idx, score := fuzzyMatch(h.filter, e.Query)
+		if idx != nil {
+			results = append(results, scored{filteredEntry{entry: e, matchIdx: idx}, score})
+		}
+	}
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].score != results[j].score {
+			return results[i].score < results[j].score
+		}
+		return results[i].item.entry.RunAt.After(results[j].item.entry.RunAt)
+	})
+	out := make([]filteredEntry, len(results))
+	for i, r := range results {
+		out[i] = r.item
+	}
+	return out
 }
 
 // CursorUp moves the selection up.
@@ -70,14 +137,15 @@ func (h *HistoryPanel) CursorUp() {
 
 // CursorDown moves the selection down.
 func (h *HistoryPanel) CursorDown() {
-	if h.cursor < len(h.entries)-1 {
+	n := len(h.filteredEntries())
+	if h.cursor < n-1 {
 		h.cursor++
 		h.adjustScroll()
 	}
 }
 
 func (h *HistoryPanel) adjustScroll() {
-	maxVisible := h.height - 4
+	maxVisible := h.height - 3
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -95,54 +163,45 @@ func (h HistoryPanel) View() string {
 		return ""
 	}
 
-	title := titleStyle.Render("Query History")
+	entries := h.filteredEntries()
 
-	maxVisible := h.height - 5
-	if maxVisible < 1 {
-		maxVisible = 1
+	// Reserve one row for the filter prompt (always visible).
+	avail := h.height - 3
+	if avail < 1 {
+		avail = 1
 	}
 
+	maxVisible := avail
 	end := h.scrollRow + maxVisible
-	if end > len(h.entries) {
-		end = len(h.entries)
+	if end > len(entries) {
+		end = len(entries)
 	}
 
 	var rows []string
 	for i := h.scrollRow; i < end; i++ {
-		e := h.entries[i]
-		status := successStyle.Render("✓")
-		if !e.Success {
-			status = errorStyle.Render("✗")
+		e := entries[i].entry
+		ts := history.FormatTime(e.RunAt)
+		queryStr := truncateForDisplay(e.Query, h.width-26)
+		matched := highlightMatches(queryStr, entries[i].matchIdx)
+
+		isSelected := i == h.cursor
+		if isSelected {
+			line := fmt.Sprintf("❯ %s  %s", ts, queryStr)
+			rows = append(rows, selectedStyle.Render(line))
+		} else {
+			styledTs := mutedStyle.Render(ts)
+			line := fmt.Sprintf("  %s  %s", styledTs, matched)
+			rows = append(rows, normalStyle.Render(line))
 		}
-
-		ts := mutedStyle.Render(history.FormatTime(e.RunAt))
-		queryStr := truncateForDisplay(e.Query, h.width-30)
-
-		marker := " "
-		lineStyle := normalStyle
-		if i == h.cursor {
-			marker = "→"
-			lineStyle = panelSelectedStyle
-		}
-
-		line := fmt.Sprintf("%s %s %s  %s", marker, status, ts, queryStr)
-		rows = append(rows, lineStyle.Render(line))
 	}
 
-	if len(h.entries) == 0 {
-		rows = append(rows, mutedStyle.Render("  No query history yet."))
+	if len(entries) == 0 {
+		rows = append(rows, mutedStyle.Render("  (no matches)"))
 	}
 
-	scrollInfo := ""
-	if len(h.entries) > maxVisible {
-		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", h.scrollRow+1, end, len(h.entries)))
-	}
-
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		title,
-		strings.Join(rows, "\n"),
-		scrollInfo,
-	)
+	content := strings.Join(rows, "\n")
+	prompt := " " + renderPalettePrompt(h.filter, true)
+	content = lipgloss.JoinVertical(lipgloss.Left, prompt, content)
 
 	panel := lipgloss.NewStyle().
 		Width(h.width - 2).

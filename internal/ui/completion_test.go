@@ -17,13 +17,13 @@ func TestFilterCandidates(t *testing.T) {
 		{text: "id", kind: kindColumn},
 	}
 
-	// Prefix match "se" → SELECT, SET (both start with "se" case-insensitively)
+	// Fuzzy match "se" → SELECT, SET, users, user_settings (subsequence match)
 	filtered := filterCandidates(all, "se")
-	if len(filtered) != 2 {
-		t.Fatalf("expected 2 matches for 'se', got %d: %+v", len(filtered), filtered)
+	if len(filtered) != 4 {
+		t.Fatalf("expected 4 matches for 'se', got %d: %+v", len(filtered), filtered)
 	}
 
-	// Prefix match "us" → users, user_settings
+	// Fuzzy match "us" → users, user_settings
 	filtered = filterCandidates(all, "us")
 	if len(filtered) != 2 {
 		t.Fatalf("expected 2 matches for 'us', got %d", len(filtered))
@@ -185,8 +185,7 @@ func TestCompletionAcceptReplacesPartialWord(t *testing.T) {
 	})
 	e.StartCompletion()
 
-	// Navigate to "users" (after sort, "user_settings" is first due to '_' < 's')
-	e.MoveCompletion(1)
+	// "users" ranks first by fuzzy score; accept at cursor.
 	e.AcceptCompletion()
 
 	expected := "SELECT * FROM users"
@@ -259,11 +258,11 @@ func TestAutoTriggerBackspaceRefilter(t *testing.T) {
 		{text: "users", kind: kindTable},
 	})
 
-	// Type "se" to trigger (2 matches: SELECT, SET)
+	// Type "se" to trigger (3 fuzzy matches: SELECT, SET, users)
 	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
 	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
-	if len(e.completion.candidates) != 2 {
-		t.Fatalf("expected 2 candidates, got %d", len(e.completion.candidates))
+	if len(e.completion.candidates) != 3 {
+		t.Fatalf("expected 3 candidates, got %d", len(e.completion.candidates))
 	}
 
 	// Backspace → word is "s" (still >= 1 char) → popup stays but refilters
