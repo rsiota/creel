@@ -3272,7 +3272,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.bookmarkStore.Clear(m.connection.Config().Name)
 				}
 				m.bookmarks.SetEntries(nil)
-				m.bookmarks.Toggle()
+				m.bookmarks.StartFilter()
 				return m, nil
 			}
 		case "n", "N", "esc", "ctrl+c":
@@ -3345,6 +3345,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.results.IsEditing() ||
 			m.inspector.IsEditing() || m.inspector.IsInserting() || m.inspector.IsFiltering() ||
 			m.sidebarFiltering ||
+			m.history.IsVisible() ||
+			m.bookmarks.IsVisible() ||
 			(m.focus == FocusEditor && m.editor.VimMode() == VimInsert) {
 			break
 		}
@@ -3623,11 +3625,13 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Bookmarks panel takes over navigation when visible
 	if m.bookmarks.IsVisible() {
 		switch msg.String() {
-		case "j", "down":
-			m.bookmarks.CursorDown()
+		case "esc":
+			m.bookmarks.CancelFilter()
+			m.bookmarks.Toggle()
 			return m, nil
-		case "k", "up":
-			m.bookmarks.CursorUp()
+		case "ctrl+c":
+			m.bookmarks.CancelFilter()
+			m.bookmarks.Toggle()
 			return m, nil
 		case "enter":
 			q := m.bookmarks.SelectedQuery()
@@ -3636,10 +3640,21 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.focus = FocusEditor
 				m.applyFocus()
 			}
+			m.bookmarks.CancelFilter()
 			m.bookmarks.Toggle()
 			return m, m.editor.Focus()
-		case "esc":
-			m.bookmarks.Toggle()
+		case "backspace":
+			if len(m.bookmarks.filter) > 0 {
+				m.bookmarks.filter = m.bookmarks.filter[:len(m.bookmarks.filter)-1]
+				m.bookmarks.cursor = 0
+				m.bookmarks.scrollRow = 0
+			}
+			return m, nil
+		case "up", "k":
+			m.bookmarks.CursorUp()
+			return m, nil
+		case "down", "j":
+			m.bookmarks.CursorDown()
 			return m, nil
 		case "d":
 			// Delete the bookmark under the cursor.
@@ -3652,6 +3667,13 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "D":
 			m.clearBookmarksConfirm = true
+			return m, nil
+		}
+		// Printable characters extend the filter.
+		if msg.Type == tea.KeyRunes {
+			m.bookmarks.filter += msg.String()
+			m.bookmarks.cursor = 0
+			m.bookmarks.scrollRow = 0
 			return m, nil
 		}
 	}
@@ -5237,7 +5259,7 @@ func (m Model) viewWorkspace() string {
 
 	// Overlay clear-bookmarks confirmation dialog if visible.
 	if m.clearBookmarksConfirm {
-		dialog := renderConfirmDialog("Clear all bookmarks?\nThis cannot be undone.")
+		dialog := renderConfirmDialogBare("Clear all bookmarks?\nThis cannot be undone.")
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)
 		dlgX := (m.width - dlgW) / 2

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -16,6 +17,9 @@ type BookmarkPanel struct {
 	width     int
 	height    int
 	visible   bool
+
+	filter    string
+	filtering bool
 }
 
 // NewBookmarkPanel creates a new bookmark panel.
@@ -33,11 +37,34 @@ func (b *BookmarkPanel) SetEntries(entries []bookmarks.Bookmark) {
 	b.scrollRow = 0
 }
 
+// IsFiltering returns whether the panel is in fuzzy-filter mode.
+func (b BookmarkPanel) IsFiltering() bool {
+	return b.filtering
+}
+
+// StartFilter begins fuzzy-filter mode.
+func (b *BookmarkPanel) StartFilter() {
+	b.filtering = true
+	b.filter = ""
+	b.cursor = 0
+	b.scrollRow = 0
+}
+
+// CancelFilter exits fuzzy-filter mode.
+func (b *BookmarkPanel) CancelFilter() {
+	b.filtering = false
+	b.filter = ""
+	b.cursor = 0
+	b.scrollRow = 0
+}
+
 // Toggle shows or hides the panel.
 func (b *BookmarkPanel) Toggle() {
 	b.visible = !b.visible
 	b.cursor = 0
 	b.scrollRow = 0
+	b.filtering = true
+	b.filter = ""
 }
 
 // IsVisible returns whether the panel is currently shown.
@@ -53,19 +80,62 @@ func (b *BookmarkPanel) SetSize(width, height int) {
 
 // SelectedQuery returns the query at the cursor, or empty string if none.
 func (b BookmarkPanel) SelectedQuery() string {
-	if len(b.entries) == 0 || b.cursor < 0 || b.cursor >= len(b.entries) {
+	entries := b.filteredEntries()
+	if len(entries) == 0 || b.cursor < 0 || b.cursor >= len(entries) {
 		return ""
 	}
-	return b.entries[b.cursor].Query
+	return entries[b.cursor].entry.Query
 }
 
-// CursorIndex returns the current cursor position relative to the full
-// entry list, or -1 if empty.
+// CursorIndex returns the index of the selected entry within the full
+// entry list (not the filtered list), or -1 if empty.
 func (b BookmarkPanel) CursorIndex() int {
-	if len(b.entries) == 0 {
+	entries := b.filteredEntries()
+	if len(entries) == 0 || b.cursor < 0 || b.cursor >= len(entries) {
 		return -1
 	}
-	return b.cursor
+	return entries[b.cursor].origIdx
+}
+
+// filteredBookmark holds an entry plus the fuzzy match indices for highlighting
+// and its original position in the full entries slice.
+type filteredBookmark struct {
+	entry    bookmarks.Bookmark
+	matchIdx []int
+	origIdx  int
+}
+
+// filteredEntries returns entries matching the fuzzy filter, best match first.
+func (b BookmarkPanel) filteredEntries() []filteredBookmark {
+	if b.filter == "" {
+		out := make([]filteredBookmark, len(b.entries))
+		for i, e := range b.entries {
+			out[i] = filteredBookmark{entry: e, origIdx: i}
+		}
+		return out
+	}
+	type scored struct {
+		item  filteredBookmark
+		score int
+	}
+	var results []scored
+	for i, e := range b.entries {
+		idx, score := fuzzyMatch(b.filter, e.Query)
+		if idx != nil {
+			results = append(results, scored{filteredBookmark{entry: e, matchIdx: idx, origIdx: i}, score})
+		}
+	}
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].score != results[j].score {
+			return results[i].score < results[j].score
+		}
+		return results[i].item.entry.SavedAt.After(results[j].item.entry.SavedAt)
+	})
+	out := make([]filteredBookmark, len(results))
+	for i, r := range results {
+		out[i] = r.item
+	}
+	return out
 }
 
 // CursorUp moves the selection up.
@@ -78,14 +148,15 @@ func (b *BookmarkPanel) CursorUp() {
 
 // CursorDown moves the selection down.
 func (b *BookmarkPanel) CursorDown() {
-	if b.cursor < len(b.entries)-1 {
+	n := len(b.filteredEntries())
+	if b.cursor < n-1 {
 		b.cursor++
 		b.adjustScroll()
 	}
 }
 
 func (b *BookmarkPanel) adjustScroll() {
-	maxVisible := b.height - 4
+	maxVisible := b.height - 3
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -103,49 +174,45 @@ func (b BookmarkPanel) View() string {
 		return ""
 	}
 
-	title := titleStyle.Render("Bookmarks")
+	entries := b.filteredEntries()
 
-	maxVisible := b.height - 5
-	if maxVisible < 1 {
-		maxVisible = 1
+	// Reserve one row for the filter prompt (always visible).
+	avail := b.height - 3
+	if avail < 1 {
+		avail = 1
 	}
 
+	maxVisible := avail
 	end := b.scrollRow + maxVisible
-	if end > len(b.entries) {
-		end = len(b.entries)
+	if end > len(entries) {
+		end = len(entries)
 	}
 
 	var rows []string
 	for i := b.scrollRow; i < end; i++ {
-		e := b.entries[i]
-		ts := mutedStyle.Render(bookmarks.FormatTime(e.SavedAt))
-		queryStr := truncateForDisplay(e.Query, b.width-30)
+		e := entries[i].entry
+		ts := bookmarks.FormatTime(e.SavedAt)
+		queryStr := truncateForDisplay(e.Query, b.width-26)
+		matched := highlightMatches(queryStr, entries[i].matchIdx)
 
-		marker := " "
-		lineStyle := normalStyle
-		if i == b.cursor {
-			marker = "→"
-			lineStyle = panelSelectedStyle
+		isSelected := i == b.cursor
+		if isSelected {
+			line := fmt.Sprintf("❯ %s  %s", ts, queryStr)
+			rows = append(rows, selectedStyle.Render(line))
+		} else {
+			styledTs := mutedStyle.Render(ts)
+			line := fmt.Sprintf("  %s  %s", styledTs, matched)
+			rows = append(rows, normalStyle.Render(line))
 		}
-
-		line := fmt.Sprintf("%s  %s  %s", marker, ts, queryStr)
-		rows = append(rows, lineStyle.Render(line))
 	}
 
-	if len(b.entries) == 0 {
-		rows = append(rows, mutedStyle.Render("  No bookmarks yet."))
+	if len(entries) == 0 {
+		rows = append(rows, mutedStyle.Render("  (no matches)"))
 	}
 
-	scrollInfo := ""
-	if len(b.entries) > maxVisible {
-		scrollInfo = mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", b.scrollRow+1, end, len(b.entries)))
-	}
-
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		title,
-		strings.Join(rows, "\n"),
-		scrollInfo,
-	)
+	content := strings.Join(rows, "\n")
+	prompt := " " + renderPalettePrompt(b.filter, true)
+	content = lipgloss.JoinVertical(lipgloss.Left, prompt, content)
 
 	panel := lipgloss.NewStyle().
 		Width(b.width - 2).
