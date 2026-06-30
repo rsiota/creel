@@ -5476,7 +5476,7 @@ func (m Model) viewWorkspace() string {
 		cursorLine, cursorCol := m.editor.CursorScreenPos()
 		popup := m.editor.CompletionView()
 		popupX := sidebarWidth + 2 + cursorCol
-		popupY := 2 + cursorLine + 1
+		popupY := 1 + cursorLine + 1
 		view = placeOverlay(view, popup, popupX, popupY)
 	}
 
