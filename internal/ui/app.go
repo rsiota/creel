@@ -5096,6 +5096,11 @@ func (m Model) viewWorkspace() string {
 			BorderForeground(m.borderForFocus(FocusResults)).
 			Render(func() string {
 				m.results.SetSort(m.sortCol, m.sortDir)
+				// Shrink the table by one row when a prompt line is
+				// shown above it, so the total height stays the same.
+				if m.columnJumping || m.searching || m.backendSearching {
+					m.results.SetSize(rightWidth, resultsHeight-1)
+				}
 				view := m.results.View()
 				if m.columnJumping {
 					prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render(":"+m.columnJump) +
