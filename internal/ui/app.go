@@ -180,6 +180,9 @@ type importDoneMsg struct {
 // generation still matches).
 type flashTickMsg struct{ gen uint64 }
 
+// backendSearchTickMsg fires after the debounce delay to execute the query.
+type backendSearchTickMsg struct{ input string }
+
 // flashExpiry is how long a transient status-bar message stays visible before
 // auto-clearing.
 const flashExpiry = 5 * time.Second
@@ -322,6 +325,11 @@ type Model struct {
 	searching   bool
 	searchQuery string
 	lastSearch  string
+
+	// Backend full-text search (/ on results, LIKE across all columns).
+	backendSearching   bool
+	backendSearchInput string
+	backendSearchTimer *time.Timer
 
 	// hintFlash is the individual key currently highlighted white on the status bar.
 	hintFlash   string
@@ -835,6 +843,86 @@ func (m *Model) undoFilter() tea.Cmd {
 	m.page = 0
 	m.preserveCursorCol()
 	return m.runPageQuery()
+}
+
+// backendSearchDebounce is the delay before the backend search query fires.
+const backendSearchDebounce = 300 * time.Millisecond
+
+// scheduleBackendSearch arms a debounce timer; the query executes when it fires.
+func (m *Model) scheduleBackendSearch() tea.Cmd {
+	if m.backendSearchTimer != nil {
+		m.backendSearchTimer.Stop()
+	}
+	input := m.backendSearchInput
+	m.backendSearchTimer = time.AfterFunc(backendSearchDebounce, func() {})
+	return tea.Tick(backendSearchDebounce, func(time.Time) tea.Msg {
+		return backendSearchTickMsg{input: input}
+	})
+}
+
+// buildBackendSearchQuery constructs a LIKE-based query across all text columns
+// of the current table.
+func (m Model) buildBackendSearchQuery(term string) string {
+	table := parseSimpleSelectTable(m.baseQuery)
+	if table == "" || term == "" {
+		return m.baseQuery
+	}
+	cols, ok := m.columnCache[table]
+	if !ok {
+		resultCols := m.results.columns
+		cols = make([]db.Column, len(resultCols))
+		for i, c := range resultCols {
+			cols[i] = db.Column{Name: c}
+		}
+	}
+	escaped := strings.ReplaceAll(term, "'", "''")
+	var clauses []string
+	for _, c := range cols {
+		clauses = append(clauses, fmt.Sprintf("%s LIKE '%%%s%%'", c.Name, escaped))
+	}
+	q := fmt.Sprintf("SELECT * FROM %s WHERE %s", table, strings.Join(clauses, " OR "))
+	if m.sortCol != "" {
+		q += fmt.Sprintf(" ORDER BY %s %s", m.sortCol, m.sortDir)
+	}
+	return q
+}
+
+// runBackendSearch replaces lastQuery with the backend search query and runs it.
+func (m *Model) runBackendSearch(term string) tea.Cmd {
+	if term == "" {
+		m.lastQuery = m.buildFilteredQuery()
+		m.syncEditorQuery()
+		m.page = 0
+		return m.runPageQuery()
+	}
+	q := m.buildBackendSearchQuery(term)
+	m.lastQuery = q
+	m.syncEditorQuery()
+	m.page = 0
+	return m.runPageQuery()
+}
+
+// commitBackendSearch exits search input mode, keeping results.
+func (m *Model) commitBackendSearch() {
+	m.backendSearching = false
+	m.backendSearchInput = ""
+	if m.backendSearchTimer != nil {
+		m.backendSearchTimer.Stop()
+		m.backendSearchTimer = nil
+	}
+}
+
+// cancelBackendSearch exits search input mode and restores the original query.
+func (m *Model) cancelBackendSearch() {
+	m.backendSearching = false
+	m.backendSearchInput = ""
+	if m.backendSearchTimer != nil {
+		m.backendSearchTimer.Stop()
+		m.backendSearchTimer = nil
+	}
+	m.lastQuery = m.buildFilteredQuery()
+	m.syncEditorQuery()
+	m.page = 0
 }
 
 // fetchColumnStats computes statistics for the cursor column and displays
@@ -2620,6 +2708,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case backendSearchTickMsg:
+		// Only execute if the input still matches (user may have typed more).
+		if m.backendSearching && msg.input == m.backendSearchInput {
+			return m, m.runBackendSearch(msg.input)
+		}
+		return m, nil
+
 	case dropDBResultMsg:
 		if msg.err != nil {
 			m.exportMsg = fmt.Sprintf("drop database failed: %v", msg.err)
@@ -3351,6 +3446,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebarFiltering ||
 			m.history.IsVisible() ||
 			m.bookmarks.IsVisible() ||
+			m.backendSearching ||
 			(m.focus == FocusEditor && m.editor.VimMode() == VimInsert) {
 			break
 		}
@@ -3529,6 +3625,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// If in search mode, let the focused panel handle esc.
 		if m.searching {
+			break
+		}
+		// If in backend search mode, let the focused panel handle esc.
+		if m.backendSearching {
 			break
 		}
 		// Clear committed search highlighting (vim :nohl).
@@ -3792,6 +3892,28 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		// Backend search mode intercepts all keys.
+		if m.backendSearching {
+			switch msg.String() {
+			case "esc", "ctrl+c":
+				m.cancelBackendSearch()
+				return m, nil
+			case "enter":
+				m.commitBackendSearch()
+				return m, nil
+			case "backspace":
+				if len(m.backendSearchInput) > 0 {
+					m.backendSearchInput = m.backendSearchInput[:len(m.backendSearchInput)-1]
+					return m, m.scheduleBackendSearch()
+				}
+				return m, nil
+			}
+			if msg.Type == tea.KeyRunes {
+				m.backendSearchInput += msg.String()
+				return m, m.scheduleBackendSearch()
+			}
+			return m, nil
+		}
 		// Visual mode intercepts movement and commit/cancel keys.
 		if m.results.IsVisualMode() {
 			switch msg.String() {
@@ -3989,6 +4111,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "/":
 				if m.resultsPendingG {
+					// g/ — client-side regex search on loaded page.
 					m.resultsPendingG = false
 					m.resultsPendingY = false
 					if m.results.NumRows() > 0 {
@@ -3997,10 +4120,20 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}
 					return m, nil
 				}
-				m.resultsPendingG = false
+				// / — backend full-text search across all columns.
 				m.resultsPendingY = false
 				if m.canFilter() {
-					return m, m.openFilterPicker()
+					m.backendSearching = true
+					m.backendSearchInput = ""
+					return m, nil
+				}
+			case "f":
+				if m.resultsPendingG {
+					m.resultsPendingG = false
+					m.resultsPendingY = false
+					if m.canFilter() {
+						return m, m.openFilterPicker()
+					}
 				}
 			case "c":
 				m.resultsPendingG = false
@@ -4973,6 +5106,9 @@ func (m Model) viewWorkspace() string {
 					prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+m.searchQuery) +
 						lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
 					view = prompt + "\n" + view
+				}
+				if m.backendSearching {
+					view = " " + renderPalettePrompt(m.backendSearchInput, true) + "\n" + view
 				}
 				return view
 			}())
