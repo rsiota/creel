@@ -444,12 +444,16 @@ func (m *Model) connectToDB() tea.Cmd {
 		}
 		m.dbPicker.Show(dbs, true)
 		m.layoutWorkspace()
+		m.sidebarFiltering = true
+		m.sidebarFilter = ""
 		return nil
 	}
 
 	cmd := m.editor.Focus()
 	m.loadTables()
 	m.layoutWorkspace()
+	m.sidebarFiltering = true
+	m.sidebarFilter = ""
 
 	return tea.Batch(cmd, m.prefetchSchemas())
 }
@@ -483,7 +487,7 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	m.results.SetSearchMatcher(nil)
 	m.queryStack = nil
 	m.sidebarCursor = 0
-	m.sidebarFiltering = false
+	m.sidebarFiltering = true
 	m.sidebarFilter = ""
 
 	cmd := m.editor.Focus()
@@ -5052,14 +5056,13 @@ func (m Model) viewWorkspace() string {
 				style = selectedStyle
 			}
 			tableName := item.text
-			if m.sidebarFiltering {
-				tableName = highlightMatches(item.text, item.matchIdx)
-			}
-			line = expandIcon + " " + tableName
 			if isCursor && m.sidebarFiltering {
-				line = lipgloss.NewStyle().Bold(true).Padding(0, 1).Render(line)
+				line = selectedStyle.Render(expandIcon + " " + item.text)
 			} else {
-				line = style.Render(line)
+				if m.sidebarFiltering {
+					tableName = highlightMatches(item.text, item.matchIdx)
+				}
+				line = style.Render(expandIcon + " " + tableName)
 			}
 		}
 
