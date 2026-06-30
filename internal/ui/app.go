@@ -5262,8 +5262,7 @@ func (m Model) viewWorkspace() string {
 	view := lipgloss.JoinVertical(lipgloss.Left, workspace, statusBar)
 
 	// Dim the workspace behind long-lived editing overlays.
-	if m.cellEdit.IsVisible() || m.addColumnForm.IsVisible() || m.tableRenameForm.IsVisible() ||
-		m.history.IsVisible() || m.bookmarks.IsVisible() {
+	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() {
 		view = dimBackground(view)
 	}
 
