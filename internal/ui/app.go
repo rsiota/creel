@@ -846,7 +846,7 @@ func (m *Model) undoFilter() tea.Cmd {
 }
 
 // backendSearchDebounce is the delay before the backend search query fires.
-const backendSearchDebounce = 300 * time.Millisecond
+const backendSearchDebounce = 0 * time.Millisecond
 
 // scheduleBackendSearch arms a debounce timer; the query executes when it fires.
 func (m *Model) scheduleBackendSearch() tea.Cmd {
