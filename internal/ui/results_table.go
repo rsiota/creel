@@ -1303,7 +1303,7 @@ func (r ResultsTable) View() string {
 		for _, i := range cols {
 			totalW += r.colWidths[i] + 3
 		}
-		b.WriteString(outerStyle.Render("┌" + strings.Repeat("─", totalW-1) + "┐"))
+		b.WriteString(outerStyle.Render("╭" + strings.Repeat("─", totalW-1) + "╮"))
 	}
 	b.WriteString("\n")
 
@@ -1322,11 +1322,20 @@ func (r ResultsTable) View() string {
 			}
 		}
 		cell := truncateCell(header, r.colWidths[i])
-		style := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
+		baseStyle := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
 		if r.hasCellCursor() && i == r.cursorCol {
-			style = style.Underline(true)
+			// Underline only the text, not the cell padding.
+			text := strings.TrimRight(cell, " ")
+			padW := r.colWidths[i] - runeLen(text)
+			b.WriteString(baseStyle.Render(" "))
+			b.WriteString(baseStyle.Underline(true).Render(text))
+			if padW > 0 {
+				b.WriteString(baseStyle.Render(strings.Repeat(" ", padW)))
+			}
+			b.WriteString(baseStyle.Render(" "))
+		} else {
+			b.WriteString(baseStyle.Render(" " + cell + " "))
 		}
-		b.WriteString(style.Render(" " + cell + " "))
 		if j < len(cols)-1 {
 			b.WriteString(innerStyle.Render("│"))
 		}
@@ -1492,7 +1501,7 @@ func (r ResultsTable) View() string {
 		for _, i := range cols {
 			totalW += r.colWidths[i] + 3
 		}
-		b.WriteString(outerStyle.Render("└" + strings.Repeat("─", totalW-1) + "┘"))
+		b.WriteString(outerStyle.Render("╰" + strings.Repeat("─", totalW-1) + "╯"))
 	}
 
 	return b.String()
