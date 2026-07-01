@@ -4933,7 +4933,7 @@ func (m *Model) layoutWorkspace() {
 
 	m.connList.SetSize(sidebarWidth-borderOverhead, sideContentHeight)
 	m.editor.SetSize(rightWidth, editorContentHeight)
-	m.results.SetSize(rightWidth, resultsHeight)
+	m.results.SetSize(rightWidth+borderOverhead, resultsHeight+borderOverhead)
 
 	if inspectorVisible {
 		viewHeight := editorHeight + resultsHeight
@@ -5089,17 +5089,30 @@ func (m Model) viewWorkspace() string {
 			BorderForeground(m.borderForFocus(FocusEditor)).
 			Render(m.editor.View())
 
-		resultsPanel := lipgloss.NewStyle().
-			Width(rightWidth).
-			Height(resultsHeight).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(m.borderForFocus(FocusResults)).
-			Render(func() string {
+		// When the table has results it draws its own border, merging
+		// seamlessly with the panel frame. Otherwise fall back to a
+		// standard rounded border around the placeholder message.
+		hasTable := m.results.HasResult() && m.results.NumCols() > 0
+		m.results.SetBorderColor(m.borderForFocus(FocusResults))
+
+		var resultsStyle lipgloss.Style
+		if hasTable {
+			resultsStyle = lipgloss.NewStyle().
+				Width(rightWidth + borderOverhead).
+				Height(resultsHeight + borderOverhead)
+		} else {
+			resultsStyle = lipgloss.NewStyle().
+				Width(rightWidth).
+				Height(resultsHeight).
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(m.borderForFocus(FocusResults))
+		}
+		resultsPanel := resultsStyle.Render(func() string {
 				m.results.SetSort(m.sortCol, m.sortDir)
 				// Shrink the table by one row when a prompt line is
 				// shown above it, so the total height stays the same.
 				if m.columnJumping || m.searching || m.backendSearching {
-					m.results.SetSize(rightWidth, resultsHeight-1)
+					m.results.SetSize(rightWidth+borderOverhead, resultsHeight+borderOverhead-1)
 				}
 				view := m.results.View()
 				if m.columnJumping {

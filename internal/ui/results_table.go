@@ -83,6 +83,11 @@ type ResultsTable struct {
 	// highlighted and can be committed to marks with enter.
 	visualActive bool
 	visualAnchor int
+
+	// borderColor is the colour used for the table's box-drawing border.
+	// When non-empty it overrides the default colorBorder, allowing the
+	// caller to reflect focus state.
+	borderColor lipgloss.Color
 }
 
 // NewResultsTable creates a new results table component.
@@ -824,6 +829,12 @@ func (r *ResultsTable) SetSize(width, height int) {
 	r.clampCursor()
 }
 
+// SetBorderColor sets the colour used for the table border, allowing the
+// caller to reflect focus state.
+func (r *ResultsTable) SetBorderColor(c lipgloss.Color) {
+	r.borderColor = c
+}
+
 func (r *ResultsTable) computeColWidths() {
 	if len(r.columns) == 0 {
 		return
@@ -1230,24 +1241,45 @@ func (r ResultsTable) View() string {
 
 	cols := r.visibleColRange()
 
-	var b strings.Builder
-
-	// Top border
-	borderColor := lipgloss.NewStyle().Foreground(colorBorder)
-	b.WriteString(borderColor.Render("┌"))
-	for j, i := range cols {
-		w := r.colWidths[i] + 2 // match cell content: " " + value + " "
-		b.WriteString(borderColor.Render(strings.Repeat("─", w)))
-		if j < len(cols)-1 {
-			b.WriteString(borderColor.Render("┬"))
+	// Extend the last visible column so the border fills the full table
+	// width (the table border doubles as the panel frame). Copy the slice
+	// first — the value receiver shares the backing array, so mutating
+	// r.colWidths directly would permanently grow widths on every render.
+	if len(cols) > 0 {
+		r.colWidths = append([]int(nil), r.colWidths...)
+		used := 0
+		for _, i := range cols {
+			used += r.colWidths[i] + 3 // " value " + "│"
+		}
+		if fill := r.width - 1 - used; fill > 0 {
+			r.colWidths[cols[len(cols)-1]] += fill
 		}
 	}
-	b.WriteString(borderColor.Render("┐"))
+
+	var b strings.Builder
+
+	// Frame colour: the outer rectangle follows focus state; all inner
+	// lines (column separators, header rule) are always muted.
+	bc := colorBorder
+	if r.borderColor != "" {
+		bc = r.borderColor
+	}
+	outerStyle := lipgloss.NewStyle().Foreground(bc)
+	innerStyle := lipgloss.NewStyle().Foreground(colorBorder)
+
+	// ── Top frame: solid blue line, no junctions. ──────────────────
+	if len(cols) > 0 {
+		totalW := 0
+		for _, i := range cols {
+			totalW += r.colWidths[i] + 3
+		}
+		b.WriteString(outerStyle.Render("┌" + strings.Repeat("─", totalW-1) + "┐"))
+	}
 	b.WriteString("\n")
 
-	// Header row
-	b.WriteString(borderColor.Render("│"))
-	for _, i := range cols {
+	// ── Header row ─────────────────────────────────────────────────
+	b.WriteString(outerStyle.Render("│"))
+	for j, i := range cols {
 		header := r.columns[i]
 		if r.editable && r.isPKColumn(header) {
 			header = header + " 🔑"
@@ -1265,42 +1297,59 @@ func (r ResultsTable) View() string {
 			style = style.Underline(true)
 		}
 		b.WriteString(style.Render(" " + cell + " "))
-		b.WriteString(borderColor.Render("│"))
-	}
-	b.WriteString("\n")
-
-	// Header separator
-	b.WriteString(borderColor.Render("├"))
-	for j, i := range cols {
-		w := r.colWidths[i] + 2
-		b.WriteString(borderColor.Render(strings.Repeat("─", w)))
 		if j < len(cols)-1 {
-			b.WriteString(borderColor.Render("┼"))
+			b.WriteString(innerStyle.Render("│"))
 		}
 	}
-	b.WriteString(borderColor.Render("┤"))
+	b.WriteString(outerStyle.Render("│"))
 	b.WriteString("\n")
 
-	// Data rows
+	// ── Header separator: muted dashes and ┼ inside; blue │ at the
+	// edges keeps the vertical frame continuous without horizontal
+	// ticks poking inward. ──────────────────────────────────────────
+	if len(cols) > 0 {
+		b.WriteString(outerStyle.Render("│"))
+		for j, i := range cols {
+			w := r.colWidths[i] + 2
+			b.WriteString(innerStyle.Render(strings.Repeat("─", w)))
+			if j < len(cols)-1 {
+				b.WriteString(innerStyle.Render("┼"))
+			}
+		}
+		b.WriteString(outerStyle.Render("│"))
+	}
+	b.WriteString("\n")
+
+	// ── Data rows ──────────────────────────────────────────────────
 	for rowIdx := rowStart; rowIdx < rowEnd; rowIdx++ {
 		row := r.rows[rowIdx]
 		isCursorRow := r.hasCellCursor() && rowIdx == r.cursorRow
-		rowBorderStyle := borderColor
-		if r.isVisualRow(rowIdx) {
-			rowBorderStyle = lipgloss.NewStyle().Foreground(colorBorder).Background(colorVisual)
-		} else if isCursorRow {
-			rowBorderStyle = lipgloss.NewStyle().Foreground(colorBorder).Background(colorCursorRow)
-		} else if rowIdx%2 == 1 {
-			rowBorderStyle = lipgloss.NewStyle().Foreground(colorBorder).Background(colorStripe)
+
+		// Determine background colour for the row.
+		var bg lipgloss.Color
+		switch {
+		case r.isVisualRow(rowIdx):
+			bg = colorVisual
+		case isCursorRow:
+			bg = colorCursorRow
+		case rowIdx%2 == 1:
+			bg = colorStripe
 		}
+
+		// Left border (outer frame)
 		if r.IsMarkedRow(rowIdx) {
 			b.WriteString(lipgloss.NewStyle().Foreground(colorMark).Render("◆"))
 		} else if r.isVisualRow(rowIdx) {
 			b.WriteString(lipgloss.NewStyle().Foreground(colorVisual).Render("│"))
 		} else {
-			b.WriteString(rowBorderStyle.Render("│"))
+			leftStyle := outerStyle
+			if bg != "" {
+				leftStyle = lipgloss.NewStyle().Foreground(bc).Background(bg)
+			}
+			b.WriteString(leftStyle.Render("│"))
 		}
-		for _, i := range cols {
+
+		for j, i := range cols {
 			ref := cellRef{row: rowIdx, col: i}
 			dirtyVal, isDirty := r.dirtyCells[ref]
 			isCursorCell := isCursorRow && i == r.cursorCol
@@ -1318,59 +1367,70 @@ func (r ResultsTable) View() string {
 			if r.editing && isCursorCell {
 				inputView := renderEditInput(r.editInput, r.colWidths[i], colorEdit)
 				b.WriteString(" " + inputView + " ")
-				b.WriteString(rowBorderStyle.Render("│"))
-				continue
-			}
-
-			cell := truncateCell(val, r.colWidths[i])
-			if isCursorCell && r.IsNavigableForeignKey(rowIdx, i) {
-				arrow := " →"
-				arrowW := lipgloss.Width(arrow)
-				cell = truncateCell(val, r.colWidths[i]-arrowW) + arrow
-			}
-
-			// Style the cell
-			isMarked := r.IsMarkedRow(rowIdx)
-			isVisualRow := r.isVisualRow(rowIdx)
-			isSearchMatch := r.searchMatcher != nil && r.searchMatcher(val)
-			var style lipgloss.Style
-			switch {
-			case isCopyFlash && r.copyFlashOn:
-				style = lipgloss.NewStyle().Foreground(colorBg).Background(colorSuccess)
-			case isCursorCell:
-				style = lipgloss.NewStyle().Foreground(colorBg).Background(colorPrimary)
-			case isDirty:
-				style = lipgloss.NewStyle().Foreground(colorBg).Background(lipgloss.Color("#e0af68"))
-			case isVisualRow:
-				style = lipgloss.NewStyle().Foreground(colorFg).Background(colorVisual)
-			case isMarked:
-				style = lipgloss.NewStyle().Foreground(colorMark)
-			case isSearchMatch:
-				style = lipgloss.NewStyle().Foreground(colorFg).Background(colorSearch)
-			case isCursorRow:
-				style = lipgloss.NewStyle().Foreground(colorFg).Background(colorCursorRow)
-			default:
-				style = lipgloss.NewStyle().Foreground(colorFg)
-				if rowIdx%2 == 1 {
-					style = style.Background(colorStripe)
+			} else {
+				cell := truncateCell(val, r.colWidths[i])
+				if isCursorCell && r.IsNavigableForeignKey(rowIdx, i) {
+					arrow := " →"
+					arrowW := lipgloss.Width(arrow)
+					cell = truncateCell(val, r.colWidths[i]-arrowW) + arrow
 				}
+
+				// Style the cell
+				isMarked := r.IsMarkedRow(rowIdx)
+				isVisualRow := r.isVisualRow(rowIdx)
+				isSearchMatch := r.searchMatcher != nil && r.searchMatcher(val)
+				var style lipgloss.Style
+				switch {
+				case isCopyFlash && r.copyFlashOn:
+					style = lipgloss.NewStyle().Foreground(colorBg).Background(colorSuccess)
+				case isCursorCell:
+					style = lipgloss.NewStyle().Foreground(colorBg).Background(colorPrimary)
+				case isDirty:
+					style = lipgloss.NewStyle().Foreground(colorBg).Background(lipgloss.Color("#e0af68"))
+				case isVisualRow:
+					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorVisual)
+				case isMarked:
+					style = lipgloss.NewStyle().Foreground(colorMark)
+				case isSearchMatch:
+					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorSearch)
+				case isCursorRow:
+					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorCursorRow)
+				default:
+					style = lipgloss.NewStyle().Foreground(colorFg)
+					if rowIdx%2 == 1 {
+						style = style.Background(colorStripe)
+					}
+				}
+				b.WriteString(style.Render(" " + cell + " "))
 			}
-			b.WriteString(style.Render(" " + cell + " "))
-			b.WriteString(rowBorderStyle.Render("│"))
+
+			// Inner column separator (muted) or right border (frame)
+			if j < len(cols)-1 {
+				sepStyle := innerStyle
+				if bg != "" {
+					sepStyle = lipgloss.NewStyle().Foreground(colorBorder).Background(bg)
+				}
+				b.WriteString(sepStyle.Render("│"))
+			}
 		}
+
+		// Right border (outer frame)
+		rightStyle := outerStyle
+		if bg != "" {
+			rightStyle = lipgloss.NewStyle().Foreground(bc).Background(bg)
+		}
+		b.WriteString(rightStyle.Render("│"))
 		b.WriteString("\n")
 	}
 
-	// Bottom border
-	b.WriteString(borderColor.Render("└"))
-	for j, i := range cols {
-		w := r.colWidths[i] + 2
-		b.WriteString(borderColor.Render(strings.Repeat("─", w)))
-		if j < len(cols)-1 {
-			b.WriteString(borderColor.Render("┴"))
+	// ── Bottom frame: solid blue line, no junctions. ───────────────
+	if len(cols) > 0 {
+		totalW := 0
+		for _, i := range cols {
+			totalW += r.colWidths[i] + 3
 		}
+		b.WriteString(outerStyle.Render("└" + strings.Repeat("─", totalW-1) + "┘"))
 	}
-	b.WriteString(borderColor.Render("┘"))
 
 	return b.String()
 }
