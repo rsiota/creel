@@ -1072,6 +1072,22 @@ func (r *ResultsTable) CursorLeft() {
 	r.ensureCursorVisible()
 }
 
+// CursorFirstCol moves the cell cursor to the first visible column.
+func (r *ResultsTable) CursorFirstCol() {
+	if first := r.nextVisibleCol(0); first >= 0 {
+		r.cursorCol = first
+	}
+	r.ensureCursorVisible()
+}
+
+// CursorLastCol moves the cell cursor to the last visible column.
+func (r *ResultsTable) CursorLastCol() {
+	if last := r.prevVisibleCol(len(r.columns) - 1); last >= 0 {
+		r.cursorCol = last
+	}
+	r.ensureCursorVisible()
+}
+
 // StartEdit enters inline edit mode on the current cell.
 func (r *ResultsTable) StartEdit() {
 	if !r.editable || !r.HasPrimaryKey() || len(r.rows) == 0 {

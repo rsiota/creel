@@ -152,6 +152,7 @@ func registry() []Section {
 			Source: "app.go",
 			Items: []Binding{
 				{"h/j/k/l", []string{"h", "j", "k", "l"}, "move cursor", "h/j/k/l"},
+				{"0 / $", []string{"0", "$"}, "first / last column", "0/$"},
 				{"g g / G", []string{"g", "G"}, "top / bottom", "G"},
 				{"y y", []string{"y"}, "copy cell", "y"},
 				{"g d", []string{"g", "d"}, "follow foreign key", ""},

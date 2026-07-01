@@ -3988,6 +3988,16 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingY = false
 				m.results.CursorLeft()
 				return m, nil
+			case "0":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				m.results.CursorFirstCol()
+				return m, nil
+			case "$":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				m.results.CursorLastCol()
+				return m, nil
 			case "b":
 				if m.resultsPendingG {
 					m.resultsPendingG = false
