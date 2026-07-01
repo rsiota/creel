@@ -695,8 +695,15 @@ func (r *ResultsTable) SetSaveError(msg string) {
 
 // SetResult populates the table with query results.
 func (r *ResultsTable) SetResult(cols []string, rows [][]string, message string) {
+	// Flatten control characters to spaces so they don't break the
+	// single-line cell layout (multi-line TEXT fields, tabs, etc.).
+	cols = sanitizeCellRow(cols)
+	sanitized := make([][]string, len(rows))
+	for i, row := range rows {
+		sanitized[i] = sanitizeCellRow(row)
+	}
 	r.columns = cols
-	r.rows = rows
+	r.rows = sanitized
 	r.message = message
 	r.hasResult = true
 	r.scrollRow = 0
@@ -1119,6 +1126,21 @@ func (r ResultsTable) Update(msg tea.Msg) (ResultsTable, tea.Cmd) {
 		return r, cmd
 	}
 	return r, nil
+}
+
+// sanitizeCellRow replaces control characters (newlines, tabs, etc.)
+// with spaces so cell values render on a single line.
+func sanitizeCellRow(row []string) []string {
+	out := make([]string, len(row))
+	for i, v := range row {
+		out[i] = strings.Map(func(r rune) rune {
+			if r == '\n' || r == '\r' || r == '\t' || r == '\v' || r == '\f' {
+				return ' '
+			}
+			return r
+		}, v)
+	}
+	return out
 }
 
 // truncateCell truncates a string to fit within width display columns,
