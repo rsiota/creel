@@ -242,6 +242,9 @@ type Model struct {
 	// Discard confirmation dialog
 	discardConfirm bool
 
+	// Editor maximize toggle (ctrl+w)
+	editorMaximized bool
+
 	// Truncate confirmation dialog (non-empty table name while pending).
 	truncateConfirm string
 
@@ -3491,6 +3494,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+r":
 		m.editor.Reset()
 		return m, nil
+	case "ctrl+w":
+		m.editorMaximized = !m.editorMaximized
+		m.layoutWorkspace()
+		return m, nil
 	case "ctrl+b":
 		// Browse databases (MySQL only).
 		if m.connection != nil && m.connection.Config().Driver == db.DriverMySQL {
@@ -4918,6 +4925,14 @@ func (m *Model) layoutWorkspace() {
 	borderOverhead := 2
 	editorHeight := 8
 
+	if m.editorMaximized {
+		// Editor takes most of the vertical space, results gets a sliver.
+		editorHeight = m.height - statusHeight - borderOverhead - 8
+		if editorHeight < 8 {
+			editorHeight = 8
+		}
+	}
+
 	inspectorVisible := m.inspector.IsVisible()
 
 	rightWidth := m.width - sidebarWidth - borderOverhead
@@ -5060,6 +5075,14 @@ func (m Model) viewWorkspace() string {
 	statusHeight := 1
 	borderOverhead := 2
 	editorHeight := 8
+
+	if m.editorMaximized {
+		editorHeight = m.height - statusHeight - borderOverhead - 8
+		if editorHeight < 8 {
+			editorHeight = 8
+		}
+	}
+
 	resultsHeight := m.height - editorHeight - statusHeight - borderOverhead
 	if resultsHeight < 3 {
 		resultsHeight = 3
