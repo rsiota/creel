@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/rivo/uniseg"
 	"github.com/ruben/gsql/internal/db"
 )
 
@@ -863,11 +864,7 @@ func (r *ResultsTable) computeColWidths() {
 }
 
 func runeLen(s string) int {
-	count := 0
-	for range s {
-		count++
-	}
-	return count
+	return uniseg.StringWidth(s)
 }
 
 func (r *ResultsTable) clampScrollRow() {
@@ -1124,7 +1121,7 @@ func (r ResultsTable) Update(msg tea.Msg) (ResultsTable, tea.Cmd) {
 	return r, nil
 }
 
-// truncateCell truncates a string to fit within width characters,
+// truncateCell truncates a string to fit within width display columns,
 // appending "…" if truncated.
 func truncateCell(s string, width int) string {
 	l := runeLen(s)
@@ -1134,8 +1131,19 @@ func truncateCell(s string, width int) string {
 	if width <= 1 {
 		return "…"
 	}
-	runes := []rune(s)
-	return string(runes[:width-1]) + "…"
+	// Walk runes accumulating display width until we reach width-1.
+	var b strings.Builder
+	bW := 0
+	target := width - 1 // leave room for "…"
+	for _, r := range s {
+		rw := uniseg.StringWidth(string(r))
+		if bW+rw > target {
+			break
+		}
+		b.WriteRune(r)
+		bW += rw
+	}
+	return b.String() + "…"
 }
 
 // renderEditInput renders the textinput value with a bar cursor ("▏") at the
@@ -1418,6 +1426,39 @@ func (r ResultsTable) View() string {
 		rightStyle := outerStyle
 		if bg != "" {
 			rightStyle = lipgloss.NewStyle().Foreground(bc).Background(bg)
+		}
+		b.WriteString(rightStyle.Render("│"))
+		b.WriteString("\n")
+	}
+
+	// ── Padding rows: fill the remaining height so the frame stretches
+	// to the bottom even with fewer rows than the panel allows. ─────
+	renderedRows := rowEnd - rowStart
+	for p := renderedRows; p < maxVisible; p++ {
+		var bg lipgloss.Color
+		if p%2 == 1 {
+			bg = colorStripe
+		}
+		leftStyle := outerStyle
+		rightStyle := outerStyle
+		if bg != "" {
+			leftStyle = lipgloss.NewStyle().Foreground(bc).Background(bg)
+			rightStyle = leftStyle
+		}
+		b.WriteString(leftStyle.Render("│"))
+		for j, i := range cols {
+			empty := lipgloss.NewStyle()
+			if bg != "" {
+				empty = empty.Background(bg)
+			}
+			b.WriteString(empty.Render(strings.Repeat(" ", r.colWidths[i]+2)))
+			if j < len(cols)-1 {
+				sepStyle := innerStyle
+				if bg != "" {
+					sepStyle = lipgloss.NewStyle().Foreground(colorBorder).Background(bg)
+				}
+				b.WriteString(sepStyle.Render("│"))
+			}
 		}
 		b.WriteString(rightStyle.Render("│"))
 		b.WriteString("\n")
