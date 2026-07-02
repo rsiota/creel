@@ -5576,9 +5576,9 @@ func (m Model) connectionInfo(name string) string {
 	if m.connection == nil {
 		return mutedStyle.Render("not connected")
 	}
-	s := successStyle.Render("● " + name)
+	s := lipgloss.NewStyle().Foreground(colorSuccess).Render("● " + name)
 	if m.connection.Config().Driver == db.DriverMySQL && m.connection.Config().Database != "" {
-		s += lipgloss.NewStyle().Foreground(colorLabel).Render("  ⟁ " + m.connection.Config().Database)
+		s += mutedStyle.Render(" / ") + lipgloss.NewStyle().Foreground(colorLabel).Render(m.connection.Config().Database)
 	}
 	return s
 }
@@ -5695,12 +5695,8 @@ func (m Model) statusMessage() string {
 // dimensions, transient messages) plus a single "?" hint for the help overlay.
 // All other keybindings live behind the "?" overlay.
 func (m Model) statusBar(connName string) string {
-	sep := mutedStyle.Render("  │  ")
+	sep := mutedStyle.Render(" / ")
 	parts := []string{m.connectionInfo(connName)}
-
-	if m.focus == FocusEditor {
-		parts = append(parts, mutedStyle.Render(fmt.Sprintf("[%s]", m.editor.VimModeStr())))
-	}
 
 	if m.results.IsVisualMode() {
 		parts = append(parts, lipgloss.NewStyle().Foreground(colorAccent).Render(
