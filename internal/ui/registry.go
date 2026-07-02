@@ -205,5 +205,15 @@ func registry() []Section {
 				{"esc", []string{"esc"}, "cancel", "esc"},
 			},
 		},
+		{
+			Title:  "Import Prompt",
+			Source: "import_prompt.go app.go",
+			Items: []Binding{
+				{"tab", []string{"tab"}, "complete path", ""},
+				{"↑/↓", []string{"up", "down"}, "navigate completions", ""},
+				{"enter", []string{"enter"}, "import file", ""},
+				{"esc", []string{"esc"}, "cancel", ""},
+			},
+		},
 	}
 }

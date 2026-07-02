@@ -5545,6 +5545,13 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, importPanel, panelX, panelY)
+
+		// Overlay completion dropdown as a floating popup below the input line.
+		// The input line is the 5th visual row (0-indexed: border, padding,
+		// title, blank, input = row 4), so the dropdown starts at row 5.
+		if comp := m.importPrompt.CompletionView(); comp != "" {
+			view = placeOverlay(view, comp, panelX+9, panelY+5)
+		}
 	}
 
 	// Overlay command palette if visible
