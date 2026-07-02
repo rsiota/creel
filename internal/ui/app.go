@@ -5015,8 +5015,8 @@ func (m Model) View() string {
 		panelW := lipgloss.Width(pickerPanel)
 		panelH := lipgloss.Height(pickerPanel)
 		panelX := (m.width - panelW) / 2
-		panelY := (m.height - panelH) / 2
-		bg := strings.Repeat("\n", m.height-1)
+		panelY := (m.height - 1 - panelH) / 2
+		bg := strings.Repeat("\n", m.height-2)
 		view := placeOverlay(bg, pickerPanel, panelX, panelY)
 
 		// Overlay create-database dialog on top of the picker if active.
@@ -5037,7 +5037,17 @@ func (m Model) View() string {
 			view = placeOverlay(view, dialog, (m.width-lipgloss.Width(dialog))/2, (m.height-1-lipgloss.Height(dialog))/2)
 		}
 
-		return view
+		// Append status bar.
+		connName := ""
+		if m.connection != nil {
+			connName = m.connection.Config().Name
+		}
+		statusBar := lipgloss.NewStyle().
+			Width(m.width).
+			Height(1).
+			Foreground(colorMuted).
+			Render(" " + m.statusBar(connName))
+		return lipgloss.JoinVertical(lipgloss.Left, view, statusBar)
 	}
 
 	return m.viewWorkspace()
@@ -5078,16 +5088,24 @@ func (m Model) viewConnections() string {
 	panelW2 := lipgloss.Width(connPanel)
 	panelH2 := lipgloss.Height(connPanel)
 	panelX := (m.width - panelW2) / 2
-	panelY := (m.height - panelH2) / 2
-	bg := strings.Repeat("\n", m.height-1)
+	panelY := (m.height - 1 - panelH2) / 2
+	bg := strings.Repeat("\n", m.height-2)
 	view := placeOverlay(bg, connPanel, panelX, panelY)
 
 	// Overlay help panel if visible
 	if m.help.IsVisible() {
 		m.help.SetSize(m.width, m.height)
 		view = m.help.View()
+		return view
 	}
-	return view
+
+	// Append status bar.
+	statusBar := lipgloss.NewStyle().
+		Width(m.width).
+		Height(1).
+		Foreground(colorMuted).
+		Render(" " + m.statusBar(""))
+	return lipgloss.JoinVertical(lipgloss.Left, view, statusBar)
 }
 
 func (m Model) viewAddConnection() string {

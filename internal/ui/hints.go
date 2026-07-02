@@ -7,31 +7,64 @@ import "strings"
 // "enter", "ctrl+s"). The hints are derived from the registry (single source
 // of truth) for sections that have one; pickers without a registry section
 // fall back to inline hint lists.
+//
+// The order matters: most specific/modal states are checked first, since they
+// stack on top of other overlays (e.g. createDBActive on top of dbPicker).
 func (m Model) hintList() []string {
 	switch {
+	// Dialogs stacked on top of pickers — check first.
+	case m.createDBActive:
+		return []string{"enter", "esc"}
+	case m.dropDBConfirm != "" || m.dropTableConfirm != "":
+		return []string{"enter", "esc"}
+
+	// Full-screen overlays.
+	case m.importPrompt.IsVisible():
+		return hintsForSection("Import Prompt")
 	case m.exportPicker.IsVisible():
 		return hintsForSection("Export Picker")
 	case m.columnPicker.IsVisible():
-		return []string{"j/k", "space", "a", "n", "enter", "esc"}
+		return hintsForSection("Column Picker")
 	case m.filterPicker.IsVisible():
-		return []string{"j/k", "space", "enter", "esc"}
+		return hintsForSection("Filter Picker")
 	case m.dbPicker.IsVisible():
-		return []string{"j/k", "enter", "esc"}
+		if m.dbPicker.Filtering() {
+			return []string{"j/k", "enter", "esc"}
+		}
+		return hintsForSection("Database Picker")
 	case m.history.IsVisible():
 		return hintsForSection("History Panel")
 	case m.bookmarks.IsVisible():
 		return hintsForSection("Bookmarks Panel")
+	case m.tableDesigner.IsVisible():
+		return hintsForSection("Table Designer")
+	case m.schemaEditor.IsVisible():
+		return hintsForSection("Schema Editor")
+	case m.cellEdit.IsVisible():
+		return hintsForSection("Cell Editor")
+	case m.addColumnForm.IsVisible() || m.tableRenameForm.IsVisible():
+		return hintsForSection("Add Column / Rename Table")
 	case m.searching:
 		return []string{"enter", "esc"}
+
+	// Inspector sub-states.
+	case m.focus == FocusInspector && (m.inspector.IsEditing() || m.inspector.IsInserting()):
+		return []string{"enter", "esc"}
+
 	default:
-		switch m.focus {
-		case FocusEditor:
+		switch {
+		case m.state == stateConnections:
+			if m.connList.IsFiltering() {
+				return []string{"j/k", "enter", "esc"}
+			}
+			return []string{"j/k", "enter", "n", "e", "d", "/", "esc"}
+		case m.focus == FocusEditor:
 			return hintsForSection("Editor (Vim)")
-		case FocusResults:
+		case m.focus == FocusResults:
 			return hintsForSection("Results")
-		case FocusConnections:
+		case m.focus == FocusConnections:
 			return hintsForSection("Sidebar (Tables)")
-		case FocusInspector:
+		case m.focus == FocusInspector:
 			return hintsForSection("Inspector")
 		}
 	}
