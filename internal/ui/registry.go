@@ -103,6 +103,18 @@ func registry() []Section {
 			},
 		},
 		{
+			Title:  "Database Picker",
+			Source: "app.go",
+			Items: []Binding{
+				{"j/k, ↑/↓", []string{"j", "k", "up", "down"}, "move", "j/k"},
+				{"enter", []string{"enter"}, "select database", "enter"},
+				{"N", []string{"N"}, "create database", "N"},
+				{"D", []string{"D"}, "drop database", "D"},
+				{"/", []string{"/"}, "filter databases", "/"},
+				{"esc", []string{"esc"}, "cancel", "esc"},
+			},
+		},
+		{
 			Title:  "History Panel",
 			Source: "app.go",
 			Items: []Binding{

@@ -139,6 +139,28 @@ func renderTypedConfirmDialog(prompt, hint, input string, width, height int) str
 	return style.Render(content)
 }
 
+// renderInputDialogBare builds a compact name-entry overlay without a keybinding
+// footer. It auto-sizes to fit the content. Used for small popups like the
+// create-database dialog.
+func renderInputDialogBare(prompt, input, errMsg string) string {
+	promptBlock := lipgloss.NewStyle().Foreground(colorPrimary).Render(prompt)
+	inputLine := lipgloss.NewStyle().Foreground(colorPrimary).Render("> " + input + "_")
+
+	lines := []string{promptBlock, "", inputLine}
+
+	if errMsg != "" {
+		lines = append(lines, "",
+			lipgloss.NewStyle().Foreground(colorError).Render(errMsg))
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Center, lines...)
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPrimary).
+		Padding(1, 3).
+		Render(content)
+}
+
 // renderInputDialog builds a simple name-entry overlay for operations like
 // creating a database. It shows a prompt, an input field, an optional error
 // line, and a footer with key hints. width/height are the desired TOTAL
@@ -182,6 +204,30 @@ func renderInputDialog(prompt, input, errMsg string, width, height int) string {
 		style = style.Height(height - 2)
 	}
 	return style.Render(content)
+}
+
+// renderTypedConfirmDialogBare builds a compact typed-confirmation overlay
+// without a keybinding footer. It auto-sizes to fit the content, matching
+// the style of the drop-table popup.
+func renderTypedConfirmDialogBare(prompt, hint, input string) string {
+	promptLines := strings.SplitN(prompt, "\n", 2)
+	styledLines := []string{lipgloss.NewStyle().Foreground(colorPrimary).Render(promptLines[0])}
+	if len(promptLines) > 1 {
+		styledLines = append(styledLines, mutedStyle.Render(promptLines[1]))
+	}
+	hintLine := mutedStyle.Render("Type " + hint + " to confirm:")
+	inputLine := lipgloss.NewStyle().Foreground(colorPrimary).Render("> " + input + "_")
+	content := lipgloss.JoinVertical(lipgloss.Center,
+		lipgloss.JoinVertical(lipgloss.Center, styledLines...),
+		"",
+		hintLine,
+		inputLine,
+	)
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPrimary).
+		Padding(1, 3).
+		Render(content)
 }
 
 // renderSQLConfirmDialog builds a confirmation overlay that includes SQL preview.

@@ -2986,10 +2986,37 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Database picker is modal — intercept all keys when visible.
 	if m.dbPicker.IsVisible() {
+		// Filter mode (default): typing filters, esc → normal mode.
+		if m.dbPicker.Filtering() {
+			switch msg.String() {
+			case "esc", "ctrl+c":
+				m.dbPicker.StopFiltering()
+				return m, nil
+			case "enter":
+				name := m.dbPicker.SelectedDatabase()
+				m.dbPicker.Hide()
+				return m, m.selectDatabase(name)
+			case "up", "k":
+				m.dbPicker.CursorUp()
+				return m, nil
+			case "down", "j":
+				m.dbPicker.CursorDown()
+				return m, nil
+			case "backspace":
+				m.dbPicker.FilterBackspace()
+				return m, nil
+			}
+			if msg.Type == tea.KeyRunes {
+				m.dbPicker.FilterAddChar(msg.String())
+				return m, nil
+			}
+			return m, nil
+		}
+
+		// Normal mode: single-letter commands.
 		switch msg.String() {
 		case "esc", "ctrl+c":
 			if m.dbPicker.MustChoose() {
-				// No database selected yet — return to connection list.
 				m.connection.Close()
 				m.connection = nil
 				m.dbPicker.Hide()
@@ -3004,30 +3031,26 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			name := m.dbPicker.SelectedDatabase()
 			m.dbPicker.Hide()
 			return m, m.selectDatabase(name)
-		case "D":
-			name := m.dbPicker.SelectedDatabase()
-			if name != "" {
-				m.dropDBConfirm = name
-				m.dropDBInput = ""
-			}
+		case "/":
+			m.dbPicker.StartFiltering()
+			return m, nil
+		case "j", "down":
+			m.dbPicker.CursorDown()
+			return m, nil
+		case "k", "up":
+			m.dbPicker.CursorUp()
 			return m, nil
 		case "N":
 			m.createDBActive = true
 			m.createDBInput = ""
 			m.createDBErr = ""
 			return m, nil
-		case "up":
-			m.dbPicker.CursorUp()
-			return m, nil
-		case "down":
-			m.dbPicker.CursorDown()
-			return m, nil
-		case "backspace":
-			m.dbPicker.FilterBackspace()
-			return m, nil
-		}
-		if msg.Type == tea.KeyRunes {
-			m.dbPicker.FilterAddChar(msg.String())
+		case "D":
+			name := m.dbPicker.SelectedDatabase()
+			if name != "" {
+				m.dropDBConfirm = name
+				m.dropDBInput = ""
+			}
 			return m, nil
 		}
 		return m, nil
@@ -4994,7 +5017,27 @@ func (m Model) View() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - panelH) / 2
 		bg := strings.Repeat("\n", m.height-1)
-		return placeOverlay(bg, pickerPanel, panelX, panelY)
+		view := placeOverlay(bg, pickerPanel, panelX, panelY)
+
+		// Overlay create-database dialog on top of the picker if active.
+		if m.createDBActive {
+			dialog := renderInputDialogBare("Create new database", m.createDBInput, m.createDBErr)
+			dw := lipgloss.Width(dialog)
+			dh := lipgloss.Height(dialog)
+			view = placeOverlay(view, dialog, (m.width-dw)/2, (m.height-1-dh)/2)
+		}
+
+		// Overlay drop-database confirmation on top of the picker if active.
+		if m.dropDBConfirm != "" {
+			dialog := renderTypedConfirmDialogBare(
+				"Drop database "+m.dropDBConfirm+"?",
+				m.dropDBConfirm,
+				m.dropDBInput,
+			)
+			view = placeOverlay(view, dialog, (m.width-lipgloss.Width(dialog))/2, (m.height-1-lipgloss.Height(dialog))/2)
+		}
+
+		return view
 	}
 
 	return m.viewWorkspace()

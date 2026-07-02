@@ -14,6 +14,9 @@ type dbItem struct {
 }
 
 // DatabasePicker is a fuzzy-search overlay for selecting a database.
+// It has two modes like the connections picker:
+//   - Filter mode (default): typing filters the list, esc → normal mode.
+//   - Normal mode: j/k navigate, N creates, D drops, / re-enters filter.
 type DatabasePicker struct {
 	databases []string
 	filter    string
@@ -22,6 +25,7 @@ type DatabasePicker struct {
 	visible   bool
 	width     int
 	height    int
+	filtering bool
 	// mustChoose indicates that the user connected without a database; cancelling
 	// returns to the connection list instead of staying in the workspace.
 	mustChoose bool
@@ -32,7 +36,7 @@ func NewDatabasePicker() DatabasePicker {
 	return DatabasePicker{}
 }
 
-// Show populates and displays the picker.
+// Show populates and displays the picker in filter mode.
 func (p *DatabasePicker) Show(databases []string, mustChoose bool) {
 	p.databases = databases
 	p.filter = ""
@@ -40,6 +44,7 @@ func (p *DatabasePicker) Show(databases []string, mustChoose bool) {
 	p.scrollRow = 0
 	p.visible = true
 	p.mustChoose = mustChoose
+	p.filtering = true
 }
 
 // Hide hides the picker.
@@ -48,6 +53,7 @@ func (p *DatabasePicker) Hide() {
 	p.filter = ""
 	p.cursor = 0
 	p.scrollRow = 0
+	p.filtering = false
 }
 
 // IsVisible returns whether the picker is shown.
@@ -58,6 +64,25 @@ func (p DatabasePicker) IsVisible() bool {
 // MustChoose returns true when the picker was opened on connect (no DB selected).
 func (p DatabasePicker) MustChoose() bool {
 	return p.mustChoose
+}
+
+// Filtering returns whether the picker is in filter mode.
+func (p DatabasePicker) Filtering() bool { return p.filtering }
+
+// StartFiltering enters filter mode.
+func (p *DatabasePicker) StartFiltering() {
+	p.filtering = true
+	p.filter = ""
+	p.cursor = 0
+	p.scrollRow = 0
+}
+
+// StopFiltering exits filter mode, clearing the filter.
+func (p *DatabasePicker) StopFiltering() {
+	p.filtering = false
+	p.filter = ""
+	p.cursor = 0
+	p.scrollRow = 0
 }
 
 // SetSize sets the dimensions of the picker.
@@ -119,16 +144,21 @@ func (p *DatabasePicker) CursorDown() {
 }
 
 func (p *DatabasePicker) adjustScroll() {
-	maxVisible := p.height - 1
-	if maxVisible < 1 {
-		maxVisible = 1
-	}
+	maxVisible := p.maxVisibleItems()
 	if p.cursor < p.scrollRow {
 		p.scrollRow = p.cursor
 	}
 	if p.cursor >= p.scrollRow+maxVisible {
 		p.scrollRow = p.cursor - maxVisible + 1
 	}
+}
+
+func (p DatabasePicker) maxVisibleItems() int {
+	max := p.height - 3 // border(2) + prompt(1)
+	if max < 1 {
+		max = 1
+	}
+	return max
 }
 
 // FilterAddChar appends a character to the filter.
@@ -155,12 +185,9 @@ func (p DatabasePicker) View() string {
 
 	items := p.filteredDatabases()
 
-	prompt := renderPalettePrompt(p.filter, true)
+	prompt := renderPalettePrompt(p.filter, p.filtering)
 
-	maxVisible := p.height - 3 // border(2) + prompt(1)
-	if maxVisible < 1 {
-		maxVisible = 1
-	}
+	maxVisible := p.maxVisibleItems()
 
 	end := p.scrollRow + maxVisible
 	if end > len(items) {
@@ -171,7 +198,7 @@ func (p DatabasePicker) View() string {
 	for i := p.scrollRow; i < end; i++ {
 		item := items[i]
 		name := item.name
-		if p.filter != "" {
+		if p.filtering && p.filter != "" {
 			name = highlightMatches(item.name, item.matchIdx)
 		}
 		rowStyle := lipgloss.NewStyle().Foreground(colorFg).Padding(0, 1, 0, 2)
