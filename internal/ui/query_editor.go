@@ -22,9 +22,10 @@ const (
 type vimPending int
 
 const (
-	vimPendingNone vimPending = iota
-	vimPendingD   // 'd' pressed, waiting for motion or 'd'
-	vimPendingG   // 'g' pressed, waiting for 'g'
+	vimPendingNone   vimPending = iota
+	vimPendingD     // 'd' pressed, waiting for motion or 'd'
+	vimPendingG     // 'g' pressed, waiting for 'g'
+	vimPendingEqual // '=' pressed, waiting for '='
 )
 
 // QueryEditor wraps a textarea with vim-style modal editing.
@@ -192,6 +193,15 @@ func (e QueryEditor) handleNormalMode(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
 		}
 		return e, nil
 	}
+	if e.pending == vimPendingEqual {
+		e.pending = vimPendingNone
+		if key == "=" {
+			formatted := formatSQL(e.textarea.Value())
+			e.textarea.SetValue(formatted)
+			e.sendKey("ctrl+home")
+		}
+		return e, nil
+	}
 
 	switch key {
 	// Movement
@@ -215,6 +225,8 @@ func (e QueryEditor) handleNormalMode(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
 		e.sendKey("ctrl+end")
 	case "g":
 		e.pending = vimPendingG
+	case "=":
+		e.pending = vimPendingEqual
 	case "ctrl+d":
 		for i := 0; i < 5; i++ {
 			e.sendKey("down")
