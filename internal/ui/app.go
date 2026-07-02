@@ -5046,6 +5046,7 @@ func (m Model) View() string {
 			Width(m.width).
 			Height(1).
 			Foreground(colorMuted).
+			Background(colorStatusBarBg).
 			Render(" " + m.statusBar(connName))
 		return lipgloss.JoinVertical(lipgloss.Left, view, statusBar)
 	}
@@ -5104,6 +5105,7 @@ func (m Model) viewConnections() string {
 		Width(m.width).
 		Height(1).
 		Foreground(colorMuted).
+		Background(colorStatusBarBg).
 		Render(" " + m.statusBar(""))
 	return lipgloss.JoinVertical(lipgloss.Left, view, statusBar)
 }
@@ -5357,6 +5359,7 @@ func (m Model) viewWorkspace() string {
 		Width(m.width).
 		Height(statusHeight).
 		Foreground(colorMuted).
+		Background(colorStatusBarBg).
 		Render(" " + m.statusBar(connName))
 
 	var workspace string
@@ -5642,11 +5645,11 @@ func popupDim() (w, h int) {
 
 func (m Model) connectionInfo(name string) string {
 	if m.connection == nil {
-		return mutedStyle.Render("not connected")
+		return sbMuted.Render("not connected")
 	}
-	s := lipgloss.NewStyle().Foreground(colorSuccess).Render("● " + name)
+	s := sbSuccess.Render("● " + name)
 	if m.connection.Config().Driver == db.DriverMySQL && m.connection.Config().Database != "" {
-		s += mutedStyle.Render(" / ") + lipgloss.NewStyle().Foreground(colorLabel).Render(m.connection.Config().Database)
+		s += sbMuted.Render(" / ") + sbLabel.Render(m.connection.Config().Database)
 	}
 	return s
 }
@@ -5714,46 +5717,46 @@ func (m *Model) clearFlash() {
 func (m Model) statusMessage() string {
 	switch {
 	case m.results.SaveError() != "":
-		return errorStyle.Render(m.results.SaveError())
+		return sbError.Render(m.results.SaveError())
 	case m.results.IsEditing():
-		return mutedStyle.Render("editing")
+		return sbMuted.Render("editing")
 	case m.inspector.IsInserting():
-		return mutedStyle.Render("inserting")
+		return sbMuted.Render("inserting")
 	case m.results.IsCopied():
-		return successStyle.Render("copied to clipboard")
+		return sbSuccess.Render("copied to clipboard")
 	case m.results.IsSaved():
-		return successStyle.Render("saved")
+		return sbSuccess.Render("saved")
 	case m.exportMsg != "":
-		return successStyle.Render(m.exportMsg)
+		return sbSuccess.Render(m.exportMsg)
 	case m.truncateMsg != "":
 		if strings.HasPrefix(m.truncateMsg, "truncate failed:") {
-			return errorStyle.Render(m.truncateMsg)
+			return sbError.Render(m.truncateMsg)
 		}
-		return successStyle.Render(m.truncateMsg)
+		return sbSuccess.Render(m.truncateMsg)
 	case m.deleteRowsMsg != "":
 		if strings.HasPrefix(m.deleteRowsMsg, "delete failed:") {
-			return errorStyle.Render(m.deleteRowsMsg)
+			return sbError.Render(m.deleteRowsMsg)
 		}
-		return successStyle.Render(m.deleteRowsMsg)
+		return sbSuccess.Render(m.deleteRowsMsg)
 	case m.schemaMsg != "":
 		if strings.HasPrefix(m.schemaMsg, "schema change failed:") {
-			return errorStyle.Render(m.schemaMsg)
+			return sbError.Render(m.schemaMsg)
 		}
-		return successStyle.Render(m.schemaMsg)
+		return sbSuccess.Render(m.schemaMsg)
 	case m.bookmarkMsg != "":
-		return successStyle.Render(m.bookmarkMsg)
+		return sbSuccess.Render(m.bookmarkMsg)
 	case m.statsMsg != "":
-		return lipgloss.NewStyle().Foreground(colorPrimary).Render(m.statsMsg)
+		return sbPrimary.Render(m.statsMsg)
 	case m.searchMsg != "":
-		return lipgloss.NewStyle().Foreground(colorPrimary).Render(m.searchMsg)
+		return sbPrimary.Render(m.searchMsg)
 	case m.results.HasDirtyCells():
-		return mutedStyle.Render(fmt.Sprintf("%d unsaved", m.results.DirtyCellCount()))
+		return sbMuted.Render(fmt.Sprintf("%d unsaved", m.results.DirtyCellCount()))
 	case m.totalRowsSet && m.pageMsg != "":
-		return mutedStyle.Render(m.pageMsg)
+		return sbMuted.Render(m.pageMsg)
 	case m.results.HasResult() && m.results.Message() != "":
-		return successStyle.Render(m.results.Message())
+		return sbSuccess.Render(m.results.Message())
 	case m.pageMsg != "":
-		return mutedStyle.Render(m.pageMsg)
+		return sbMuted.Render(m.pageMsg)
 	}
 	return ""
 }
@@ -5763,25 +5766,25 @@ func (m Model) statusMessage() string {
 // dimensions, transient messages) plus a single "?" hint for the help overlay.
 // All other keybindings live behind the "?" overlay.
 func (m Model) statusBar(connName string) string {
-	sep := mutedStyle.Render(" / ")
+	sep := sbMuted.Render(" / ")
 	parts := []string{m.connectionInfo(connName)}
 
 	if m.results.IsVisualMode() {
-		parts = append(parts, lipgloss.NewStyle().Foreground(colorAccent).Render(
+		parts = append(parts, sbAccent.Render(
 			fmt.Sprintf("VISUAL %d", m.results.VisualRangeSize())))
 	}
 
 	if t := m.currentTable(); t != "" {
 		parts = append(parts,
-			lipgloss.NewStyle().Foreground(colorLabel).Render(t))
+			sbLabel.Render(t))
 	}
 
 	if n := m.results.MarkCount(); n > 0 {
-		parts = append(parts, lipgloss.NewStyle().Foreground(colorMark).Render(fmt.Sprintf("◆ %d", n)))
+		parts = append(parts, sbMark.Render(fmt.Sprintf("◆ %d", n)))
 	}
 
 	if n := m.results.HiddenCount(); n > 0 {
-		parts = append(parts, lipgloss.NewStyle().Foreground(colorAccent).Render(fmt.Sprintf("⊫ %d", n)))
+		parts = append(parts, sbAccent.Render(fmt.Sprintf("⊫ %d", n)))
 	}
 
 	if msg := m.statusMessage(); msg != "" {
@@ -5793,10 +5796,10 @@ func (m Model) statusBar(connName string) string {
 		for i, f := range m.filters {
 			short[i] = compactFilter(f)
 		}
-		parts = append(parts, successStyle.Render(strings.Join(short, " ")))
+		parts = append(parts, sbSuccess.Render(strings.Join(short, " ")))
 	}
 
-	parts = append(parts, lipgloss.NewStyle().Foreground(colorLabel).Render("?")+mutedStyle.Render(" help"))
+	parts = append(parts, sbLabel.Render("?")+sbMuted.Render(" help"))
 
 	left := strings.Join(parts, sep)
 
@@ -5805,9 +5808,9 @@ func (m Model) statusBar(connName string) string {
 	hints := m.hintList()
 	if len(hints) > 0 {
 		flashActive := m.hintFlash != "" && time.Since(m.hintFlashAt) < hintFlashDuration
-		keyStyle := lipgloss.NewStyle().Foreground(colorLabel)
-		flashStyle := lipgloss.NewStyle().Foreground(colorFg)
-		sepStyle := lipgloss.NewStyle().Foreground(colorMuted)
+		keyStyle := sbLabel
+		flashStyle := sbFg
+		sepStyle := sbMuted
 		var hintsStyled string
 		for i, group := range hints {
 			for ki, k := range strings.Split(group, "/") {
@@ -5828,15 +5831,15 @@ func (m Model) statusBar(connName string) string {
 		if gapW < 1 {
 			gapW = 1
 		}
-		line := left + strings.Repeat(" ", gapW) + hintsStyled
+		line := left + sbMuted.Render(strings.Repeat(" ", gapW)) + hintsStyled
 		if lipgloss.Width(line) > m.width {
-			line = lipgloss.NewStyle().MaxWidth(m.width).Render(line)
+			line = lipgloss.NewStyle().MaxWidth(m.width).Background(colorStatusBarBg).Render(line)
 		}
 		return line
 	}
 
 	if lipgloss.Width(left) > m.width {
-		left = lipgloss.NewStyle().MaxWidth(m.width).Render(left)
+		left = lipgloss.NewStyle().MaxWidth(m.width).Background(colorStatusBarBg).Render(left)
 	}
 	return left
 }

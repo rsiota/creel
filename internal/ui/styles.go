@@ -24,7 +24,21 @@ var (
 	colorBg        = lipgloss.Color("#1a1b26")
 	colorStripe    = lipgloss.Color("#323946") // subtle zebra tint: ~35% between Nord nord0 (bg) and nord1 (cursor row)
 	colorFg        = lipgloss.Color("#c0caf5")
-	colorHighlight = lipgloss.Color("#292e42")
+	colorHighlight    = lipgloss.Color("#292e42")
+	colorStatusBarBg  = lipgloss.Color("#343B49") // midpoint between nord0 and nord1
+)
+
+// sbStyles are status-bar-specific styles that carry the status bar background
+// so that ANSI resets within multi-segment rendered strings don't lose the bg.
+var (
+	sbMuted   = lipgloss.NewStyle().Foreground(colorMuted).Background(colorStatusBarBg)
+	sbSuccess = lipgloss.NewStyle().Foreground(colorSuccess).Background(colorStatusBarBg)
+	sbError   = lipgloss.NewStyle().Foreground(colorError).Background(colorStatusBarBg)
+	sbPrimary = lipgloss.NewStyle().Foreground(colorPrimary).Background(colorStatusBarBg)
+	sbLabel   = lipgloss.NewStyle().Foreground(colorLabel).Background(colorStatusBarBg)
+	sbAccent  = lipgloss.NewStyle().Foreground(colorAccent).Background(colorStatusBarBg)
+	sbMark    = lipgloss.NewStyle().Foreground(colorMark).Background(colorStatusBarBg)
+	sbFg      = lipgloss.NewStyle().Foreground(colorFg).Background(colorStatusBarBg)
 )
 
 // Shared styles used across components.
