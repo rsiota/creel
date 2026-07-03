@@ -1499,7 +1499,9 @@ func isNumericType(dbType string) bool {
 	}
 	switch t {
 	case "int", "integer", "tinyint", "smallint", "mediumint", "bigint",
-		"unsigned", "int unsigned", "unsigned big int",
+		"int unsigned", "bigint unsigned", "tinyint unsigned", "smallint unsigned", "mediumint unsigned",
+		"unsigned int", "unsigned bigint", "unsigned tinyint", "unsigned smallint", "unsigned mediumint",
+		"unsigned", "unsigned big int",
 		"real", "double", "float", "decimal", "numeric":
 		return true
 	}

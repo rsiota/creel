@@ -527,7 +527,14 @@ func (r ResultsTable) CopyAsInsert() (string, int) {
 }
 
 func (r ResultsTable) columnType(col int) string {
-	return r.columnTypes[r.columns[col]]
+	name := r.columns[col]
+	if typ := r.columnTypes[name]; typ != "" {
+		return typ
+	}
+	if info, ok := r.columnInfo(col); ok {
+		return info.Type
+	}
+	return ""
 }
 
 func quoteIdent(name string) string {
@@ -1388,6 +1395,30 @@ func truncateCell(s string, width int) string {
 	return b.String() + "…"
 }
 
+// truncateCellRight truncates like truncateCell but left-pads the value
+// (right-aligned), for numeric columns.
+func truncateCellRight(s string, width int) string {
+	l := runeLen(s)
+	if l <= width {
+		return strings.Repeat(" ", width-l) + s
+	}
+	if width <= 1 {
+		return "…"
+	}
+	var b strings.Builder
+	bW := 0
+	target := width - 1
+	for _, r := range s {
+		rw := uniseg.StringWidth(string(r))
+		if bW+rw > target {
+			break
+		}
+		b.WriteRune(r)
+		bW += rw
+	}
+	return b.String() + "…"
+}
+
 // renderEditInput renders the textinput value with a bar cursor ("▏") at the
 // cursor position instead of the textinput's default reverse-video block. width
 // is the total display width to fill, matching the cell's column width. fg is
@@ -1628,6 +1659,9 @@ func (r ResultsTable) View() string {
 				b.WriteString(" " + inputView + " ")
 			} else {
 				cell := truncateCell(val, r.colWidths[i])
+				if isNumericType(r.columnType(i)) {
+					cell = truncateCellRight(val, r.colWidths[i])
+				}
 				if isCursorCell && r.IsNavigableForeignKey(rowIdx, i) {
 					arrow := " →"
 					arrowW := lipgloss.Width(arrow)
