@@ -5829,10 +5829,18 @@ func (m Model) statusBar(connName string) string {
 		sepStyle := sbMuted
 		var hintsStyled string
 		for i, group := range hints {
-			for ki, k := range strings.Split(group, "/") {
-				if i > 0 && ki == 0 {
-					hintsStyled += sepStyle.Render("/")
+			if i > 0 {
+				hintsStyled += sepStyle.Render("/")
+			}
+			if group == "/" {
+				if flashActive && group == m.hintFlash {
+					hintsStyled += flashStyle.Render(group)
+				} else {
+					hintsStyled += keyStyle.Render(group)
 				}
+				continue
+			}
+			for ki, k := range strings.Split(group, "/") {
 				if ki > 0 {
 					hintsStyled += sepStyle.Render("/")
 				}

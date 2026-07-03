@@ -90,6 +90,9 @@ func matchHint(hints []string, key string) string {
 		key = "space"
 	}
 	for _, h := range hints {
+		if h == key {
+			return h
+		}
 		for _, k := range strings.Split(h, "/") {
 			if k == key {
 				return k
