@@ -574,6 +574,73 @@ func isBareNumeric(s string) bool {
 	return hasDigit
 }
 
+// CloneRow represents a single row's column values ready for cloning.
+type CloneRow struct {
+	Values map[string]string
+}
+
+// CloneRowsData returns the rows to clone: marked rows if any exist,
+// otherwise the cursor row. Auto-increment PK values are omitted so
+// the database assigns new IDs. Hidden columns are also omitted.
+// Returns the table name, column schema, and the row data.
+func (r ResultsTable) CloneRowsData() (string, []db.TableColumnInfo, []CloneRow) {
+	if r.sourceTable == "" || len(r.rows) == 0 || len(r.tableColumns) == 0 {
+		return "", nil, nil
+	}
+
+	// Determine which rows to clone.
+	markedSet := map[string]bool{}
+	hasMarks := false
+	if !r.marksStale() && len(r.markedRows) > 0 {
+		hasMarks = true
+		for k := range r.markedRows {
+			markedSet[k] = true
+		}
+	}
+
+	// Build a set of hidden column names.
+	hiddenNames := map[string]bool{}
+	for i, col := range r.columns {
+		if r.IsColumnHidden(i) {
+			hiddenNames[strings.ToLower(col)] = true
+		}
+	}
+
+	// Build column name → row index map for value lookup.
+	colIdx := map[string]int{}
+	for i, c := range r.columns {
+		colIdx[strings.ToLower(c)] = i
+	}
+
+	var rows []CloneRow
+	for rowIdx := range r.rows {
+		if hasMarks {
+			tuple := r.pkTuple(rowIdx)
+			if tuple == nil || !markedSet[pkKey(tuple)] {
+				continue
+			}
+		} else if rowIdx != r.cursorRow {
+			continue
+		}
+
+		vals := make(map[string]string)
+		for _, tc := range r.tableColumns {
+			if tc.AutoIncrement {
+				continue
+			}
+			if hiddenNames[strings.ToLower(tc.Name)] {
+				continue
+			}
+			if idx, ok := colIdx[strings.ToLower(tc.Name)]; ok {
+				vals[tc.Name] = r.RowValue(rowIdx, idx)
+			}
+		}
+		rows = append(rows, CloneRow{Values: vals})
+	}
+
+	return r.sourceTable, r.tableColumns, rows
+}
+
 // SetVisualMode activates line-wise visual selection anchored at the cursor row.
 func (r *ResultsTable) SetVisualMode() {
 	r.visualActive = true

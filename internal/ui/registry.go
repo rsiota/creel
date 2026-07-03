@@ -192,6 +192,7 @@ func registry() []Section {
 				{"n / N", []string{"n", "N"}, "next / prev match", "n"},
 				{"x", []string{"x"}, "export to CSV", "x"},
 			{"Y", []string{"Y"}, "copy rows as INSERT", "Y"},
+			{"P", []string{"P"}, "clone marked/cursor row", "P"},
 				{"e", []string{"e"}, "edit cell", "e"},
 				{"E", []string{"E"}, "expand cell (large values)", "E"},
 				{"ctrl+s", []string{"ctrl+s"}, "save edits", "ctrl+s"},

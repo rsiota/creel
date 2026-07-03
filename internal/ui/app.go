@@ -60,6 +60,13 @@ type insertResultMsg struct {
 	err error
 }
 
+// cloneResultMsg carries the result of an async row clone.
+type cloneResultMsg struct {
+	table string
+	count int
+	err   error
+}
+
 // truncateResultMsg carries the result of an async table truncate.
 type truncateResultMsg struct {
 	table string
@@ -2017,6 +2024,56 @@ func (m *Model) saveInsert() tea.Cmd {
 	}
 }
 
+// cloneRows duplicates marked rows (or the cursor row) by building and
+// executing INSERT statements. Auto-increment PK values are stripped so
+// the database assigns new IDs. Each clone runs as a separate INSERT;
+// if one fails, the error is returned immediately.
+func (m *Model) cloneRows() tea.Cmd {
+	if !m.results.IsEditable() || m.results.NumRows() == 0 || m.connection == nil {
+		return nil
+	}
+
+	table, columns, rows := m.results.CloneRowsData()
+	if table == "" || len(rows) == 0 {
+		return nil
+	}
+
+	conn := m.connection
+	type pending struct {
+		query string
+		args  []interface{}
+	}
+	var batch []pending
+	for _, row := range rows {
+		q, args, err := buildInsertQuery(table, columns, row.Values)
+		if err != nil {
+			return func() tea.Msg {
+				return cloneResultMsg{table: table, err: err}
+			}
+		}
+		batch = append(batch, pending{query: q, args: args})
+	}
+
+	return func() tea.Msg {
+		cloned := 0
+		for _, p := range batch {
+			_, err := conn.DB().Exec(p.query, p.args...)
+			if err != nil {
+				return cloneResultMsg{table: table, count: cloned, err: err}
+			}
+			cloned++
+		}
+		return cloneResultMsg{table: table, count: cloned}
+	}
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
 // execTruncate removes all rows from a table asynchronously.
 func (m *Model) execTruncate(table string) tea.Cmd {
 	if m.connection == nil || table == "" {
@@ -2514,6 +2571,16 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.inspector.CancelInsert()
 			m.results.ConfirmSaved()
+			return m, m.runPageQuery()
+		}
+		return m, nil
+
+	case cloneResultMsg:
+		if msg.err != nil {
+			m.schemaMsg = fmt.Sprintf("clone failed: %v", msg.err)
+		} else {
+			m.schemaMsg = fmt.Sprintf("cloned %d row%s into %s", msg.count, plural(msg.count), msg.table)
+			m.results.ClearMarks()
 			return m, m.runPageQuery()
 		}
 		return m, nil
@@ -4255,6 +4322,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						return m, copyFeedbackCmd()
 					}
 				}
+			case "P":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				return m, m.cloneRows()
 			case ":":
 				if m.results.NumCols() > 0 {
 					m.columnJumping = true
