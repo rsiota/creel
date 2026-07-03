@@ -3515,8 +3515,24 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.prevPage()
 		}
 	case "ctrl+r":
-		m.editor.Reset()
-		return m, nil
+		// Refresh schema (tables + columns) and re-run the last query.
+		// Block while editing to avoid discarding unsaved changes.
+		if m.results.IsEditing() || m.results.HasDirtyCells() || m.inspector.IsInserting() {
+			return m, nil
+		}
+		m.loadTables()
+		cmd := m.prefetchSchemas()
+		if m.lastQuery != "" {
+			m.page = 0
+			m.filters = nil
+			m.sortCol = ""
+			m.sortDir = ""
+			m.queryStack = nil
+			m.schemaMsg = "refreshed schema & results"
+			return m, tea.Batch(cmd, m.runPageQuery())
+		}
+		m.schemaMsg = "refreshed schema"
+		return m, cmd
 	case "ctrl+w":
 		m.editorMaximized = !m.editorMaximized
 		m.layoutWorkspace()
