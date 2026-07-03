@@ -122,7 +122,7 @@ func TestSelectFromTable(t *testing.T) {
 	if m.editor.Value() != "SELECT * FROM users;" {
 		t.Errorf("unexpected query: %s", m.editor.Value())
 	}
-	if m.focus != FocusEditor {
-		t.Error("expected focus on editor after select")
+	if m.focus != FocusConnections {
+		t.Error("expected focus to remain on sidebar after select")
 	}
 }

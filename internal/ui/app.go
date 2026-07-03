@@ -4373,9 +4373,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			item := m.currentSidebarItem()
 			if item != nil && !item.isColumn {
 				m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s;", item.text))
-				m.focus = FocusEditor
-				m.applyFocus()
-				return m, tea.Batch(m.editor.Focus(), m.executeQuery())
+				return m, m.executeQuery()
 			}
 		case "d":
 			m.sidebarPendingG = false
