@@ -447,6 +447,133 @@ func (r *ResultsTable) ClearMarks() {
 	r.markedTable = ""
 }
 
+const copyAsInsertMaxRows = 500
+
+// CopyAsInsert builds an INSERT INTO ... statement for the marked rows (or
+// all rows if none are marked), skipping hidden columns. Values are
+// SQL-escaped: NULL stays NULL, numeric types are passed bare, everything
+// else is single-quoted. Returns the SQL string and the row count.
+func (r ResultsTable) CopyAsInsert() (string, int) {
+	if len(r.columns) == 0 || len(r.rows) == 0 {
+		return "", 0
+	}
+	table := r.sourceTable
+	if table == "" {
+		table = "table"
+	}
+
+	var visibleCols []int
+	for i := range r.columns {
+		if !r.IsColumnHidden(i) {
+			visibleCols = append(visibleCols, i)
+		}
+	}
+	if len(visibleCols) == 0 {
+		return "", 0
+	}
+
+	// Determine which rows to copy.
+	type markedKey struct{}
+	markedSet := map[string]bool{}
+	hasMarks := false
+	if !r.marksStale() && len(r.markedRows) > 0 {
+		hasMarks = true
+		for k := range r.markedRows {
+			markedSet[k] = true
+		}
+	}
+
+	var b strings.Builder
+	colNames := make([]string, len(visibleCols))
+	for j, ci := range visibleCols {
+		colNames[j] = r.columns[ci]
+	}
+	b.WriteString("INSERT INTO ")
+	b.WriteString(quoteIdent(table))
+	b.WriteString(" (")
+	b.WriteString(strings.Join(colNames, ", "))
+	b.WriteString(") VALUES\n")
+
+	count := 0
+	for rowIdx := range r.rows {
+		if hasMarks {
+			tuple := r.pkTuple(rowIdx)
+			if tuple == nil {
+				continue
+			}
+			if !markedSet[pkKey(tuple)] {
+				continue
+			}
+		}
+		if count >= copyAsInsertMaxRows {
+			break
+		}
+		if count > 0 {
+			b.WriteString(",\n")
+		}
+		b.WriteString("  (")
+		for j, ci := range visibleCols {
+			if j > 0 {
+				b.WriteString(", ")
+			}
+			val := r.RowValue(rowIdx, ci)
+			b.WriteString(sqlEscape(val, r.columnType(ci)))
+		}
+		b.WriteString(")")
+		count++
+	}
+	b.WriteString(";")
+	return b.String(), count
+}
+
+func (r ResultsTable) columnType(col int) string {
+	return r.columnTypes[r.columns[col]]
+}
+
+func quoteIdent(name string) string {
+	return "\"" + strings.ReplaceAll(name, "\"", "\"\"") + "\""
+}
+
+// sqlEscape renders a value as a SQL literal. NULL and empty strings that
+// are actually NULL representations become NULL; numeric types pass bare;
+// everything else is single-quoted with embedded quotes doubled.
+func sqlEscape(val, typ string) string {
+	if val == "NULL" || val == "" {
+		return "NULL"
+	}
+	if isNumericType(typ) {
+		return val
+	}
+	// Heuristic: bare integers/floats without special chars pass unquoted.
+	if typ == "" {
+		if isBareNumeric(val) {
+			return val
+		}
+	}
+	return "'" + strings.ReplaceAll(val, "'", "''") + "'"
+}
+
+func isBareNumeric(s string) bool {
+	if s == "" {
+		return false
+	}
+	hasDigit := false
+	for i, c := range s {
+		if c >= '0' && c <= '9' {
+			hasDigit = true
+			continue
+		}
+		if c == '.' && i > 0 {
+			continue
+		}
+		if c == '-' && i == 0 {
+			continue
+		}
+		return false
+	}
+	return hasDigit
+}
+
 // SetVisualMode activates line-wise visual selection anchored at the cursor row.
 func (r *ResultsTable) SetVisualMode() {
 	r.visualActive = true

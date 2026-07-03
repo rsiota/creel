@@ -4239,6 +4239,22 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				return m, m.exportToCSV()
+			case "Y":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				if m.results.NumRows() > 0 {
+					sql, count := m.results.CopyAsInsert()
+					if count > 0 {
+						_ = clipboard.WriteAll(sql)
+						m.results.StartCopyFeedback()
+						if count >= copyAsInsertMaxRows {
+							m.exportMsg = fmt.Sprintf("copied %d rows as INSERT (cap %d)", count, copyAsInsertMaxRows)
+						} else {
+							m.exportMsg = fmt.Sprintf("copied %d rows as INSERT", count)
+						}
+						return m, copyFeedbackCmd()
+					}
+				}
 			case ":":
 				if m.results.NumCols() > 0 {
 					m.columnJumping = true
