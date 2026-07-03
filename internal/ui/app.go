@@ -5584,7 +5584,7 @@ func (m Model) viewWorkspace() string {
 	// Overlay row deletion confirmation dialog if visible.
 	if m.deleteRowsConfirmTable != "" {
 		prompt := fmt.Sprintf("Delete %d row%s from %s?\nThis cannot be undone.", m.deleteRowsConfirmCount, pluralIf(m.deleteRowsConfirmCount != 1, "s"), m.deleteRowsConfirmTable)
-		dialog := renderConfirmDialog(prompt)
+		dialog := renderConfirmDialogBare(prompt)
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)
 		dlgX := (m.width - dlgW) / 2
