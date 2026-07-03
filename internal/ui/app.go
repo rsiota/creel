@@ -5383,13 +5383,13 @@ func (m Model) viewWorkspace() string {
 		workspace = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel)
 	}
 
-	view := lipgloss.JoinVertical(lipgloss.Left, workspace, statusBar)
+	// Dim the workspace panels behind long-lived editing overlays.
+	// The status bar is kept undimmed so hints remain clearly visible.
+	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() {
+		workspace = dimBackground(workspace)
+	}
 
-	// Dim the workspace behind long-lived editing overlays.
-	// Currently disabled — kept here for easy re-enablement.
-	// if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() {
-	// 	view = dimBackground(view)
-	// }
+	view := lipgloss.JoinVertical(lipgloss.Left, workspace, statusBar)
 
 	// Overlay history panel if visible
 	if m.history.IsVisible() {

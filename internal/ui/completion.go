@@ -96,7 +96,7 @@ func overlayLine(bgLine, fgLine string, x int) string {
 // dimBackground strips all ANSI styling from the view and re-renders it in the
 // muted colour. Used behind long-lived editing overlays to focus attention.
 func dimBackground(view string) string {
-	return lipgloss.NewStyle().Foreground(colorBorder).Render(ansi.Strip(view))
+	return lipgloss.NewStyle().Foreground(colorMuted).Render(ansi.Strip(view))
 }
 // filterCandidates returns candidates whose text fuzzy-matches partial
 // (case-insensitive subsequence), sorted by match score (lower = better).

@@ -120,8 +120,8 @@ func registry() []Section {
 			Items: []Binding{
 				{"j/k", []string{"j", "k"}, "move", "j/k"},
 				{"enter", []string{"enter"}, "load query into editor", "enter"},
-				{"b", []string{"b"}, "bookmark selected query", ""},
-				{"D", []string{"D"}, "clear history", ""},
+				{"b", []string{"b"}, "bookmark selected query", "b"},
+				{"D", []string{"D"}, "clear history", "D"},
 				{"esc", []string{"esc"}, "close", "esc"},
 			},
 		},
@@ -131,8 +131,8 @@ func registry() []Section {
 			Items: []Binding{
 				{"j/k", []string{"j", "k"}, "move", "j/k"},
 				{"enter", []string{"enter"}, "load query into editor", "enter"},
-				{"d", []string{"d"}, "delete bookmark", ""},
-				{"D", []string{"D"}, "clear bookmarks", ""},
+				{"d", []string{"d"}, "delete bookmark", "d"},
+				{"D", []string{"D"}, "clear bookmarks", "D"},
 				{"esc", []string{"esc"}, "close", "esc"},
 			},
 		},
