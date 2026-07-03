@@ -107,6 +107,7 @@ func (r *ResultsTable) SetEditable(table string, pkCols []string) {
 	r.editing = false
 	r.saveError = ""
 	r.ClearVisualMode()
+	r.computeColWidths()
 }
 
 // SetTableColumns stores schema metadata for inserts.
@@ -227,6 +228,7 @@ func (r *ResultsTable) ClearEditable() {
 	r.editing = false
 	r.tableColumns = nil
 	r.ClearVisualMode()
+	r.computeColWidths()
 }
 
 // IsEditable returns whether the current results support inline editing.
@@ -851,7 +853,15 @@ func (r *ResultsTable) computeColWidths() {
 	r.colWidths = make([]int, len(r.columns))
 
 	for i, col := range r.columns {
-		r.colWidths[i] = runeLen(col)
+		w := runeLen(col)
+		// Reserve room for PK suffix (" 🔑") and sort indicator (" ↑"/" ↓")
+		// that are appended at render time. The sort indicator can appear
+		// on any column, so always reserve space for it.
+		if r.editable && r.isPKColumn(col) {
+			w += runeLen(" 🔑")
+		}
+		w += runeLen(" ↑")
+		r.colWidths[i] = w
 	}
 
 	for _, row := range r.rows {
