@@ -380,13 +380,13 @@ func TestFormatSQLValue(t *testing.T) {
 func TestIsDateTimeType(t *testing.T) {
 	dateTime := []string{"TIMESTAMP", "timestamp", "DATETIME", "DATETIME(6)", "DATE", "TIME"}
 	for _, ty := range dateTime {
-		if !isDateTimeType(ty) {
-			t.Errorf("isDateTimeType(%q) = false, want true", ty)
+		if !IsDateTimeType(ty) {
+			t.Errorf("IsDateTimeType(%q) = false, want true", ty)
 		}
 	}
 	other := []string{"TEXT", "VARCHAR(255)", "INT", "", "BLOB", "YEAR"}
 	for _, ty := range other {
-		if isDateTimeType(ty) {
+		if IsDateTimeType(ty) {
 			t.Errorf("isDateTimeType(%q) = true, want false", ty)
 		}
 	}

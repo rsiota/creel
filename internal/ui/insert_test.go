@@ -51,6 +51,40 @@ func TestBuildInsertQuery(t *testing.T) {
 		}
 	})
 
+	t.Run("NULL values map to SQL nil args", func(t *testing.T) {
+		query, args, err := buildInsertQuery("users", columns, map[string]string{
+			"name":  "alice",
+			"email": "NULL",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if query != "INSERT INTO users (name, email) VALUES (?, ?)" {
+			t.Fatalf("query = %q", query)
+		}
+		if len(args) != 2 || args[0] != "alice" || args[1] != nil {
+			t.Fatalf("args = %#v, want [alice, nil]", args)
+		}
+	})
+
+	t.Run("datetime values are normalized from ISO-8601", func(t *testing.T) {
+		dtColumns := []db.TableColumnInfo{
+			{Name: "id", Type: "INTEGER", PrimaryKey: true, AutoIncrement: true},
+			{Name: "created_at", Type: "DATETIME", NotNull: true},
+			{Name: "updated_at", Type: "TIMESTAMP"},
+		}
+		_, args, err := buildInsertQuery("logs", dtColumns, map[string]string{
+			"created_at": "2026-01-07T15:04:30Z",
+			"updated_at": "2026-01-07T15:04:30Z",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(args) != 2 || args[0] != "2026-01-07 15:04:30" || args[1] != "2026-01-07 15:04:30" {
+			t.Fatalf("args = %#v, want normalized datetime strings", args)
+		}
+	})
+
 	t.Run("empty table name", func(t *testing.T) {
 		_, _, err := buildInsertQuery("", columns, map[string]string{"name": "alice"})
 		if err == nil || !strings.Contains(err.Error(), "no table") {

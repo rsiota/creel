@@ -1973,7 +1973,11 @@ func (m *Model) saveEdits() tea.Cmd {
 				fmt.Fprintf(&b, "%s = ?", pk)
 			}
 
-			args := []interface{}{p.edit.NewValue}
+			var setArg interface{} = p.edit.NewValue
+			if p.edit.NewValue == "NULL" {
+				setArg = nil
+			}
+			args := []interface{}{setArg}
 			for _, v := range p.pkVals {
 				args = append(args, v)
 			}

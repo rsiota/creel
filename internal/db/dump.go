@@ -236,17 +236,17 @@ func formatSQLValue(value, colType string) string {
 		return value
 	}
 	v := value
-	if isDateTimeType(colType) {
-		v = formatDateTimeLiteral(v)
+	if IsDateTimeType(colType) {
+		v = FormatDateTimeLiteral(v)
 	}
 	return "'" + strings.ReplaceAll(v, "'", "''") + "'"
 }
 
-// isDateTimeType reports whether a column type stores a date, time, or
+// IsDateTimeType reports whether a column type stores a date, time, or
 // timestamp. Values of these types may arrive as ISO-8601 strings (the driver
 // formats parsed time.Time values that way when scanned into a string) and must
 // be re-rendered as plain SQL datetime literals.
-func isDateTimeType(dbType string) bool {
+func IsDateTimeType(dbType string) bool {
 	t := strings.ToLower(strings.TrimSpace(dbType))
 	if i := strings.IndexByte(t, '('); i > 0 {
 		t = t[:i]
@@ -258,12 +258,12 @@ func isDateTimeType(dbType string) bool {
 	return false
 }
 
-// formatDateTimeLiteral converts an ISO-8601 timestamp (e.g.
+// FormatDateTimeLiteral converts an ISO-8601 timestamp (e.g.
 // "2026-05-08T18:38:00Z") into a 'YYYY-MM-DD HH:MM:SS' literal accepted by both
 // MySQL and SQLite. The wall-clock time is preserved exactly (no timezone
 // conversion), so dumps round-trip. Values that don't look like ISO timestamps
 // are returned unchanged.
-func formatDateTimeLiteral(value string) string {
+func FormatDateTimeLiteral(value string) string {
 	if !strings.Contains(value, "T") {
 		return value
 	}
