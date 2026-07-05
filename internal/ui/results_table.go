@@ -1055,11 +1055,11 @@ func (r *ResultsTable) computeColWidths() {
 
 	for i, col := range r.columns {
 		w := runeLen(col)
-		// Reserve room for PK suffix (" 🔑") and sort indicator (" ↑"/" ↓")
+		// Reserve room for PK suffix ("*") and sort indicator (" ↑"/" ↓")
 		// that are appended at render time. The sort indicator can appear
 		// on any column, so always reserve space for it.
 		if r.editable && r.isPKColumn(col) {
-			w += runeLen(" 🔑")
+			w += runeLen(" *")
 		}
 		w += runeLen(" ↑")
 		r.colWidths[i] = w
@@ -1562,15 +1562,15 @@ func (r ResultsTable) View() string {
 	b.WriteString(outerStyle.Render("│"))
 	for j, i := range cols {
 		header := r.columns[i]
-		if r.editable && r.isPKColumn(header) {
-			header = header + " 🔑"
-		}
 		if header == r.sortCol && r.sortDir != "" {
 			if r.sortDir == "ASC" {
 				header = header + " ↑"
 			} else {
 				header = header + " ↓"
 			}
+		}
+		if r.editable && r.isPKColumn(r.columns[i]) {
+			header = header + " *"
 		}
 		cell := truncateCell(header, r.colWidths[i])
 		baseStyle := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)

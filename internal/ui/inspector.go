@@ -496,7 +496,7 @@ func (i Inspector) View(results ResultsTable) string {
 		// Label line: 1-char left pad + column name (left) + type (right) + 1-char right pad
 		labelRaw := colName
 		if isPK {
-			labelRaw = "🔑 " + labelRaw
+			labelRaw = "* " + labelRaw
 		}
 		if isDirty {
 			labelRaw += " ●"
