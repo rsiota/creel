@@ -14,13 +14,14 @@ import (
 // edit the value. On commit the value is staged into the same dirtyCells
 // pipeline used by the inline editor (no immediate DB flush).
 type CellEditPopup struct {
-	ta      textarea.Model
-	visible bool
-	row     int    // results row index
-	col     int    // results column index
-	colName string // column header, shown in the popup title line
-	width   int    // content width (excludes border + padding)
-	height  int    // content height in lines
+	ta       textarea.Model
+	visible  bool
+	row      int    // results row index
+	col      int    // results column index
+	colName  string // column header, shown in the popup title line
+	width    int    // content width (excludes border + padding)
+	height   int    // content height in lines
+	jsonMode bool   // when true, render highlighted pretty-printed JSON
 }
 
 // NewCellEditPopup creates a hidden cell-edit popup.
@@ -28,12 +29,20 @@ func NewCellEditPopup() CellEditPopup {
 	return CellEditPopup{}
 }
 
-// Show opens the popup seeded with the given value.
+// Show opens the popup seeded with the given value. JSON objects and arrays
+// are automatically pretty-printed and syntax-highlighted for readability.
 func (p *CellEditPopup) Show(val string, row, col int, colName string) {
 	ta := textarea.New()
 	ta.Prompt = ""
 	ta.ShowLineNumbers = false
 	ta.CharLimit = 0 // no limit
+
+	p.jsonMode = false
+	if pretty, ok := formatJSON(val); ok {
+		val = pretty
+		p.jsonMode = true
+	}
+
 	ta.SetValue(val)
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
 	ta.FocusedStyle.Text = lipgloss.NewStyle().Foreground(colorFg)
@@ -51,6 +60,7 @@ func (p *CellEditPopup) Hide() {
 	p.visible = false
 	p.ta = textarea.Model{}
 	p.colName = ""
+	p.jsonMode = false
 }
 
 // IsVisible reports whether the popup is open.
@@ -120,12 +130,36 @@ func (p CellEditPopup) View() string {
 	top := bs.Render("┌" + strings.Repeat("─", borderW) + "┐")
 	bottom := bs.Render("└" + strings.Repeat("─", borderW) + "┘")
 
-	// Render each textarea line inside the bordered frame.
 	var lines []string
 	lines = append(lines, " "+label, top)
-	for _, line := range strings.Split(p.ta.View(), "\n") {
-		lines = append(lines, bs.Render("│ ")+line+bs.Render(" │"))
+
+	if p.jsonMode {
+		cursorLine := p.ta.Line()
+		cursorCol := p.ta.LineInfo().CharOffset
+		cursorStyle := lipgloss.NewStyle().Reverse(true)
+		for idx, line := range strings.Split(p.ta.Value(), "\n") {
+			raw := truncateCell(line, p.width)
+			var content string
+			if idx == cursorLine {
+				runes := []rune(raw)
+				if cursorCol < len(runes) {
+					content = highlightJSON(string(runes[:cursorCol])) +
+						cursorStyle.Render(string(runes[cursorCol])) +
+						highlightJSON(string(runes[cursorCol+1:]))
+				} else {
+					content = highlightJSON(raw) + cursorStyle.Render(" ")
+				}
+			} else {
+				content = highlightJSON(raw)
+			}
+			lines = append(lines, bs.Render("│ ")+content+bs.Render(" │"))
+		}
+	} else {
+		for _, line := range strings.Split(p.ta.View(), "\n") {
+			lines = append(lines, bs.Render("│ ")+line+bs.Render(" │"))
+		}
 	}
+
 	lines = append(lines, bottom)
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }

@@ -533,10 +533,22 @@ func (i Inspector) View(results ResultsTable) string {
 		rendered.WriteString(bs.Render("┌" + strings.Repeat("─", borderWidth) + "┐"))
 		rendered.WriteString("\n")
 
-		// Value line
+		// Value line(s)
 		if i.editing && isFocused {
 			inputView := renderEditInput(i.editInput, valueWidth, colorEdit)
 			rendered.WriteString(bs.Render("│ ") + inputView + bs.Render(" │"))
+			rendered.WriteString("\n")
+		} else if pretty, isJSON := formatJSON(val); isJSON && isFocused && !i.inserting {
+			// Multi-line highlighted JSON for the focused field.
+			jsonLines := strings.Split(pretty, "\n")
+			const maxJSONLines = 6
+			if len(jsonLines) > maxJSONLines {
+				jsonLines = jsonLines[:maxJSONLines]
+			}
+			for _, jl := range jsonLines {
+				rendered.WriteString(bs.Render("│ ") + highlightJSON(truncateCell(jl, valueWidth)) + bs.Render(" │"))
+				rendered.WriteString("\n")
+			}
 		} else {
 			displayVal := truncateCell(val, valueWidth)
 			valStyle := lipgloss.NewStyle().Foreground(colorFg)
@@ -551,8 +563,8 @@ func (i Inspector) View(results ResultsTable) string {
 				displayVal = truncateCell("(empty)", valueWidth)
 			}
 			rendered.WriteString(bs.Render("│ ") + valStyle.Render(displayVal) + bs.Render(" │"))
+			rendered.WriteString("\n")
 		}
-		rendered.WriteString("\n")
 
 		// Bottom border
 		rendered.WriteString(bs.Render("└" + strings.Repeat("─", borderWidth) + "┘"))

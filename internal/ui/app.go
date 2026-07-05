@@ -3938,7 +3938,22 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.cellEdit.IsVisible() {
 		switch msg.String() {
 		case "ctrl+s":
-			m.results.SetDirtyCell(m.cellEdit.Row(), m.cellEdit.Col(), m.cellEdit.Value())
+			val := m.cellEdit.Value()
+			// Compact JSON so pretty-printing in the popup doesn't create
+			// a false dirty cell when the user just views and saves.
+			if compacted, ok := compactJSON(val); ok {
+				val = compacted
+			}
+			orig := m.results.RowValue(m.cellEdit.Row(), m.cellEdit.Col())
+			if orig == "NULL" {
+				orig = ""
+			}
+			if origCompacted, ok := compactJSON(orig); ok {
+				orig = origCompacted
+			}
+			if val != orig {
+				m.results.SetDirtyCell(m.cellEdit.Row(), m.cellEdit.Col(), val)
+			}
 			m.cellEdit.Hide()
 			return m, nil
 		case "esc", "ctrl+c":
