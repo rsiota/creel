@@ -1629,8 +1629,6 @@ func (r ResultsTable) View() string {
 		// Left border (outer frame)
 		if r.IsMarkedRow(rowIdx) {
 			b.WriteString(lipgloss.NewStyle().Foreground(colorMark).Render("◆"))
-		} else if r.isVisualRow(rowIdx) {
-			b.WriteString(lipgloss.NewStyle().Foreground(colorVisual).Render("│"))
 		} else {
 			leftStyle := outerStyle
 			if bg != "" {
