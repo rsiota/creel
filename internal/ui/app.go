@@ -2507,10 +2507,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateWorkspace(msg)
 
 	case tea.MouseMsg:
-		if m.state != stateWorkspace {
-			return m, nil
+		if m.state == stateConnections {
+			return m.handleConnectionsMouse(msg)
 		}
-		return m.handleWorkspaceMouse(msg)
+		if m.state == stateWorkspace {
+			return m.handleWorkspaceMouse(msg)
+		}
+		return m, nil
 
 	case queryExecutedMsg:
 		m.layoutWorkspace()
@@ -2991,14 +2994,94 @@ func (m Model) updateAddConnection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// handleConnectionsMouse routes mouse events on the connection list screen.
+func (m Model) handleConnectionsMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Type != tea.MouseLeft {
+		return m, nil
+	}
+
+	// Connection popup is centered at popupDim() = 71×19.
+	pw, ph := popupDim()
+	panelX := (m.width - pw) / 2
+	panelY := (m.height - 1 - ph) / 2
+
+	// Inside the border: border(1) + prompt(1) = offset 2 for first entry.
+	// Each entry renders as 2 lines (name + detail).
+	listY := msg.Y - panelY - 2
+	if listY < 0 || msg.X < panelX || msg.X >= panelX+pw {
+		return m, nil
+	}
+	idx := listY / 2
+	items := m.connList.VisibleItemsForMouse()
+	if idx < 0 || idx >= len(items) {
+		return m, nil
+	}
+	m.connList.SetCursor(idx)
+	if m.connList.IsFiltering() {
+		m.connList.CommitFilter()
+	}
+	return m, m.connectToDB()
+}
+
+// handleDatabasePickerMouse routes mouse events on the database picker overlay.
+func (m Model) handleDatabasePickerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// Scroll wheel — scroll database list.
+	if msg.Type == tea.MouseWheelUp {
+		m.dbPicker.CursorUp()
+		return m, nil
+	}
+	if msg.Type == tea.MouseWheelDown {
+		m.dbPicker.CursorDown()
+		return m, nil
+	}
+	if msg.Type != tea.MouseLeft {
+		return m, nil
+	}
+
+	// Database picker is centered at popupDim() = 71×19.
+	pw, ph := popupDim()
+	panelX := (m.width - pw) / 2
+	panelY := (m.height - 1 - ph) / 2
+
+	// Inside the border: border(1) + prompt(1) = offset 2 for first entry.
+	// Each entry renders as 1 line.
+	listY := msg.Y - panelY - 2
+	if listY < 0 || msg.X < panelX || msg.X >= panelX+pw {
+		return m, nil
+	}
+	idx := m.dbPicker.ScrollRow() + listY
+	m.dbPicker.SetCursor(idx)
+
+	// Verify the cursor landed on a real item.
+	name := m.dbPicker.SelectedDatabase()
+	if name == "" {
+		return m, nil
+	}
+	if m.dbPicker.Filtering() {
+		m.dbPicker.StopFiltering()
+	}
+	m.dbPicker.Hide()
+	return m, m.selectDatabase(name)
+}
+
 // handleWorkspaceMouse routes mouse events to the appropriate panel.
 func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.help.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() ||
-		m.cellEdit.IsVisible() || m.palette.IsVisible() ||
-		m.tableDesigner.IsVisible() || m.schemaEditor.IsVisible() ||
+	// Click-outside-to-dismiss for overlay panels (left-click only).
+	if msg.Type == tea.MouseLeft {
+		if dismissed := m.dismissOverlayOnOutsideClick(msg); dismissed {
+			return m, nil
+		}
+	}
+
+	// Database picker overlay.
+	if m.dbPicker.IsVisible() {
+		return m.handleDatabasePickerMouse(msg)
+	}
+
+	// Ignore mouse when inline editors or text-input modes are active.
+	if m.tableDesigner.IsVisible() || m.schemaEditor.IsVisible() ||
 		m.columnJumping || m.searching || m.backendSearching ||
-		m.filterPicker.IsVisible() || m.columnPicker.IsVisible() ||
-		m.exportPicker.IsVisible() || m.dbPicker.IsVisible() {
+		m.cellEdit.IsVisible() {
 		return m, nil
 	}
 
@@ -3090,6 +3173,82 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// dismissOverlayOnOutsideClick closes the topmost visible overlay if the
+// mouse click lands outside its bounds. Returns true if an overlay was dismissed.
+func (m *Model) dismissOverlayOnOutsideClick(msg tea.MouseMsg) bool {
+	// Helper: compute centered overlay bounds.
+	centeredRect := func(panelW, panelH int) (int, int, int, int) {
+		x := (m.width - panelW) / 2
+		y := (m.height - 1 - panelH) / 2
+		return x, y, panelW, panelH
+	}
+	outside := func(x, y, w, h int) bool {
+		return msg.X < x || msg.X >= x+w || msg.Y < y || msg.Y >= y+h
+	}
+
+	// Help panel is fullscreen — any click dismisses.
+	if m.help.IsVisible() {
+		m.help.Hide()
+		return true
+	}
+
+	// 65% centered overlays.
+	if m.history.IsVisible() {
+		w := m.width * 65 / 100
+		h := (m.height - 1) * 65 / 100
+		x, y, pw, ph := centeredRect(w, h)
+		if outside(x, y, pw, ph) {
+			m.history.Toggle()
+			return true
+		}
+		return false // click inside — let it live
+	}
+	if m.bookmarks.IsVisible() {
+		w := m.width * 65 / 100
+		h := (m.height - 1) * 65 / 100
+		x, y, pw, ph := centeredRect(w, h)
+		if outside(x, y, pw, ph) {
+			m.bookmarks.Toggle()
+			return true
+		}
+		return false
+	}
+
+	// popupDim() overlays (71×19).
+	pw, ph := popupDim()
+	px, py, _, _ := centeredRect(pw, ph)
+	if m.palette.IsVisible() {
+		if outside(px, py, pw, ph) {
+			m.palette.Hide()
+			return true
+		}
+		return false
+	}
+	if m.filterPicker.IsVisible() {
+		if outside(px, py, pw, ph) {
+			m.filterPicker.Hide()
+			return true
+		}
+		return false
+	}
+	if m.columnPicker.IsVisible() {
+		if outside(px, py, pw, ph) {
+			m.columnPicker.Hide()
+			return true
+		}
+		return false
+	}
+	if m.exportPicker.IsVisible() {
+		if outside(px, py, pw, ph) {
+			m.exportPicker.Hide()
+			return true
+		}
+		return false
+	}
+
+	return false
 }
 
 func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

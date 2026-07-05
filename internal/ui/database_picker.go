@@ -143,6 +143,28 @@ func (p *DatabasePicker) CursorDown() {
 	}
 }
 
+// SetCursor sets the cursor position directly.
+func (p *DatabasePicker) SetCursor(i int) {
+	items := p.filteredDatabases()
+	if len(items) == 0 {
+		p.cursor = 0
+		return
+	}
+	if i < 0 {
+		i = 0
+	}
+	if i >= len(items) {
+		i = len(items) - 1
+	}
+	p.cursor = i
+	p.adjustScroll()
+}
+
+// ScrollRow returns the current scroll offset (for mouse coordinate mapping).
+func (p DatabasePicker) ScrollRow() int {
+	return p.scrollRow
+}
+
 func (p *DatabasePicker) adjustScroll() {
 	maxVisible := p.maxVisibleItems()
 	if p.cursor < p.scrollRow {

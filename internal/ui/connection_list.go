@@ -62,6 +62,12 @@ func (c *ConnectionList) SetItems(conns []ConnectionEntry) {
 
 // visibleItems returns the items to display, filtered if in filter mode.
 func (c ConnectionList) visibleItems() []connectionItem {
+	return c.VisibleItemsForMouse()
+}
+
+// VisibleItemsForMouse returns the currently visible (possibly filtered)
+// connection items. Exported for mouse-click coordinate mapping.
+func (c ConnectionList) VisibleItemsForMouse() []connectionItem {
 	if !c.filtering || c.filter == "" {
 		return c.items
 	}
