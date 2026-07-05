@@ -159,6 +159,7 @@ func registry() []Section {
 				{"x / dd / dw / D", []string{"x", "d", "w", "D"}, "delete", "x/dd"},
 				{"y / p", []string{"y", "p"}, "yank / paste", "y/p"},
 				{"ctrl+n", []string{"ctrl+n"}, "autocomplete", "ctrl+n"},
+				{"↑ / ↓", []string{"up", "down"}, "query history (normal mode)", ""},
 				{"==", []string{"="}, "format SQL", ""},
 			},
 		},

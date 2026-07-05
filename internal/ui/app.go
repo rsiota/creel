@@ -307,6 +307,9 @@ type Model struct {
 	config        *config.Config
 	connection    *db.Connection
 	historyStore  *history.Store
+	historyNavEntries []string // cached queries for the current browse session
+	historyNavIdx     int      // -1 = not browsing; otherwise index into historyNavEntries (most recent = len-1)
+	historyNavSaved   string   // editor content before history browse started
 	bookmarkStore *bookmarks.Store
 	connError    string
 	tables       []string
@@ -4398,6 +4401,49 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+
+		// Command history navigation: up/down arrow in vim normal mode.
+		if m.editor.VimMode() == VimNormal && !m.editor.CompletionVisible() {
+			switch msg.String() {
+			case "up":
+				if m.connection != nil && m.historyStore != nil {
+					if m.historyNavIdx == -1 {
+						entries, err := m.historyStore.Get(m.connection.Config().Name)
+						if err != nil || len(entries) == 0 {
+							return m, nil
+						}
+						m.historyNavEntries = make([]string, len(entries))
+						for i, e := range entries {
+							m.historyNavEntries[i] = e.Query
+						}
+						m.historyNavSaved = m.editor.Value()
+						m.historyNavIdx = len(m.historyNavEntries) - 1
+					} else if m.historyNavIdx > 0 {
+						m.historyNavIdx--
+					} else {
+						return m, nil // already at oldest
+					}
+					m.editor.SetValue(m.historyNavEntries[m.historyNavIdx])
+				}
+				return m, nil
+			case "down":
+				if m.historyNavIdx >= 0 {
+					if m.historyNavIdx < len(m.historyNavEntries)-1 {
+						m.historyNavIdx++
+						m.editor.SetValue(m.historyNavEntries[m.historyNavIdx])
+					} else {
+						m.historyNavIdx = -1
+						m.editor.SetValue(m.historyNavSaved)
+					}
+					return m, nil
+				}
+			}
+			// Reset history navigation on any other key in normal mode.
+			if msg.String() != "up" && msg.String() != "down" {
+				m.historyNavIdx = -1
+			}
+		}
+
 		m.editor, cmd = m.editor.Update(msg)
 	case FocusResults:
 		// Clear dd pending state on any non-'d' key.
