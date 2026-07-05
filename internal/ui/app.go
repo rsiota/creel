@@ -4174,6 +4174,23 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				m.resultsPendingY = true
 				return m, nil
+			case "p":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				if !m.results.IsEditable() || !m.results.HasPrimaryKey() || m.inspector.IsVisible() {
+					return m, nil
+				}
+				colName := m.results.ColumnName(m.results.CursorCol())
+				if m.results.isPKColumn(colName) {
+					return m, nil
+				}
+				clip, err := clipboard.ReadAll()
+				if err != nil || clip == "" {
+					m.exportMsg = "clipboard is empty"
+					return m, copyFeedbackCmd()
+				}
+				m.results.SetDirtyCell(m.results.CursorRow(), m.results.CursorCol(), clip)
+				return m, m.saveChanges()
 			case "s":
 				if m.resultsPendingG {
 					m.resultsPendingG = false
