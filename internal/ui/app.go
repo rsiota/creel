@@ -119,6 +119,17 @@ type tableRowCountsMsg struct {
 	counts map[string]int64
 }
 
+// crossSearchResultMsg carries partial results from one batch of tables.
+type crossSearchResultMsg struct {
+	results    []SearchResult
+	tablesDone int
+	batchEnd   int
+	done       bool
+}
+
+// crossSearchStartMsg signals the search to begin executing.
+type crossSearchStartMsg struct{}
+
 // copyFlashTickMsg advances the cell flash animation after a clipboard copy.
 type copyFlashTickMsg struct{}
 
@@ -225,6 +236,7 @@ type Model struct {
 	inspector    Inspector
 	history      HistoryPanel
 	bookmarks    BookmarkPanel
+	crossSearch  CrossSearchPanel
 	dbPicker     DatabasePicker
 	help         HelpPanel
 	filterPicker FilterPicker
@@ -578,6 +590,105 @@ func (m Model) fetchTableRowCounts() tea.Cmd {
 			return tableRowCountsMsg{counts: nil}
 		}
 		return tableRowCountsMsg{counts: counts}
+	}
+}
+
+const crossSearchMaxResults = 200
+
+// startCrossSearch kicks off the async cross-table search. It returns a
+// crossSearchStartMsg which the handler converts into the actual search batch.
+func (m Model) startCrossSearch() tea.Cmd {
+	return func() tea.Msg {
+		return crossSearchStartMsg{}
+	}
+}
+
+// runCrossSearchBatch searches a batch of tables for the query string and
+// returns partial results. The caller handles accumulating results and
+// re-invoking for the next batch.
+func (m Model) runCrossSearchBatch(query string, batchStart int) tea.Cmd {
+	conn := m.connection
+	if conn == nil {
+		return nil
+	}
+	d := conn.DB()
+	driver := conn.Config().Driver
+	tables := m.tables
+	columnCache := m.columnCache
+	batchSize := 3
+	end := batchStart + batchSize
+	if end > len(tables) {
+		end = len(tables)
+	}
+	batch := tables[batchStart:end]
+
+	return func() tea.Msg {
+		var results []SearchResult
+		for _, table := range batch {
+			if len(results) >= crossSearchMaxResults {
+				break
+			}
+			cols := columnCache[table]
+			if cols == nil {
+				fetched, err := d.TableSchema(table)
+				if err != nil {
+					continue
+				}
+				cols = fetched
+			}
+			// Build WHERE clause casting each text-compatible column to CHAR.
+			var conditions []string
+			for _, col := range cols {
+				lower := strings.ToLower(col.Type)
+				if strings.Contains(lower, "blob") || strings.Contains(lower, "binary") {
+					continue
+				}
+				escapedQuery := strings.ReplaceAll(query, "'", "''")
+				if driver == db.DriverMySQL {
+					conditions = append(conditions, fmt.Sprintf("CAST(`%s` AS CHAR) LIKE '%%%s%%'",
+						strings.ReplaceAll(col.Name, "`", "``"), escapedQuery))
+				} else {
+					conditions = append(conditions, fmt.Sprintf("CAST(\"%s\" AS TEXT) LIKE '%%%s%%'",
+						strings.ReplaceAll(col.Name, "\"", "\"\""), escapedQuery))
+				}
+			}
+			if len(conditions) == 0 {
+				continue
+			}
+			queryStr := fmt.Sprintf("SELECT * FROM %s WHERE %s LIMIT 20",
+				table, strings.Join(conditions, " OR "))
+			result, err := d.Execute(queryStr)
+			if err != nil {
+				continue
+			}
+			for _, row := range result.Rows {
+				if len(results) >= crossSearchMaxResults {
+					break
+				}
+				for ci, col := range result.Columns {
+					if ci < len(row) && strings.Contains(strings.ToLower(row[ci]), strings.ToLower(query)) {
+						val := row[ci]
+						if len(val) > 80 {
+							val = val[:80]
+						}
+						results = append(results, SearchResult{
+							Table:  table,
+							Column: col.Name,
+							Value:  val,
+							Row:    row,
+						})
+						break // one match per row
+					}
+				}
+			}
+		}
+		done := end >= len(tables)
+		return crossSearchResultMsg{
+			results:    results,
+			tablesDone: len(batch),
+			done:       done,
+			batchEnd:   end,
+		}
 	}
 }
 
@@ -2727,6 +2838,21 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tableRowCounts = msg.counts
 		return m, nil
 
+	case crossSearchStartMsg:
+		// Begin searching from the first table.
+		query := m.crossSearch.Query()
+		m.crossSearch.StartSearch(len(m.tables))
+		return m, m.runCrossSearchBatch(query, 0)
+
+	case crossSearchResultMsg:
+		m.crossSearch.AddResults(msg.results, msg.tablesDone)
+		if msg.done || len(m.crossSearch.results) >= crossSearchMaxResults {
+			m.crossSearch.FinishSearch()
+			return m, nil
+		}
+		// Continue with next batch.
+		return m, m.runCrossSearchBatch(m.crossSearch.Query(), msg.batchEnd)
+
 	case copyFlashTickMsg:
 		if m.results.AdvanceCopyFlash() {
 			return m, copyFlashTickCmd()
@@ -3237,6 +3363,16 @@ func (m *Model) dismissOverlayOnOutsideClick(msg tea.MouseMsg) bool {
 		x, y, pw, ph := centeredRect(w, h)
 		if outside(x, y, pw, ph) {
 			m.bookmarks.Toggle()
+			return true
+		}
+		return false
+	}
+	if m.crossSearch.IsVisible() {
+		w := m.width * 65 / 100
+		h := (m.height - 1) * 65 / 100
+		x, y, pw, ph := centeredRect(w, h)
+		if outside(x, y, pw, ph) {
+			m.crossSearch.Hide()
 			return true
 		}
 		return false
@@ -4022,6 +4158,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "esc":
+		// Close cross-search panel if visible.
+		if m.crossSearch.IsVisible() {
+			m.crossSearch.Hide()
+			return m, nil
+		}
 		// Close bookmarks panel if visible.
 		if m.bookmarks.IsVisible() {
 			m.bookmarks.Toggle()
@@ -4191,6 +4332,45 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.bookmarks.filter += msg.String()
 			m.bookmarks.cursor = 0
 			m.bookmarks.scrollRow = 0
+			return m, nil
+		}
+	}
+
+	// Cross-search panel takes over navigation when visible
+	if m.crossSearch.IsVisible() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.crossSearch.Hide()
+			return m, nil
+		case "enter":
+			// If we have results (search done), navigate to selected result.
+			if !m.crossSearch.searching && len(m.crossSearch.results) > 0 {
+				if r := m.crossSearch.SelectedResult(); r != nil {
+					m.crossSearch.Hide()
+					m.syncSidebarCursorToTable(r.Table)
+					m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s WHERE %s = '%s';",
+						r.Table, r.Column, strings.ReplaceAll(r.Value, "'", "''")))
+					return m, m.executeQuery()
+				}
+				return m, nil
+			}
+			// Otherwise, start the search if a query is typed.
+			if m.crossSearch.Query() != "" && !m.crossSearch.searching {
+				return m, m.startCrossSearch()
+			}
+			return m, nil
+		case "backspace":
+			m.crossSearch.Backspace()
+			return m, nil
+		case "up":
+			m.crossSearch.CursorUp()
+			return m, nil
+		case "down":
+			m.crossSearch.CursorDown()
+			return m, nil
+		}
+		if msg.Type == tea.KeyRunes || msg.String() == " " {
+			m.crossSearch.AddQueryChar(msg.String())
 			return m, nil
 		}
 	}
@@ -4833,6 +5013,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebarPendingG = false
 			m.importPrompt.Show("~/Downloads/")
 			return m, nil
+		case "S":
+			m.sidebarPendingG = false
+			if m.connection != nil && len(m.tables) > 0 {
+				m.crossSearch.Show()
+				return m, m.editor.Focus()
+			}
 		}
 		m.connList, cmd = m.connList.Update(msg)
 	case FocusInspector:
@@ -5803,7 +5989,7 @@ func (m Model) viewWorkspace() string {
 
 	// Dim the workspace panels behind long-lived editing overlays.
 	// The status bar is kept undimmed so hints remain clearly visible.
-	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() {
+	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() || m.crossSearch.IsVisible() {
 		workspace = dimBackground(workspace)
 	}
 
@@ -5829,6 +6015,17 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, bmPanel, panelX, panelY)
+	}
+
+	// Overlay cross-search panel if visible
+	if m.crossSearch.IsVisible() {
+		m.crossSearch.SetSize(m.width*65/100, (m.height-1)*65/100)
+		csPanel := m.crossSearch.View()
+		panelW := lipgloss.Width(csPanel)
+		panelH := lipgloss.Height(csPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, csPanel, panelX, panelY)
 	}
 
 	// Overlay filter picker if visible
