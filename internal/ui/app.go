@@ -1420,11 +1420,12 @@ type importProgressWrapper struct {
 
 // none → ASC → DESC → none.
 func (m *Model) toggleSort() tea.Cmd {
-	if !m.canFilter() || m.results.NumRows() == 0 {
-		return nil
-	}
-	colName := m.results.ColumnName(m.results.CursorCol())
-	if colName == "" {
+	return m.sortByColName(m.results.ColumnName(m.results.CursorCol()))
+}
+
+// sortByColName cycles the sort state for the given column: none → ASC → DESC → none.
+func (m *Model) sortByColName(colName string) tea.Cmd {
+	if !m.canFilter() || m.results.NumRows() == 0 || colName == "" {
 		return nil
 	}
 	switch {
@@ -2504,6 +2505,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.updateWorkspace(msg)
 
+	case tea.MouseMsg:
+		if m.state != stateWorkspace {
+			return m, nil
+		}
+		return m.handleWorkspaceMouse(msg)
+
 	case queryExecutedMsg:
 		m.layoutWorkspace()
 		// Record to history
@@ -2981,6 +2988,61 @@ func (m Model) updateAddConnection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.connForm, cmd = m.connForm.Update(msg)
 	return m, cmd
+}
+
+// handleWorkspaceMouse routes mouse events to the appropriate panel.
+func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.help.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() ||
+		m.cellEdit.IsVisible() || m.palette.IsVisible() ||
+		m.tableDesigner.IsVisible() || m.schemaEditor.IsVisible() ||
+		m.columnJumping || m.searching || m.backendSearching ||
+		m.filterPicker.IsVisible() || m.columnPicker.IsVisible() ||
+		m.exportPicker.IsVisible() || m.dbPicker.IsVisible() {
+		return m, nil
+	}
+
+	sidebarWidth := 30
+	editorHeight := 8
+	if m.editorMaximized {
+		editorHeight = m.height - 1 - 2 - 8
+		if editorHeight < 8 {
+			editorHeight = 8
+		}
+	}
+
+	resultsTop := editorHeight
+	resultsBottom := m.height - 2
+
+	// Mouse must be over the results panel.
+	if msg.Y < resultsTop || msg.Y > resultsBottom || msg.X < sidebarWidth {
+		return m, nil
+	}
+
+	// Scroll wheel — scroll results vertically.
+	if msg.Type == tea.MouseWheelUp {
+		m.results.ScrollUp()
+		return m, nil
+	}
+	if msg.Type == tea.MouseWheelDown {
+		m.results.ScrollDown()
+		return m, nil
+	}
+
+	// Left-click on header row → sort by that column.
+	if msg.Type == tea.MouseLeft && m.results.HasResult() && m.results.NumCols() > 0 {
+		headerY := resultsTop + 1 // border (0), header (1)
+		if msg.Y == headerY {
+			colIdx := m.results.ColumnAtX(msg.X - sidebarWidth)
+			if colIdx >= 0 {
+				colName := m.results.ColumnName(colIdx)
+				if colName != "" {
+					return m, m.sortByColName(colName)
+				}
+			}
+		}
+	}
+
+	return m, nil
 }
 
 func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -6016,7 +6078,7 @@ func truncateSidebarLine(line string, maxVisible int) string {
 // Run starts the application.
 func Run(cfg *config.Config) {
 	m := NewModel(cfg)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		log.Fatalf("Error running application: %v", err)
 	}

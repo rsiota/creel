@@ -980,6 +980,23 @@ func (r ResultsTable) NumCols() int {
 	return len(r.columns)
 }
 
+// ColumnAtX maps a relative X coordinate (0 = left border of the results
+// panel) to a visible column index, or -1 if the X falls outside any column.
+func (r ResultsTable) ColumnAtX(relX int) int {
+	if relX < 1 {
+		return -1
+	}
+	offset := 1 // skip left border
+	for _, i := range r.visibleColRange() {
+		cellW := r.colWidths[i] + 2 // padding + value
+		if relX < offset+cellW+1 {  // include trailing separator
+			return i
+		}
+		offset += cellW + 1
+	}
+	return -1
+}
+
 // IsDirty returns whether a cell has a pending unsaved edit.
 func (r ResultsTable) IsDirty(row, col int) bool {
 	_, ok := r.dirtyCells[cellRef{row: row, col: col}]
