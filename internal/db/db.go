@@ -47,6 +47,10 @@ type DB interface {
 	Close() error
 	// Tables returns the list of tables and views in the database.
 	Tables() ([]string, error)
+	// TableRowCounts returns approximate row counts for all tables.
+	// MySQL uses information_schema (fast, approximate); SQLite runs COUNT(*)
+	// per table. Tables with inaccessible rows are omitted from the map.
+	TableRowCounts() (map[string]int64, error)
 	// TableSchema returns the column names and types for a given table.
 	TableSchema(table string) ([]Column, error)
 	// PrimaryKeys returns the primary key column names for a table.

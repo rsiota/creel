@@ -114,6 +114,11 @@ type schemasLoadedMsg struct {
 	schemas map[string][]db.Column
 }
 
+// tableRowCountsMsg carries approximate row counts for sidebar display.
+type tableRowCountsMsg struct {
+	counts map[string]int64
+}
+
 // copyFlashTickMsg advances the cell flash animation after a clipboard copy.
 type copyFlashTickMsg struct{}
 
@@ -234,6 +239,7 @@ type Model struct {
 	palette         palette
 	sidebarCursor int
 	sidebarScroll int // cached scroll offset of the first visible sidebar item
+	tableRowCounts map[string]int64 // approximate row counts for sidebar display
 	expanded     map[string][]db.Column
 	columnCache  map[string][]db.Column
 
@@ -474,7 +480,7 @@ func (m *Model) connectToDB() tea.Cmd {
 	m.sidebarFiltering = true
 	m.sidebarFilter = ""
 
-	return tea.Batch(cmd, m.prefetchSchemas())
+	return tea.Batch(cmd, m.prefetchSchemas(), m.fetchTableRowCounts())
 }
 
 // selectDatabase switches to the chosen database, reloads tables/schemas, and
@@ -513,7 +519,7 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	m.loadTables()
 	m.layoutWorkspace()
 	m.applyFocus()
-	return tea.Batch(cmd, m.prefetchSchemas())
+	return tea.Batch(cmd, m.prefetchSchemas(), m.fetchTableRowCounts())
 }
 
 // openDatabasePicker fetches available databases and shows the picker overlay.
@@ -556,6 +562,22 @@ func (m Model) prefetchSchemas() tea.Cmd {
 			}
 		}
 		return schemasLoadedMsg{schemas: schemas}
+	}
+}
+
+// fetchTableRowCounts fetches approximate row counts for all tables
+// asynchronously, so the sidebar can display them without blocking.
+func (m Model) fetchTableRowCounts() tea.Cmd {
+	if m.connection == nil || len(m.tables) == 0 {
+		return nil
+	}
+	d := m.connection.DB()
+	return func() tea.Msg {
+		counts, err := d.TableRowCounts()
+		if err != nil {
+			return tableRowCountsMsg{counts: nil}
+		}
+		return tableRowCountsMsg{counts: counts}
 	}
 }
 
@@ -2701,6 +2723,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshCompletionCandidates()
 		return m, nil
 
+	case tableRowCountsMsg:
+		m.tableRowCounts = msg.counts
+		return m, nil
+
 	case copyFlashTickMsg:
 		if m.results.AdvanceCopyFlash() {
 			return m, copyFlashTickCmd()
@@ -4675,6 +4701,19 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.sidebarFilter = ""
 				m.sidebarCursor = 0
 				return m, nil
+			case " ":
+				// Exit filter mode and toggle expand on the highlighted table.
+				if item := m.currentSidebarItem(); item != nil && !item.isColumn {
+					selected := item.text
+					m.sidebarFiltering = false
+					m.sidebarFilter = ""
+					m.syncSidebarCursorToTable(selected)
+					m.toggleExpand()
+					return m, nil
+				}
+				m.sidebarFiltering = false
+				m.sidebarFilter = ""
+				return m, nil
 			case "enter":
 				// Select the highlighted match in the full sidebar list.
 				if item := m.currentSidebarItem(); item != nil && !item.isColumn {
@@ -6171,6 +6210,15 @@ func (m Model) statusBar(connName string) string {
 	if t := m.currentTable(); t != "" {
 		parts = append(parts,
 			sbLabel.Render(t))
+	}
+
+	// Show row count for the highlighted sidebar table (if available).
+	if m.focus == FocusConnections {
+		if item := m.currentSidebarItem(); item != nil && !item.isColumn {
+			if count, ok := m.tableRowCounts[item.text]; ok && count >= 0 {
+				parts = append(parts, sbMuted.Render(fmt.Sprintf("~%s rows", formatCount(int(count)))))
+			}
+		}
 	}
 
 	if n := m.results.MarkCount(); n > 0 {

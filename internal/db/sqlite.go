@@ -65,6 +65,22 @@ func (s *SQLite) Tables() ([]string, error) {
 	return tables, rows.Err()
 }
 
+func (s *SQLite) TableRowCounts() (map[string]int64, error) {
+	tables, err := s.Tables()
+	if err != nil {
+		return nil, err
+	}
+	counts := make(map[string]int64, len(tables))
+	for _, t := range tables {
+		var n int64
+		err := s.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM "%s"`, strings.ReplaceAll(t, `"`, `""`))).Scan(&n)
+		if err == nil {
+			counts[t] = n
+		}
+	}
+	return counts, nil
+}
+
 func (s *SQLite) TableSchema(table string) ([]Column, error) {
 	rows, err := s.db.Query(fmt.Sprintf(`PRAGMA table_info("%s")`, table))
 	if err != nil {

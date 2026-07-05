@@ -134,6 +134,30 @@ func (m *MySQL) Tables() ([]string, error) {
 	return tables, rows.Err()
 }
 
+func (m *MySQL) TableRowCounts() (map[string]int64, error) {
+	rows, err := m.db.Query(
+		`SELECT table_name, table_rows FROM information_schema.tables WHERE table_schema = ? AND table_type = 'BASE TABLE'`,
+		m.config.Database,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int64)
+	for rows.Next() {
+		var name string
+		var tableRows sql.NullInt64
+		if err := rows.Scan(&name, &tableRows); err != nil {
+			return nil, err
+		}
+		if tableRows.Valid {
+			counts[name] = tableRows.Int64
+		}
+	}
+	return counts, rows.Err()
+}
+
 func (m *MySQL) TableSchema(table string) ([]Column, error) {
 	rows, err := m.db.Query(
 		`SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position`,
