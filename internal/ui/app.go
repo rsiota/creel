@@ -233,6 +233,7 @@ type Model struct {
 	cellEdit        CellEditPopup
 	palette         palette
 	sidebarCursor int
+	sidebarScroll int // cached scroll offset of the first visible sidebar item
 	expanded     map[string][]db.Column
 	columnCache  map[string][]db.Column
 
@@ -3010,11 +3011,40 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// ── Sidebar ────────────────────────────────────────────────
+	if msg.X < sidebarWidth-1 && msg.Y < m.height-2 {
+		switch msg.Type {
+		case tea.MouseWheelUp:
+			m = m.scrollSidebar(-1)
+			return m, nil
+		case tea.MouseWheelDown:
+			m = m.scrollSidebar(1)
+			return m, nil
+		case tea.MouseLeft:
+			items := m.sidebarItems()
+			if len(items) == 0 {
+				return m, nil
+			}
+			idx := m.sidebarScroll + msg.Y - 1 // -1 for top border
+			if idx < 0 || idx >= len(items) {
+				return m, nil
+			}
+			m.sidebarCursor = idx
+			item := &items[idx]
+			if item.isColumn {
+				return m, nil
+			}
+			m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s;", item.text))
+			return m, m.executeQuery()
+		}
+		return m, nil
+	}
+
+	// ── Results panel ──────────────────────────────────────────
 	resultsTop := editorHeight
 	resultsBottom := m.height - 2
 
-	// Mouse must be over the results panel.
-	if msg.Y < resultsTop || msg.Y > resultsBottom || msg.X < sidebarWidth {
+	if msg.Y < resultsTop || msg.Y > resultsBottom {
 		return m, nil
 	}
 
@@ -3028,17 +3058,34 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if msg.Type != tea.MouseLeft || !m.results.HasResult() || m.results.NumCols() == 0 {
+		return m, nil
+	}
+
 	// Left-click on header row → sort by that column.
-	if msg.Type == tea.MouseLeft && m.results.HasResult() && m.results.NumCols() > 0 {
-		headerY := resultsTop + 1 // border (0), header (1)
-		if msg.Y == headerY {
-			colIdx := m.results.ColumnAtX(msg.X - sidebarWidth)
-			if colIdx >= 0 {
-				colName := m.results.ColumnName(colIdx)
-				if colName != "" {
-					return m, m.sortByColName(colName)
-				}
+	headerY := resultsTop + 1 // border (0), header (1)
+	if msg.Y == headerY {
+		colIdx := m.results.ColumnAtX(msg.X - sidebarWidth)
+		if colIdx >= 0 {
+			colName := m.results.ColumnName(colIdx)
+			if colName != "" {
+				return m, m.sortByColName(colName)
 			}
+		}
+		return m, nil
+	}
+
+	// Left-click on a data row → move cursor to that cell.
+	dataRow := msg.Y - headerY - 1 // -1 for separator line
+	if dataRow >= 0 {
+		rowIdx := m.results.ScrollRow() + dataRow
+		colIdx := m.results.ColumnAtX(msg.X - sidebarWidth)
+		if rowIdx >= 0 && rowIdx < m.results.NumRows() && colIdx >= 0 {
+			m.focus = FocusResults
+			m.resultsPendingG = false
+			m.resultsPendingY = false
+			m.resultsPendingD = false
+			m.results.SetCursor(rowIdx, colIdx)
 		}
 	}
 
@@ -5464,6 +5511,7 @@ func (m Model) viewWorkspace() string {
 			start = 0
 		}
 	}
+	m.sidebarScroll = start
 
 	sidebarContentWidth := sidebarWidth - borderOverhead
 
