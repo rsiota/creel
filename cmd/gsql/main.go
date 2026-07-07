@@ -48,7 +48,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	ui.Run(cfg)
+	if err := ui.Run(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func runCLI(query, driver, database, host string, port int, user, pass string) error {

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -274,12 +273,13 @@ func truncateSidebarLine(line string, maxVisible int) string {
 }
 
 // Run starts the application.
-func Run(cfg *config.Config) {
+func Run(cfg *config.Config) error {
 	m := NewModel(cfg)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
-		log.Fatalf("Error running application: %v", err)
+		return fmt.Errorf("running application: %w", err)
 	}
+	return nil
 }
 
 // historyDir returns the directory for storing query history files.
