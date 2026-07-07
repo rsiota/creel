@@ -18,7 +18,7 @@ type insertColumn struct {
 // Empty optional columns are omitted; required columns without values return an error.
 // DateTime values stored as ISO-8601 (e.g. "2026-01-07T15:04:30Z") are normalized to
 // "YYYY-MM-DD HH:MM:SS" which both MySQL and SQLite accept.
-func buildInsertQuery(table string, columns []db.TableColumnInfo, values map[string]string) (string, []interface{}, error) {
+func buildInsertQuery(driver db.Driver, table string, columns []db.TableColumnInfo, values map[string]string) (string, []interface{}, error) {
 	if table == "" {
 		return "", nil, fmt.Errorf("no table for insert")
 	}
@@ -48,11 +48,9 @@ func buildInsertQuery(table string, columns []db.TableColumnInfo, values map[str
 	}
 
 	var colNames []string
-	var placeholders []string
 	var args []interface{}
 	for _, col := range included {
 		colNames = append(colNames, col.Name)
-		placeholders = append(placeholders, "?")
 		if col.Value == "NULL" {
 			args = append(args, nil)
 		} else if db.IsDateTimeType(col.Type) {
@@ -61,6 +59,7 @@ func buildInsertQuery(table string, columns []db.TableColumnInfo, values map[str
 			args = append(args, col.Value)
 		}
 	}
+	placeholders := db.Placeholders(driver, len(included))
 
 	query := fmt.Sprintf(
 		"INSERT INTO %s (%s) VALUES (%s)",

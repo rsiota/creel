@@ -16,7 +16,7 @@ func TestBuildInsertQuery(t *testing.T) {
 	}
 
 	t.Run("includes provided values and skips auto increment", func(t *testing.T) {
-		query, args, err := buildInsertQuery("users", columns, map[string]string{
+		query, args, err := buildInsertQuery(db.DriverSQLite, "users", columns, map[string]string{
 			"name":  "alice",
 			"email": "alice@test.com",
 		})
@@ -32,7 +32,7 @@ func TestBuildInsertQuery(t *testing.T) {
 	})
 
 	t.Run("required column without value", func(t *testing.T) {
-		_, _, err := buildInsertQuery("users", columns, map[string]string{
+		_, _, err := buildInsertQuery(db.DriverSQLite, "users", columns, map[string]string{
 			"email": "alice@test.com",
 		})
 		if err == nil || !strings.Contains(err.Error(), `column "name" is required`) {
@@ -45,14 +45,14 @@ func TestBuildInsertQuery(t *testing.T) {
 			{Name: "id", Type: "INTEGER", PrimaryKey: true, AutoIncrement: true},
 			{Name: "status", Type: "TEXT", HasDefault: true},
 		}
-		_, _, err := buildInsertQuery("users", optional, map[string]string{})
+		_, _, err := buildInsertQuery(db.DriverSQLite, "users", optional, map[string]string{})
 		if err == nil || !strings.Contains(err.Error(), "no values to insert") {
 			t.Fatalf("expected no values error, got %v", err)
 		}
 	})
 
 	t.Run("NULL values map to SQL nil args", func(t *testing.T) {
-		query, args, err := buildInsertQuery("users", columns, map[string]string{
+		query, args, err := buildInsertQuery(db.DriverSQLite, "users", columns, map[string]string{
 			"name":  "alice",
 			"email": "NULL",
 		})
@@ -73,7 +73,7 @@ func TestBuildInsertQuery(t *testing.T) {
 			{Name: "created_at", Type: "DATETIME", NotNull: true},
 			{Name: "updated_at", Type: "TIMESTAMP"},
 		}
-		_, args, err := buildInsertQuery("logs", dtColumns, map[string]string{
+		_, args, err := buildInsertQuery(db.DriverSQLite, "logs", dtColumns, map[string]string{
 			"created_at": "2026-01-07T15:04:30Z",
 			"updated_at": "2026-01-07T15:04:30Z",
 		})
@@ -86,9 +86,22 @@ func TestBuildInsertQuery(t *testing.T) {
 	})
 
 	t.Run("empty table name", func(t *testing.T) {
-		_, _, err := buildInsertQuery("", columns, map[string]string{"name": "alice"})
+		_, _, err := buildInsertQuery(db.DriverSQLite, "", columns, map[string]string{"name": "alice"})
 		if err == nil || !strings.Contains(err.Error(), "no table") {
 			t.Fatalf("expected no table error, got %v", err)
+		}
+	})
+
+	t.Run("postgres uses numbered placeholders", func(t *testing.T) {
+		query, _, err := buildInsertQuery(db.DriverPostgres, "users", columns, map[string]string{
+			"name":  "alice",
+			"email": "alice@test.com",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if query != "INSERT INTO users (name, email) VALUES ($1, $2)" {
+			t.Fatalf("query = %q", query)
 		}
 	})
 }

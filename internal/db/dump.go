@@ -188,9 +188,10 @@ func buildCreateTableFromInfo(driver Driver, table string, cols []TableColumnInf
 			if c.AutoIncrement {
 				if driver == DriverSQLite {
 					b.WriteString(" AUTOINCREMENT")
-				} else {
+				} else if driver == DriverMySQL {
 					b.WriteString(" AUTO_INCREMENT")
 				}
+				// PostgreSQL: auto-increment comes from the sequence default; no keyword.
 			}
 		}
 		if c.NotNull {
@@ -252,7 +253,9 @@ func IsDateTimeType(dbType string) bool {
 		t = t[:i]
 	}
 	switch t {
-	case "datetime", "timestamp", "date", "time":
+	case "datetime", "timestamp", "date", "time",
+		"timestamp without time zone", "timestamp with time zone",
+		"time without time zone", "time with time zone":
 		return true
 	}
 	return false
@@ -293,7 +296,8 @@ func isNumericType(dbType string) bool {
 	switch t {
 	case "int", "integer", "tinyint", "smallint", "mediumint", "bigint",
 		"unsigned", "int unsigned", "unsigned big int",
-		"real", "double", "float", "decimal", "numeric", "boolean", "bool":
+		"real", "double", "float", "decimal", "numeric", "boolean", "bool",
+		"double precision", "serial", "bigserial", "smallserial", "money":
 		return true
 	}
 	return false

@@ -10,8 +10,9 @@ import (
 type Driver string
 
 const (
-	DriverSQLite Driver = "sqlite"
-	DriverMySQL  Driver = "mysql"
+	DriverSQLite   Driver = "sqlite"
+	DriverMySQL    Driver = "mysql"
+	DriverPostgres Driver = "postgres"
 )
 
 // ConnectionConfig holds the parameters needed to connect to a database.
@@ -175,6 +176,8 @@ func New(cfg ConnectionConfig) (*Connection, error) {
 		database = NewSQLite(cfg)
 	case DriverMySQL:
 		database = NewMySQL(cfg)
+	case DriverPostgres:
+		database = NewPostgres(cfg)
 	default:
 		return nil, fmt.Errorf("unsupported driver: %s", cfg.Driver)
 	}

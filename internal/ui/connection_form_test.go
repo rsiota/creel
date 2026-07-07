@@ -18,16 +18,28 @@ func TestConnectionFormValidation(t *testing.T) {
 
 	// Set name but invalid driver
 	f.fields[fieldName].SetValue("test")
-	f.fields[fieldDriver].SetValue("postgres")
+	f.fields[fieldDriver].SetValue("mongodb")
 	_, errMsg = f.EnterPressed()
 	if errMsg == "" {
 		t.Error("expected error for invalid driver")
 	}
 
+	// Valid postgres connection
+	f.fields[fieldDriver].SetValue("postgres")
+	f.fields[fieldDatabase].SetValue("myapp")
+	f.fields[fieldHost].SetValue("localhost")
+	cfg, errMsg := f.EnterPressed()
+	if errMsg != "" {
+		t.Fatalf("expected no error for postgres, got: %s", errMsg)
+	}
+	if cfg.Driver != "postgres" {
+		t.Errorf("expected driver 'postgres', got '%s'", cfg.Driver)
+	}
+
 	// Valid sqlite connection
 	f.fields[fieldDriver].SetValue("sqlite")
 	f.fields[fieldDatabase].SetValue("/tmp/test.db")
-	cfg, errMsg := f.EnterPressed()
+	cfg, errMsg = f.EnterPressed()
 	if errMsg != "" {
 		t.Fatalf("expected no error, got: %s", errMsg)
 	}

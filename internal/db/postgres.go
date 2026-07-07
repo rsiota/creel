@@ -1,0 +1,427 @@
+package db
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"net"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
+)
+
+// Postgres implements the DB interface for PostgreSQL databases.
+type Postgres struct {
+	config ConnectionConfig
+	db     *sql.DB
+	tunnel *SSHTunnel
+}
+
+// NewPostgres creates a new PostgreSQL database handler.
+func NewPostgres(cfg ConnectionConfig) *Postgres {
+	return &Postgres{config: cfg}
+}
+
+func (p *Postgres) Connect() error {
+	if p.config.SSHHost != "" {
+		tunnel, err := NewSSHTunnel(p.config)
+		if err != nil {
+			return fmt.Errorf("ssh tunnel: %w", err)
+		}
+		p.tunnel = tunnel
+	}
+
+	config, err := p.connConfig()
+	if err != nil {
+		return err
+	}
+
+	if p.tunnel != nil {
+		config.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return p.tunnel.DialContext(ctx, network, addr)
+		}
+	}
+
+	db := stdlib.OpenDB(*config)
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	p.db = db
+	return db.Ping()
+}
+
+// connConfig builds a pgx.ConnConfig from the connection parameters. It uses
+// pgx.ParseConfig on a keyword/value DSN so that quoting and escaping are
+// handled correctly.
+func (p *Postgres) connConfig() (*pgx.ConnConfig, error) {
+	host := p.config.Host
+	if host == "" {
+		host = "localhost"
+	}
+	port := p.config.Port
+	if port == 0 {
+		port = 5432
+	}
+
+	var parts []string
+	parts = append(parts, "host="+quoteDSNValue(host))
+	parts = append(parts, fmt.Sprintf("port=%d", port))
+	if p.config.Username != "" {
+		parts = append(parts, "user="+quoteDSNValue(p.config.Username))
+	}
+	if p.config.Password != "" {
+		parts = append(parts, "password="+quoteDSNValue(p.config.Password))
+	}
+	if p.config.Database != "" {
+		parts = append(parts, "dbname="+quoteDSNValue(p.config.Database))
+	}
+	parts = append(parts, "sslmode=disable")
+
+	dsn := strings.Join(parts, " ")
+	config, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse postgres config: %w", err)
+	}
+	return config, nil
+}
+
+// quoteDSNValue wraps a DSN keyword value in single quotes if it contains
+// characters that require quoting per the libpq keyword/value format.
+func quoteDSNValue(v string) string {
+	if v == "" {
+		return "''"
+	}
+	if !strings.ContainsAny(v, " '\\") {
+		return v
+	}
+	escaped := strings.ReplaceAll(v, "\\", "\\\\")
+	escaped = strings.ReplaceAll(escaped, "'", "\\'")
+	return "'" + escaped + "'"
+}
+
+func (p *Postgres) Close() error {
+	if p.db != nil {
+		p.db.Close()
+	}
+	if p.tunnel != nil {
+		p.tunnel.Close()
+	}
+	return nil
+}
+
+// Databases returns all non-template databases accessible on the server.
+func (p *Postgres) Databases() ([]string, error) {
+	rows, err := p.db.Query(
+		`SELECT datname FROM pg_database
+		 WHERE datistemplate = false
+		 ORDER BY datname`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var dbs []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		dbs = append(dbs, name)
+	}
+	return dbs, rows.Err()
+}
+
+// UseDatabase switches to a different database by re-opening the connection
+// pool. The SSH tunnel (if any) is preserved.
+func (p *Postgres) UseDatabase(name string) error {
+	p.config.Database = name
+	if p.db != nil {
+		p.db.Close()
+	}
+
+	config, err := p.connConfig()
+	if err != nil {
+		return err
+	}
+	if p.tunnel != nil {
+		config.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return p.tunnel.DialContext(ctx, network, addr)
+		}
+	}
+
+	db := stdlib.OpenDB(*config)
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	p.db = db
+	return db.Ping()
+}
+
+func (p *Postgres) Tables() ([]string, error) {
+	rows, err := p.db.Query(
+		`SELECT table_name FROM information_schema.tables
+		 WHERE table_schema = current_schema()
+		 ORDER BY table_name`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		tables = append(tables, name)
+	}
+	return tables, rows.Err()
+}
+
+func (p *Postgres) TableRowCounts() (map[string]int64, error) {
+	rows, err := p.db.Query(
+		`SELECT relname, n_live_tup
+		 FROM pg_stat_user_tables
+		 ORDER BY relname`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int64)
+	for rows.Next() {
+		var name string
+		var n int64
+		if err := rows.Scan(&name, &n); err != nil {
+			return nil, err
+		}
+		counts[name] = n
+	}
+	return counts, rows.Err()
+}
+
+func (p *Postgres) TableSchema(table string) ([]Column, error) {
+	rows, err := p.db.Query(
+		`SELECT column_name, data_type FROM information_schema.columns
+		 WHERE table_schema = current_schema() AND table_name = $1
+		 ORDER BY ordinal_position`,
+		table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cols []Column
+	for rows.Next() {
+		var name, dataType string
+		if err := rows.Scan(&name, &dataType); err != nil {
+			return nil, err
+		}
+		cols = append(cols, Column{Name: name, Type: dataType})
+	}
+	return cols, rows.Err()
+}
+
+func (p *Postgres) PrimaryKeys(table string) ([]string, error) {
+	rows, err := p.db.Query(
+		`SELECT kcu.column_name
+		 FROM information_schema.table_constraints tc
+		 JOIN information_schema.key_column_usage kcu
+		   ON tc.constraint_name = kcu.constraint_name
+		   AND tc.table_schema = kcu.table_schema
+		 WHERE tc.table_schema = current_schema()
+		   AND tc.table_name = $1
+		   AND tc.constraint_type = 'PRIMARY KEY'
+		 ORDER BY kcu.ordinal_position`,
+		table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var pks []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		pks = append(pks, name)
+	}
+	return pks, rows.Err()
+}
+
+func (p *Postgres) ForeignKeys(table string) ([]ForeignKey, error) {
+	rows, err := p.db.Query(
+		`SELECT kcu.column_name, ccu.table_name, ccu.column_name
+		 FROM information_schema.table_constraints tc
+		 JOIN information_schema.key_column_usage kcu
+		   ON tc.constraint_name = kcu.constraint_name
+		   AND tc.table_schema = kcu.table_schema
+		 JOIN information_schema.constraint_column_usage ccu
+		   ON tc.constraint_name = ccu.constraint_name
+		 WHERE tc.table_schema = current_schema()
+		   AND tc.table_name = $1
+		   AND tc.constraint_type = 'FOREIGN KEY'
+		 ORDER BY kcu.ordinal_position`,
+		table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var fks []ForeignKey
+	for rows.Next() {
+		var col, refTable, refCol string
+		if err := rows.Scan(&col, &refTable, &refCol); err != nil {
+			return nil, err
+		}
+		fks = append(fks, ForeignKey{
+			Column:    col,
+			RefTable:  refTable,
+			RefColumn: refCol,
+		})
+	}
+	return fks, rows.Err()
+}
+
+func (p *Postgres) TableColumnInfo(table string) ([]TableColumnInfo, error) {
+	rows, err := p.db.Query(
+		`SELECT
+		   c.column_name,
+		   c.data_type,
+		   c.is_nullable = 'NO',
+		   c.column_default,
+		   EXISTS(
+		     SELECT 1 FROM information_schema.key_column_usage kcu
+		     JOIN information_schema.table_constraints tc
+		       ON kcu.constraint_name = tc.constraint_name
+		       AND kcu.table_schema = tc.table_schema
+		     WHERE tc.table_schema = current_schema()
+		       AND tc.table_name = c.table_name
+		       AND kcu.column_name = c.column_name
+		       AND tc.constraint_type = 'PRIMARY KEY'
+		   ) AS is_pk,
+		   c.column_default LIKE 'nextval(%' AS is_serial
+		 FROM information_schema.columns c
+		 WHERE c.table_schema = current_schema() AND c.table_name = $1
+		 ORDER BY c.ordinal_position`,
+		table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cols []TableColumnInfo
+	for rows.Next() {
+		var name, dataType string
+		var notNull, isPK, isSerial bool
+		var colDefault sql.NullString
+		if err := rows.Scan(&name, &dataType, &notNull, &colDefault, &isPK, &isSerial); err != nil {
+			return nil, err
+		}
+		cols = append(cols, TableColumnInfo{
+			Name:          name,
+			Type:          dataType,
+			NotNull:       notNull,
+			PrimaryKey:    isPK,
+			AutoIncrement: isSerial,
+			HasDefault:    colDefault.Valid,
+			DefaultValue:  colDefault.String,
+		})
+	}
+	return cols, rows.Err()
+}
+
+func (p *Postgres) Execute(query string) (Result, error) {
+	start := time.Now()
+
+	rows, err := p.db.Query(query)
+	if err != nil {
+		return Result{}, fmt.Errorf("query error: %w", err)
+	}
+	defer rows.Close()
+
+	colNames, err := rows.Columns()
+	if err != nil {
+		return Result{}, err
+	}
+
+	cols := make([]Column, len(colNames))
+	for i, name := range colNames {
+		cols[i] = Column{Name: name}
+	}
+
+	colTypes, _ := rows.ColumnTypes()
+	for i, ct := range colTypes {
+		cols[i].Type = ct.DatabaseTypeName()
+	}
+
+	var resultRows [][]string
+	for rows.Next() {
+		rawValues := make([]sql.NullString, len(cols))
+		scanArgs := make([]interface{}, len(cols))
+		for i := range rawValues {
+			scanArgs[i] = &rawValues[i]
+		}
+		if err := rows.Scan(scanArgs...); err != nil {
+			return Result{}, err
+		}
+
+		row := make([]string, len(cols))
+		for i, v := range rawValues {
+			if v.Valid {
+				row[i] = v.String
+			} else {
+				row[i] = "NULL"
+			}
+		}
+		resultRows = append(resultRows, row)
+	}
+
+	if err := rows.Err(); err != nil {
+		return Result{}, err
+	}
+
+	elapsed := time.Since(start)
+	noun := "rows"
+	if len(resultRows) == 1 {
+		noun = "row"
+	}
+
+	return Result{
+		Columns: cols,
+		Rows:    resultRows,
+		Message: fmt.Sprintf("%d %s in %s", len(resultRows), noun, elapsed.Round(time.Millisecond)),
+		Elapsed: elapsed.String(),
+	}, nil
+}
+
+func (p *Postgres) Exec(query string, args ...interface{}) (ExecResult, error) {
+	res, err := p.db.Exec(query, args...)
+	if err != nil {
+		return ExecResult{}, fmt.Errorf("exec error: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return ExecResult{}, err
+	}
+	return ExecResult{RowsAffected: affected}, nil
+}
+
+// Session returns a runner pinned to a single pooled connection so that
+// session-scoped settings (SET search_path, SET constraint_exclusion, ...)
+// set by a dump persist across statements.
+func (p *Postgres) Session() (SessionRunner, error) {
+	conn, err := p.db.Conn(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	return &sqlConnSession{conn: conn}, nil
+}

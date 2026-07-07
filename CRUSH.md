@@ -1,13 +1,14 @@
 # gsql — Project Memory
 
 ## Overview
-A fast, memory-efficient SQL TUI inspired by [sqlit](https://github.com/Maxteabag/sqlit) (which is Python/Textual). Written in Go for speed. Currently supports **SQLite** and **MySQL**.
+A fast, memory-efficient SQL TUI inspired by [sqlit](https://github.com/Maxteabag/sqlit) (which is Python/Textual). Written in Go for speed. Currently supports **SQLite**, **MySQL**, and **PostgreSQL**.
 
 ## Tech Stack
 - **Language**: Go 1.26+
 - **TUI**: [Bubble Tea](https://github.com/charmbracelet/bubbletea) (Elm-style architecture) + [Lipgloss](https://github.com/charmbracelet/lipgloss) (styling) + [Bubbles](https://github.com/charmbracelet/bubbles) (components)
 - **SQLite**: `modernc.org/sqlite` (pure Go, no CGO required)
 - **MySQL**: `github.com/go-sql-driver/mysql`
+- **PostgreSQL**: `github.com/jackc/pgx/v5` (via `pgx/v5/stdlib` for `database/sql` compatibility)
 - **Config**: YAML (`gopkg.in/yaml.v3`), stored at `~/.config/gsql/config.yaml`
 
 ## Build & Run Commands
@@ -25,6 +26,7 @@ internal/db/              — Database abstraction layer
   db.go                   — DB interface, Connection wrapper
   sqlite.go               — SQLite implementation
   mysql.go                — MySQL implementation
+  postgres.go              — PostgreSQL implementation (pgx/v5/stdlib)
   ssh_tunnel.go           — SSH tunnel (golang.org/x/crypto/ssh)
 internal/config/          — Config loading/saving (YAML)
 internal/history/         — Query history (per-connection JSON, searchable)

@@ -216,7 +216,7 @@ func BuildRenameTableSQL(driver Driver, oldName, newName string, existing []stri
 	oldName = strings.TrimSpace(oldName)
 	newName = strings.TrimSpace(newName)
 	switch driver {
-	case DriverSQLite:
+	case DriverSQLite, DriverPostgres:
 		return fmt.Sprintf("ALTER TABLE %s RENAME TO %s",
 			quoteIdent(driver, oldName),
 			quoteIdent(driver, newName),
@@ -260,9 +260,11 @@ func ValidateModifyColumn(col ColumnDef) error {
 	return nil
 }
 
-// BuildModifyColumnSQL generates a MySQL ALTER TABLE ... MODIFY COLUMN statement.
+// BuildModifyColumnSQL generates an ALTER TABLE statement to change a column's
+// type, nullability, and/or default. MySQL uses MODIFY COLUMN; PostgreSQL uses
+// one or more ALTER COLUMN clauses chained in a single statement.
 func BuildModifyColumnSQL(driver Driver, table string, col ColumnDef) (string, error) {
-	if driver != DriverMySQL {
+	if driver != DriverMySQL && driver != DriverPostgres {
 		return "", fmt.Errorf("modify column is not supported for %s", driver)
 	}
 	if strings.TrimSpace(table) == "" {
@@ -270,6 +272,9 @@ func BuildModifyColumnSQL(driver Driver, table string, col ColumnDef) (string, e
 	}
 	if err := ValidateModifyColumn(col); err != nil {
 		return "", err
+	}
+	if driver == DriverPostgres {
+		return buildPostgresAlterColumn(table, col)
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "ALTER TABLE %s MODIFY COLUMN %s %s",
@@ -287,6 +292,26 @@ func BuildModifyColumnSQL(driver Driver, table string, col ColumnDef) (string, e
 		b.WriteString(formatDefault(col.Default))
 	}
 	return b.String(), nil
+}
+
+// buildPostgresAlterColumn chains ALTER COLUMN clauses into a single ALTER
+// TABLE statement. PostgreSQL handles type, nullability, and default changes
+// as separate sub-commands.
+func buildPostgresAlterColumn(table string, col ColumnDef) (string, error) {
+	var clauses []string
+	colIdent := quoteIdent(DriverPostgres, strings.TrimSpace(col.Name))
+	clauses = append(clauses, fmt.Sprintf("ALTER COLUMN %s TYPE %s", colIdent, strings.TrimSpace(col.Type)))
+	if col.NotNull {
+		clauses = append(clauses, fmt.Sprintf("ALTER COLUMN %s SET NOT NULL", colIdent))
+	} else {
+		clauses = append(clauses, fmt.Sprintf("ALTER COLUMN %s DROP NOT NULL", colIdent))
+	}
+	if col.HasDefault {
+		clauses = append(clauses, fmt.Sprintf("ALTER COLUMN %s SET DEFAULT %s", colIdent, formatDefault(col.Default)))
+	}
+	return fmt.Sprintf("ALTER TABLE %s %s",
+		quoteIdent(DriverPostgres, strings.TrimSpace(table)),
+		strings.Join(clauses, ", ")), nil
 }
 
 // ValidateDropColumn checks whether a column can be dropped.
@@ -308,10 +333,10 @@ func BuildDropTableSQL(driver Driver, table string) (string, error) {
 	return fmt.Sprintf("DROP TABLE %s", quoteIdent(driver, table)), nil
 }
 
-// BuildDropDatabaseSQL generates a DROP DATABASE statement (MySQL only).
+// BuildDropDatabaseSQL generates a DROP DATABASE statement (MySQL and PostgreSQL).
 // Dropping a database permanently deletes every table and all data within it.
 func BuildDropDatabaseSQL(driver Driver, name string) (string, error) {
-	if driver != DriverMySQL {
+	if driver != DriverMySQL && driver != DriverPostgres {
 		return "", fmt.Errorf("drop database is not supported for %s", driver)
 	}
 	if strings.TrimSpace(name) == "" {
@@ -320,17 +345,19 @@ func BuildDropDatabaseSQL(driver Driver, name string) (string, error) {
 	if err := ValidateIdentifier(name); err != nil {
 		return "", err
 	}
-	// Guard against dropping system schemas.
+	// Guard against dropping system databases.
 	switch strings.ToLower(name) {
 	case "mysql", "information_schema", "performance_schema", "sys":
+		return "", fmt.Errorf("cannot drop system database %q", name)
+	case "postgres", "template0", "template1":
 		return "", fmt.Errorf("cannot drop system database %q", name)
 	}
 	return fmt.Sprintf("DROP DATABASE %s", quoteIdent(driver, name)), nil
 }
 
-// BuildCreateDatabaseSQL generates a CREATE DATABASE statement (MySQL only).
+// BuildCreateDatabaseSQL generates a CREATE DATABASE statement (MySQL and PostgreSQL).
 func BuildCreateDatabaseSQL(driver Driver, name string) (string, error) {
-	if driver != DriverMySQL {
+	if driver != DriverMySQL && driver != DriverPostgres {
 		return "", fmt.Errorf("create database is not supported for %s", driver)
 	}
 	if strings.TrimSpace(name) == "" {
@@ -342,9 +369,9 @@ func BuildCreateDatabaseSQL(driver Driver, name string) (string, error) {
 	return fmt.Sprintf("CREATE DATABASE %s", quoteIdent(driver, name)), nil
 }
 
-// BuildDropColumnSQL generates a MySQL ALTER TABLE ... DROP COLUMN statement.
+// BuildDropColumnSQL generates an ALTER TABLE ... DROP COLUMN statement.
 func BuildDropColumnSQL(driver Driver, table, column string, info TableColumnInfo) (string, error) {
-	if driver != DriverMySQL {
+	if driver != DriverMySQL && driver != DriverPostgres {
 		return "", fmt.Errorf("drop column is not supported for %s", driver)
 	}
 	if strings.TrimSpace(table) == "" {
@@ -364,7 +391,7 @@ func BuildDropColumnSQL(driver Driver, table, column string, info TableColumnInf
 
 func quoteIdent(driver Driver, name string) string {
 	switch driver {
-	case DriverSQLite:
+	case DriverSQLite, DriverPostgres:
 		return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 	default:
 		return "`" + strings.ReplaceAll(name, "`", "``") + "`"
@@ -373,13 +400,23 @@ func quoteIdent(driver Driver, name string) string {
 
 func formatDefault(value string) string {
 	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "''"
+	}
 	if strings.EqualFold(trimmed, "NULL") {
 		return "NULL"
+	}
+	if strings.EqualFold(trimmed, "true") || strings.EqualFold(trimmed, "false") {
+		return trimmed
 	}
 	if numericDefaultPattern.MatchString(trimmed) {
 		return trimmed
 	}
 	if isSQLFunctionDefault(trimmed) {
+		return trimmed
+	}
+	// PostgreSQL expression defaults (e.g. nextval('...'::regclass)).
+	if isExpressionDefault(trimmed) {
 		return trimmed
 	}
 	escaped := strings.ReplaceAll(trimmed, `'`, `''`)
@@ -388,10 +425,18 @@ func formatDefault(value string) string {
 
 // isSQLFunctionDefault reports whether a default value is a SQL function
 // expression (e.g. CURRENT_TIMESTAMP, now()) that must be left unquoted.
-var sqlFunctionDefaultPattern = regexp.MustCompile(`(?i)^(?:CURRENT_TIMESTAMP(?:\(\d*\))?|CURRENT_DATE|CURRENT_TIME|NOW\(\)|CURDATE\(\)|CURTIME\(\)|UUID\(\)|UNIX_TIMESTAMP\(\))$`)
+var sqlFunctionDefaultPattern = regexp.MustCompile(`(?i)^(?:CURRENT_TIMESTAMP(?:\(\d*\))?|CURRENT_DATE|CURRENT_TIME|NOW\(\)|CURDATE\(\)|CURTIME\(\)|UUID\(\)|UNIX_TIMESTAMP\(\)|GEN_RANDOM_UUID\(\)|UUID_GENERATE_V4\(\))$`)
 
 func isSQLFunctionDefault(value string) bool {
 	return sqlFunctionDefaultPattern.MatchString(value)
+}
+
+// expressionDefaultPattern matches function-call-like default values that
+// should be left unquoted (e.g. nextval('...'::regclass)).
+var expressionDefaultPattern = regexp.MustCompile(`(?i)^[a-z_]+\(`)
+
+func isExpressionDefault(value string) bool {
+	return expressionDefaultPattern.MatchString(strings.TrimSpace(value))
 }
 
 var numericDefaultPattern = regexp.MustCompile(`^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$`)
@@ -417,7 +462,7 @@ func SchemaSupports(driver Driver, action SchemaAction) bool {
 	case SchemaAddColumn, SchemaCreateTable, SchemaRenameTable, SchemaRenameColumn, SchemaDropTable:
 		return true
 	case SchemaModifyType, SchemaModifyNullable, SchemaModifyDefault, SchemaDropColumn:
-		return driver == DriverMySQL
+		return driver == DriverMySQL || driver == DriverPostgres
 	default:
 		return false
 	}
@@ -470,4 +515,18 @@ func ColumnSchemaActions(driver Driver) []SchemaAction {
 // Destructive DDL (e.g. drop column) gets a preview; other changes run from the form.
 func SchemaActionNeedsConfirm(action SchemaAction) bool {
 	return action == SchemaDropColumn
+}
+
+// Placeholders returns a slice of n SQL parameter placeholders for the given
+// driver. MySQL and SQLite use "?"; PostgreSQL uses "$1, $2, ...".
+func Placeholders(driver Driver, n int) []string {
+	ph := make([]string, n)
+	for i := 0; i < n; i++ {
+		if driver == DriverPostgres {
+			ph[i] = fmt.Sprintf("$%d", i+1)
+		} else {
+			ph[i] = "?"
+		}
+	}
+	return ph
 }

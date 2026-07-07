@@ -23,10 +23,10 @@ func main() {
 	)
 
 	flag.StringVar(&queryFlag, "e", "", "Execute SQL query and exit (CLI mode)")
-	flag.StringVar(&driverFlag, "driver", "sqlite", "Database driver: sqlite or mysql")
+	flag.StringVar(&driverFlag, "driver", "sqlite", "Database driver: sqlite, mysql, or postgres")
 	flag.StringVar(&databaseFlag, "database", "", "Database name (SQLite path or MySQL database)")
 	flag.StringVar(&hostFlag, "host", "localhost", "Database host (MySQL only)")
-	flag.IntVar(&portFlag, "port", 3306, "Database port (MySQL only)")
+	flag.IntVar(&portFlag, "port", 3306, "Database port (MySQL or Postgres only)")
 	flag.StringVar(&userFlag, "user", "root", "Database username (MySQL only)")
 	flag.StringVar(&passFlag, "password", "", "Database password (MySQL only)")
 	flag.BoolVar(&cliMode, "cli", false, "Run in CLI mode (non-interactive)")

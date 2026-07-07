@@ -28,6 +28,13 @@ const (
 	fieldCount
 )
 
+// formLabelWidth is the rendered width of the label column.
+// formLabelOverhead is label width + 1 space separator.
+const (
+	formLabelWidth   = 12
+	formLabelOverhead = formLabelWidth + 1
+)
+
 // formMode determines whether we are adding or editing.
 type formMode int
 
@@ -78,12 +85,12 @@ func newForm(mode formMode, name string) ConnectionForm {
 	fields := make([]textinput.Model, fieldCount)
 
 	fields[fieldName] = newTextInput("Connection name", "my-db", false)
-	fields[fieldDriver] = newTextInput("Driver (sqlite/mysql)", "sqlite", false)
-	fields[fieldDatabase] = newTextInput("Database (required for sqlite, optional for mysql)", "/path/to/db.sqlite", false)
-	fields[fieldHost] = newTextInput("Host (mysql only)", "localhost", false)
-	fields[fieldPort] = newTextInput("Port (mysql only, default 3306)", "3306", false)
-	fields[fieldUser] = newTextInput("Username (mysql only)", "root", false)
-	fields[fieldPass] = newTextInput("Password (mysql only)", "", true)
+	fields[fieldDriver] = newTextInput("Driver (sqlite/mysql/postgres)", "sqlite", false)
+	fields[fieldDatabase] = newTextInput("Database (sqlite path; optional for mysql/pg)", "/path/to/db.sqlite", false)
+	fields[fieldHost] = newTextInput("Host (mysql/postgres only)", "localhost", false)
+	fields[fieldPort] = newTextInput("Port (mysql default 3306, postgres default 5432)", "3306", false)
+	fields[fieldUser] = newTextInput("Username (mysql/postgres only)", "root", false)
+	fields[fieldPass] = newTextInput("Password (mysql/postgres only)", "", true)
 	fields[fieldSSHHost] = newTextInput("SSH host (optional)", "", false)
 	fields[fieldSSHPort] = newTextInput("SSH port (default 22)", "22", false)
 	fields[fieldSSHUser] = newTextInput("SSH user", "", false)
@@ -157,7 +164,7 @@ func (f ConnectionForm) View() string {
 		labelStyled := lipgloss.NewStyle().
 			Foreground(colorPrimary).
 			Bold(true).
-			Width(12).
+			Width(formLabelWidth).
 			Render(label)
 
 		var inputRendered string
@@ -185,7 +192,7 @@ func (f *ConnectionForm) SetSize(width, height int) {
 	f.width = width
 	f.height = height
 	for i := range f.fields {
-		f.fields[i].Width = width - 30
+		f.fields[i].Width = width - formLabelOverhead
 	}
 }
 
@@ -194,7 +201,7 @@ func (f *ConnectionForm) SetSize(width, height int) {
 func (f *ConnectionForm) SetMaxWidth(width int) {
 	f.width = width
 	for i := range f.fields {
-		f.fields[i].Width = width - 30
+		f.fields[i].Width = width - formLabelOverhead
 	}
 }
 
@@ -212,16 +219,20 @@ func (f *ConnectionForm) EnterPressed() (config.ConnectionConfig, string) {
 	}
 
 	driver := strings.TrimSpace(f.fields[fieldDriver].Value())
-	if driver != "sqlite" && driver != "mysql" {
-		return config.ConnectionConfig{}, "driver must be 'sqlite' or 'mysql'"
+	if driver != "sqlite" && driver != "mysql" && driver != "postgres" {
+		return config.ConnectionConfig{}, "driver must be 'sqlite', 'mysql', or 'postgres'"
 	}
 
 	database := f.fields[fieldDatabase].Value()
-	if database == "" && driver != "mysql" {
+	if database == "" && driver != "mysql" && driver != "postgres" {
 		return config.ConnectionConfig{}, "database is required"
 	}
 
-	port := 3306
+	defaultPort := 3306
+	if driver == "postgres" {
+		defaultPort = 5432
+	}
+	port := defaultPort
 	if portStr := f.fields[fieldPort].Value(); portStr != "" {
 		var err error
 		port, err = strconv.Atoi(portStr)

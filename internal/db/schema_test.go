@@ -277,6 +277,82 @@ func TestSchemaSupports(t *testing.T) {
 	}
 }
 
+func TestSchemaSupportsPostgres(t *testing.T) {
+	if !SchemaSupports(DriverPostgres, SchemaModifyType) {
+		t.Fatal("postgres should support modify type")
+	}
+	if !SchemaSupports(DriverPostgres, SchemaDropColumn) {
+		t.Fatal("postgres should support drop column")
+	}
+	if !SchemaSupports(DriverPostgres, SchemaCreateTable) {
+		t.Fatal("postgres should support create table")
+	}
+	if !SchemaSupports(DriverPostgres, SchemaRenameTable) {
+		t.Fatal("postgres should support rename table")
+	}
+	actions := ColumnSchemaActions(DriverPostgres)
+	if len(actions) != 5 {
+		t.Fatalf("postgres actions = %v, want 5 items", actions)
+	}
+}
+
+func TestPostgresRenameTable(t *testing.T) {
+	sql, err := BuildRenameTableSQL(DriverPostgres, "users", "accounts", []string{"users", "orders"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `ALTER TABLE "users" RENAME TO "accounts"`
+	if sql != want {
+		t.Fatalf("postgres rename table = %q, want %q", sql, want)
+	}
+}
+
+func TestPostgresModifyColumn(t *testing.T) {
+	sql, err := BuildModifyColumnSQL(DriverPostgres, "users", ColumnDef{
+		Name:    "email",
+		Type:    "VARCHAR(500)",
+		NotNull: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `ALTER TABLE "users" ALTER COLUMN "email" TYPE VARCHAR(500), ALTER COLUMN "email" SET NOT NULL`
+	if sql != want {
+		t.Fatalf("postgres modify column = %q, want %q", sql, want)
+	}
+}
+
+func TestPostgresDropColumn(t *testing.T) {
+	sql, err := BuildDropColumnSQL(DriverPostgres, "users", "nickname", TableColumnInfo{Name: "nickname"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `ALTER TABLE "users" DROP COLUMN "nickname"`
+	if sql != want {
+		t.Fatalf("postgres drop column = %q, want %q", sql, want)
+	}
+}
+
+func TestPostgresCreateDatabase(t *testing.T) {
+	sql, err := BuildCreateDatabaseSQL(DriverPostgres, "mydb")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `CREATE DATABASE "mydb"`
+	if sql != want {
+		t.Fatalf("postgres create database = %q, want %q", sql, want)
+	}
+}
+
+func TestPostgresDropDatabaseGuards(t *testing.T) {
+	for _, sysdb := range []string{"postgres", "template0", "template1"} {
+		_, err := BuildDropDatabaseSQL(DriverPostgres, sysdb)
+		if err == nil {
+			t.Fatalf("expected error for system database %s", sysdb)
+		}
+	}
+}
+
 func TestValidateCreateTable(t *testing.T) {
 	tests := []struct {
 		name      string

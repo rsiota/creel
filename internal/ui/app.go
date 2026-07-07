@@ -409,9 +409,13 @@ func (m *Model) loadConnections() {
 	var entries []ConnectionEntry
 	for _, conn := range m.config.Connections {
 		detail := conn.Database
-		if conn.Driver == "mysql" {
+		if conn.Driver == "mysql" || conn.Driver == "postgres" {
 			detail = conn.Host
-			if conn.Port != 0 && conn.Port != 3306 {
+			defaultPort := 3306
+			if conn.Driver == "postgres" {
+				defaultPort = 5432
+			}
+			if conn.Port != 0 && conn.Port != defaultPort {
 				detail = fmt.Sprintf("%s:%d", detail, conn.Port)
 			}
 		}
@@ -475,8 +479,8 @@ func (m *Model) connectToDB() tea.Cmd {
 	m.focus = FocusConnections
 	m.columnCache = make(map[string][]db.Column)
 
-	// MySQL: always show the database picker (no history of last selection).
-	if dbCfg.Driver == db.DriverMySQL {
+	// MySQL/Postgres: always show the database picker (no history of last selection).
+	if dbCfg.Driver == db.DriverMySQL || dbCfg.Driver == db.DriverPostgres {
 		dbs, err := conn.DB().Databases()
 		if err != nil {
 			m.connError = err.Error()
@@ -2097,18 +2101,27 @@ func (m *Model) saveEdits() tea.Cmd {
 	}
 
 	return func() tea.Msg {
+		driver := conn.Config().Driver
 		saved := 0
 		for _, p := range pending {
 			// Build: UPDATE <table> SET <col> = ? WHERE <pk1> = ? AND <pk2> = ?
 			var b strings.Builder
-			fmt.Fprintf(&b, "UPDATE %s SET %s = ?", table, p.colName)
+			phIdx := 0
+			ph := func() string {
+				phIdx++
+				if driver == db.DriverPostgres {
+					return fmt.Sprintf("$%d", phIdx)
+				}
+				return "?"
+			}
+			fmt.Fprintf(&b, "UPDATE %s SET %s = %s", table, p.colName, ph())
 			for i, pk := range pkCols {
 				if i == 0 {
 					b.WriteString(" WHERE ")
 				} else {
 					b.WriteString(" AND ")
 				}
-				fmt.Fprintf(&b, "%s = ?", pk)
+				fmt.Fprintf(&b, "%s = %s", pk, ph())
 			}
 
 			var setArg interface{} = p.edit.NewValue
@@ -2155,7 +2168,8 @@ func (m *Model) saveInsert() tea.Cmd {
 	columns := m.results.TableColumns()
 	values := insertValuesByName(m.results, m.inspector.InsertValues())
 
-	query, args, err := buildInsertQuery(table, columns, values)
+	driver := conn.Config().Driver
+	query, args, err := buildInsertQuery(driver, table, columns, values)
 	if err != nil {
 		return func() tea.Msg {
 			return insertResultMsg{err: err}
@@ -2189,7 +2203,7 @@ func (m *Model) cloneRows() tea.Cmd {
 	}
 	var batch []pending
 	for _, row := range rows {
-		q, args, err := buildInsertQuery(table, columns, row.Values)
+		q, args, err := buildInsertQuery(conn.Config().Driver, table, columns, row.Values)
 		if err != nil {
 			return func() tea.Msg {
 				return cloneResultMsg{table: table, err: err}
@@ -4060,7 +4074,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "ctrl+b":
 		// Browse databases (MySQL only).
-		if m.connection != nil && m.connection.Config().Driver == db.DriverMySQL {
+		if m.connection != nil && (m.connection.Config().Driver == db.DriverMySQL || m.connection.Config().Driver == db.DriverPostgres) {
 			return m, m.openDatabasePicker(false)
 		}
 		return m, nil
@@ -6339,7 +6353,7 @@ func (m Model) connectionInfo(name string) string {
 		return sbMuted.Render("not connected")
 	}
 	s := sbSuccess.Render("● " + name)
-	if m.connection.Config().Driver == db.DriverMySQL && m.connection.Config().Database != "" {
+	if (m.connection.Config().Driver == db.DriverMySQL || m.connection.Config().Driver == db.DriverPostgres) && m.connection.Config().Database != "" {
 		s += sbMuted.Render(" / ") + sbLabel.Render(m.connection.Config().Database)
 	}
 	return s

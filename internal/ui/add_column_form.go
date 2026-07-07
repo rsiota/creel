@@ -71,6 +71,8 @@ func newAddColumnFields(driver db.Driver) []textinput.Model {
 	typeHint := "TEXT, INTEGER, REAL, BLOB"
 	if driver == db.DriverMySQL {
 		typeHint = "VARCHAR(255), INT, TEXT, DATETIME"
+	} else if driver == db.DriverPostgres {
+		typeHint = "VARCHAR(255), INTEGER, TEXT, TIMESTAMP"
 	}
 
 	fields := make([]textinput.Model, acFieldCount)

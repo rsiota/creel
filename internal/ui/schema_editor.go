@@ -199,8 +199,8 @@ func (e SchemaEditor) cellEditable(row, col int) bool {
 		// auto-increment PK columns.
 		return !info.PrimaryKey || !info.AutoIncrement
 	}
-	// Type, Null, Default all require MODIFY COLUMN (MySQL only).
-	return e.driver == db.DriverMySQL
+	// Type, Null, Default all require MODIFY COLUMN (MySQL) or ALTER COLUMN (Postgres).
+	return e.driver == db.DriverMySQL || e.driver == db.DriverPostgres
 }
 
 // isNewRow reports whether the grid row is a pending new column (not yet in the DB).
@@ -684,7 +684,7 @@ func parseNullCell(val string) bool {
 
 func editBlockedNotice(driver db.Driver, col int) string {
 	if driver == db.DriverSQLite && col != seColName {
-		return fmt.Sprintf("%s can only be changed on MySQL (SQLite supports rename only)", seHeaders[col])
+		return fmt.Sprintf("%s can only be changed on MySQL/Postgres (SQLite supports rename only)", seHeaders[col])
 	}
 	return fmt.Sprintf("this column cannot be edited")
 }

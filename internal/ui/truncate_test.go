@@ -19,6 +19,7 @@ func TestBuildTruncateQuery(t *testing.T) {
 	}{
 		{db.DriverSQLite, "users", "DELETE FROM users"},
 		{db.DriverMySQL, "users", "TRUNCATE TABLE users"},
+		{db.DriverPostgres, "users", "TRUNCATE TABLE users"},
 	}
 	for _, tc := range tests {
 		got := buildTruncateQuery(tc.driver, tc.table)
