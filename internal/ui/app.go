@@ -833,8 +833,11 @@ func (m *Model) runPageQuery() tea.Cmd {
 	page := m.page
 	pageSize := m.pageSize
 
-	// Only wrap SELECT queries; everything else runs as-is.
-	if isSelectQuery(query) {
+	// Only wrap simple SELECT queries; everything else runs as-is.
+	// JOIN queries can't be wrapped because MySQL requires unique column
+	// names in derived tables, and JOINs often produce duplicates (e.g.
+	// both tables have an "id" column).
+	if isSelectQuery(query) && !hasJoinClause(query) {
 		pagedQuery := fmt.Sprintf("SELECT * FROM (%s) AS _gsql_page LIMIT %d OFFSET %d",
 			query, pageSize+1, offset)
 		return func() tea.Msg {
@@ -867,6 +870,34 @@ func isSelectQuery(query string) bool {
 	trimmed := strings.TrimSpace(query)
 	upper := strings.ToUpper(trimmed)
 	return strings.HasPrefix(upper, "SELECT") || strings.HasPrefix(upper, "WITH")
+}
+
+// hasJoinClause reports whether the query contains a JOIN. These can't be
+// wrapped in a subquery for pagination because MySQL requires unique column
+// names in derived tables, and JOINs frequently produce duplicates.
+func hasJoinClause(query string) bool {
+	upper := " " + strings.ToUpper(query) + " "
+	for _, kw := range []string{" JOIN ", " INNER JOIN ", " LEFT JOIN ", " RIGHT JOIN ",
+		" OUTER JOIN ", " FULL JOIN ", " FULL OUTER JOIN ", " CROSS JOIN ", " NATURAL JOIN "} {
+		if strings.Contains(upper, kw) {
+			return true
+		}
+	}
+	// Also detect comma-separated FROM (implicit cross join): "FROM a, b"
+	fromIdx := strings.Index(upper, " FROM ")
+	if fromIdx >= 0 {
+		rest := upper[fromIdx:]
+		// Check for a comma before any WHERE/GROUP/ORDER/LIMIT clause.
+		for _, end := range []string{" WHERE ", " GROUP ", " ORDER ", " LIMIT ", " HAVING "} {
+			if i := strings.Index(rest, end); i >= 0 {
+				rest = rest[:i]
+			}
+		}
+		if strings.Contains(rest, ",") {
+			return true
+		}
+	}
+	return false
 }
 
 // detectResultMetadata loads table context (foreign keys, editability) for a query.

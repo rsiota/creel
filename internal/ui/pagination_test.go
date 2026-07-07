@@ -96,3 +96,29 @@ func TestQueryExecutedMsgPagination(t *testing.T) {
 		t.Errorf("expected %d trimmed rows, got %d", pageSize, len(trimmedRows))
 	}
 }
+
+func TestHasJoinClause(t *testing.T) {
+	tests := []struct {
+		query string
+		want  bool
+	}{
+		{"SELECT * FROM users", false},
+		{"SELECT * FROM users WHERE id = 1", false},
+		{"select * from user_rewards left join users on user_rewards.user_id = users.id", true},
+		{"SELECT * FROM a INNER JOIN b ON a.id = b.id", true},
+		{"SELECT * FROM a JOIN b ON a.id = b.id", true},
+		{"SELECT * FROM a LEFT JOIN b ON a.id = b.id", true},
+		{"SELECT * FROM a RIGHT JOIN b ON a.id = b.id", true},
+		{"SELECT * FROM a CROSS JOIN b", true},
+		{"SELECT * FROM a, b WHERE a.id = b.id", true},
+		{"SELECT * FROM a, b, c", true},
+		{"SELECT * FROM a WHERE x = 'left join'", false},
+		{"WITH cte AS (SELECT 1) SELECT * FROM cte", false},
+	}
+	for _, tc := range tests {
+		got := hasJoinClause(tc.query)
+		if got != tc.want {
+			t.Errorf("hasJoinClause(%q) = %v, want %v", tc.query, got, tc.want)
+		}
+	}
+}
