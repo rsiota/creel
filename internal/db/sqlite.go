@@ -1,10 +1,10 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
-	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -186,67 +186,11 @@ func (s *SQLite) TableColumnInfo(table string) ([]TableColumnInfo, error) {
 }
 
 func (s *SQLite) Execute(query string) (Result, error) {
-	start := time.Now()
+	return s.ExecuteContext(context.Background(), query)
+}
 
-	rows, err := s.db.Query(query)
-	if err != nil {
-		return Result{}, fmt.Errorf("query error: %w", err)
-	}
-	defer rows.Close()
-
-	colNames, err := rows.Columns()
-	if err != nil {
-		return Result{}, err
-	}
-
-	cols := make([]Column, len(colNames))
-	for i, name := range colNames {
-		cols[i] = Column{Name: name}
-	}
-
-	colTypes, _ := rows.ColumnTypes()
-	for i, ct := range colTypes {
-		cols[i].Type = ct.DatabaseTypeName()
-	}
-
-	var resultRows [][]string
-	for rows.Next() {
-		rawValues := make([]sql.NullString, len(cols))
-		scanArgs := make([]interface{}, len(cols))
-		for i := range rawValues {
-			scanArgs[i] = &rawValues[i]
-		}
-		if err := rows.Scan(scanArgs...); err != nil {
-			return Result{}, err
-		}
-
-		row := make([]string, len(cols))
-		for i, v := range rawValues {
-			if v.Valid {
-				row[i] = v.String
-			} else {
-				row[i] = "NULL"
-			}
-		}
-		resultRows = append(resultRows, row)
-	}
-
-	if err := rows.Err(); err != nil {
-		return Result{}, err
-	}
-
-	elapsed := time.Since(start)
-	noun := "rows"
-	if len(resultRows) == 1 {
-		noun = "row"
-	}
-
-	return Result{
-		Columns: cols,
-		Rows:    resultRows,
-		Message: fmt.Sprintf("%d %s in %s", len(resultRows), noun, elapsed.Round(time.Millisecond)),
-		Elapsed: elapsed.String(),
-	}, nil
+func (s *SQLite) ExecuteContext(ctx context.Context, query string) (Result, error) {
+	return executeRows(ctx, s.db, query)
 }
 
 func (s *SQLite) Exec(query string, args ...interface{}) (ExecResult, error) {

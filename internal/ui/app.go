@@ -3,6 +3,8 @@ package ui
 import (
 	"bufio"
 	"bytes"
+	"context"
+	"errors"
 	"encoding/csv"
 	"fmt"
 	"log"
@@ -100,6 +102,9 @@ type createDBResultMsg struct {
 	err      error
 }
 
+// spinnerTickMsg advances the query-in-flight spinner animation.
+type spinnerTickMsg struct{}
+
 // queryExecutedMsg is sent when a query finishes executing.
 type queryExecutedMsg struct {
 	query    string
@@ -107,6 +112,7 @@ type queryExecutedMsg struct {
 	err      error
 	page     int
 	pageSize int
+	cancelled bool
 }
 
 // schemasLoadedMsg carries prefetched table schemas for autocomplete.
@@ -373,6 +379,13 @@ type Model struct {
 	// hintFlash is the individual key currently highlighted white on the status bar.
 	hintFlash   string
 	hintFlashAt time.Time
+
+	// Async query execution state
+	queryRunning  bool               // true while a query is in flight
+	queryCancel   context.CancelFunc // cancels the running query
+	querySpinner  int                // spinner animation frame index
+	queryStart    time.Time          // when the current query started (for elapsed display)
+	queryCancelled bool              // true if the user cancelled the running query
 }
 
 const defaultPageSize = 200
@@ -757,7 +770,7 @@ func (m *Model) explainQuery() tea.Cmd {
 
 	conn := m.connection
 	return func() tea.Msg {
-		result, err := conn.DB().Execute(explainStmt)
+		result, err := conn.DB().ExecuteContext(context.Background(), explainStmt)
 		return explainResultMsg{result: result, err: err}
 	}
 }
@@ -822,46 +835,69 @@ func formatCount(n int) string {
 	return string(result)
 }
 
-// runPageQuery wraps the original query with LIMIT/OFFSET and executes it.
-// Non-SELECT statements (DESCRIBE, SHOW, EXPLAIN, etc.) are executed directly
-// without pagination wrapping, since they can't be used as subqueries.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+const spinnerInterval = 100 * time.Millisecond
+
+// spinnerTick returns a command that fires a spinnerTickMsg after the spinner
+// interval, keeping the UI animated while a query is in flight.
+func spinnerTick() tea.Cmd {
+	return tea.Tick(spinnerInterval, func(time.Time) tea.Msg {
+		return spinnerTickMsg{}
+	})
+}
+
+// runPageQuery wraps the original query with LIMIT/OFFSET and executes it
+// asynchronously with cancellation support. Non-SELECT statements (DESCRIBE,
+// SHOW, EXPLAIN, etc.) are executed directly without pagination wrapping, since
+// they can't be used as subqueries.
 func (m *Model) runPageQuery() tea.Cmd {
+	// Cancel any previously in-flight query before starting a new one.
+	if m.queryCancel != nil {
+		m.queryCancel()
+		m.queryCancel = nil
+	}
+
 	offset := m.page * m.pageSize
 	query := strings.TrimRight(m.lastQuery, ";")
 
 	conn := m.connection
 	page := m.page
 	pageSize := m.pageSize
+	lastQuery := m.lastQuery
+
+	ctx, cancel := context.WithCancel(context.Background())
+	m.queryCancel = cancel
+	m.queryRunning = true
+	m.queryCancelled = false
+	m.queryStart = time.Now()
+	m.querySpinner = 0
 
 	// Only wrap simple SELECT queries; everything else runs as-is.
 	// JOIN queries can't be wrapped because MySQL requires unique column
 	// names in derived tables, and JOINs often produce duplicates (e.g.
 	// both tables have an "id" column).
+	var execQuery string
 	if isSelectQuery(query) && !hasJoinClause(query) {
-		pagedQuery := fmt.Sprintf("SELECT * FROM (%s) AS _gsql_page LIMIT %d OFFSET %d",
+		execQuery = fmt.Sprintf("SELECT * FROM (%s) AS _gsql_page LIMIT %d OFFSET %d",
 			query, pageSize+1, offset)
-		return func() tea.Msg {
-			result, err := conn.DB().Execute(pagedQuery)
-			return queryExecutedMsg{
-				query:    m.lastQuery,
-				result:   result,
-				err:      err,
-				page:     page,
-				pageSize: pageSize,
-			}
+	} else {
+		execQuery = query
+	}
+
+	execCmd := func() tea.Msg {
+		result, err := conn.DB().ExecuteContext(ctx, execQuery)
+		return queryExecutedMsg{
+			query:     lastQuery,
+			result:    result,
+			err:       err,
+			page:      page,
+			pageSize:  pageSize,
+			cancelled: errors.Is(err, context.Canceled),
 		}
 	}
 
-	return func() tea.Msg {
-		result, err := conn.DB().Execute(query)
-		return queryExecutedMsg{
-			query:    m.lastQuery,
-			result:   result,
-			err:      err,
-			page:     page,
-			pageSize: pageSize,
-		}
-	}
+	return tea.Batch(execCmd, spinnerTick())
 }
 
 // isSelectQuery returns true if the query is a SELECT (or WITH ... SELECT)
@@ -2703,6 +2739,21 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// While a query is in flight, esc and ctrl+c cancel the query
+		// instead of their normal behaviour. All other keys are swallowed
+		// so the user can't trigger overlapping operations.
+		if m.queryRunning {
+			if key.Matches(msg, key.NewBinding(key.WithKeys("esc", "ctrl+c"))) {
+				m.queryCancelled = true
+				if m.queryCancel != nil {
+					m.queryCancel()
+					m.queryCancel = nil
+				}
+				return m, nil
+			}
+			return m, nil
+		}
+
 		switch {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+c"))):
 			m.quitting = true
@@ -2739,7 +2790,17 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case queryExecutedMsg:
+		m.queryRunning = false
+		m.queryCancel = nil
 		m.layoutWorkspace()
+
+		// Cancelled queries don't overwrite the existing results or touch history.
+		if msg.cancelled || (msg.err != nil && m.queryCancelled) {
+			m.results.SetError("Query cancelled")
+			m.queryCancelled = false
+			return m, nil
+		}
+
 		// Record to history
 		if m.connection != nil && m.historyStore != nil {
 			m.historyStore.Record(m.connection.Config().Name, msg.query, msg.err == nil)
@@ -2789,6 +2850,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, cmd
+
+	case spinnerTickMsg:
+		if !m.queryRunning {
+			return m, nil
+		}
+		m.querySpinner = (m.querySpinner + 1) % len(spinnerFrames)
+		return m, spinnerTick()
 
 	case saveResultMsg:
 		if msg.err != nil {
@@ -5992,47 +6060,64 @@ func (m Model) viewWorkspace() string {
 			BorderForeground(m.borderForFocus(FocusEditor)).
 			Render(m.editor.View())
 
-		// When the table has results it draws its own border, merging
-		// seamlessly with the panel frame. Otherwise fall back to a
-		// standard rounded border around the placeholder message.
-		hasTable := m.results.HasResult() && m.results.NumCols() > 0
-		m.results.SetBorderColor(m.borderForFocus(FocusResults))
-
-		var resultsStyle lipgloss.Style
-		if hasTable {
-			resultsStyle = lipgloss.NewStyle().
-				Width(rightWidth + borderOverhead).
-				Height(resultsHeight + borderOverhead)
-		} else {
-			resultsStyle = lipgloss.NewStyle().
+		var resultsPanel string
+		if m.queryRunning {
+			// Show an animated spinner while the query executes.
+			frame := spinnerFrames[m.querySpinner%len(spinnerFrames)]
+			elapsed := time.Since(m.queryStart).Round(time.Millisecond)
+			content := lipgloss.NewStyle().Foreground(colorPrimary).Render(frame) +
+				"  " + mutedStyle.Render(fmt.Sprintf("running query… %s", elapsed)) +
+				"  " + lipgloss.NewStyle().Foreground(colorMuted).Render("(esc to cancel)")
+			resultsPanel = lipgloss.NewStyle().
 				Width(rightWidth).
 				Height(resultsHeight).
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(m.borderForFocus(FocusResults))
+				BorderForeground(m.borderForFocus(FocusResults)).
+				Align(lipgloss.Center, lipgloss.Center).
+				Render(content)
+		} else {
+			// When the table has results it draws its own border, merging
+			// seamlessly with the panel frame. Otherwise fall back to a
+			// standard rounded border around the placeholder message.
+			hasTable := m.results.HasResult() && m.results.NumCols() > 0
+			m.results.SetBorderColor(m.borderForFocus(FocusResults))
+
+			var resultsStyle lipgloss.Style
+			if hasTable {
+				resultsStyle = lipgloss.NewStyle().
+					Width(rightWidth + borderOverhead).
+					Height(resultsHeight + borderOverhead)
+			} else {
+				resultsStyle = lipgloss.NewStyle().
+					Width(rightWidth).
+					Height(resultsHeight).
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(m.borderForFocus(FocusResults))
+			}
+			resultsPanel = resultsStyle.Render(func() string {
+					m.results.SetSort(m.sortCol, m.sortDir)
+					// Shrink the table by one row when a prompt line is
+					// shown above it, so the total height stays the same.
+					if m.columnJumping || m.searching || m.backendSearching {
+						m.results.SetSize(rightWidth+borderOverhead, resultsHeight+borderOverhead-1)
+					}
+					view := m.results.View()
+					if m.columnJumping {
+						prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render(":"+m.columnJump) +
+							lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
+						view = prompt + "\n" + view
+					}
+					if m.searching {
+						prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+m.searchQuery) +
+							lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
+						view = prompt + "\n" + view
+					}
+					if m.backendSearching {
+						view = " " + renderPalettePrompt(m.backendSearchInput, true) + "\n" + view
+					}
+					return view
+				}())
 		}
-		resultsPanel := resultsStyle.Render(func() string {
-				m.results.SetSort(m.sortCol, m.sortDir)
-				// Shrink the table by one row when a prompt line is
-				// shown above it, so the total height stays the same.
-				if m.columnJumping || m.searching || m.backendSearching {
-					m.results.SetSize(rightWidth+borderOverhead, resultsHeight+borderOverhead-1)
-				}
-				view := m.results.View()
-				if m.columnJumping {
-					prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render(":"+m.columnJump) +
-						lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
-					view = prompt + "\n" + view
-				}
-				if m.searching {
-					prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+m.searchQuery) +
-						lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
-					view = prompt + "\n" + view
-				}
-				if m.backendSearching {
-					view = " " + renderPalettePrompt(m.backendSearchInput, true) + "\n" + view
-				}
-				return view
-			}())
 
 		rightPanel = lipgloss.JoinVertical(lipgloss.Left,
 			editorPanel,

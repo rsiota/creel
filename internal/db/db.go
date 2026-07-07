@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 )
 
 // Driver represents a supported database driver type.
@@ -62,6 +63,8 @@ type DB interface {
 	TableColumnInfo(table string) ([]TableColumnInfo, error)
 	// Execute runs a query and returns the result set.
 	Execute(query string) (Result, error)
+	// ExecuteContext runs a query with cancellation support.
+	ExecuteContext(ctx context.Context, query string) (Result, error)
 	// Exec runs a statement that doesn't return rows (INSERT, UPDATE, DELETE).
 	Exec(query string, args ...interface{}) (ExecResult, error)
 	// Databases returns the list of databases accessible through this connection.
@@ -220,4 +223,70 @@ func (c *Connection) UseDatabase(name string) error {
 	}
 	c.config.Database = name
 	return nil
+}
+
+// executeRows runs a query against a *sql.DB with context support and builds a
+// Result. It is shared by all drivers.
+func executeRows(ctx context.Context, database *sql.DB, query string) (Result, error) {
+	start := time.Now()
+
+	rows, err := database.QueryContext(ctx, query)
+	if err != nil {
+		return Result{}, fmt.Errorf("query error: %w", err)
+	}
+	defer rows.Close()
+
+	colNames, err := rows.Columns()
+	if err != nil {
+		return Result{}, err
+	}
+
+	cols := make([]Column, len(colNames))
+	for i, name := range colNames {
+		cols[i] = Column{Name: name}
+	}
+
+	colTypes, _ := rows.ColumnTypes()
+	for i, ct := range colTypes {
+		cols[i].Type = ct.DatabaseTypeName()
+	}
+
+	var resultRows [][]string
+	for rows.Next() {
+		rawValues := make([]sql.NullString, len(cols))
+		scanArgs := make([]interface{}, len(cols))
+		for i := range rawValues {
+			scanArgs[i] = &rawValues[i]
+		}
+		if err := rows.Scan(scanArgs...); err != nil {
+			return Result{}, err
+		}
+
+		row := make([]string, len(cols))
+		for i, v := range rawValues {
+			if v.Valid {
+				row[i] = v.String
+			} else {
+				row[i] = "NULL"
+			}
+		}
+		resultRows = append(resultRows, row)
+	}
+
+	if err := rows.Err(); err != nil {
+		return Result{}, err
+	}
+
+	elapsed := time.Since(start)
+	noun := "rows"
+	if len(resultRows) == 1 {
+		noun = "row"
+	}
+
+	return Result{
+		Columns: cols,
+		Rows:    resultRows,
+		Message: fmt.Sprintf("%d %s in %s", len(resultRows), noun, elapsed.Round(time.Millisecond)),
+		Elapsed: elapsed.String(),
+	}, nil
 }

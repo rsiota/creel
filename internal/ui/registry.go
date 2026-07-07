@@ -44,6 +44,7 @@ func registry() []Section {
 			Items: []Binding{
 				{"ctrl+e / \\", []string{"ctrl+e", "\\"}, "run statement under cursor", ""},
 				{"ctrl+r", []string{"ctrl+r"}, "refresh schema & re-run query", ""},
+				{"esc / ctrl+c", []string{"esc", "ctrl+c"}, "cancel running query", ""},
 			{"ctrl+w", []string{"ctrl+w"}, "maximize / restore editor", "ctrl+w"},
 				{"ctrl+t", []string{"ctrl+t"}, "switch connection", ""},
 				{"ctrl+b", []string{"ctrl+b"}, "browse databases (MySQL)", ""},

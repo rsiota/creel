@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -264,67 +263,11 @@ func (m *MySQL) TableColumnInfo(table string) ([]TableColumnInfo, error) {
 }
 
 func (m *MySQL) Execute(query string) (Result, error) {
-	start := time.Now()
+	return m.ExecuteContext(context.Background(), query)
+}
 
-	rows, err := m.db.Query(query)
-	if err != nil {
-		return Result{}, fmt.Errorf("query error: %w", err)
-	}
-	defer rows.Close()
-
-	colNames, err := rows.Columns()
-	if err != nil {
-		return Result{}, err
-	}
-
-	cols := make([]Column, len(colNames))
-	for i, name := range colNames {
-		cols[i] = Column{Name: name}
-	}
-
-	colTypes, _ := rows.ColumnTypes()
-	for i, ct := range colTypes {
-		cols[i].Type = ct.DatabaseTypeName()
-	}
-
-	var resultRows [][]string
-	for rows.Next() {
-		rawValues := make([]sql.NullString, len(cols))
-		scanArgs := make([]interface{}, len(cols))
-		for i := range rawValues {
-			scanArgs[i] = &rawValues[i]
-		}
-		if err := rows.Scan(scanArgs...); err != nil {
-			return Result{}, err
-		}
-
-		row := make([]string, len(cols))
-		for i, v := range rawValues {
-			if v.Valid {
-				row[i] = v.String
-			} else {
-				row[i] = "NULL"
-			}
-		}
-		resultRows = append(resultRows, row)
-	}
-
-	if err := rows.Err(); err != nil {
-		return Result{}, err
-	}
-
-	elapsed := time.Since(start)
-	noun := "rows"
-	if len(resultRows) == 1 {
-		noun = "row"
-	}
-
-	return Result{
-		Columns: cols,
-		Rows:    resultRows,
-		Message: fmt.Sprintf("%d %s in %s", len(resultRows), noun, elapsed.Round(time.Millisecond)),
-		Elapsed: elapsed.String(),
-	}, nil
+func (m *MySQL) ExecuteContext(ctx context.Context, query string) (Result, error) {
+	return executeRows(ctx, m.db, query)
 }
 
 func (m *MySQL) Exec(query string, args ...interface{}) (ExecResult, error) {
