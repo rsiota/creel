@@ -187,6 +187,7 @@ func registry() []Section {
 				{"c", []string{"c"}, "clear filters", "c"},
 				{"o", []string{"o"}, "sort column", "o"},
 				{"g s", []string{"g", "s"}, "column stats", ""},
+			{"g e", []string{"g", "e"}, "explain query plan", ""},
 				{":", []string{":"}, "jump to column", ":"},
 				{"H", []string{"H"}, "hide column", "H"},
 				{"g H", []string{"g", "H"}, "show all columns", ""},

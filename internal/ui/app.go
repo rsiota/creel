@@ -148,6 +148,12 @@ type statsMsg struct {
 	stats  string
 }
 
+// explainResultMsg carries the EXPLAIN query plan result.
+type explainResultMsg struct {
+	result db.Result
+	err    error
+}
+
 // countMsg carries the total row count for the current table.
 type countMsg struct {
 	total int
@@ -248,6 +254,7 @@ type Model struct {
 	tableDesigner   TableDesigner
 	schemaEditor    SchemaEditor
 	cellEdit        CellEditPopup
+	explainPanel    ExplainPanel
 	palette         palette
 	sidebarCursor int
 	sidebarScroll int // cached scroll offset of the first visible sidebar item
@@ -718,6 +725,41 @@ func (m *Model) executeQuery() tea.Cmd {
 	m.totalRows = 0
 	m.totalRowsSet = false
 	return m.runPageQuery()
+}
+
+// explainQuery wraps the statement under the cursor in EXPLAIN and executes it
+// asynchronously. The result is displayed in a scrollable overlay panel.
+func (m *Model) explainQuery() tea.Cmd {
+	if m.connection == nil {
+		return nil
+	}
+	query := m.editor.StatementAtCursor()
+	if query == "" {
+		return nil
+	}
+
+	// Strip trailing semicolons — EXPLAIN must precede a single statement.
+	query = strings.TrimRight(strings.TrimSpace(query), ";")
+	if query == "" {
+		return nil
+	}
+
+	driver := m.connection.Config().Driver
+	var explainStmt string
+	switch driver {
+	case db.DriverSQLite:
+		explainStmt = "EXPLAIN QUERY PLAN " + query
+	case db.DriverPostgres:
+		explainStmt = "EXPLAIN " + query
+	default: // MySQL
+		explainStmt = "EXPLAIN " + query
+	}
+
+	conn := m.connection
+	return func() tea.Msg {
+		result, err := conn.DB().Execute(explainStmt)
+		return explainResultMsg{result: result, err: err}
+	}
 }
 
 // nextPage advances to the next page of results.
@@ -2964,6 +3006,18 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case explainResultMsg:
+		if msg.err != nil {
+			m.statsMsg = fmt.Sprintf("EXPLAIN error: %v", msg.err)
+			return m, nil
+		}
+		driver := db.DriverSQLite
+		if m.connection != nil {
+			driver = m.connection.Config().Driver
+		}
+		m.explainPanel.Show(msg.result, driver)
+		return m, nil
+
 	case backendSearchTickMsg:
 		// Only execute if the input still matches (user may have typed more).
 		if m.backendSearching && msg.input == m.backendSearchInput {
@@ -3979,6 +4033,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	// Explain panel is modal — j/k scroll, esc/q close.
+	if m.explainPanel.IsVisible() {
+		switch msg.String() {
+		case "esc", "q", "ctrl+c":
+			m.explainPanel.Hide()
+			return m, nil
+		}
+		m.explainPanel = m.explainPanel.Update(msg)
+		return m, nil
+	}
+
 	// Command palette is modal — intercept all keys when visible.
 	if m.palette.visible {
 		var cmd tea.Cmd
@@ -4636,6 +4701,25 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.startInsert()
 				return m, nil
 			}
+		}
+
+		// g e — explain query plan (works regardless of whether results are loaded).
+		if msg.String() == "e" && m.resultsPendingG {
+			m.resultsPendingG = false
+			m.resultsPendingY = false
+			return m, m.explainQuery()
+		}
+
+		// g/G navigation works on empty tables too.
+		if msg.String() == "g" && !m.resultsPendingG {
+			m.resultsPendingG = true
+			return m, nil
+		}
+		if msg.String() == "G" {
+			m.resultsPendingG = false
+			m.resultsPendingY = false
+			m.results.CursorBottom()
+			return m, nil
 		}
 
 		// Cell cursor navigation.
@@ -6064,7 +6148,7 @@ func (m Model) viewWorkspace() string {
 
 	// Dim the workspace panels behind long-lived editing overlays.
 	// The status bar is kept undimmed so hints remain clearly visible.
-	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() || m.crossSearch.IsVisible() {
+	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() || m.crossSearch.IsVisible() || m.explainPanel.IsVisible() {
 		workspace = dimBackground(workspace)
 	}
 
@@ -6101,6 +6185,17 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, csPanel, panelX, panelY)
+	}
+
+	// Overlay explain panel if visible
+	if m.explainPanel.IsVisible() {
+		m.explainPanel.SetSize(m.width*70/100, (m.height-1)*70/100)
+		explainPanelView := m.explainPanel.View()
+		panelW := lipgloss.Width(explainPanelView)
+		panelH := lipgloss.Height(explainPanelView)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, explainPanelView, panelX, panelY)
 	}
 
 	// Overlay filter picker if visible

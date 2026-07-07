@@ -38,6 +38,8 @@ func (m Model) hintList() []string {
 		return hintsForSection("Bookmarks Panel")
 	case m.crossSearch.IsVisible():
 		return []string{"enter", "j/k", "esc"}
+	case m.explainPanel.IsVisible():
+		return []string{"j/k", "esc"}
 	case m.tableDesigner.IsVisible():
 		return hintsForSection("Table Designer")
 	case m.schemaEditor.IsVisible():

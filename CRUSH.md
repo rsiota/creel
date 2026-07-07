@@ -42,6 +42,7 @@ internal/ui/              — All Bubble Tea UI components
   palette.go              — Fuzzy command palette overlay (Ctrl+P); searches registry, replays keys
   keymsg.go               — synthesizeKeyMsg: maps dispatch token strings → tea.KeyMsg for replay
   history_panel.go        — Query history overlay panel
+  explain_panel.go        — EXPLAIN query plan overlay (driver-aware: tree/table/text)
   connection_form_test.go — Tests for form validation
   table_scroll_test.go    — Tests for sidebar table/schema scrolling
 ```
@@ -71,6 +72,7 @@ internal/ui/              — All Bubble Tea UI components
 - [x] Drop table (`D` in sidebar with typed-name confirmation)
 - [x] DB export (pure-Go SQL dumper with table picker overlay `X`; mysqldump-compatible header/footer)
 - [x] DB import (`I` in sidebar; streaming SQL parser in `internal/db/import.go`, collects failures without stopping)
+- [x] PostgreSQL support (pgx/v5; `g e` EXPLAIN query plan view with driver-aware rendering)
 
 ## Config Format (~/.config/gsql/config.yaml)
 ```yaml
