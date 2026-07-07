@@ -2,7 +2,6 @@ package ui
 
 import (
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -35,66 +34,21 @@ func (m Model) sidebarItems() []sidebarItem {
 
 // filteredTables returns tables matching the fuzzy filter, best match first.
 func (m Model) filteredTables() []sidebarItem {
-	type scored struct {
-		item  sidebarItem
-		score int
-	}
-	var results []scored
-	for _, t := range m.tables {
-		idx, score := fuzzyMatch(m.sidebarFilter, t)
-		if idx != nil || m.sidebarFilter == "" {
-			results = append(results, scored{sidebarItem{text: t, matchIdx: idx}, score})
+	if m.sidebarFilter == "" {
+		items := make([]sidebarItem, len(m.tables))
+		for i, t := range m.tables {
+			items[i] = sidebarItem{text: t}
 		}
+		return items
 	}
-	sort.SliceStable(results, func(i, j int) bool {
-		if results[i].score != results[j].score {
-			return results[i].score < results[j].score
-		}
-		return results[i].item.text < results[j].item.text
-	})
-	items := make([]sidebarItem, len(results))
-	for i, r := range results {
-		items[i] = r.item
+	ranked := fuzzyRank(m.sidebarFilter, m.tables,
+		func(t string) string { return t },
+		func(a, b fuzzyResult[string]) bool { return a.Item < b.Item })
+	items := make([]sidebarItem, len(ranked))
+	for i, r := range ranked {
+		items[i] = sidebarItem{text: r.Item, matchIdx: r.MatchIdx}
 	}
 	return items
-}
-
-// fuzzyMatch performs case-insensitive subsequence matching.
-// Returns matched rune indices (nil if no match) and a score (lower = better).
-func fuzzyMatch(query, s string) ([]int, int) {
-	if query == "" {
-		return nil, 0
-	}
-	q := []rune(strings.ToLower(query))
-	target := []rune(strings.ToLower(s))
-
-	var indices []int
-	qi := 0
-	for si := 0; si < len(target) && qi < len(q); si++ {
-		if target[si] == q[qi] {
-			indices = append(indices, si)
-			qi++
-		}
-	}
-	if qi < len(q) {
-		return nil, 0
-	}
-
-	// Score: lower = better. Penalize gaps, reward consecutive/boundary matches.
-	score := len(target) // mild preference for shorter names
-	for i := 1; i < len(indices); i++ {
-		gap := indices[i] - indices[i-1] - 1
-		score += gap * 3
-		if indices[i] == indices[i-1]+1 {
-			score -= 5
-		}
-	}
-	for _, idx := range indices {
-		if idx == 0 || target[idx-1] == '_' || target[idx-1] == '.' {
-			score -= 2
-		}
-	}
-	return indices, score
 }
 
 // bestColumnMatch returns the index of the column whose name best matches

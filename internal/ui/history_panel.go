@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -103,26 +102,12 @@ func (h HistoryPanel) filteredEntries() []filteredEntry {
 		}
 		return out
 	}
-	type scored struct {
-		item  filteredEntry
-		score int
-	}
-	var results []scored
-	for _, e := range h.entries {
-		idx, score := fuzzyMatch(h.filter, e.Query)
-		if idx != nil {
-			results = append(results, scored{filteredEntry{entry: e, matchIdx: idx}, score})
-		}
-	}
-	sort.SliceStable(results, func(i, j int) bool {
-		if results[i].score != results[j].score {
-			return results[i].score < results[j].score
-		}
-		return results[i].item.entry.RunAt.After(results[j].item.entry.RunAt)
-	})
-	out := make([]filteredEntry, len(results))
-	for i, r := range results {
-		out[i] = r.item
+	ranked := fuzzyRank(h.filter, h.entries,
+		func(e history.Entry) string { return e.Query },
+		func(a, b fuzzyResult[history.Entry]) bool { return a.Item.RunAt.After(b.Item.RunAt) })
+	out := make([]filteredEntry, len(ranked))
+	for i, r := range ranked {
+		out[i] = filteredEntry{entry: r.Item, matchIdx: r.MatchIdx}
 	}
 	return out
 }

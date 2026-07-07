@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -71,28 +70,14 @@ func (c ConnectionList) VisibleItemsForMouse() []connectionItem {
 	if !c.filtering || c.filter == "" {
 		return c.items
 	}
-	type scored struct {
-		item  connectionItem
-		score int
-	}
-	var results []scored
-	for _, item := range c.items {
-		idx, score := fuzzyMatch(c.filter, item.name)
-		if idx != nil {
-			cp := item
-			cp.matchIdx = idx
-			results = append(results, scored{cp, score})
-		}
-	}
-	sort.SliceStable(results, func(i, j int) bool {
-		if results[i].score != results[j].score {
-			return results[i].score < results[j].score
-		}
-		return results[i].item.name < results[j].item.name
-	})
-	items := make([]connectionItem, len(results))
-	for i, r := range results {
-		items[i] = r.item
+	ranked := fuzzyRank(c.filter, c.items,
+		func(it connectionItem) string { return it.name },
+		func(a, b fuzzyResult[connectionItem]) bool { return a.Item.name < b.Item.name })
+	items := make([]connectionItem, len(ranked))
+	for i, r := range ranked {
+		cp := r.Item
+		cp.matchIdx = r.MatchIdx
+		items[i] = cp
 	}
 	return items
 }

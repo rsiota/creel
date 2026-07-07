@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -95,21 +94,16 @@ func (p ColumnPicker) filteredItems() []colItem {
 	if p.filter == "" {
 		return p.items
 	}
-	var out []colItem
-	for _, it := range p.items {
-		if idx, score := fuzzyMatch(p.filter, it.name); idx != nil {
-			it.matchIdx = idx
-			it.score = score
-			out = append(out, it)
-		}
+	ranked := fuzzyRank(p.filter, p.items,
+		func(it colItem) string { return it.name },
+		func(a, b fuzzyResult[colItem]) bool { return a.Item.name < b.Item.name })
+	out := make([]colItem, len(ranked))
+	for i, r := range ranked {
+		it := r.Item
+		it.matchIdx = r.MatchIdx
+		it.score = r.Score
+		out[i] = it
 	}
-	// Rank best matches first; alphabetical as a tiebreaker.
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].score != out[j].score {
-			return out[i].score < out[j].score
-		}
-		return out[i].name < out[j].name
-	})
 	return out
 }
 

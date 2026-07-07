@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -114,26 +113,12 @@ func (b BookmarkPanel) filteredEntries() []filteredBookmark {
 		}
 		return out
 	}
-	type scored struct {
-		item  filteredBookmark
-		score int
-	}
-	var results []scored
-	for i, e := range b.entries {
-		idx, score := fuzzyMatch(b.filter, e.Query)
-		if idx != nil {
-			results = append(results, scored{filteredBookmark{entry: e, matchIdx: idx, origIdx: i}, score})
-		}
-	}
-	sort.SliceStable(results, func(i, j int) bool {
-		if results[i].score != results[j].score {
-			return results[i].score < results[j].score
-		}
-		return results[i].item.entry.SavedAt.After(results[j].item.entry.SavedAt)
-	})
-	out := make([]filteredBookmark, len(results))
-	for i, r := range results {
-		out[i] = r.item
+	ranked := fuzzyRank(b.filter, b.entries,
+		func(e bookmarks.Bookmark) string { return e.Query },
+		func(a, b fuzzyResult[bookmarks.Bookmark]) bool { return a.Item.SavedAt.After(b.Item.SavedAt) })
+	out := make([]filteredBookmark, len(ranked))
+	for i, r := range ranked {
+		out[i] = filteredBookmark{entry: r.Item, matchIdx: r.MatchIdx, origIdx: r.Index}
 	}
 	return out
 }

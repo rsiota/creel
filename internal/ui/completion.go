@@ -113,26 +113,12 @@ func filterCandidates(all []completionItem, partial string) []completionItem {
 		})
 		return out
 	}
-	type scored struct {
-		item  completionItem
-		score int
-	}
-	var results []scored
-	for _, item := range all {
-		idx, score := fuzzyMatch(partial, item.text)
-		if idx != nil {
-			results = append(results, scored{completionItem{text: item.text, kind: item.kind, matchIdx: idx}, score})
-		}
-	}
-	sort.SliceStable(results, func(i, j int) bool {
-		if results[i].score != results[j].score {
-			return results[i].score < results[j].score
-		}
-		return results[i].item.text < results[j].item.text
-	})
-	out := make([]completionItem, len(results))
-	for i, r := range results {
-		out[i] = r.item
+	ranked := fuzzyRank(partial, all,
+		func(it completionItem) string { return it.text },
+		func(a, b fuzzyResult[completionItem]) bool { return a.Item.text < b.Item.text })
+	out := make([]completionItem, len(ranked))
+	for i, r := range ranked {
+		out[i] = completionItem{text: r.Item.text, kind: r.Item.kind, matchIdx: r.MatchIdx}
 	}
 	return out
 }

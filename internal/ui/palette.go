@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -88,23 +87,12 @@ func (p *palette) refilter() {
 		p.cursor = 0
 		return
 	}
-	type scored struct {
-		item  paletteItem
-		score int
-	}
-	var results []scored
-	for _, it := range p.items {
-		hay := it.desc + " " + it.display + " " + it.section
-		if idx, score := fuzzyMatch(p.input, hay); idx != nil {
-			results = append(results, scored{it, score})
-		}
-	}
-	sort.SliceStable(results, func(i, j int) bool {
-		return results[i].score < results[j].score
-	})
-	p.filtered = make([]paletteItem, len(results))
-	for i, r := range results {
-		p.filtered[i] = r.item
+	ranked := fuzzyRank(p.input, p.items,
+		func(it paletteItem) string { return it.desc + " " + it.display + " " + it.section },
+		nil)
+	p.filtered = make([]paletteItem, len(ranked))
+	for i, r := range ranked {
+		p.filtered[i] = r.Item
 	}
 	if p.cursor >= len(p.filtered) {
 		p.cursor = max(0, len(p.filtered)-1)

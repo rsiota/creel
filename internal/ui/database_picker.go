@@ -93,26 +93,22 @@ func (p *DatabasePicker) SetSize(width, height int) {
 
 // filteredDatabases returns the fuzzy-filtered, sorted list of databases.
 func (p DatabasePicker) filteredDatabases() []dbItem {
-	type scored struct {
-		item  dbItem
-		score int
-	}
-	var results []scored
-	for _, d := range p.databases {
-		idx, score := fuzzyMatch(p.filter, d)
-		if idx != nil || p.filter == "" {
-			results = append(results, scored{dbItem{name: d, matchIdx: idx}, score})
+	if p.filter == "" {
+		sorted := make([]string, len(p.databases))
+		copy(sorted, p.databases)
+		sort.Strings(sorted)
+		items := make([]dbItem, len(sorted))
+		for i, d := range sorted {
+			items[i] = dbItem{name: d}
 		}
+		return items
 	}
-	sort.SliceStable(results, func(i, j int) bool {
-		if results[i].score != results[j].score {
-			return results[i].score < results[j].score
-		}
-		return results[i].item.name < results[j].item.name
-	})
-	items := make([]dbItem, len(results))
-	for i, r := range results {
-		items[i] = r.item
+	ranked := fuzzyRank(p.filter, p.databases,
+		func(d string) string { return d },
+		func(a, b fuzzyResult[string]) bool { return a.Item < b.Item })
+	items := make([]dbItem, len(ranked))
+	for i, r := range ranked {
+		items[i] = dbItem{name: r.Item, matchIdx: r.MatchIdx}
 	}
 	return items
 }
