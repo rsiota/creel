@@ -368,3 +368,5 @@ func (p *Postgres) Session() (SessionRunner, error) {
 	}
 	return &sqlConnSession{conn: conn}, nil
 }
+
+func (p *Postgres) Begin() (Tx, error) { return beginTx(p.db) }

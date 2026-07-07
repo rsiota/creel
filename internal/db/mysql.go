@@ -292,3 +292,5 @@ func (m *MySQL) Session() (SessionRunner, error) {
 	}
 	return &sqlConnSession{conn: conn}, nil
 }
+
+func (m *MySQL) Begin() (Tx, error) { return beginTx(m.db) }

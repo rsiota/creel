@@ -205,7 +205,7 @@ func replaceSimpleSelectTable(query, oldName, newName string) string {
 }
 
 // saveEdits writes all pending dirty cells to the database using parameterized
-// UPDATE queries. Each dirty cell generates one UPDATE statement.
+// UPDATE queries, wrapped in a single transaction so the batch is atomic.
 func (m *Model) saveEdits() tea.Cmd {
 	if !m.results.HasDirtyCells() || m.connection == nil {
 		return nil
@@ -257,6 +257,10 @@ func (m *Model) saveEdits() tea.Cmd {
 
 	return func() tea.Msg {
 		driver := conn.Config().Driver
+		tx, err := conn.DB().Begin()
+		if err != nil {
+			return saveResultMsg{saved: 0, err: err}
+		}
 		saved := 0
 		for _, p := range pending {
 			// Build: UPDATE <table> SET <col> = ? WHERE <pk1> = ? AND <pk2> = ?
@@ -288,11 +292,14 @@ func (m *Model) saveEdits() tea.Cmd {
 				args = append(args, v)
 			}
 
-			_, err := conn.DB().Exec(b.String(), args...)
-			if err != nil {
-				return saveResultMsg{saved: saved, err: err}
+			if _, err := tx.Exec(b.String(), args...); err != nil {
+				_ = tx.Rollback()
+				return saveResultMsg{saved: 0, err: err}
 			}
 			saved++
+		}
+		if err := tx.Commit(); err != nil {
+			return saveResultMsg{saved: 0, err: err}
 		}
 		return saveResultMsg{saved: saved}
 	}
@@ -339,8 +346,8 @@ func (m *Model) saveInsert() tea.Cmd {
 
 // cloneRows duplicates marked rows (or the cursor row) by building and
 // executing INSERT statements. Auto-increment PK values are stripped so
-// the database assigns new IDs. Each clone runs as a separate INSERT;
-// if one fails, the error is returned immediately.
+// the database assigns new IDs. All clones run in a single transaction;
+// if any fails, all changes are rolled back.
 func (m *Model) cloneRows() tea.Cmd {
 	if !m.results.IsEditable() || m.results.NumRows() == 0 || m.connection == nil {
 		return nil
@@ -368,13 +375,20 @@ func (m *Model) cloneRows() tea.Cmd {
 	}
 
 	return func() tea.Msg {
+		tx, err := conn.DB().Begin()
+		if err != nil {
+			return cloneResultMsg{table: table, err: err}
+		}
 		cloned := 0
 		for _, p := range batch {
-			_, err := conn.DB().Exec(p.query, p.args...)
-			if err != nil {
-				return cloneResultMsg{table: table, count: cloned, err: err}
+			if _, err := tx.Exec(p.query, p.args...); err != nil {
+				_ = tx.Rollback()
+				return cloneResultMsg{table: table, count: 0, err: err}
 			}
 			cloned++
+		}
+		if err := tx.Commit(); err != nil {
+			return cloneResultMsg{table: table, count: 0, err: err}
 		}
 		return cloneResultMsg{table: table, count: cloned}
 	}

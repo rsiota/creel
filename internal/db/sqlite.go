@@ -213,3 +213,5 @@ func (s *SQLite) Exec(query string, args ...interface{}) (ExecResult, error) {
 func (s *SQLite) Session() (SessionRunner, error) {
 	return &sqlDBSession{db: s.db}, nil
 }
+
+func (s *SQLite) Begin() (Tx, error) { return beginTx(s.db) }

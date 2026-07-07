@@ -78,6 +78,20 @@ type DB interface {
 	// are per-connection and would otherwise be lost across a connection pool.
 	// The caller must Close the returned runner when done.
 	Session() (SessionRunner, error)
+	// Begin starts a transaction. Statements run on the returned Tx are atomic;
+	// Commit or Rollback must be called exactly once to finish it.
+	Begin() (Tx, error)
+}
+
+// Tx runs statements within a single database transaction. Commit or
+// Rollback must be called exactly once to finish it.
+type Tx interface {
+	// Exec runs a statement that doesn't return rows (INSERT, UPDATE, DELETE).
+	Exec(query string, args ...interface{}) (ExecResult, error)
+	// Commit makes the transaction's changes permanent.
+	Commit() error
+	// Rollback discards the transaction's changes.
+	Rollback() error
 }
 
 // SessionRunner executes statements on a single underlying connection and is
@@ -132,6 +146,35 @@ func (s *sqlDBSession) Exec(query string, args ...interface{}) (ExecResult, erro
 }
 
 func (s *sqlDBSession) Close() error { return nil }
+
+// sqlTx adapts a *sql.Tx to the Tx interface. All three drivers share this
+// since they wrap a *sql.DB underneath.
+type sqlTx struct{ tx *sql.Tx }
+
+func (t *sqlTx) Exec(query string, args ...interface{}) (ExecResult, error) {
+	res, err := t.tx.Exec(query, args...)
+	if err != nil {
+		return ExecResult{}, fmt.Errorf("exec error: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return ExecResult{}, err
+	}
+	return ExecResult{RowsAffected: affected}, nil
+}
+
+func (t *sqlTx) Commit() error   { return t.tx.Commit() }
+func (t *sqlTx) Rollback() error { return t.tx.Rollback() }
+
+// beginTx starts a transaction on the given pool and adapts it to the Tx
+// interface. Shared by all drivers since they wrap a *sql.DB.
+func beginTx(database *sql.DB) (Tx, error) {
+	tx, err := database.BeginTx(context.Background(), nil)
+	if err != nil {
+		return nil, err
+	}
+	return &sqlTx{tx: tx}, nil
+}
 
 // Column describes a single column in a table or result set.
 type Column struct {

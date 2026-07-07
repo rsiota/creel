@@ -69,6 +69,7 @@ internal/ui/              — All Bubble Tea UI components
   registry.go             — Single source of truth for keybinding help (Binding/Section types)
   palette.go              — Fuzzy command palette overlay (Ctrl+P); searches registry, replays keys
   keymsg.go               — synthesizeKeyMsg: maps dispatch token strings → tea.KeyMsg for replay
+  fuzzy.go                — fuzzyMatch scorer + generic fuzzyRank[T] filter/sort helper
   history_panel.go        — Query history overlay panel
   bookmark_panel.go       — Saved-query overlay panel (per-connection JSON)
   explain_panel.go        — EXPLAIN query plan overlay (driver-aware: tree/table/text)
@@ -85,13 +86,14 @@ internal/db/schema.go     — DDL builders + validation (add column, create/rena
 ```
 
 ## Key Design Decisions
-- **DB interface** in `internal/db/db.go` — all drivers implement this, making it trivial to add Postgres etc. later
+- **DB interface** in `internal/db/db.go` — all drivers implement this, making it trivial to add Postgres etc. later. Includes `Begin() (Tx, error)` for transactional batch writes (inline edits & row clones are atomic).
 - **Elm-style state machine** in app.go: `stateConnections` → `stateWorkspace`, with `Focus` cycling between panels
 - **Pure Go SQLite** (`modernc.org/sqlite`) — no CGO, simpler cross-compilation
 - **lipgloss v1.1.0** — colors must use `lipgloss.Color()` not raw strings
 - **Bubbles v1.0.0** — list delegate `Render` signature is `Render(w io.Writer, m Model, index int, item Item)`
 - **Keybinding registry** (`internal/ui/registry.go`) is the single source of truth for the help overlay AND the command palette: each `Binding` carries a `Display` string + `Tokens` (the dispatch tokens) + `Desc`. `help.go` only renders it. The `TestKeybindingsMatchDispatch` test parses the dispatch (`case` literals + `key.WithKeys` args) via `go/parser` and asserts every documented token is implemented, preventing help/dispatch drift.
 - **Command palette** (`internal/ui/palette.go`, Ctrl+P) fuzzy-searches the registry and replays single-key bindings via synthetic `tea.KeyMsg` (see `keymsg.go`), avoiding action closures or a dispatch refactor. Multi-action bundles and double-press chords are discoverable but not auto-executable.
+- **Fuzzy ranking helper** (`internal/ui/fuzzy.go`) — `fuzzyRank[T]` is the generic filter+sort used by all fuzzy lists (sidebar, history, bookmarks, palette, pickers, completion). `fuzzyMatch` (the core subsequence scorer) also lives here. Callers handle the empty-query case themselves; the helper requires a non-empty query.
 
 ## Vertical Slices Progress
 - [x] Slice 1: Project scaffold + DB abstraction + CLI mode
