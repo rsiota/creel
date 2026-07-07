@@ -32,19 +32,56 @@ internal/config/          — Config loading/saving (YAML)
 internal/history/         — Query history (per-connection JSON, searchable)
 internal/ui/              — All Bubble Tea UI components
   app.go                  — Top-level Model (state machine)
+  layout.go               — Workspace layout + panel sizing
+  statusbar.go            — Bottom status bar (conn/db/table, counts, hints, messages)
   styles.go               — Shared color palette + lipgloss styles
+  hints.go                — Context-sensitive keybinding hint line for the status bar
   connection_list.go      — Connection selection screen
   connection_form.go      — Add/edit connection form
+  connection_ops.go       — Connection switch / open / clone actions
+  database_picker.go      — Database switcher overlay (create/drop/browse, MySQL)
   query_editor.go         — SQL editor with vim mode (bubbles/textarea)
+  editor_render.go        — Highlighted, soft-wrapped editor viewport rendering
+  editor_wrap.go          — Word-wrap engine mirroring bubbles/textarea for cursor alignment
+  sql_highlight.go        — SQL tokenizer + syntax coloring (keywords/strings/numbers/comments)
+  sql_formatter.go        — SQL pretty-printer (keyword caps + clause line breaks, `==`)
+  completion.go           — Fuzzy autocomplete popup (keywords/tables/columns, `ctrl+n`)
   results_table.go        — Query results table (custom renderer)
+  stats.go                — Column stats (count/distinct/min/max/sum/avg) + async total row count
+  filtering.go            — Filter/sort stack, column visibility, backend LIKE search
+  filter_picker.go        — DISTINCT-value multi-select filter overlay (`g f`)
+  inspector.go            — Record inspector (right-side vertical form editor)
+  cell_edit_popup.go      — Modal multiline cell editor (JSON pretty-print + highlight)
+  editing.go              — Edit staging, insert/clone/delete/inline-edit, FK nav, table-name rewrite
+  insert.go               — Parameterized INSERT builder (`A`)
+  delete_rows.go          — DELETE builder for marked/cursor rows (`dd`)
+  truncate.go             — TRUNCATE / DELETE-FROM builder (`T`)
+  fk_query.go             — Foreign-key follow query builder (`g d` / `g b`)
+  cross_search_panel.go   — Cross-table search overlay (every table/column, `S`)
+  cross_search_ops.go     — Async batched cross-table search execution
+  schema_editor.go        — Inline column grid editor (rename/type/null/default, `d`)
+  schema_ops.go           — Async DDL execution + post-edit state syncing
+  schema_guard.go         — Pre-validates column drop/rename/modify (PK/auto-inc guards)
+  table_designer.go       — Full-screen new-table grid editor (`N`)
+  add_column_form.go      — Add-column modal form (`a`)
+  table_rename_form.go    — Rename-table modal form (`r`)
   help.go                 — Help overlay panel (toggled with `?`); renders from `registry()`
   registry.go             — Single source of truth for keybinding help (Binding/Section types)
   palette.go              — Fuzzy command palette overlay (Ctrl+P); searches registry, replays keys
   keymsg.go               — synthesizeKeyMsg: maps dispatch token strings → tea.KeyMsg for replay
   history_panel.go        — Query history overlay panel
+  bookmark_panel.go       — Saved-query overlay panel (per-connection JSON)
   explain_panel.go        — EXPLAIN query plan overlay (driver-aware: tree/table/text)
-  connection_form_test.go — Tests for form validation
-  table_scroll_test.go    — Tests for sidebar table/schema scrolling
+  export_import.go        — Export/import entry points + CSV export (`x`)
+  export_picker.go        — Table-picker overlay for DB export (`X`)
+  import_prompt.go        — File-path prompt overlay for SQL import (`I`)
+  column_picker.go        — Column visibility overlay (`v`)
+  mouse.go                — Mouse routing (clicks, scroll, click-outside-to-dismiss)
+  json_format.go          — JSON pretty-print/compact/highlight for cell values
+  *_test.go               — Tests (forms, editing, filtering, completion, schema, etc.)
+internal/bookmarks/       — Persisted per-connection saved-query store (JSON)
+internal/db/statements.go — Top-level statement splitter (run statement under cursor)
+internal/db/schema.go     — DDL builders + validation (add column, create/rename table)
 ```
 
 ## Key Design Decisions
@@ -73,6 +110,26 @@ internal/ui/              — All Bubble Tea UI components
 - [x] DB export (pure-Go SQL dumper with table picker overlay `X`; mysqldump-compatible header/footer)
 - [x] DB import (`I` in sidebar; streaming SQL parser in `internal/db/import.go`, collects failures without stopping)
 - [x] PostgreSQL support (pgx/v5; `g e` EXPLAIN query plan view with driver-aware rendering)
+- [x] Statement splitting — run only the statement under the cursor (`ctrl+e` / `\`); top-level semicolon splitter ignores quotes/comments
+- [x] SQL syntax highlighting + formatter — tokenizer colors keywords/strings/numbers/comments; `==` pretty-prints with keyword caps + clause line breaks
+- [x] SQL autocompletion — fuzzy popup of keywords/tables/columns while typing (`ctrl+n`)
+- [x] Inline cell editing — `e` edits a cell, `E` opens a modal multiline editor (auto pretty-prints + highlights JSON), `ctrl+s` stages, `D` discards; edits batched in `dirtyCells`
+- [x] Insert / clone / delete rows — `A` inserts a new row (parameterized, validates NOT NULL), `P` clones marked/cursor row, `dd` deletes marked or cursor row (composite-PK aware)
+- [x] Truncate table — `T` builds `TRUNCATE TABLE` (MySQL) / `DELETE FROM` (SQLite)
+- [x] Row marking + visual mode — `space` toggles a mark, `V` selects a range, `F` filters to marked rows, `C` clears marks
+- [x] Row filtering — `g f` opens a DISTINCT-value multi-select picker; `*` keeps / `!` hides rows matching the cursor cell; `u` undoes last filter, `c` clears all; `/` searches all columns, `g /` regex search, `n`/`N` next/prev match
+- [x] Foreign-key navigation — `g d` follows a FK to its referenced row, `g b` returns
+- [x] Cross-table search — `S` async-searches a term across every table/column (batched, capped at 200 hits)
+- [x] Schema editor — `d` opens an inline grid editor for column rename/type/null/default; each change commits its own DDL; `dd` drops a column (guarded against PK/auto-increment)
+- [x] Table designer — `N` full-screen grid editor to define and create a new table
+- [x] Add column / rename table — `a` modal add-column form, `r` rename-table form
+- [x] Column statistics — `g s` computes count/distinct/min/max/sum/avg for the cursor column (server-side for `SELECT *`, client-side fallback)
+- [x] Column sort + jump — `o` cycles sort on a column, `:` jumps to a column by name
+- [x] Database picker — `ctrl+b` browse/switch/create/drop databases (MySQL) with fuzzy filter
+- [x] Bookmarks — `ctrl+g` opens a per-connection saved-query panel, `B` bookmarks the current query; load/delete/clear inside the panel
+- [x] Copy / export from results — `yy` copies a cell, `x` exports the result set to CSV, `Y` copies rows as INSERT statements
+- [x] Mouse support — click tables/headers/cells, scroll lists and results, click-outside to dismiss overlays
+- [x] Context-sensitive status-bar hints — compact keybinding hint line adapts to the active panel/modal
 
 ## Config Format (~/.config/gsql/config.yaml)
 ```yaml
