@@ -3262,7 +3262,7 @@ func (m Model) viewWorkspace() string {
 	editorHeight := 12
 
 	if m.editorMaximized {
-		editorHeight = m.height - statusHeight - tabBarHeight - borderOverhead - 8
+		editorHeight = m.height - statusHeight - tabBarHeight - borderOverhead - 12
 		if editorHeight < 8 {
 			editorHeight = 8
 		}

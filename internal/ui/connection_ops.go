@@ -59,8 +59,6 @@ func (m *Model) connectToDB() tea.Cmd {
 		}
 		m.dbPicker.Show(dbs, true)
 		m.layoutWorkspace()
-		m.sidebarFiltering = true
-		m.sidebarFilter = ""
 		return nil
 	}
 
@@ -68,8 +66,6 @@ func (m *Model) connectToDB() tea.Cmd {
 	m.loadTables()
 	m.layoutWorkspace()
 	m.applyFocus()
-	m.sidebarFiltering = true
-	m.sidebarFilter = ""
 
 	return tea.Batch(cmd, m.prefetchSchemas(), m.fetchTableRowCounts())
 }
@@ -103,8 +99,6 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	m.results.SetSearchMatcher(nil)
 	m.queryStack = nil
 	m.sidebarCursor = 0
-	m.sidebarFiltering = true
-	m.sidebarFilter = ""
 
 	cmd := m.editor.Focus()
 	m.loadTables()

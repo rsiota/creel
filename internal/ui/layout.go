@@ -114,7 +114,7 @@ func (m *Model) layoutWorkspace() {
 
 	if m.editorMaximized {
 		// Editor takes most of the vertical space, results gets a sliver.
-		editorHeight = m.height - statusHeight - tabBarHeight - borderOverhead - 8
+		editorHeight = m.height - statusHeight - tabBarHeight - borderOverhead - 12
 		if editorHeight < 8 {
 			editorHeight = 8
 		}

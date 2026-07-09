@@ -100,7 +100,7 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	sidebarWidth := 30
 	editorHeight := 12
 	if m.editorMaximized {
-		editorHeight = m.height - 1 - 2 - 8
+		editorHeight = m.height - 1 - 2 - 12
 		if editorHeight < 8 {
 			editorHeight = 8
 		}
