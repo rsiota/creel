@@ -98,7 +98,7 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	sidebarWidth := 30
-	editorHeight := 8
+	editorHeight := 12
 	if m.editorMaximized {
 		editorHeight = m.height - 1 - 2 - 8
 		if editorHeight < 8 {
@@ -106,10 +106,10 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// ── Tab bar ───────────────────────────────────────────────
-	// Tab bar sits at Y=0 of the right panel (X ≥ sidebarWidth).
-	if msg.Type == tea.MouseLeft && msg.Y == 0 && msg.X >= sidebarWidth {
-		relX := msg.X - sidebarWidth
+	// ── Tab bar (inside editor panel) ─────────────────────────
+	// Tab text sits at Y=1 (below the editor's top border). X ≥ sidebarWidth.
+	if msg.Type == tea.MouseLeft && msg.Y == 1 && msg.X >= sidebarWidth {
+		relX := msg.X - sidebarWidth - 1 // -1 for editor's left border
 		result := m.tabBar.ClickAt(relX)
 		if result >= 0 {
 			m.setActiveTab(result)

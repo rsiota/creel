@@ -237,7 +237,7 @@ func (m Model) statusBar(connName string) string {
 }
 
 func (m Model) borderForFocus(f Focus) lipgloss.Color {
-	if m.focus == f {
+	if m.focus == f || (f == FocusEditor && m.focus == FocusTabBar) {
 		return colorPrimary
 	}
 	return colorBorderUnfocused

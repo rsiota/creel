@@ -22,8 +22,8 @@ import (
 type Focus int
 
 const (
-	FocusTabBar Focus = iota
-	FocusConnections
+	FocusConnections Focus = iota
+	FocusTabBar
 	FocusEditor
 	FocusResults
 	FocusInspector
@@ -3257,9 +3257,9 @@ func (m Model) viewWorkspace() string {
 	sidebarWidth := 30
 	inspectorWidth := InspectorWidth
 	statusHeight := 1
-	tabBarHeight := 1
+	tabBarHeight := 0 // tabs are inside the editor panel
 	borderOverhead := 2
-	editorHeight := 8
+	editorHeight := 12
 
 	if m.editorMaximized {
 		editorHeight = m.height - statusHeight - tabBarHeight - borderOverhead - 8
@@ -3278,7 +3278,7 @@ func (m Model) viewWorkspace() string {
 		rightWidth -= inspectorWidth
 	}
 
-	// Build the content area below the tab bar.
+	// Build the content area (tabs are inside the editor panel).
 	var contentPanel string
 	if m.tableDesigner.IsVisible() {
 		designerHeight := editorHeight + resultsHeight
@@ -3304,7 +3304,12 @@ func (m Model) viewWorkspace() string {
 			Height(editorHeight - borderOverhead).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(m.borderForFocus(FocusEditor)).
-			Render(m.editor.View())
+			Render(lipgloss.JoinVertical(lipgloss.Left,
+				m.tabBar.View(),
+				lipgloss.NewStyle().Foreground(colorBorder).
+					Render(strings.Repeat("─", rightWidth)),
+				m.editor.View(),
+			))
 
 		var resultsPanel string
 		if m.queryRunning && !m.backendSearching {
@@ -3371,10 +3376,7 @@ func (m Model) viewWorkspace() string {
 		)
 	}
 
-	rightPanel := lipgloss.JoinVertical(lipgloss.Left,
-		m.tabBar.View(),
-		contentPanel,
-	)
+	rightPanel := contentPanel
 
 	// Build inspector panel if visible.
 	var inspectorPanel string

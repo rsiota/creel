@@ -85,7 +85,7 @@ func (e QueryEditor) highlightedView() string {
 			plain := dl.segment
 			plainWidth := uniseg.StringWidth(plain)
 
-			if dl.hasCursor {
+			if dl.hasCursor && e.Focused() {
 				segRunes := []rune(plain)
 				absCol := dl.cursorCol
 				if absCol > len(segRunes) {
@@ -137,7 +137,7 @@ func (e QueryEditor) highlightedPlaceholderView(style *textarea.Style) string {
 		prompt := inheritStyle(style.Base, style.Prompt).Render(e.textarea.Prompt)
 		s.WriteString(lineStyle.Render(prompt))
 
-		if i == 0 {
+		if i == 0 && e.Focused() {
 			cursorStyle := lipgloss.NewStyle()
 			if e.vimMode == VimInsert {
 				cursorStyle = cursorStyle.Underline(true).Foreground(colorFg)

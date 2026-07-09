@@ -21,7 +21,7 @@ type TabBar struct {
 // NewTabBar creates a new tab bar component.
 func NewTabBar() TabBar {
 	return TabBar{
-		height: 1, // Single row for tab bar
+		height: 1, // tab text only (rendered inside editor panel)
 	}
 }
 
@@ -124,7 +124,7 @@ func (t TabBar) ClickAt(relX int) int {
 	return -2
 }
 
-// View renders the tab bar.
+// View renders the tab bar as a single line of tab labels.
 func (t TabBar) View() string {
 	if len(t.tabs) == 0 {
 		return ""
@@ -149,14 +149,24 @@ func (t TabBar) View() string {
 				style = activeTabStyle
 			}
 		} else {
-			style = inactiveTabStyle
+			if t.focused {
+				style = inactiveTabStyleFocused
+			} else {
+				style = inactiveTabStyle
+			}
 		}
 
 		tabs = append(tabs, style.Render(label))
 	}
 
 	// '+' button to create a new tab.
-	tabs = append(tabs, inactiveTabStyle.Render("+"))
+	plusStyle := inactiveTabStyle
+	if t.focused {
+		plusStyle = inactiveTabStyleFocused
+	}
+	tabs = append(tabs, plusStyle.Render("+"))
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+	tabLine := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+
+	return tabLine
 }

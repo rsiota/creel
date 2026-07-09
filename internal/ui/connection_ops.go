@@ -67,6 +67,7 @@ func (m *Model) connectToDB() tea.Cmd {
 	cmd := m.editor.Focus()
 	m.loadTables()
 	m.layoutWorkspace()
+	m.applyFocus()
 	m.sidebarFiltering = true
 	m.sidebarFilter = ""
 

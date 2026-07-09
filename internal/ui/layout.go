@@ -3,11 +3,11 @@ package ui
 func (m Model) cycleFocus() Model {
 	m.focus++
 	if m.focus > FocusInspector {
-		m.focus = FocusTabBar
+		m.focus = FocusConnections
 	}
 	// Skip invisible panels
 	if m.focus == FocusInspector && !m.inspector.IsVisible() {
-		m.focus = FocusTabBar
+		m.focus = FocusConnections
 	}
 	m.applyFocus()
 	return m
@@ -15,7 +15,7 @@ func (m Model) cycleFocus() Model {
 
 func (m Model) cycleFocusBack() Model {
 	m.focus--
-	if m.focus < FocusTabBar {
+	if m.focus < FocusConnections {
 		m.focus = FocusInspector
 	}
 	// Skip invisible panels
@@ -26,7 +26,7 @@ func (m Model) cycleFocusBack() Model {
 	return m
 }
 
-func (m Model) applyFocus() Model {
+func (m *Model) applyFocus() {
 	m.editor.Blur()
 	m.tabBar.Blur()
 	switch m.focus {
@@ -35,31 +35,30 @@ func (m Model) applyFocus() Model {
 	case FocusTabBar:
 		m.tabBar.Focus()
 	}
-	return m
 }
 
 // moveFocus navigates between panels using vim-style directions.
 func (m Model) moveFocus(direction string) Model {
 	switch m.focus {
-	case FocusTabBar:
-		switch direction {
-		case "ctrl+l", "ctrl+j":
-			m.focus = FocusEditor
-		case "ctrl+h":
-			m.focus = FocusConnections
-		}
 	case FocusConnections:
 		if direction == "ctrl+l" {
+			m.focus = FocusTabBar
+		}
+	case FocusTabBar:
+		switch direction {
+		case "ctrl+h":
+			m.focus = FocusConnections
+		case "ctrl+j":
 			m.focus = FocusEditor
 		}
 	case FocusEditor:
 		switch direction {
 		case "ctrl+h":
 			m.focus = FocusConnections
-		case "ctrl+j":
-			m.focus = FocusResults
 		case "ctrl+k":
 			m.focus = FocusTabBar
+		case "ctrl+j":
+			m.focus = FocusResults
 		case "ctrl+l":
 			if m.inspector.IsVisible() {
 				m.focus = FocusInspector
@@ -109,9 +108,9 @@ func (m *Model) layoutWorkspace() {
 	sidebarWidth := 30
 	inspectorWidth := InspectorWidth
 	statusHeight := 1
-	tabBarHeight := 1
+	tabBarHeight := 0 // tabs are inside the editor panel
 	borderOverhead := 2
-	editorHeight := 8
+	editorHeight := 12
 
 	if m.editorMaximized {
 		// Editor takes most of the vertical space, results gets a sliver.
@@ -133,13 +132,13 @@ func (m *Model) layoutWorkspace() {
 		resultsHeight = 3
 	}
 
-	// Sidebar and inspector span the same height as editor + results + tab bar combined.
+	// Sidebar and inspector span the same height as editor + results combined.
 	sideContentHeight := m.height - statusHeight - borderOverhead
 	if sideContentHeight < 3 {
 		sideContentHeight = 3
 	}
 
-	editorContentHeight := editorHeight - borderOverhead
+	editorContentHeight := editorHeight - borderOverhead - 2 // -2 for tab line + separator inside editor
 	if editorContentHeight < 1 {
 		editorContentHeight = 1
 	}
@@ -147,7 +146,7 @@ func (m *Model) layoutWorkspace() {
 	m.connList.SetSize(sidebarWidth-borderOverhead, sideContentHeight)
 	m.editor.SetSize(rightWidth, editorContentHeight)
 
-	m.tabBar.SetSize(rightWidth, tabBarHeight)
+	m.tabBar.SetSize(rightWidth, 1)
 
 	m.results.SetSize(rightWidth+borderOverhead, resultsHeight+borderOverhead)
 
