@@ -106,6 +106,20 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// ── Tab bar ───────────────────────────────────────────────
+	// Tab bar sits at Y=0 of the right panel (X ≥ sidebarWidth).
+	if msg.Type == tea.MouseLeft && msg.Y == 0 && msg.X >= sidebarWidth {
+		relX := msg.X - sidebarWidth
+		result := m.tabBar.ClickAt(relX)
+		if result >= 0 {
+			m.setActiveTab(result)
+		} else if result == -1 {
+			query := m.editor.Value()
+			m.addTab(generateTabTitle(query), query)
+		}
+		return m, nil
+	}
+
 	// ── Sidebar ────────────────────────────────────────────────
 	if msg.X < sidebarWidth-1 && msg.Y < m.height-2 {
 		switch msg.Type {

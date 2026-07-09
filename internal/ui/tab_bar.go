@@ -7,7 +7,7 @@ import (
 )
 
 // tabWidth is the fixed rendered width of every tab (content + padding).
-const tabWidth = 5
+const tabWidth = 7
 
 // TabBar displays and manages tab navigation.
 type TabBar struct {
@@ -108,6 +108,22 @@ func (t TabBar) ActiveTabID() int {
 	return t.activeID
 }
 
+// ClickTab returns the tab ID at the given relative X coordinate within the
+// tab bar, or -1 if the '+' button was clicked, or -2 if no tab was hit.
+func (t TabBar) ClickAt(relX int) int {
+	if len(t.tabs) == 0 || relX < 0 {
+		return -2
+	}
+	idx := relX / tabWidth
+	if idx < len(t.tabs) {
+		return t.tabs[idx].ID
+	}
+	if idx == len(t.tabs) {
+		return -1 // '+' button
+	}
+	return -2
+}
+
 // View renders the tab bar.
 func (t TabBar) View() string {
 	if len(t.tabs) == 0 {
@@ -139,6 +155,8 @@ func (t TabBar) View() string {
 		tabs = append(tabs, style.Render(label))
 	}
 
-	// Join tabs with spacing
+	// '+' button to create a new tab.
+	tabs = append(tabs, inactiveTabStyle.Render("+"))
+
 	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 }
