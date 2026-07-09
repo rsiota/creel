@@ -45,7 +45,7 @@ func registry() []Section {
 				{"ctrl+e / \\", []string{"ctrl+e", "\\"}, "run statement under cursor", ""},
 				{"ctrl+r", []string{"ctrl+r"}, "refresh schema & re-run query", ""},
 				{"esc / ctrl+c", []string{"esc", "ctrl+c"}, "cancel running query", ""},
-			{"ctrl+w", []string{"ctrl+w"}, "maximize / restore editor", "ctrl+w"},
+			{"ctrl+w", []string{"ctrl+w"}, "maximize / restore editor", ""},
 				{"ctrl+t", []string{"ctrl+t"}, "switch connection", ""},
 				{"ctrl+b", []string{"ctrl+b"}, "browse databases (MySQL)", ""},
 				{"ctrl+y", []string{"ctrl+y"}, "query history", ""},
@@ -58,6 +58,16 @@ func registry() []Section {
 				{"ctrl+p", []string{"ctrl+p"}, "command palette", ""},
 				{"?", []string{"?"}, "toggle this help", ""},
 				{"q / ctrl+q / ctrl+c", []string{"q", "ctrl+q", "ctrl+c"}, "quit (not while editing)", ""},
+			},
+		},
+		{
+			Title:  "Tabs",
+			Source: "app.go",
+			Items: []Binding{
+				{"g t / g T", []string{"g", "t", "T"}, "next / previous tab", ""},
+				{"t", []string{"t"}, "new tab", ""},
+				{"g x", []string{"g", "x"}, "close tab", ""},
+				{"g 1-9", []string{"g", "1", "2", "3", "4", "5", "6", "7", "8", "9"}, "go to tab 1-9", ""},
 			},
 		},
 		{

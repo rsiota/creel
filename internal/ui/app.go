@@ -22,7 +22,8 @@ import (
 type Focus int
 
 const (
-	FocusConnections Focus = iota
+	FocusTabBar Focus = iota
+	FocusConnections
 	FocusEditor
 	FocusResults
 	FocusInspector
@@ -236,8 +237,14 @@ type Model struct {
 	connList        ConnectionList
 	connForm        ConnectionForm
 	editor          QueryEditor
-	results         ResultsTable
+	results         ResultsTable // active tab's results (synced on tab switch)
 	inspector       Inspector
+
+	// Tab management
+	resultsTabs  []*ResultsTab // All result tabs
+	activeTabID  int           // Currently active tab ID
+	nextTabID    int           // Counter for generating unique tab IDs
+	tabBar       TabBar        // Tab navigation component
 	history         HistoryPanel
 	bookmarks       BookmarkPanel
 	crossSearch     CrossSearchPanel
@@ -384,12 +391,15 @@ const defaultPageSize = 200
 
 // NewModel creates a new top-level application model.
 func NewModel(cfg *config.Config) Model {
+	// Create initial tab
+	firstTab := NewResultsTab(0, "New Query")
+
 	m := Model{
 		state:           stateConnections,
 		focus:           FocusConnections,
 		config:          cfg,
 		editor:          NewQueryEditor(),
-		results:         NewResultsTable(),
+		results:         firstTab.Results,
 		inspector:       NewInspector(),
 		connList:        NewConnectionList(),
 		history:         NewHistoryPanel(),
@@ -409,7 +419,13 @@ func NewModel(cfg *config.Config) Model {
 		bookmarkStore:   bookmarks.NewStore(historyDir()),
 		expanded:        make(map[string][]db.Column),
 		pageSize:        defaultPageSize,
+		// Tab management
+		resultsTabs:  []*ResultsTab{firstTab},
+		activeTabID:  0,
+		nextTabID:     1,
+		tabBar:       NewTabBar(),
 	}
+	m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
 	m.loadConnections()
 	if len(m.config.Connections) > 0 {
 		m.connList.StartFilter()
@@ -441,6 +457,178 @@ func (m *Model) loadConnections() {
 		})
 	}
 	m.connList.SetItems(entries)
+}
+
+// Tab management helper methods
+
+// activeTab returns the currently active tab, or nil if no tabs exist.
+func (m *Model) activeTab() *ResultsTab {
+	for _, tab := range m.resultsTabs {
+		if tab.ID == m.activeTabID {
+			return tab
+		}
+	}
+	return nil
+}
+
+// setActiveTab saves the current tab state, switches to the given tab, and
+// restores its state into the Model.
+func (m *Model) setActiveTab(id int) {
+	m.saveTabState()
+	m.cancelTransientModes()
+	for _, tab := range m.resultsTabs {
+		if tab.ID == id {
+			m.activeTabID = id
+			m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
+			m.restoreTabState()
+			m.inspector.Reset()
+			m.layoutWorkspace()
+			return
+		}
+	}
+}
+
+// addTab saves the current tab state, creates a new tab, and makes it active.
+func (m *Model) addTab(title string, query string) {
+	m.saveTabState()
+	m.cancelTransientModes()
+	tab := NewResultsTab(m.nextTabID, title)
+	m.nextTabID++
+	if query != "" {
+		tab.SetQuery(query)
+		tab.EditorQuery = query
+	}
+	m.resultsTabs = append(m.resultsTabs, tab)
+	m.activeTabID = tab.ID
+	m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
+	m.restoreTabState()
+}
+
+// closeTab removes a tab by ID. If the active tab is closed, state is
+// restored from the adjacent tab.
+func (m *Model) closeTab(id int) {
+	if len(m.resultsTabs) <= 1 {
+		return
+	}
+
+	closingActive := id == m.activeTabID
+	var newTabs []*ResultsTab
+	switchToID := -1
+	for i, tab := range m.resultsTabs {
+		if tab.ID != id {
+			newTabs = append(newTabs, tab)
+		} else if closingActive {
+			if i > 0 {
+				switchToID = m.resultsTabs[i-1].ID
+			} else {
+				switchToID = m.resultsTabs[i+1].ID
+			}
+		}
+	}
+
+	m.resultsTabs = newTabs
+	if closingActive && switchToID >= 0 {
+		m.activeTabID = switchToID
+		m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
+		m.cancelTransientModes()
+		m.restoreTabState()
+		m.inspector.Reset()
+		m.layoutWorkspace()
+	} else {
+		m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
+	}
+}
+
+// generateTabTitle creates a concise title from a query.
+func generateTabTitle(query string) string {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return "New Query"
+	}
+
+	// Extract table name from simple queries
+	lower := strings.ToLower(query)
+	if strings.Contains(lower, "from") {
+		parts := strings.Split(lower, "from")
+		if len(parts) > 1 {
+			tableName := strings.TrimSpace(strings.Split(parts[1], " ")[0])
+			// Remove schema prefix if present
+			if idx := strings.LastIndex(tableName, "."); idx >= 0 {
+				tableName = tableName[idx+1:]
+			}
+			return tableName
+		}
+	}
+
+	// Truncate long queries
+	if len(query) > 20 {
+		return query[:17] + "…"
+	}
+	return query
+}
+
+// clearPendingG resets all pending-G flags across panels.
+func (m *Model) clearPendingG() {
+	m.resultsPendingG = false
+	m.sidebarPendingG = false
+	m.inspector.pendingG = false
+}
+
+// handleTabKey processes tab-related keybindings that work from any focused
+// panel (except the editor in insert mode). Returns true if the key was
+// consumed.
+//
+// g t / g T — next / previous tab
+// g x       — close tab
+// g 1-9     — go to tab N
+// t         — new tab (sidebar, results, tab bar only)
+func (m *Model) handleTabKey(msg tea.KeyMsg) bool {
+	if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() ||
+		m.searching || m.columnJumping || m.backendSearching ||
+		m.sidebarFiltering || m.inspector.IsFiltering() ||
+		(m.focus == FocusEditor && m.editor.VimMode() == VimInsert) {
+		return false
+	}
+
+	s := msg.String()
+	anyPendingG := m.resultsPendingG || m.sidebarPendingG || m.inspector.pendingG
+
+	if anyPendingG {
+		switch s {
+		case "t":
+			m.clearPendingG()
+			if nextID := m.tabBar.NextTab(); nextID >= 0 {
+				m.setActiveTab(nextID)
+			}
+			return true
+		case "T":
+			m.clearPendingG()
+			if prevID := m.tabBar.PrevTab(); prevID >= 0 {
+				m.setActiveTab(prevID)
+			}
+			return true
+		case "x":
+			m.clearPendingG()
+			m.closeTab(m.activeTabID)
+			return true
+		case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+			m.clearPendingG()
+			n := int(s[0] - '0')
+			if tabID := m.tabBar.GotoTab(n); tabID >= 0 {
+				m.setActiveTab(tabID)
+			}
+			return true
+		}
+	}
+
+	if s == "t" && !anyPendingG &&
+		(m.focus == FocusConnections || m.focus == FocusResults || m.focus == FocusTabBar) {
+		query := m.editor.Value()
+		m.addTab(generateTabTitle(query), query)
+		return true
+	}
+
+	return false
 }
 
 // Init initializes the application.
@@ -1633,6 +1821,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	// Tab navigation keys work from any panel (except editor insert mode).
+	if m.handleTabKey(msg) {
+		return m, nil
+	}
+
 	// Global workspace keys
 	switch msg.String() {
 	case "?":
@@ -1802,6 +1995,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.results.Clear()
 		m.results.ClearEditable()
 		m.results.SetSearchMatcher(nil)
+		m.resultsTabs = []*ResultsTab{NewResultsTab(0, "New Query")}
+		m.activeTabID = 0
+		m.nextTabID = 1
+		m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
 		m.inspector.Hide()
 		m.dbPicker.Hide()
 		m.columnPicker.Hide()
@@ -2056,6 +2253,24 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Dispatch to focused panel
 	switch m.focus {
+	case FocusTabBar:
+		switch msg.String() {
+		case "h", "left":
+			if prevID := m.tabBar.PrevTab(); prevID >= 0 {
+				m.setActiveTab(prevID)
+			}
+			return m, nil
+		case "l", "right":
+			if nextID := m.tabBar.NextTab(); nextID >= 0 {
+				m.setActiveTab(nextID)
+			}
+			return m, nil
+		case "j", "down", "enter":
+			m.focus = FocusEditor
+			m.applyFocus()
+			return m, nil
+		}
+		return m, nil
 	case FocusEditor:
 		// Handle ctrl+arrow for result scrolling while in editor
 		switch msg.String() {
@@ -3042,17 +3257,18 @@ func (m Model) viewWorkspace() string {
 	sidebarWidth := 30
 	inspectorWidth := InspectorWidth
 	statusHeight := 1
+	tabBarHeight := 1
 	borderOverhead := 2
 	editorHeight := 8
 
 	if m.editorMaximized {
-		editorHeight = m.height - statusHeight - borderOverhead - 8
+		editorHeight = m.height - statusHeight - tabBarHeight - borderOverhead - 8
 		if editorHeight < 8 {
 			editorHeight = 8
 		}
 	}
 
-	resultsHeight := m.height - editorHeight - statusHeight - borderOverhead
+	resultsHeight := m.height - tabBarHeight - editorHeight - statusHeight - borderOverhead
 	if resultsHeight < 3 {
 		resultsHeight = 3
 	}
@@ -3062,13 +3278,12 @@ func (m Model) viewWorkspace() string {
 		rightWidth -= inspectorWidth
 	}
 
-	// Build right column. When the table designer or schema editor is active,
-	// it takes over the full editor+results space as a single inline grid.
-	var rightPanel string
+	// Build the content area below the tab bar.
+	var contentPanel string
 	if m.tableDesigner.IsVisible() {
 		designerHeight := editorHeight + resultsHeight
 		m.tableDesigner.SetSize(rightWidth-borderOverhead, designerHeight-borderOverhead)
-		rightPanel = lipgloss.NewStyle().
+		contentPanel = lipgloss.NewStyle().
 			Width(rightWidth).
 			Height(designerHeight).
 			Border(lipgloss.RoundedBorder()).
@@ -3077,7 +3292,7 @@ func (m Model) viewWorkspace() string {
 	} else if m.schemaEditor.IsVisible() {
 		editorH := editorHeight + resultsHeight
 		m.schemaEditor.SetSize(rightWidth-borderOverhead, editorH-borderOverhead)
-		rightPanel = lipgloss.NewStyle().
+		contentPanel = lipgloss.NewStyle().
 			Width(rightWidth).
 			Height(editorH).
 			Border(lipgloss.RoundedBorder()).
@@ -3150,11 +3365,16 @@ func (m Model) viewWorkspace() string {
 			}())
 		}
 
-		rightPanel = lipgloss.JoinVertical(lipgloss.Left,
+		contentPanel = lipgloss.JoinVertical(lipgloss.Left,
 			editorPanel,
 			resultsPanel,
 		)
 	}
+
+	rightPanel := lipgloss.JoinVertical(lipgloss.Left,
+		m.tabBar.View(),
+		contentPanel,
+	)
 
 	// Build inspector panel if visible.
 	var inspectorPanel string

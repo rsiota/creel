@@ -79,6 +79,8 @@ internal/ui/              — All Bubble Tea UI components
   column_picker.go        — Column visibility overlay (`v`)
   mouse.go                — Mouse routing (clicks, scroll, click-outside-to-dismiss)
   json_format.go          — JSON pretty-print/compact/highlight for cell values
+  tabs.go                 — ResultsTab struct (per-tab state) + save/restore helpers
+  tab_bar.go              — TabBar component (navigation, rendering)
   *_test.go               — Tests (forms, editing, filtering, completion, schema, etc.)
 internal/bookmarks/       — Persisted per-connection saved-query store (JSON)
 internal/db/statements.go — Top-level statement splitter (run statement under cursor)
@@ -94,6 +96,7 @@ internal/db/schema.go     — DDL builders + validation (add column, create/rena
 - **Keybinding registry** (`internal/ui/registry.go`) is the single source of truth for the help overlay AND the command palette: each `Binding` carries a `Display` string + `Tokens` (the dispatch tokens) + `Desc`. `help.go` only renders it. The `TestKeybindingsMatchDispatch` test parses the dispatch (`case` literals + `key.WithKeys` args) via `go/parser` and asserts every documented token is implemented, preventing help/dispatch drift.
 - **Command palette** (`internal/ui/palette.go`, Ctrl+P) fuzzy-searches the registry and replays single-key bindings via synthetic `tea.KeyMsg` (see `keymsg.go`), avoiding action closures or a dispatch refactor. Multi-action bundles and double-press chords are discoverable but not auto-executable.
 - **Fuzzy ranking helper** (`internal/ui/fuzzy.go`) — `fuzzyRank[T]` is the generic filter+sort used by all fuzzy lists (sidebar, history, bookmarks, palette, pickers, completion). `fuzzyMatch` (the core subsequence scorer) also lives here. Callers handle the empty-query case themselves; the helper requires a non-empty query.
+- **Result tabs** (`internal/ui/tabs.go`, `tab_bar.go`) — `ResultsTab` holds per-tab state (ResultsTable, pagination, filters, sort, query stack, editor content). `m.results` on Model is always the active tab's ResultsTable (value copy). On tab switch, `saveTabState()` copies Model→tab and `restoreTabState()` copies tab→Model. Transient input modes (search, column-jump, backend search) are cancelled on switch. `SetResult` creates fresh maps so value copies don't share mutable state. Tab keybindings use `g`-prefix (`g t`, `g T`, `g x`, `g 1`-`g 9`) handled by `handleTabKey` before focus-based dispatch; `t` alone creates a new tab (sidebar/results/tab-bar focus only).
 
 ## Vertical Slices Progress
 - [x] Slice 1: Project scaffold + DB abstraction + CLI mode
@@ -132,6 +135,7 @@ internal/db/schema.go     — DDL builders + validation (add column, create/rena
 - [x] Copy / export from results — `yy` copies a cell, `x` exports the result set to CSV, `Y` copies rows as INSERT statements
 - [x] Mouse support — click tables/headers/cells, scroll lists and results, click-outside to dismiss overlays
 - [x] Context-sensitive status-bar hints — compact keybinding hint line adapts to the active panel/modal
+- [x] Result tabs — `t` new tab, `g t`/`g T` next/prev, `g x` close, `g 1`-`g 9` goto; per-tab query, results, cursor, filters, sort, marks, editor content; state synced on tab switch
 
 ## Config Format (~/.config/gsql/config.yaml)
 ```yaml

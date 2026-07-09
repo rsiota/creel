@@ -263,3 +263,29 @@ func renderSQLConfirmDialog(prompt, sql string) string {
 			),
 		)
 }
+
+// Tab bar styles — fixed width so every tab occupies the same space.
+// Inactive tabs carry no background tint; their text uses the same grey
+// (colorLabel) as the database name on the status bar.
+var (
+	activeTabStyle = lipgloss.NewStyle().
+		Foreground(colorBg).
+		Background(colorPrimary).
+		Padding(0, 1).
+		Width(tabWidth).
+		Align(lipgloss.Center)
+
+	activeTabStyleFocused = lipgloss.NewStyle().
+		Foreground(colorBg).
+		Background(colorPrimary).
+		Padding(0, 1).
+		Width(tabWidth).
+		Align(lipgloss.Center).
+		Bold(true)
+
+	inactiveTabStyle = lipgloss.NewStyle().
+		Foreground(colorLabel).
+		Padding(0, 1).
+		Width(tabWidth).
+		Align(lipgloss.Center)
+)

@@ -70,6 +70,8 @@ func (m Model) hintList() []string {
 			return hintsForSection("Sidebar (Tables)")
 		case m.focus == FocusInspector:
 			return hintsForSection("Inspector")
+		case m.focus == FocusTabBar:
+			return []string{"h/l", "t", "enter"}
 		}
 	}
 	return nil
