@@ -134,7 +134,7 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			if len(items) == 0 {
 				return m, nil
 			}
-			idx := m.sidebarScroll + msg.Y - 1 // -1 for top border
+			idx := m.sidebarScrollOffset() + msg.Y - 1 // -1 for top border
 			if idx < 0 || idx >= len(items) {
 				return m, nil
 			}
@@ -184,8 +184,9 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Left-click on a data row → move cursor to that cell.
-	dataRow := msg.Y - headerY - 1 // -1 for separator line
+	// Left-click on a data row → move cursor to that cell. Data starts two
+	// rows below the header: the header itself, then the header separator.
+	dataRow := msg.Y - headerY - 2
 	if dataRow >= 0 {
 		rowIdx := m.results.ScrollRow() + dataRow
 		colIdx := m.results.ColumnAtX(msg.X - sidebarWidth)

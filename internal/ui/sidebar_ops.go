@@ -230,6 +230,50 @@ func (m Model) scrollSidebar(delta int) Model {
 	return m
 }
 
+// sidebarMaxVisible returns the number of sidebar item lines the current
+// terminal can show. It mirrors the renderer's derivation: the sidebar content
+// area is the workspace height (m.height minus the status bar) minus the
+// sidebar's top/bottom borders, with one line reserved for the scroll-info
+// footer. (rightPanel height always equals m.height-1, so this matches the
+// renderer's lipgloss.Height(rightPanel)-borderOverhead exactly.)
+func (m Model) sidebarMaxVisible() int {
+	const statusHeight, borderOverhead, footer = 1, 2, 1
+	content := m.height - statusHeight - borderOverhead
+	if content < 3 {
+		content = 3
+	}
+	v := content - footer
+	if v < 1 {
+		v = 1
+	}
+	return v
+}
+
+// sidebarScrollOffset returns the index of the first visible sidebar item using
+// the same cursor-centered windowing as the renderer. Both the renderer and the
+// mouse handler call this so a click always maps to the item that was actually
+// drawn. The offset is recomputed rather than read from the cached sidebarScroll
+// field because that field is assigned inside the value-receiver View, where the
+// write is discarded and never reaches the model the mouse handler sees.
+func (m Model) sidebarScrollOffset() int {
+	items := m.sidebarItems()
+	maxVisible := m.sidebarMaxVisible()
+	half := maxVisible / 2
+	start := m.sidebarCursor - half
+	if start < 0 {
+		start = 0
+	}
+	end := start + maxVisible
+	if end > len(items) {
+		end = len(items)
+		start = end - maxVisible
+		if start < 0 {
+			start = 0
+		}
+	}
+	return start
+}
+
 // currentSidebarItem returns the item under the cursor.
 func (m Model) currentSidebarItem() *sidebarItem {
 	items := m.sidebarItems()
