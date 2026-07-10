@@ -20,6 +20,7 @@ func main() {
 		userFlag     string
 		passFlag     string
 		cliMode      bool
+		readOnlyFlag bool
 	)
 
 	flag.StringVar(&queryFlag, "e", "", "Execute SQL query and exit (CLI mode)")
@@ -30,11 +31,12 @@ func main() {
 	flag.StringVar(&userFlag, "user", "root", "Database username (MySQL only)")
 	flag.StringVar(&passFlag, "password", "", "Database password (MySQL only)")
 	flag.BoolVar(&cliMode, "cli", false, "Run in CLI mode (non-interactive)")
+	flag.BoolVar(&readOnlyFlag, "readonly", false, "Force read-only mode for all connections (reject writes)")
 	flag.Parse()
 
 	// CLI mode: execute query and print results
 	if queryFlag != "" || cliMode {
-		if err := runCLI(queryFlag, driverFlag, databaseFlag, hostFlag, portFlag, userFlag, passFlag); err != nil {
+		if err := runCLI(queryFlag, driverFlag, databaseFlag, hostFlag, portFlag, userFlag, passFlag, readOnlyFlag); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
@@ -48,13 +50,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := ui.Run(cfg); err != nil {
+	if err := ui.Run(cfg, readOnlyFlag); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func runCLI(query, driver, database, host string, port int, user, pass string) error {
+func runCLI(query, driver, database, host string, port int, user, pass string, readOnly bool) error {
 	if database == "" {
 		return fmt.Errorf("database is required (use -database flag)")
 	}
@@ -69,6 +71,7 @@ func runCLI(query, driver, database, host string, port int, user, pass string) e
 		Port:     port,
 		Username: user,
 		Password: pass,
+		ReadOnly: readOnly,
 	}
 
 	conn, err := db.New(connCfg)

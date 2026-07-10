@@ -76,6 +76,10 @@ func (p *Postgres) connConfig() (*pgx.ConnConfig, error) {
 		parts = append(parts, "dbname="+quoteDSNValue(p.config.Database))
 	}
 	parts = append(parts, "sslmode=disable")
+	if p.config.ReadOnly {
+		// Sent in the startup packet so every pooled connection is read-only.
+		parts = append(parts, "default_transaction_read_only=on")
+	}
 
 	dsn := strings.Join(parts, " ")
 	config, err := pgx.ParseConfig(dsn)
@@ -343,10 +347,16 @@ func (p *Postgres) Execute(query string) (Result, error) {
 }
 
 func (p *Postgres) ExecuteContext(ctx context.Context, query string) (Result, error) {
+	if err := rejectWriteIfReadOnly(p.config, query); err != nil {
+		return Result{}, err
+	}
 	return executeRows(ctx, p.db, query)
 }
 
 func (p *Postgres) Exec(query string, args ...interface{}) (ExecResult, error) {
+	if err := rejectWriteIfReadOnly(p.config, query); err != nil {
+		return ExecResult{}, err
+	}
 	res, err := p.db.Exec(query, args...)
 	if err != nil {
 		return ExecResult{}, fmt.Errorf("exec error: %w", err)
@@ -362,6 +372,9 @@ func (p *Postgres) Exec(query string, args ...interface{}) (ExecResult, error) {
 // session-scoped settings (SET search_path, SET constraint_exclusion, ...)
 // set by a dump persist across statements.
 func (p *Postgres) Session() (SessionRunner, error) {
+	if p.config.ReadOnly {
+		return nil, ErrReadOnly
+	}
 	conn, err := p.db.Conn(context.Background())
 	if err != nil {
 		return nil, err
@@ -369,7 +382,12 @@ func (p *Postgres) Session() (SessionRunner, error) {
 	return &sqlConnSession{conn: conn}, nil
 }
 
-func (p *Postgres) Begin() (Tx, error) { return beginTx(p.db) }
+func (p *Postgres) Begin() (Tx, error) {
+	if p.config.ReadOnly {
+		return nil, ErrReadOnly
+	}
+	return beginTx(p.db)
+}
 
 // Indexes returns the secondary indexes on a table from pg_index. The primary
 // key (indisprimary) is excluded. Columns and the partial-index predicate are

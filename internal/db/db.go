@@ -3,7 +3,9 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -25,6 +27,12 @@ type ConnectionConfig struct {
 	Port     int    `yaml:"port,omitempty" json:"port,omitempty"`
 	Username string `yaml:"username,omitempty" json:"username,omitempty"`
 	Password string `yaml:"password,omitempty" json:"password,omitempty"`
+
+	// ReadOnly disables all writes on this connection: Exec/Execute reject
+	// write statements, Begin/Session are refused, and the driver opens the
+	// connection read-only at the engine level where supported (SQLite
+	// query_only, Postgres default_transaction_read_only).
+	ReadOnly bool `yaml:"readonly,omitempty" json:"readonly,omitempty"`
 
 	// SSH tunnel (optional)
 	SSHHost       string `yaml:"ssh_host,omitempty" json:"ssh_host,omitempty"`
@@ -362,4 +370,94 @@ func executeRows(ctx context.Context, database *sql.DB, query string) (Result, e
 		Message: fmt.Sprintf("%d %s in %s", len(resultRows), noun, elapsed.Round(time.Millisecond)),
 		Elapsed: elapsed.String(),
 	}, nil
+}
+
+// ErrReadOnly is returned when a write is attempted against a connection
+// configured read-only.
+var ErrReadOnly = errors.New("read-only mode: writes are disabled")
+
+// rejectWriteIfReadOnly returns ErrReadOnly when cfg is read-only and q is a
+// write statement. Read statements (SELECT, SHOW, EXPLAIN, ...) pass through.
+func rejectWriteIfReadOnly(cfg ConnectionConfig, q string) error {
+	if cfg.ReadOnly && isWriteQuery(q) {
+		return ErrReadOnly
+	}
+	return nil
+}
+
+// isWriteQuery reports whether q modifies data or schema. It inspects the
+// leading keyword(s) of the statement, skipping SQL comments, whitespace, and
+// parentheses. WITH ... (CTE) statements are classified by scanning for a
+// modifying body keyword (INSERT/UPDATE/DELETE/MERGE) after the definitions.
+func isWriteQuery(q string) bool {
+	s := strings.ToUpper(stripLeadingNoise(q))
+	if strings.HasPrefix(s, "WITH") {
+		for _, kw := range []string{"INSERT", "UPDATE", "DELETE", "MERGE"} {
+			if containsWord(s, kw) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, kw := range writePrefixes {
+		if strings.HasPrefix(s, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// stripLeadingNoise trims leading whitespace, SQL comments (-- and /* */),
+// and opening parentheses so the statement's first keyword is exposed.
+func stripLeadingNoise(q string) string {
+	s := q
+	for {
+		s = strings.TrimLeft(s, " \t\r\n(")
+		switch {
+		case strings.HasPrefix(s, "/*"):
+			if i := strings.Index(s, "*/"); i >= 0 {
+				s = s[i+2:]
+				continue
+			}
+			return ""
+		case strings.HasPrefix(s, "--"):
+			if i := strings.IndexByte(s, '\n'); i >= 0 {
+				s = s[i+1:]
+				continue
+			}
+			return ""
+		}
+		return s
+	}
+}
+
+// writePrefixes are the leading keywords that mark a statement as a write.
+var writePrefixes = []string{
+	"INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER", "TRUNCATE",
+	"GRANT", "REVOKE", "REPLACE", "MERGE", "ATTACH", "DETACH",
+	"PRAGMA", "VACUUM", "REINDEX", "CALL", "LOAD",
+}
+
+// containsWord reports whether word appears in s bounded by non-word bytes
+// (so "UPDATE" does not match inside "UPDATED").
+func containsWord(s, word string) bool {
+	for off := 0; ; {
+		i := strings.Index(s[off:], word)
+		if i < 0 {
+			return false
+		}
+		start := off + i
+		end := start + len(word)
+		before := start == 0 || !isWordByte(s[start-1])
+		after := end == len(s) || !isWordByte(s[end])
+		if before && after {
+			return true
+		}
+		off = end
+	}
+}
+
+func isWordByte(b byte) bool {
+	return (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') ||
+		(b >= '0' && b <= '9') || b == '_'
 }

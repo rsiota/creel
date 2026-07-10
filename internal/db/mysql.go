@@ -267,10 +267,16 @@ func (m *MySQL) Execute(query string) (Result, error) {
 }
 
 func (m *MySQL) ExecuteContext(ctx context.Context, query string) (Result, error) {
+	if err := rejectWriteIfReadOnly(m.config, query); err != nil {
+		return Result{}, err
+	}
 	return executeRows(ctx, m.db, query)
 }
 
 func (m *MySQL) Exec(query string, args ...interface{}) (ExecResult, error) {
+	if err := rejectWriteIfReadOnly(m.config, query); err != nil {
+		return ExecResult{}, err
+	}
 	res, err := m.db.Exec(query, args...)
 	if err != nil {
 		return ExecResult{}, fmt.Errorf("exec error: %w", err)
@@ -286,6 +292,9 @@ func (m *MySQL) Exec(query string, args ...interface{}) (ExecResult, error) {
 // session-scoped settings (FOREIGN_KEY_CHECKS, SQL_MODE, ...) set by a dump
 // persist across statements instead of being lost across the connection pool.
 func (m *MySQL) Session() (SessionRunner, error) {
+	if m.config.ReadOnly {
+		return nil, ErrReadOnly
+	}
 	conn, err := m.db.Conn(context.Background())
 	if err != nil {
 		return nil, err
@@ -293,7 +302,12 @@ func (m *MySQL) Session() (SessionRunner, error) {
 	return &sqlConnSession{conn: conn}, nil
 }
 
-func (m *MySQL) Begin() (Tx, error) { return beginTx(m.db) }
+func (m *MySQL) Begin() (Tx, error) {
+	if m.config.ReadOnly {
+		return nil, ErrReadOnly
+	}
+	return beginTx(m.db)
+}
 
 // Indexes returns the secondary indexes on a table from information_schema.
 // The PRIMARY index is excluded (shown in its own section). Multi-column

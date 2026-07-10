@@ -204,3 +204,43 @@ func TestNewConnectionFormEditSetsSecretsMode(t *testing.T) {
 		t.Errorf("plaintext password not pre-filled: %q", f.fields[fieldPass].Value())
 	}
 }
+
+func TestConnectionFormReadOnlyRoundTrip(t *testing.T) {
+	// Default form is read-only off.
+	f := NewConnectionForm()
+	f.fields[fieldName].SetValue("prod")
+	f.fields[fieldDriver].SetValue("sqlite")
+	f.fields[fieldDatabase].SetValue("/tmp/x.db")
+	cfg, errMsg := f.EnterPressed()
+	if errMsg != "" {
+		t.Fatalf("unexpected error: %s", errMsg)
+	}
+	if cfg.ReadOnly {
+		t.Error("default ReadOnly should be false")
+	}
+
+	// Toggle on and round-trip through the edit form.
+	f.fields[fieldReadOnly].SetValue("yes")
+	cfg, _ = f.EnterPressed()
+	if !cfg.ReadOnly {
+		t.Error("ReadOnly should be true after setting 'yes'")
+	}
+
+	f2 := NewConnectionFormEdit(cfg)
+	if f2.fields[fieldReadOnly].Value() != "yes" {
+		t.Errorf("edit form did not preserve read-only: %q", f2.fields[fieldReadOnly].Value())
+	}
+	cfg2, _ := f2.EnterPressed()
+	if !cfg2.ReadOnly {
+		t.Error("read-only lost on edit round-trip")
+	}
+
+	// Truthy synonyms all enable it.
+	for _, v := range []string{"true", "y", "1", "RO", "read-only"} {
+		f.fields[fieldReadOnly].SetValue(v)
+		c, _ := f.EnterPressed()
+		if !c.ReadOnly {
+			t.Errorf("%q should enable read-only", v)
+		}
+	}
+}

@@ -24,6 +24,9 @@ type ConnectionConfig struct {
 	Username string `yaml:"username,omitempty"`
 	Password string `yaml:"password,omitempty"`
 
+	// ReadOnly disables writes on this connection (see db.ConnectionConfig).
+	ReadOnly bool `yaml:"readonly,omitempty"`
+
 	// SSH tunnel (optional)
 	SSHHost       string `yaml:"ssh_host,omitempty"`
 	SSHPort       int    `yaml:"ssh_port,omitempty"`

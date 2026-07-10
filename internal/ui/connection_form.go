@@ -26,7 +26,8 @@ const (
 	fieldSSHUser
 	fieldSSHKeyPath
 	fieldSSHPassword
-	fieldSecrets // keychain vs plaintext storage for secret fields
+	fieldSecrets  // keychain vs plaintext storage for secret fields
+	fieldReadOnly // yes/no toggle
 	fieldCount
 )
 
@@ -85,6 +86,7 @@ func NewConnectionFormEdit(cfg config.ConnectionConfig) ConnectionForm {
 	// resolved (e.g. keychain locked), leave the reference in place so a save
 	// without changes preserves it as-is.
 	f.fields[fieldSecrets].SetValue(secretsModeFromConfig(cfg))
+	f.fields[fieldReadOnly].SetValue(boolField(cfg.ReadOnly))
 	f.setDriverField(cfg.Driver)
 	return f
 }
@@ -128,9 +130,11 @@ func newForm(mode formMode, name string) ConnectionForm {
 	fields[fieldSSHKeyPath] = newTextInput("SSH key path (~/.ssh/id_rsa)", "", false)
 	fields[fieldSSHPassword] = newTextInput("SSH password (optional)", "", true)
 	fields[fieldSecrets] = newTextInput("Secret storage (keychain/plain)", "", false)
+	fields[fieldReadOnly] = newTextInput("Read-only (yes/no)", "", false)
 
 	fields[fieldName].SetValue(name)
 	fields[fieldSecrets].SetValue("keychain")
+	fields[fieldReadOnly].SetValue("no")
 	fields[fieldName].Focus()
 
 	return ConnectionForm{
@@ -191,6 +195,7 @@ func (f ConnectionForm) View() string {
 	labels := []string{
 		"Name", "Driver", "Database", "Host", "Port", "Username", "Password",
 		"SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass", "Secrets",
+		"Read-only",
 	}
 
 	for i, label := range labels {
@@ -291,6 +296,7 @@ func (f *ConnectionForm) EnterPressed() (config.ConnectionConfig, string) {
 		Port:     port,
 		Username: f.fields[fieldUser].Value(),
 		Password: f.fields[fieldPass].Value(),
+		ReadOnly: parseBoolField(f.fields[fieldReadOnly].Value()),
 
 		SSHHost:     f.fields[fieldSSHHost].Value(),
 		SSHPort:     sshPort,
@@ -319,4 +325,22 @@ func (f ConnectionForm) secretsMode() string {
 // SetError sets an error message.
 func (f *ConnectionForm) SetError(msg string) {
 	f.errMsg = msg
+}
+
+// boolField renders a bool as the form's toggle vocabulary ("yes"/"no").
+func boolField(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}
+
+// parseBoolField interprets the read-only toggle. "yes", "true", "y", "1",
+// and "ro" enable it; anything else is off.
+func parseBoolField(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "yes", "true", "y", "1", "ro", "readonly", "read-only":
+		return true
+	}
+	return false
 }

@@ -27,7 +27,17 @@ func (s *SQLite) Connect() error {
 	}
 	db.SetMaxOpenConns(1)
 	s.db = db
-	return db.Ping()
+	if err := db.Ping(); err != nil {
+		return err
+	}
+	// query_only makes SQLite reject writes at the engine level. With
+	// MaxOpenConns(1) a single PRAGMA covers the whole connection.
+	if s.config.ReadOnly {
+		if _, err := db.Exec("PRAGMA query_only = ON"); err != nil {
+			return fmt.Errorf("failed to enable read-only: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *SQLite) Close() error {
@@ -190,10 +200,16 @@ func (s *SQLite) Execute(query string) (Result, error) {
 }
 
 func (s *SQLite) ExecuteContext(ctx context.Context, query string) (Result, error) {
+	if err := rejectWriteIfReadOnly(s.config, query); err != nil {
+		return Result{}, err
+	}
 	return executeRows(ctx, s.db, query)
 }
 
 func (s *SQLite) Exec(query string, args ...interface{}) (ExecResult, error) {
+	if err := rejectWriteIfReadOnly(s.config, query); err != nil {
+		return ExecResult{}, err
+	}
 	res, err := s.db.Exec(query, args...)
 	if err != nil {
 		return ExecResult{}, fmt.Errorf("exec error: %w", err)
@@ -211,10 +227,18 @@ func (s *SQLite) Exec(query string, args ...interface{}) (ExecResult, error) {
 // would starve the single-connection pool and deadlock concurrent UI queries
 // during a long import).
 func (s *SQLite) Session() (SessionRunner, error) {
+	if s.config.ReadOnly {
+		return nil, ErrReadOnly
+	}
 	return &sqlDBSession{db: s.db}, nil
 }
 
-func (s *SQLite) Begin() (Tx, error) { return beginTx(s.db) }
+func (s *SQLite) Begin() (Tx, error) {
+	if s.config.ReadOnly {
+		return nil, ErrReadOnly
+	}
+	return beginTx(s.db)
+}
 
 // Indexes returns the indexes created on a table via PRAGMA index_list /
 // index_info. The primary-key auto-index (origin 'pk') is excluded since the

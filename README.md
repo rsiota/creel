@@ -17,6 +17,7 @@ Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `gsql`
 - **EXPLAIN plans** — driver-aware rendering (`g e`) of query plans
 - **Schema editing** — add columns, rename tables, create/drop/truncate tables, and a grid-based table designer (`N`)
 - **Table structure view** (`d`) — a tabbed structure editor: columns (editable grid), foreign keys, indexes, and triggers in one view, plus a definition tab for views
+- **Read-only mode** — a per-connection `readonly: true` flag or a global `--readonly` CLI flag that rejects writes (INSERT/UPDATE/DELETE/DDL), blocks transactions and imports, and opens the connection read-only at the engine level (SQLite `query_only`, Postgres `default_transaction_read_only`); a `READ-ONLY` indicator shows in the status bar
 - **Import / export** — streaming SQL dump importer (`I`) and a pure-Go `mysqldump`-compatible exporter (`X`); CSV export (`x`) for result sets
 - **Cross-table search** (`S`) and **column statistics** (`g s`)
 - **Command palette** (`Ctrl+P`) and a full **help overlay** (`?`)
@@ -109,6 +110,27 @@ A `password:` value that is **not** a `secret://` reference is treated as
 plaintext and used directly, so existing configs keep working. Set the
 connection form's **Secrets** field to `plain` to opt out of the keychain for a
 specific connection.
+
+### Read-only mode
+
+Point gsql at production safely by marking a connection `readonly: true` (see
+the `prod-pg` example below) or launching with `gsql --readonly` to force every
+connection read-only. In either case writes are refused — `Exec`/`Execute`
+return an error for INSERT/UPDATE/DELETE/DDL, `Begin`/`Session` (imports) are
+blocked — and the connection is opened read-only at the engine level where the
+driver supports it. A `READ-ONLY` badge appears in the status bar.
+
+```yaml
+connections:
+  - name: prod-pg
+    driver: postgres
+    database: analytics
+    host: db.internal
+    port: 5432
+    username: readonly
+    password: secret://prod-pg/password
+    readonly: true
+```
 
 ## Keybindings
 

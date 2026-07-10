@@ -19,14 +19,24 @@ func popupDim() (w, h int) {
 }
 
 func (m Model) connectionInfo(name string) string {
-	if m.connection == nil {
-		return sbMuted.Render("not connected")
+	ro := ""
+	if m.isReadOnly() {
+		ro = " " + sbAccent.Render("READ-ONLY")
 	}
-	s := sbSuccess.Render("● " + name)
+	if m.connection == nil {
+		return sbMuted.Render("not connected") + ro
+	}
+	s := sbSuccess.Render("● "+name) + ro
 	if (m.connection.Config().Driver == db.DriverMySQL || m.connection.Config().Driver == db.DriverPostgres) && m.connection.Config().Database != "" {
 		s += sbMuted.Render(" / ") + sbLabel.Render(m.connection.Config().Database)
 	}
 	return s
+}
+
+// isReadOnly reports whether the active connection (or the global --readonly
+// flag) disables writes, for status-bar indication.
+func (m Model) isReadOnly() bool {
+	return m.forceReadOnly || (m.connection != nil && m.connection.Config().ReadOnly)
 }
 
 // currentTable returns the table the user is currently working with, if known.
@@ -273,8 +283,9 @@ func truncateSidebarLine(line string, maxVisible int) string {
 }
 
 // Run starts the application.
-func Run(cfg *config.Config) error {
+func Run(cfg *config.Config, forceReadOnly bool) error {
 	m := NewModel(cfg)
+	m.forceReadOnly = forceReadOnly
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("running application: %w", err)

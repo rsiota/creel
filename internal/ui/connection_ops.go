@@ -33,6 +33,8 @@ func (m *Model) connectToDB() tea.Cmd {
 		SSHPassword:   connCfg.SSHPassword,
 		SSHKeyPath:    connCfg.SSHKeyPath,
 		SSHPassphrase: connCfg.SSHPassphrase,
+
+		ReadOnly: connCfg.ReadOnly || m.forceReadOnly,
 	}
 
 	// Resolve any keychain references ("secret://...") into plaintext for the

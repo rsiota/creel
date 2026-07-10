@@ -327,6 +327,7 @@ type Model struct {
 
 	config            *config.Config
 	connection        *db.Connection
+	forceReadOnly     bool // --readonly CLI flag: forces every connection read-only
 	historyStore      *history.Store
 	historyNavEntries []string // cached queries for the current browse session
 	historyNavIdx     int      // -1 = not browsing; otherwise index into historyNavEntries (most recent = len-1)

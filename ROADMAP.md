@@ -20,13 +20,16 @@ a `T` (test) action that calls `db.New(cfg).Connect()` and reports the real
 error (auth, host unreachable, bad DB name).
 - Files: `internal/ui/connection_form.go`.
 
-### 3. Read-only / safe mode
-No `ReadOnly` field on `ConnectionConfig`. Add a per-connection `readonly: true`
-flag (and a global `--readonly` CLI flag) that:
-- Rejects writes (`Exec`) with a flash message, or
-- Connects read-only where the driver supports it.
-- Files: `internal/config/config.go`, `internal/db/db.go`,
-  `cmd/gsql/main.go`, status-bar indicator.
+### 3. Read-only / safe mode ✅ DONE (2026-07-10)
+Implemented as defense in depth: a `readonly: true` per-connection config flag
+(plus a global `--readonly` CLI flag) merges into the driver config at connect.
+A shared `isWriteQuery`/`rejectWriteIfReadOnly` guard in `internal/db/db.go`
+rejects writes in every driver's `Exec`/`ExecuteContext` with `ErrReadOnly`, and
+`Begin`/`Session` are refused outright (no transactional edits or imports). The
+engine is also opened read-only where supported — SQLite `PRAGMA query_only`,
+Postgres `default_transaction_read_only=on`; MySQL relies on the guard (no
+reliable pool-wide option). A `READ-ONLY` badge shows in the status bar, and the
+connection form gained a `Read-only (yes/no)` toggle.
 
 ### 4. Indexes, triggers, views, and constraints ✅ DONE (2026-07-10)
 Implemented `Indexes`, `Triggers`, `ViewDefinition` across sqlite/mysql/postgres
