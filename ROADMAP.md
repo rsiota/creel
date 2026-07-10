@@ -14,11 +14,17 @@ doc for details. Keyring library: `github.com/zalando/go-keyring`. Remaining
 follow-up: the connection form does not yet expose `ssh_passphrase` for editing
 (it is preserved across edits and resolved at connect).
 
-### 2. "Test Connection" action in the form
-`connection_form.go` validates fields but never opens the DB before saving. Add
-a `T` (test) action that calls `db.New(cfg).Connect()` and reports the real
-error (auth, host unreachable, bad DB name).
-- Files: `internal/ui/connection_form.go`.
+### 2. "Test Connection" action in the form ✅ DONE (2026-07-10)
+`ctrl+t` in the add/edit connection form validates the fields and opens the
+database in a background goroutine (without saving) to surface the real error
+— auth failure, unreachable host, bad database name. A `connTestResultMsg`
+reports `✓ Connected (<driver>)` on success or the driver error on failure,
+shown inline in the form. The form screen gained a status bar so the
+`enter`/`ctrl+t`/`esc` hints are visible. The `connectToDB` config mapping
+was extracted into a shared `connConfigToDB` helper used by both connect and
+test.
+- Files: `internal/ui/connection_form.go`, `internal/ui/connection_ops.go`,
+  `internal/ui/app.go`, `internal/ui/hints.go`.
 
 ### 3. Read-only / safe mode ✅ DONE (2026-07-10)
 Implemented as defense in depth: a `readonly: true` per-connection config flag

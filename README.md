@@ -157,6 +157,25 @@ Press `?` inside the TUI for the full overlay, or `Ctrl+P` for the fuzzy command
 | `?`             | Toggle help                     |
 | `q` / `ctrl+q`  | Quit (not while editing)        |
 
+### Connections
+
+| Key        | Action                          |
+| ---------- | ------------------------------- |
+| `enter`    | Connect to selected             |
+| `n`        | New connection                  |
+| `e`        | Edit connection                 |
+| `d`        | Delete connection               |
+| `/`        | Filter connections              |
+
+In the add/edit form:
+
+| Key        | Action                          |
+| ---------- | ------------------------------- |
+| `tab`      | Next field                      |
+| `enter`    | Save                            |
+| `ctrl+t`   | Test connection (no save)       |
+| `esc`      | Cancel                          |
+
 ### Sidebar (Tables)
 
 | Key        | Action                    |

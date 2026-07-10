@@ -57,6 +57,8 @@ func (m Model) hintList() []string {
 
 	default:
 		switch {
+		case m.state == stateAddConnection:
+			return []string{"tab", "enter", "ctrl+t", "esc"}
 		case m.state == stateConnections:
 			if m.connList.IsFiltering() {
 				return []string{"j/k", "enter", "esc"}

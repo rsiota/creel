@@ -55,6 +55,12 @@ type ConnectionForm struct {
 	width   int
 	height  int
 	editing string // name of connection being edited (for edit mode)
+
+	// Test-connection feedback. testing is true while a background test is in
+	// flight; testMsg/testOK hold the result once it completes.
+	testing bool
+	testMsg string
+	testOK  bool
 }
 
 // NewConnectionForm creates a new form for adding connections.
@@ -181,6 +187,12 @@ func (f ConnectionForm) Update(msg tea.Msg) (ConnectionForm, tea.Cmd) {
 			}
 			cmd = f.fields[f.active].Focus()
 			return f, cmd
+		default:
+			// Any field interaction clears a stale validation error or test
+			// result so the user is not misled by an outdated message.
+			f.errMsg = ""
+			f.testMsg = ""
+			f.testOK = false
 		}
 	}
 
@@ -218,6 +230,14 @@ func (f ConnectionForm) View() string {
 
 	if f.errMsg != "" {
 		b = append(b, errorStyle.Render(f.errMsg))
+	} else if f.testing {
+		b = append(b, mutedStyle.Render("Testing connection…"))
+	} else if f.testMsg != "" {
+		if f.testOK {
+			b = append(b, successStyle.Render(f.testMsg))
+		} else {
+			b = append(b, errorStyle.Render(f.testMsg))
+		}
 	}
 
 	b = append(b, "")
@@ -325,6 +345,21 @@ func (f ConnectionForm) secretsMode() string {
 // SetError sets an error message.
 func (f *ConnectionForm) SetError(msg string) {
 	f.errMsg = msg
+}
+
+// SetTesting marks the form as running a background connection test.
+func (f *ConnectionForm) SetTesting(b bool) {
+	f.testing = b
+}
+
+// SetTestResult records the outcome of a connection test, clearing any stale
+// validation error. A non-empty message with ok=true is shown as success;
+// otherwise it is shown as an error.
+func (f *ConnectionForm) SetTestResult(msg string, ok bool) {
+	f.testing = false
+	f.testMsg = msg
+	f.testOK = ok
+	f.errMsg = ""
 }
 
 // boolField renders a bool as the form's toggle vocabulary ("yes"/"no").

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/ruben/gsql/internal/config"
 	"github.com/ruben/gsql/internal/db"
 	"github.com/ruben/gsql/internal/secrets"
 )
@@ -11,31 +12,13 @@ import (
 // connectToDB establishes a connection to the selected database.
 func (m *Model) connectToDB() tea.Cmd {
 	name := m.connList.SelectedName()
-	driver := m.connList.SelectedDriver()
 	connCfg := m.config.GetConnection(name)
 	if connCfg == nil {
 		m.connError = fmt.Sprintf("connection '%s' not found", name)
 		return nil
 	}
 
-	dbCfg := db.ConnectionConfig{
-		Name:     connCfg.Name,
-		Driver:   db.Driver(driver),
-		Database: connCfg.Database,
-		Host:     connCfg.Host,
-		Port:     connCfg.Port,
-		Username: connCfg.Username,
-		Password: connCfg.Password,
-
-		SSHHost:       connCfg.SSHHost,
-		SSHPort:       connCfg.SSHPort,
-		SSHUser:       connCfg.SSHUser,
-		SSHPassword:   connCfg.SSHPassword,
-		SSHKeyPath:    connCfg.SSHKeyPath,
-		SSHPassphrase: connCfg.SSHPassphrase,
-
-		ReadOnly: connCfg.ReadOnly || m.forceReadOnly,
-	}
+	dbCfg := connConfigToDB(*connCfg, m.forceReadOnly)
 
 	// Resolve any keychain references ("secret://...") into plaintext for the
 	// DB driver. A plaintext value passes through unchanged.
@@ -80,6 +63,72 @@ func (m *Model) connectToDB() tea.Cmd {
 	m.applyFocus()
 
 	return tea.Batch(cmd, m.prefetchSchemas(), m.fetchTableRowCounts())
+}
+
+// connConfigToDB maps a stored connection config to the db package's
+// ConnectionConfig, merging the global force-read-only flag. Centralized so
+// connect and test-connection build identical driver configs.
+func connConfigToDB(cfg config.ConnectionConfig, forceReadOnly bool) db.ConnectionConfig {
+	return db.ConnectionConfig{
+		Name:     cfg.Name,
+		Driver:   db.Driver(cfg.Driver),
+		Database: cfg.Database,
+		Host:     cfg.Host,
+		Port:     cfg.Port,
+		Username: cfg.Username,
+		Password: cfg.Password,
+
+		SSHHost:       cfg.SSHHost,
+		SSHPort:       cfg.SSHPort,
+		SSHUser:       cfg.SSHUser,
+		SSHPassword:   cfg.SSHPassword,
+		SSHKeyPath:    cfg.SSHKeyPath,
+		SSHPassphrase: cfg.SSHPassphrase,
+
+		ReadOnly: cfg.ReadOnly || forceReadOnly,
+	}
+}
+
+// testConnection validates the form and, on success, opens the database in a
+// background goroutine to surface the real connection error (auth failure,
+// unreachable host, bad database name, …) without saving. The result arrives
+// as a connTestResultMsg.
+func (m *Model) testConnection() tea.Cmd {
+	connCfg, errMsg := m.connForm.EnterPressed()
+	if errMsg != "" {
+		m.connForm.SetError(errMsg)
+		return nil
+	}
+
+	// Preserve fields the form does not expose (ssh_passphrase) when editing,
+	// so the test exercises the saved config rather than a stripped copy.
+	if m.connForm.mode == formModeEdit {
+		if existing := m.config.GetConnection(m.connForm.editing); existing != nil {
+			connCfg.SSHPassphrase = existing.SSHPassphrase
+		}
+	}
+
+	dbCfg := connConfigToDB(connCfg, m.forceReadOnly)
+	resolved, err := resolveConnSecrets(dbCfg)
+	if err != nil {
+		m.connForm.SetError(err.Error())
+		return nil
+	}
+	dbCfg = resolved
+
+	m.connForm.SetTesting(true)
+	driver := dbCfg.Driver
+	return func() tea.Msg {
+		conn, err := db.New(dbCfg)
+		if err == nil {
+			if cerr := conn.Connect(); cerr != nil {
+				err = cerr
+			}
+			// The test connection is never kept; close it regardless of result.
+			conn.Close()
+		}
+		return connTestResultMsg{driver: driver, err: err}
+	}
 }
 
 // selectDatabase switches to the chosen database, reloads tables/schemas, and

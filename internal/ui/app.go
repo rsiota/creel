@@ -127,6 +127,13 @@ type structureLoadedMsg struct {
 	data  structureData
 }
 
+// connTestResultMsg carries the outcome of a connection test initiated from
+// the add/edit form. err is nil on success.
+type connTestResultMsg struct {
+	driver db.Driver
+	err    error
+}
+
 // crossSearchResultMsg carries partial results from one batch of tables.
 type crossSearchResultMsg struct {
 	results    []SearchResult
@@ -953,6 +960,19 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case connTestResultMsg:
+		// Only relevant while the form is open; a save (enter) leaves the
+		// form state, so a late result is dropped.
+		if m.state != stateAddConnection {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.connForm.SetTestResult(msg.err.Error(), false)
+		} else {
+			m.connForm.SetTestResult(fmt.Sprintf("✓ Connected (%s)", msg.driver), true)
+		}
+		return m, nil
+
 	case crossSearchStartMsg:
 		// Begin searching from the first table.
 		query := m.crossSearch.Query()
@@ -1248,6 +1268,13 @@ func (m Model) updateAddConnection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state = stateConnections
 		m.connError = ""
 		return m, nil
+	case "ctrl+t":
+		// Test the connection without saving. Disabled while a test is
+		// already in flight to avoid opening parallel connections.
+		if m.connForm.testing {
+			return m, nil
+		}
+		return m, m.testConnection()
 	case "enter":
 		connCfg, errMsg := m.connForm.EnterPressed()
 		if errMsg != "" {
@@ -3329,11 +3356,19 @@ func (m Model) viewAddConnection() string {
 		Padding(0, 1).
 		Render(m.connForm.View())
 
-	return lipgloss.Place(m.width, m.height,
+	// Center the popup in the area above the status bar, then append the
+	// status bar so the keybinding hints (enter / ctrl+t / esc) are visible.
+	placed := lipgloss.Place(m.width, m.height-1,
 		lipgloss.Center, lipgloss.Center,
 		formPanel,
-		lipgloss.WithWhitespaceChars(" "),
-	)
+		lipgloss.WithWhitespaceChars(" "))
+	statusBar := lipgloss.NewStyle().
+		Width(m.width).
+		Height(1).
+		Foreground(colorMuted).
+		Background(colorStatusBarBg).
+		Render(" " + m.statusBar(""))
+	return lipgloss.JoinVertical(lipgloss.Left, placed, statusBar)
 }
 
 func (m Model) viewWorkspace() string {
