@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ruben/gsql/internal/config"
+	"github.com/ruben/gsql/internal/secrets"
 )
 
 // FormField indices.
@@ -25,6 +26,7 @@ const (
 	fieldSSHUser
 	fieldSSHKeyPath
 	fieldSSHPassword
+	fieldSecrets // keychain vs plaintext storage for secret fields
 	fieldCount
 )
 
@@ -69,16 +71,45 @@ func NewConnectionFormEdit(cfg config.ConnectionConfig) ConnectionForm {
 		f.fields[fieldPort].SetValue(strconv.Itoa(cfg.Port))
 	}
 	f.fields[fieldUser].SetValue(cfg.Username)
-	f.fields[fieldPass].SetValue(cfg.Password)
+	f.fields[fieldPass].SetValue(resolveSecretOrKeep(cfg.Password))
 	f.fields[fieldSSHHost].SetValue(cfg.SSHHost)
 	if cfg.SSHPort > 0 {
 		f.fields[fieldSSHPort].SetValue(strconv.Itoa(cfg.SSHPort))
 	}
 	f.fields[fieldSSHUser].SetValue(cfg.SSHUser)
 	f.fields[fieldSSHKeyPath].SetValue(cfg.SSHKeyPath)
-	f.fields[fieldSSHPassword].SetValue(cfg.SSHPassword)
+	f.fields[fieldSSHPassword].SetValue(resolveSecretOrKeep(cfg.SSHPassword))
+
+	// Resolve any keychain references into plaintext so the masked fields show
+	// the real value (same UX as a plaintext config). If a reference cannot be
+	// resolved (e.g. keychain locked), leave the reference in place so a save
+	// without changes preserves it as-is.
+	f.fields[fieldSecrets].SetValue(secretsModeFromConfig(cfg))
 	f.setDriverField(cfg.Driver)
 	return f
+}
+
+// secretsModeFromConfig infers the secret-storage preference from an existing
+// config: "keychain" if any secret field is a reference, otherwise "plain" so
+// re-saving does not silently migrate a plaintext config.
+func secretsModeFromConfig(cfg config.ConnectionConfig) string {
+	if secrets.IsReference(cfg.Password) ||
+		secrets.IsReference(cfg.SSHPassword) ||
+		secrets.IsReference(cfg.SSHPassphrase) {
+		return "keychain"
+	}
+	return "plain"
+}
+
+// resolveSecretOrKeep returns the plaintext value for a possibly-referenced
+// secret. If resolution fails (e.g. the keychain is unavailable or locked) the
+// original reference is returned unchanged so it is not silently lost on save.
+func resolveSecretOrKeep(v string) string {
+	resolved, err := secrets.Resolve(v)
+	if err != nil {
+		return v
+	}
+	return resolved
 }
 
 func newForm(mode formMode, name string) ConnectionForm {
@@ -96,8 +127,10 @@ func newForm(mode formMode, name string) ConnectionForm {
 	fields[fieldSSHUser] = newTextInput("SSH user", "", false)
 	fields[fieldSSHKeyPath] = newTextInput("SSH key path (~/.ssh/id_rsa)", "", false)
 	fields[fieldSSHPassword] = newTextInput("SSH password (optional)", "", true)
+	fields[fieldSecrets] = newTextInput("Secret storage (keychain/plain)", "", false)
 
 	fields[fieldName].SetValue(name)
+	fields[fieldSecrets].SetValue("keychain")
 	fields[fieldName].Focus()
 
 	return ConnectionForm{
@@ -157,7 +190,7 @@ func (f ConnectionForm) View() string {
 
 	labels := []string{
 		"Name", "Driver", "Database", "Host", "Port", "Username", "Password",
-		"SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass",
+		"SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass", "Secrets",
 	}
 
 	for i, label := range labels {
@@ -270,6 +303,17 @@ func (f *ConnectionForm) EnterPressed() (config.ConnectionConfig, string) {
 // ClearError resets the error message.
 func (f *ConnectionForm) ClearError() {
 	f.errMsg = ""
+}
+
+// secretsMode returns the normalized secret-storage preference from the form:
+// "keychain" (the default when blank) or "plain". Any value not starting with
+// "key" is treated as plaintext so typos never silently enable the keychain.
+func (f ConnectionForm) secretsMode() string {
+	v := strings.ToLower(strings.TrimSpace(f.fields[fieldSecrets].Value()))
+	if v == "" || strings.HasPrefix(v, "key") {
+		return "keychain"
+	}
+	return "plain"
 }
 
 // SetError sets an error message.

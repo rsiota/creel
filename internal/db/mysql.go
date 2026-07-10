@@ -294,3 +294,97 @@ func (m *MySQL) Session() (SessionRunner, error) {
 }
 
 func (m *MySQL) Begin() (Tx, error) { return beginTx(m.db) }
+
+// Indexes returns the secondary indexes on a table from information_schema.
+// The PRIMARY index is excluded (shown in its own section). Multi-column
+// indexes collapse their columns into a single Index entry, ordered by
+// seq_in_index.
+func (m *MySQL) Indexes(table string) ([]Index, error) {
+	rows, err := m.db.Query(
+		`SELECT index_name, column_name, non_unique
+		 FROM information_schema.statistics
+		 WHERE table_schema = ? AND table_name = ?
+		 ORDER BY index_name, seq_in_index`,
+		m.config.Database, table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	order := []string{}
+	byName := map[string]*Index{}
+	for rows.Next() {
+		var indexName, column string
+		var nonUnique int
+		if err := rows.Scan(&indexName, &column, &nonUnique); err != nil {
+			return nil, err
+		}
+		if indexName == "PRIMARY" {
+			continue
+		}
+		idx, ok := byName[indexName]
+		if !ok {
+			idx = &Index{Name: indexName, Unique: nonUnique == 0}
+			byName[indexName] = idx
+			order = append(order, indexName)
+		}
+		idx.Columns = append(idx.Columns, column)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	idxs := make([]Index, len(order))
+	for i, name := range order {
+		idxs[i] = *byName[name]
+	}
+	return idxs, nil
+}
+
+// Triggers returns triggers from information_schema.triggers.
+func (m *MySQL) Triggers(table string) ([]Trigger, error) {
+	rows, err := m.db.Query(
+		`SELECT trigger_name, action_timing, event_manipulation, action_statement
+		 FROM information_schema.triggers
+		 WHERE trigger_schema = ? AND event_object_table = ?
+		 ORDER BY trigger_name`,
+		m.config.Database, table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var triggers []Trigger
+	for rows.Next() {
+		var name, timing, event, statement string
+		if err := rows.Scan(&name, &timing, &event, &statement); err != nil {
+			return nil, err
+		}
+		triggers = append(triggers, Trigger{
+			Name:      name,
+			Timing:    timing,
+			Event:     event,
+			Statement: statement,
+		})
+	}
+	return triggers, rows.Err()
+}
+
+// ViewDefinition returns the body of a view from information_schema.views, or
+// "" if the named relation is not a view.
+func (m *MySQL) ViewDefinition(view string) (string, error) {
+	var def sql.NullString
+	err := m.db.QueryRow(
+		`SELECT view_definition FROM information_schema.views
+		 WHERE table_schema = ? AND table_name = ?`,
+		m.config.Database, view,
+	).Scan(&def)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return def.String, nil
+}

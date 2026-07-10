@@ -9,7 +9,7 @@ A fast, memory-efficient SQL TUI inspired by [sqlit](https://github.com/Maxteaba
 - **SQLite**: `modernc.org/sqlite` (pure Go, no CGO required)
 - **MySQL**: `github.com/go-sql-driver/mysql`
 - **PostgreSQL**: `github.com/jackc/pgx/v5` (via `pgx/v5/stdlib` for `database/sql` compatibility)
-- **Config**: YAML (`gopkg.in/yaml.v3`), stored at `~/.config/gsql/config.yaml`
+- **Config**: YAML (`gopkg.in/yaml.v3`), stored at `~/.config/gsql/config.yaml`. Secret fields (passwords, SSH passwords) default to the OS keychain via `github.com/zalando/go-keyring`; the YAML then holds `secret://<conn>/<field>` references resolved at connect time. Plaintext fallback when no keychain is available; a per-connection form field (`Secrets: keychain/plain`) opts out.
 
 ## Build & Run Commands
 - **Build**: `go build -o gsql ./cmd/gsql/`
@@ -29,6 +29,7 @@ internal/db/              — Database abstraction layer
   postgres.go              — PostgreSQL implementation (pgx/v5/stdlib)
   ssh_tunnel.go           — SSH tunnel (golang.org/x/crypto/ssh)
 internal/config/          — Config loading/saving (YAML)
+internal/secrets/         — OS keychain secret store (secret:// refs + plaintext fallback)
 internal/history/         — Query history (per-connection JSON, searchable)
 internal/ui/              — All Bubble Tea UI components
   app.go                  — Top-level Model (state machine)
@@ -59,7 +60,8 @@ internal/ui/              — All Bubble Tea UI components
   fk_query.go             — Foreign-key follow query builder (`g d` / `g b`)
   cross_search_panel.go   — Cross-table search overlay (every table/column, `S`)
   cross_search_ops.go     — Async batched cross-table search execution
-  schema_editor.go        — Inline column grid editor (rename/type/null/default, `d`)
+  schema_editor.go        — Tabbed structure editor: Columns (editable grid) + Indexes/Foreign Keys/Triggers/Definition tabs (`d`)
+  grid_table.go           — Shared box-grid renderer used by the read-only structure tabs
   schema_ops.go           — Async DDL execution + post-edit state syncing
   schema_guard.go         — Pre-validates column drop/rename/modify (PK/auto-inc guards)
   table_designer.go       — Full-screen new-table grid editor (`N`)
@@ -86,6 +88,10 @@ internal/bookmarks/       — Persisted per-connection saved-query store (JSON)
 internal/db/statements.go — Top-level statement splitter (run statement under cursor)
 internal/db/schema.go     — DDL builders + validation (add column, create/rename table)
 ```
+
+The `DB` interface also exposes catalog metadata used by the structure panel:
+`Indexes`, `Triggers`, `ViewDefinition` (each driver implements them against
+`sqlite_master` / `information_schema` / `pg_catalog`).
 
 ## Key Design Decisions
 - **DB interface** in `internal/db/db.go` — all drivers implement this, making it trivial to add Postgres etc. later. Includes `Begin() (Tx, error)` for transactional batch writes (inline edits & row clones are atomic).
@@ -136,6 +142,8 @@ internal/db/schema.go     — DDL builders + validation (add column, create/rena
 - [x] Mouse support — click tables/headers/cells, scroll lists and results, click-outside to dismiss overlays
 - [x] Context-sensitive status-bar hints — compact keybinding hint line adapts to the active panel/modal
 - [x] Result tabs — `t` new tab, `g t`/`g T` next/prev, `g x` close, `g 1`-`g 9` goto; per-tab query, results, cursor, filters, sort, marks, editor content; state synced on tab switch
+- [x] **Table structure view** (`d`) — the schema editor is now a tabbed structure view: Columns (the existing editable grid), Indexes, Foreign Keys, and Triggers as read-only box grids (shared `grid_table.go` renderer, consistent with the results table), plus a Definition code-listing tab for views. New `DB` methods `Indexes`/`Triggers`/`ViewDefinition` across sqlite/mysql/postgres. Columns load synchronously; the read-only metadata loads async (`loadStructureMetadata` → `structureLoadedMsg` → `schemaEditor.LoadStructure`) so a slow catalog query never blocks; per-section errors degrade gracefully. `H`/`L` switch tabs; `enter` on a trigger expands its statement. The earlier standalone `i` overlay was folded in (one view, no duplication). SQLite note: the partial-index *predicate* is not exposed by `PRAGMA`, so it renders empty on SQLite (PostgreSQL/MySQL surface it).
+- [x] **Secret storage** — `internal/secrets` wraps `github.com/zalando/go-keyring` (macOS Keychain / Windows Credential Manager / Linux Secret Service). `Store` writes a value and returns a `secret://<conn>/<field>` reference; `Resolve` turns a ref (or plaintext) back into the value. The connection form has a `Secrets` field (default `keychain`); `storeConnSecrets` (app.go) migrates password + ssh_password to refs on save, `resolveConnSecrets` (connection_ops.go) resolves refs at connect, `secretsModeFromConfig` infers the mode when editing, and `deleteSelectedConnection` purges keychain entries. `ssh_passphrase` (not in the form) is preserved across edits and resolved at connect. Falls back to plaintext (with a status message) when the keychain is unavailable. Backward compatible: plaintext values pass through unchanged.
 
 ## Config Format (~/.config/gsql/config.yaml)
 ```yaml

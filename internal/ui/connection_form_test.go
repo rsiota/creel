@@ -141,3 +141,66 @@ func TestConnectionFormFieldCount(t *testing.T) {
 		}
 	}
 }
+
+func TestSecretsModeNormalization(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"", "keychain"},          // blank defaults to keychain
+		{"keychain", "keychain"},
+		{"Keychain", "keychain"}, // case-insensitive
+		{"plain", "plain"},
+		{"plain text", "plain"},  // leading substring still plain
+		{"typo", "plain"},        // unknown falls back to plain (safe)
+		{"  keychain  ", "keychain"},
+	}
+	for _, c := range cases {
+		f := NewConnectionForm()
+		f.fields[fieldSecrets].SetValue(c.in)
+		if got := f.secretsMode(); got != c.want {
+			t.Errorf("secretsMode(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestNewFormDefaultsToKeychain(t *testing.T) {
+	f := NewConnectionForm()
+	if got := f.secretsMode(); got != "keychain" {
+		t.Errorf("new form secretsMode = %q, want keychain", got)
+	}
+}
+
+func TestSecretsModeFromConfig(t *testing.T) {
+	// Plaintext config -> plain (do not silently migrate on re-save).
+	plain := config.ConnectionConfig{Password: "hunter2"}
+	if got := secretsModeFromConfig(plain); got != "plain" {
+		t.Errorf("plaintext config mode = %q, want plain", got)
+	}
+
+	// A reference anywhere -> keychain.
+	ref := config.ConnectionConfig{Password: "secret://prod/password"}
+	if got := secretsModeFromConfig(ref); got != "keychain" {
+		t.Errorf("reference config mode = %q, want keychain", got)
+	}
+
+	ref2 := config.ConnectionConfig{SSHPassword: "secret://x/ssh_password"}
+	if got := secretsModeFromConfig(ref2); got != "keychain" {
+		t.Errorf("ssh reference config mode = %q, want keychain", got)
+	}
+}
+
+func TestNewConnectionFormEditSetsSecretsMode(t *testing.T) {
+	// Editing a plaintext config preserves the user's plain preference.
+	plain := config.ConnectionConfig{
+		Name:     "staging",
+		Driver:   "mysql",
+		Password: "secret",
+	}
+	f := NewConnectionFormEdit(plain)
+	if got := f.secretsMode(); got != "plain" {
+		t.Errorf("edit plaintext mode = %q, want plain", got)
+	}
+	if f.fields[fieldPass].Value() != "secret" {
+		t.Errorf("plaintext password not pre-filled: %q", f.fields[fieldPass].Value())
+	}
+}

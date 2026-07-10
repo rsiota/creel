@@ -7,6 +7,7 @@ Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `gsql`
 ## Features
 
 - **Three databases, one interface** — connect to SQLite, MySQL, or PostgreSQL (with SSH tunneling for remote MySQL)
+- **Secret storage** — passwords and SSH passwords are stored in the OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service) rather than plaintext config; falls back to plaintext on systems without a keychain
 - **Vim-mode editor** — normal/insert modes, motions (`h/j/k/l`, `w/b`), operators (`dd`, `dw`, `x`, `D`), yank/paste, and SQL autocompletion
 - **Table browser** — expand/collapse columns, inspect schemas, fuzzy-filter tables
 - **Results grid** — sort, filter, search, hide/show columns, follow foreign keys (`g d`), mark and bulk-delete rows
@@ -15,6 +16,7 @@ Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `gsql`
 - **Query history & bookmarks** — per-connection, persisted, searchable
 - **EXPLAIN plans** — driver-aware rendering (`g e`) of query plans
 - **Schema editing** — add columns, rename tables, create/drop/truncate tables, and a grid-based table designer (`N`)
+- **Table structure view** (`d`) — a tabbed structure editor: columns (editable grid), foreign keys, indexes, and triggers in one view, plus a definition tab for views
 - **Import / export** — streaming SQL dump importer (`I`) and a pure-Go `mysqldump`-compatible exporter (`X`); CSV export (`x`) for result sets
 - **Cross-table search** (`S`) and **column statistics** (`g s`)
 - **Command palette** (`Ctrl+P`) and a full **help overlay** (`?`)
@@ -66,7 +68,9 @@ Flags:
 
 ## Configuration
 
-Connections are stored at `~/.config/gsql/config.yaml`:
+Connections are stored at `~/.config/gsql/config.yaml`. Secret fields (passwords)
+default to the OS keychain; in that case the config holds an opaque reference
+instead of the real password:
 
 ```yaml
 connections:
@@ -79,14 +83,14 @@ connections:
     host: 10.0.0.5
     port: 3306
     username: admin
-    password: secret
+    password: secret://staging/password   # looked up in the OS keychain
   - name: prod-pg
     driver: postgres
     database: analytics
     host: db.internal
     port: 5432
     username: readonly
-    password: secret
+    password: secret://prod-pg/password
   # MySQL behind a bastion host
   - name: tunneled
     driver: mysql
@@ -94,12 +98,17 @@ connections:
     host: 10.0.0.20
     port: 3306
     username: admin
-    password: secret
+    password: secret://tunneled/password
     ssh_host: bastion.example.com
     ssh_port: 22
     ssh_user: deploy
     ssh_key_path: ~/.ssh/id_ed25519
 ```
+
+A `password:` value that is **not** a `secret://` reference is treated as
+plaintext and used directly, so existing configs keep working. Set the
+connection form's **Secrets** field to `plain` to opt out of the keychain for a
+specific connection.
 
 ## Keybindings
 
@@ -134,7 +143,7 @@ Press `?` inside the TUI for the full overlay, or `Ctrl+P` for the fuzzy command
 | `g g` / `G`| Top / bottom              |
 | `space`    | Expand columns            |
 | `enter` / `s` | `SELECT *` from table  |
-| `d`        | Edit schema (grid)        |
+| `d`        | Structure (columns/indexes/triggers) |
 | `a`        | Add column                |
 | `r`        | Rename table              |
 | `T`        | Truncate table            |
@@ -208,6 +217,7 @@ internal/db/            Database abstraction layer
   ssh_tunnel.go         SSH tunnel support
   dump.go / import.go   Export & streaming import
 internal/config/        YAML config load/save
+internal/secrets/       OS keychain secret store (secret:// refs + plaintext fallback)
 internal/history/       Per-connection query history (JSON)
 internal/bookmarks/     Saved queries
 internal/ui/            Bubble Tea components

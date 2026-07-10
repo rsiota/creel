@@ -81,6 +81,15 @@ type DB interface {
 	// Begin starts a transaction. Statements run on the returned Tx are atomic;
 	// Commit or Rollback must be called exactly once to finish it.
 	Begin() (Tx, error)
+	// Indexes returns the secondary indexes on a table. The primary-key index is
+	// excluded where the driver can distinguish it; use PrimaryKeys for the PK.
+	Indexes(table string) ([]Index, error)
+	// Triggers returns the triggers defined on a table. Drivers that do not
+	// support triggers return an empty slice (and nil error).
+	Triggers(table string) ([]Trigger, error)
+	// ViewDefinition returns the defining SELECT statement of a view, or "" if
+	// the named relation is not a view or has no retrievable definition.
+	ViewDefinition(view string) (string, error)
 }
 
 // Tx runs statements within a single database transaction. Commit or
@@ -187,6 +196,27 @@ type ForeignKey struct {
 	Column    string
 	RefTable  string
 	RefColumn string
+}
+
+// Index describes a secondary index on a table. Columns holds the indexed
+// columns (or expressions) in order. Partial is the index's filter clause
+// (e.g. a PostgreSQL WHERE predicate); it is empty when the index is not
+// partial or the driver does not expose the predicate.
+type Index struct {
+	Name    string
+	Columns []string
+	Unique  bool
+	Partial string
+}
+
+// Trigger describes a database trigger on a table. Timing is BEFORE, AFTER, or
+// INSTEAD OF; Event is INSERT, UPDATE, or DELETE. Statement holds the trigger
+// body (or the full CREATE TRIGGER text) for display.
+type Trigger struct {
+	Name      string
+	Timing    string
+	Event     string
+	Statement string
 }
 
 // TableColumnInfo describes column metadata needed for inserts and schema display.

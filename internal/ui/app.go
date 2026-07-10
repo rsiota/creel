@@ -16,6 +16,7 @@ import (
 	"github.com/ruben/gsql/internal/config"
 	"github.com/ruben/gsql/internal/db"
 	"github.com/ruben/gsql/internal/history"
+	"github.com/ruben/gsql/internal/secrets"
 )
 
 // Focus represents which panel currently has keyboard focus.
@@ -116,6 +117,14 @@ type schemasLoadedMsg struct {
 // tableRowCountsMsg carries approximate row counts for sidebar display.
 type tableRowCountsMsg struct {
 	counts map[string]int64
+}
+
+// structureLoadedMsg delivers the metadata for the StructurePanel. The table
+// name identifies which load completed so stale results (from a rapid
+// re-open) are ignored.
+type structureLoadedMsg struct {
+	table string
+	data  structureData
 }
 
 // crossSearchResultMsg carries partial results from one batch of tables.
@@ -934,6 +943,14 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tableRowCounts = msg.counts
 		return m, nil
 
+	case structureLoadedMsg:
+		// Route read-only metadata into the schema editor's structure tabs.
+		// Ignore stale results from a previous table.
+		if m.schemaEditor.IsVisible() && m.schemaEditor.Table() == msg.table {
+			m.schemaEditor.LoadStructure(msg.data)
+		}
+		return m, nil
+
 	case crossSearchStartMsg:
 		// Begin searching from the first table.
 		query := m.crossSearch.Query()
@@ -1210,6 +1227,9 @@ func (m Model) deleteSelectedConnection() (tea.Model, tea.Cmd) {
 	if name == "" {
 		return m, nil
 	}
+	// Best-effort purge of any keychain secrets for this connection. A missing
+	// key (the connection never used the keychain) is not an error.
+	_ = secrets.DeleteAll(name)
 	m.config.RemoveConnection(name)
 	if err := m.config.Save(); err != nil {
 		m.connError = err.Error()
@@ -1234,7 +1254,22 @@ func (m Model) updateAddConnection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.connForm.mode == formModeEdit {
+			// Preserve fields the form does not expose (currently
+			// ssh_passphrase) so editing a connection does not wipe them.
+			var oldPassphrase string
+			if existing := m.config.GetConnection(m.connForm.editing); existing != nil {
+				oldPassphrase = existing.SSHPassphrase
+			}
 			m.config.RemoveConnection(m.connForm.editing)
+			connCfg.SSHPassphrase = oldPassphrase
+		}
+
+		// Migrate secret fields to the OS keychain when requested. Falls back
+		// to plaintext (in the config file) if the keychain is unavailable.
+		connCfg, secErr := storeConnSecrets(connCfg, m.connForm.secretsMode())
+		m.connError = ""
+		if secErr != nil {
+			m.connError = secErr.Error()
 		}
 
 		m.config.AddConnection(connCfg)
@@ -1244,7 +1279,6 @@ func (m Model) updateAddConnection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		m.state = stateConnections
-		m.connError = ""
 		m.loadConnections()
 		return m, nil
 	}
@@ -1252,6 +1286,47 @@ func (m Model) updateAddConnection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.connForm, cmd = m.connForm.Update(msg)
 	return m, cmd
+}
+
+// storeConnSecrets migrates a connection's secret fields to the OS keychain
+// when mode is "keychain", replacing them in the config with opaque references.
+// It returns the (possibly modified) config and an error describing why the
+// keychain could not be used; in that case the config is returned unchanged so
+// the caller falls back to storing plaintext.
+//
+// Only fields the form exposes (password, ssh_password) are managed here.
+// ssh_passphrase is resolved at connect time but not edited via the form.
+func storeConnSecrets(cfg config.ConnectionConfig, mode string) (config.ConnectionConfig, error) {
+	if mode != "keychain" {
+		return cfg, nil
+	}
+	if !secrets.Available() {
+		return cfg, fmt.Errorf("keychain unavailable on this system; secrets stored in config file")
+	}
+	type secretField struct {
+		name string
+		val  string
+	}
+	fields := []secretField{
+		{secrets.FieldPassword, cfg.Password},
+		{secrets.FieldSSHPassword, cfg.SSHPassword},
+	}
+	for _, fl := range fields {
+		if fl.val == "" || secrets.IsReference(fl.val) {
+			continue
+		}
+		ref, err := secrets.Store(cfg.Name, fl.name, fl.val)
+		if err != nil {
+			return cfg, fmt.Errorf("storing %s: %w", fl.name, err)
+		}
+		switch fl.name {
+		case secrets.FieldPassword:
+			cfg.Password = ref
+		case secrets.FieldSSHPassword:
+			cfg.SSHPassword = ref
+		}
+	}
+	return cfg, nil
 }
 
 func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1657,6 +1732,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Schema editor takes over the workspace.
 	if m.schemaEditor.IsVisible() {
+		onColumnsTab := m.schemaEditor.ActiveTab() == seTabColumns
 		switch msg.String() {
 		case "esc", "ctrl+c":
 			if m.schemaEditor.IsEditing() {
@@ -1666,6 +1742,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.schemaEditor.Hide()
 			return m, nil
 		case "enter":
+			// Column editing only applies on the Columns tab; read-only tabs
+			// (e.g. expand a trigger) handle enter inside Update.
+			if onColumnsTab {
 			if m.schemaEditor.IsEditing() {
 				m.schemaEditor, _ = m.schemaEditor.Update(msg)
 				// For existing rows, fire per-cell DDL immediately on commit.
@@ -1695,10 +1774,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.schemaEditor.SetError("")
 			return m, m.execSchemaDDL(m.schemaEditor.Table(), sql, action, "")
+			}
 		case "d":
 			// dd to drop column — only existing rows go through the confirm
-			// flow. New rows are removed locally by the editor's Update.
-			if m.schemaEditor.pendingD && !m.schemaEditor.IsNewRow() {
+			// flow, and only on the Columns tab. New rows are removed locally
+			// by the editor's Update.
+			if onColumnsTab && m.schemaEditor.pendingD && !m.schemaEditor.IsNewRow() {
 				m.schemaEditor.pendingD = false
 				return m, m.dropCurrentColumn()
 			}
@@ -2931,7 +3012,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "d":
 			m.sidebarPendingG = false
 			if m.sidebarSelectedTable() != "" {
-				m.openSchemaPanel()
+				return m, m.openSchemaPanel()
 			}
 			return m, nil
 		case "T":

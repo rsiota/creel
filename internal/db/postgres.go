@@ -370,3 +370,191 @@ func (p *Postgres) Session() (SessionRunner, error) {
 }
 
 func (p *Postgres) Begin() (Tx, error) { return beginTx(p.db) }
+
+// Indexes returns the secondary indexes on a table from pg_index. The primary
+// key (indisprimary) is excluded. Columns and the partial-index predicate are
+// extracted from the human-readable pg_get_indexdef output; unique comes from
+// indisunique.
+func (p *Postgres) Indexes(table string) ([]Index, error) {
+	rows, err := p.db.Query(
+		`SELECT c.relname AS index_name,
+		        pg_get_indexdef(i.indexrelid) AS indexdef,
+		        i.indisunique,
+		        i.indisprimary
+		 FROM pg_index i
+		 JOIN pg_class c ON c.oid = i.indexrelid
+		 JOIN pg_class t ON t.oid = i.indrelid
+		 JOIN pg_namespace n ON n.oid = t.relnamespace
+		 WHERE t.relname = $1 AND n.nspname = current_schema()
+		 ORDER BY c.relname`,
+		table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var idxs []Index
+	for rows.Next() {
+		var name, indexdef string
+		var unique, primary bool
+		if err := rows.Scan(&name, &indexdef, &unique, &primary); err != nil {
+			return nil, err
+		}
+		if primary {
+			continue
+		}
+		cols, partial := parsePostgresIndexDef(indexdef)
+		idxs = append(idxs, Index{
+			Name:    name,
+			Columns: cols,
+			Unique:  unique,
+			Partial: partial,
+		})
+	}
+	return idxs, rows.Err()
+}
+
+// parsePostgresIndexDef extracts the indexed column list and any partial WHERE
+// predicate from a CREATE INDEX statement produced by pg_get_indexdef. The
+// first parenthesized group after the table name is the column list; a trailing
+// WHERE clause (case-insensitive) is the partial predicate. Parsing is lenient:
+// on any surprise the whole definition is returned as a single "column" so the
+// index is still listed.
+func parsePostgresIndexDef(indexdef string) (columns []string, partial string) {
+	open := strings.Index(indexdef, "(")
+	if open < 0 {
+		return []string{indexdef}, ""
+	}
+	// Find the matching close paren (no nested parens in plain column lists;
+	// expression indexes may nest, so balance).
+	depth := 0
+	close := -1
+	for i := open; i < len(indexdef); i++ {
+		switch indexdef[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				close = i
+			}
+		}
+		if close >= 0 {
+			break
+		}
+	}
+	if close < 0 {
+		return []string{indexdef}, ""
+	}
+	inner := strings.TrimSpace(indexdef[open+1 : close])
+	for _, c := range splitTopLevelCommas(inner) {
+		columns = append(columns, strings.TrimSpace(c))
+	}
+	if columns == nil {
+		columns = []string{inner}
+	}
+
+	// Look for a WHERE after the close paren.
+	rest := strings.TrimSpace(indexdef[close+1:])
+	if len(rest) >= 5 && strings.EqualFold(rest[:5], "WHERE") {
+		partial = strings.TrimSpace(rest[5:])
+	}
+	return columns, partial
+}
+
+// splitTopLevelCommas splits on commas that are not nested inside parens, so
+// expression indexes like "(a+b), c" split correctly.
+func splitTopLevelCommas(s string) []string {
+	var parts []string
+	depth := 0
+	start := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case ',':
+			if depth == 0 {
+				parts = append(parts, s[start:i])
+				start = i + 1
+			}
+		}
+	}
+	parts = append(parts, s[start:])
+	return parts
+}
+
+// Triggers returns user-defined triggers from pg_trigger. Internal triggers
+// (tgisinternal, e.g. those created for foreign keys) are excluded. The full
+// CREATE TRIGGER text from pg_get_triggerdef is parsed for timing/event and
+// kept as the statement body.
+func (p *Postgres) Triggers(table string) ([]Trigger, error) {
+	rows, err := p.db.Query(
+		`SELECT t.tgname, pg_get_triggerdef(t.oid)
+		 FROM pg_trigger t
+		 JOIN pg_class c ON c.oid = t.tgrelid
+		 JOIN pg_namespace n ON n.oid = c.relnamespace
+		 WHERE c.relname = $1 AND n.nspname = current_schema()
+		   AND NOT t.tgisinternal
+		 ORDER BY t.tgname`,
+		table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var triggers []Trigger
+	for rows.Next() {
+		var name, def string
+		if err := rows.Scan(&name, &def); err != nil {
+			return nil, err
+		}
+		timing, event := parsePostgresTriggerDef(def)
+		triggers = append(triggers, Trigger{
+			Name:      name,
+			Timing:    timing,
+			Event:     event,
+			Statement: def,
+		})
+	}
+	return triggers, rows.Err()
+}
+
+// parsePostgresTriggerDef extracts the timing and event from a pg_get_triggerdef
+// string of the form "TRIGGER name BEFORE UPDATE ON tbl ...".
+func parsePostgresTriggerDef(def string) (timing, event string) {
+	for _, t := range []string{"INSTEAD OF", "BEFORE", "AFTER"} {
+		idx := strings.Index(strings.ToUpper(def), " "+t+" ")
+		if idx < 0 {
+			continue
+		}
+		rest := strings.TrimLeft(def[idx+1+len(t):], " \t\r\n")
+		for _, ev := range []string{"INSERT", "UPDATE", "DELETE", "TRUNCATE"} {
+			if _, ok := matchWord(rest, ev); ok {
+				return t, ev
+			}
+		}
+	}
+	return "", ""
+}
+
+// ViewDefinition returns the pretty-printed definition of a view from
+// pg_views, or "" if the named relation is not a view.
+func (p *Postgres) ViewDefinition(view string) (string, error) {
+	var def sql.NullString
+	err := p.db.QueryRow(
+		`SELECT definition FROM pg_views
+		 WHERE schemaname = current_schema() AND viewname = $1`,
+		view,
+	).Scan(&def)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return def.String, nil
+}

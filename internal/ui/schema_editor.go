@@ -39,6 +39,14 @@ type SchemaEditor struct {
 	errMsg    string
 	notice    string
 	colWidths []int
+
+	// Tabbed structure view (read-only metadata).
+	activeTab       int // one of seTab*
+	structure       structureData
+	structLoaded    bool
+	roCursor        int // row cursor for the active read-only tab
+	roScroll        int // scroll offset for read-only tabs / definition
+	triggerExpanded bool // triggers tab: show the selected trigger's statement
 }
 
 // SchemaEditorResult carries the SQL built from a single cell edit so app.go
@@ -48,6 +56,22 @@ type SchemaEditorResult struct {
 	SQL     string
 	Action  db.SchemaAction
 	ErrFunc func(err string)
+}
+
+// structureData is the read-only metadata payload delivered to the schema
+// editor's Indexes / Foreign Keys / Triggers / Definition tabs. It is
+// populated by the async loader (loadStructureMetadata) and carries
+// per-section errors so one failing catalog query does not blank a tab.
+type structureData struct {
+	err        string // reserved (columns load synchronously, so unused today)
+	pk         []string
+	fks        []db.ForeignKey
+	indexes    []db.Index
+	triggers   []db.Trigger
+	viewDef    string
+	indexErr   string
+	triggerErr string
+	viewErr    string
 }
 
 // Grid column indices.
@@ -60,6 +84,25 @@ const (
 )
 
 var seHeaders = []string{"Name", "Type", "Null", "Default"}
+
+// Structure-view tabs. Columns is always present and editable; the rest are
+// read-only metadata loaded asynchronously (see LoadStructure). Definition is
+// only shown for views.
+const (
+	seTabColumns = iota
+	seTabIndexes
+	seTabFK
+	seTabTriggers
+	seTabDefinition
+)
+
+var seTabLabels = map[int]string{
+	seTabColumns:   "Columns",
+	seTabIndexes:   "Indexes",
+	seTabFK:        "Foreign Keys",
+	seTabTriggers:  "Triggers",
+	seTabDefinition: "Definition",
+}
 
 // NewSchemaEditor creates a hidden editor.
 func NewSchemaEditor() SchemaEditor {
@@ -78,6 +121,14 @@ func (e *SchemaEditor) Show(table string, driver db.Driver, columns []db.TableCo
 	e.cursorCol = 0
 	e.editing = false
 	e.pendingD = false
+
+	// Start on the editable Columns tab; read-only metadata loads async.
+	e.activeTab = seTabColumns
+	e.structure = structureData{}
+	e.structLoaded = false
+	e.roCursor = 0
+	e.roScroll = 0
+	e.triggerExpanded = false
 
 	e.rows = make([][]string, len(columns))
 	e.rowOrigin = make([]int, len(columns))
@@ -104,6 +155,11 @@ func (e *SchemaEditor) Hide() {
 	e.notice = ""
 	e.editing = false
 	e.pendingD = false
+	e.structure = structureData{}
+	e.structLoaded = false
+	e.roCursor = 0
+	e.roScroll = 0
+	e.triggerExpanded = false
 }
 
 // IsVisible reports whether the editor is open.
@@ -269,7 +325,25 @@ func (e SchemaEditor) Update(msg tea.Msg) (SchemaEditor, tea.Cmd) {
 		return e, cmd
 	}
 
-	// Grid navigation and actions.
+	// Tab switching (H/L) is available on every tab except while editing.
+	if km, ok := msg.(tea.KeyMsg); ok {
+		switch km.String() {
+		case "L":
+			e.switchTab(1)
+			return e, nil
+		case "H":
+			e.switchTab(-1)
+			return e, nil
+		}
+	}
+
+	// Read-only metadata tabs: navigation only.
+	if e.activeTab != seTabColumns {
+		e.updateReadOnly(msg)
+		return e, nil
+	}
+
+	// Columns tab: grid navigation and actions.
 	if km, ok := msg.(tea.KeyMsg); ok {
 		switch km.String() {
 		case "up", "k":
@@ -513,6 +587,210 @@ func (e SchemaEditor) columnNames() []string {
 	return names
 }
 
+// ActiveTab returns the index of the currently selected structure tab.
+func (e SchemaEditor) ActiveTab() int { return e.activeTab }
+
+// LoadStructure populates the read-only metadata tabs from an async fetch.
+func (e *SchemaEditor) LoadStructure(data structureData) {
+	e.structure = data
+	e.structLoaded = true
+	// If the active tab dropped out of the available set (e.g. Definition for a
+	// table once we learn it isn't a view), fall back to Columns.
+	if !e.tabAvailable(e.activeTab) {
+		e.activeTab = seTabColumns
+	}
+}
+
+// tabAvailable reports whether a tab is shown for the current relation.
+func (e SchemaEditor) tabAvailable(tab int) bool {
+	for _, t := range e.availableTabs() {
+		if t == tab {
+			return true
+		}
+	}
+	return false
+}
+
+// availableTabs returns the tab set: Columns/Indexes/FK/Triggers always, plus
+// Definition when the relation is a view.
+func (e SchemaEditor) availableTabs() []int {
+	tabs := []int{seTabColumns, seTabIndexes, seTabFK, seTabTriggers}
+	if e.structure.viewDef != "" {
+		tabs = append(tabs, seTabDefinition)
+	}
+	return tabs
+}
+
+// switchTab moves to the next/previous available tab and resets the read-only
+// cursor/scroll.
+func (e *SchemaEditor) switchTab(delta int) {
+	tabs := e.availableTabs()
+	cur := 0
+	for i, t := range tabs {
+		if t == e.activeTab {
+			cur = i
+			break
+		}
+	}
+	cur += delta
+	if cur < 0 {
+		cur = 0
+	}
+	if cur >= len(tabs) {
+		cur = len(tabs) - 1
+	}
+	e.activeTab = tabs[cur]
+	e.roCursor = 0
+	e.roScroll = 0
+	e.triggerExpanded = false
+}
+
+// roCount returns the number of selectable rows in the active read-only tab.
+func (e SchemaEditor) roCount() int {
+	switch e.activeTab {
+	case seTabIndexes:
+		return len(e.structure.indexes)
+	case seTabFK:
+		return len(e.structure.fks)
+	case seTabTriggers:
+		return len(e.structure.triggers)
+	}
+	return 0
+}
+
+// roVisible returns the viewport height (in rows) for read-only tab content.
+func (e SchemaEditor) roVisible() int {
+	// Reserve title (1), blank (1), tab bar (1), blank (1) = 4 lines overhead.
+	v := e.height - 4
+	if v < 1 {
+		v = 1
+	}
+	return v
+}
+
+func (e *SchemaEditor) roDown() {
+	n := e.roCount()
+	if n == 0 {
+		return
+	}
+	if e.roCursor < n-1 {
+		e.roCursor++
+	}
+	e.roClampScroll()
+}
+
+func (e *SchemaEditor) roUp() {
+	if e.roCursor > 0 {
+		e.roCursor--
+	}
+	e.roClampScroll()
+}
+
+func (e *SchemaEditor) roClampScroll() {
+	vh := e.roVisible()
+	if e.roCursor < e.roScroll {
+		e.roScroll = e.roCursor
+	}
+	if e.roCursor >= e.roScroll+vh {
+		e.roScroll = e.roCursor - vh + 1
+	}
+}
+
+// cursorTriggerStatement returns the statement of the trigger under the
+// read-only cursor ("" when out of range).
+func (e SchemaEditor) cursorTriggerStatement() string {
+	if e.roCursor < 0 || e.roCursor >= len(e.structure.triggers) {
+		return ""
+	}
+	return e.structure.triggers[e.roCursor].Statement
+}
+
+// codeMode reports whether the active tab renders a scrollable code listing
+// (Definition, or an expanded trigger statement) whose navigation scrolls
+// lines rather than moving a row cursor.
+func (e SchemaEditor) codeMode() bool {
+	return e.activeTab == seTabDefinition ||
+		(e.activeTab == seTabTriggers && e.triggerExpanded)
+}
+
+// activeCodeText returns the code listing shown in code mode ("" otherwise).
+func (e SchemaEditor) activeCodeText() string {
+	if e.activeTab == seTabDefinition {
+		return e.structure.viewDef
+	}
+	if e.activeTab == seTabTriggers && e.triggerExpanded {
+		return e.cursorTriggerStatement()
+	}
+	return ""
+}
+
+// maxCodeScroll returns the largest valid top-line offset for the current code
+// listing so it never scrolls past the end.
+func (e SchemaEditor) maxCodeScroll() int {
+	lines := len(strings.Split(strings.TrimRight(e.activeCodeText(), "\n"), "\n"))
+	max := lines - e.roVisible()
+	if max < 0 {
+		max = 0
+	}
+	return max
+}
+
+// updateReadOnly handles keys on the read-only metadata tabs.
+func (e *SchemaEditor) updateReadOnly(msg tea.Msg) {
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return
+	}
+	code := e.codeMode()
+	switch km.String() {
+	case "j", "down":
+		if code {
+			if e.roScroll < e.maxCodeScroll() {
+				e.roScroll++
+			}
+		} else {
+			e.roDown()
+		}
+	case "k", "up":
+		if code {
+			if e.roScroll > 0 {
+				e.roScroll--
+			}
+		} else {
+			e.roUp()
+		}
+	case "g":
+		e.roCursor = 0
+		e.roScroll = 0
+	case "G":
+		if code {
+			e.roScroll = e.maxCodeScroll()
+		} else {
+			e.roCursor = e.roCount() - 1
+			if e.roCursor < 0 {
+				e.roCursor = 0
+			}
+			e.roClampScroll()
+		}
+	case "enter":
+		if e.activeTab == seTabTriggers {
+			if e.triggerExpanded {
+				e.triggerExpanded = false
+			} else if e.roCount() > 0 {
+				e.triggerExpanded = true
+			}
+			e.roScroll = 0
+			e.roClampScroll()
+		}
+	case "esc":
+		if e.activeTab == seTabTriggers && e.triggerExpanded {
+			e.triggerExpanded = false
+			e.roScroll = 0
+			e.roClampScroll()
+		}
+	}
+}
+
 // View renders the editor: header + grid + footer.
 func (e SchemaEditor) View() string {
 	if !e.visible {
@@ -520,25 +798,239 @@ func (e SchemaEditor) View() string {
 	}
 
 	var lines []string
-	lines = append(lines, titleStyle.Render(fmt.Sprintf("Edit Schema: %s", e.table)))
+	lines = append(lines, e.renderHeader())
+	lines = append(lines, "")
+	lines = append(lines, e.renderTabBar())
 	lines = append(lines, "")
 
-	lines = append(lines, e.renderGrid())
-
-	if e.errMsg != "" {
-		lines = append(lines, "")
-		lines = append(lines, errorStyle.Render(e.errMsg))
-	} else if e.notice != "" {
-		lines = append(lines, "")
-		lines = append(lines, mutedStyle.Render(e.notice))
+	switch e.activeTab {
+	case seTabIndexes:
+		lines = append(lines, e.renderIndexesTab())
+	case seTabFK:
+		lines = append(lines, e.renderFKTab())
+	case seTabTriggers:
+		lines = append(lines, e.renderTriggersTab())
+	case seTabDefinition:
+		lines = append(lines, e.renderDefinitionTab())
+	default:
+		lines = append(lines, e.renderGrid())
 	}
 
-	if e.pendingD {
-		lines = append(lines, "")
-		lines = append(lines, lipgloss.NewStyle().Foreground(colorAccent).Render("d...")+mutedStyle.Render("  press d again to drop column   esc cancel"))
+	// Errors/notices only surface on the Columns tab (where edits happen).
+	if e.activeTab == seTabColumns {
+		if e.errMsg != "" {
+			lines = append(lines, "")
+			lines = append(lines, errorStyle.Render(e.errMsg))
+		} else if e.notice != "" {
+			lines = append(lines, "")
+			lines = append(lines, mutedStyle.Render(e.notice))
+		}
+
+		if e.pendingD {
+			lines = append(lines, "")
+			lines = append(lines, lipgloss.NewStyle().Foreground(colorAccent).Render("d...")+mutedStyle.Render("  press d again to drop column   esc cancel"))
+		}
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
+// renderHeader renders the title line with a table/view badge.
+func (e SchemaEditor) renderHeader() string {
+	kind := "table"
+	if e.structure.viewDef != "" {
+		kind = "view"
+	}
+	badge := lipgloss.NewStyle().Foreground(colorAccent).Render(fmt.Sprintf("[%s]", kind))
+	return titleStyle.Render(fmt.Sprintf("Structure: %s", e.table)) + "  " + badge
+}
+
+// renderTabBar renders the H/L-selectable tab strip.
+func (e SchemaEditor) renderTabBar() string {
+	active := lipgloss.NewStyle().Foreground(colorBg).Background(colorPrimary).Bold(true).Padding(0, 1)
+	inactive := lipgloss.NewStyle().Foreground(colorMuted).Padding(0, 1)
+
+	var parts []string
+	for _, t := range e.availableTabs() {
+		label := seTabLabels[t]
+		if t == e.activeTab {
+			parts = append(parts, active.Render(label))
+		} else {
+			parts = append(parts, inactive.Render(label))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// roTableWidth is the content width available to a read-only box table.
+func (e SchemaEditor) roTableWidth() int {
+	w := e.width - 2 // outer padding
+	if w < 20 {
+		w = 20
+	}
+	return w
+}
+
+// renderIndexesTab renders the Indexes tab as a box table.
+func (e SchemaEditor) renderIndexesTab() string {
+	if !e.structLoaded {
+		return mutedStyle.Render("Loading indexes…")
+	}
+	if e.structure.indexErr != "" {
+		return errorStyle.Render("Indexes unavailable: " + e.structure.indexErr)
+	}
+	if len(e.structure.indexes) == 0 {
+		return mutedStyle.Render("(no indexes)")
+	}
+
+	headers := []string{"Name", "Unique", "Columns"}
+	rows := make([][]string, len(e.structure.indexes))
+	for i, ix := range e.structure.indexes {
+		unique := ""
+		if ix.Unique {
+			unique = "yes"
+		}
+		rows[i] = []string{ix.Name, unique, strings.Join(ix.Columns, ", ")}
+	}
+	window := e.windowRows(rows)
+	out := renderBoxTable(headers, window, e.roTableWidth())
+
+	// Partial-index predicates are appended under their index row.
+	var extra []string
+	for _, ix := range e.structure.indexes {
+		if ix.Partial != "" {
+			extra = append(extra, mutedStyle.Render("  WHERE "+ix.Partial))
+		}
+	}
+	if len(extra) > 0 {
+		out += "\n\n" + mutedStyle.Render("Partial predicates:") + "\n" + strings.Join(extra, "\n")
+	}
+	return out
+}
+
+// renderFKTab renders the Foreign Keys tab as a box table.
+func (e SchemaEditor) renderFKTab() string {
+	if !e.structLoaded {
+		return mutedStyle.Render("Loading foreign keys…")
+	}
+	if len(e.structure.fks) == 0 {
+		return mutedStyle.Render("(no foreign keys)")
+	}
+	headers := []string{"Column", "References"}
+	rows := make([][]string, len(e.structure.fks))
+	for i, fk := range e.structure.fks {
+		rows[i] = []string{fk.Column, fmt.Sprintf("%s(%s)", fk.RefTable, fk.RefColumn)}
+	}
+	window := e.windowRows(rows)
+	return renderBoxTable(headers, window, e.roTableWidth())
+}
+
+// renderTriggersTab renders the Triggers tab: a summary box table, or the
+// expanded statement of the selected trigger after `enter`.
+func (e SchemaEditor) renderTriggersTab() string {
+	if !e.structLoaded {
+		return mutedStyle.Render("Loading triggers…")
+	}
+	if e.structure.triggerErr != "" {
+		return errorStyle.Render("Triggers unavailable: " + e.structure.triggerErr)
+	}
+	if len(e.structure.triggers) == 0 {
+		return mutedStyle.Render("(no triggers)")
+	}
+
+	if e.triggerExpanded {
+		return e.renderTriggerStatement()
+	}
+
+	headers := []string{"Name", "Timing", "Event"}
+	rows := make([][]string, len(e.structure.triggers))
+	for i, tr := range e.structure.triggers {
+		rows[i] = []string{tr.Name, tr.Timing, tr.Event}
+	}
+	window := e.windowRows(rows)
+	hint := mutedStyle.Render("\nenter: view statement")
+	return renderBoxTable(headers, window, e.roTableWidth()) + hint
+}
+
+// renderTriggerStatement renders the selected trigger's statement as a code
+// listing, scrollable via j/k.
+func (e SchemaEditor) renderTriggerStatement() string {
+	if e.roCursor < 0 || e.roCursor >= len(e.structure.triggers) {
+		return mutedStyle.Render("(no trigger selected)")
+	}
+	tr := e.structure.triggers[e.roCursor]
+	head := lipgloss.NewStyle().Foreground(colorLabel).Bold(true).
+		Render(fmt.Sprintf("← esc back   %s (%s %s)", tr.Name, tr.Timing, tr.Event))
+	return head + "\n\n" + e.renderCodeScroll(tr.Statement)
+}
+
+// renderDefinitionTab renders the view definition as a scrollable code listing.
+func (e SchemaEditor) renderDefinitionTab() string {
+	if !e.structLoaded {
+		return mutedStyle.Render("Loading definition…")
+	}
+	if e.structure.viewDef == "" {
+		return mutedStyle.Render("This relation is not a view.")
+	}
+	return e.renderCodeScroll(e.structure.viewDef)
+}
+
+// renderCodeScroll renders a multi-line string as a scrollable code listing
+// using roScroll as the top-line offset (clamped to the end). Used by the
+// Definition tab and the expanded trigger statement.
+func (e SchemaEditor) renderCodeScroll(text string) string {
+	allLines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	max := len(allLines) - e.roVisible()
+	if max < 0 {
+		max = 0
+	}
+	if e.roScroll > max {
+		e.roScroll = max
+	}
+	if e.roScroll < 0 {
+		e.roScroll = 0
+	}
+	end := e.roScroll + e.roVisible()
+	if end > len(allLines) {
+		end = len(allLines)
+	}
+	codeStyle := lipgloss.NewStyle().Foreground(colorFg)
+	w := e.roTableWidth() - 1
+	var out []string
+	for i := e.roScroll; i < end; i++ {
+		out = append(out, codeStyle.Render(" "+truncateSidebarLine(allLines[i], w)))
+	}
+	return strings.Join(out, "\n")
+}
+
+// windowRows slices a read-only tab's rows to the visible scroll window.
+func (e SchemaEditor) windowRows(rows [][]string) (window [][]string) {
+	total := len(rows)
+	if total == 0 {
+		return nil
+	}
+	// For box tables reserve ~3 lines of border/header overhead per the tab.
+	vh := e.roVisible() - 3
+	if vh < 1 {
+		vh = 1
+	}
+	if e.roCursor < e.roScroll {
+		e.roScroll = e.roCursor
+	}
+	if e.roCursor >= e.roScroll+vh {
+		e.roScroll = e.roCursor - vh + 1
+	}
+	if e.roScroll > total-vh && total >= vh {
+		e.roScroll = total - vh
+	}
+	if e.roScroll < 0 {
+		e.roScroll = 0
+	}
+	end := e.roScroll + vh
+	if end > total {
+		end = total
+	}
+	return rows[e.roScroll:end]
 }
 
 func (e SchemaEditor) renderGrid() string {

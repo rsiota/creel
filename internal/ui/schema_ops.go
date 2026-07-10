@@ -195,20 +195,22 @@ func (m *Model) applyTableRename(oldName, newName string) {
 }
 
 // openSchemaPanel opens the inline schema editor for the selected sidebar table.
-func (m *Model) openSchemaPanel() {
+func (m *Model) openSchemaPanel() tea.Cmd {
 	if m.connection == nil {
-		return
+		return nil
 	}
 	table := m.sidebarSelectedTable()
 	if table == "" {
-		return
+		return nil
 	}
 	cols, err := m.connection.DB().TableColumnInfo(table)
 	if err != nil {
 		m.connError = err.Error()
-		return
+		return nil
 	}
 	m.schemaEditor.Show(table, m.connection.Config().Driver, cols)
+	// Async-load the read-only structure tabs (indexes, FKs, triggers, view).
+	return m.loadStructureMetadata(table)
 }
 
 // dropCurrentColumn runs the existing drop-column confirmation flow for the
