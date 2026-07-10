@@ -106,22 +106,28 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// ── Tab bar (inside editor panel) ─────────────────────────
-	// Tab text sits at Y=1 (below the editor's top border). X ≥ sidebarWidth.
-	if msg.Type == tea.MouseLeft && msg.Y == 1 && msg.X >= sidebarWidth {
-		relX := msg.X - sidebarWidth - 1 // -1 for editor's left border
-		result := m.tabBar.ClickAt(relX)
-		if result >= 0 {
-			m.setActiveTab(result)
-		} else if result == -1 {
-			query := m.editor.Value()
-			m.addTab(generateTabTitle(query), query)
+	// Right edge of the editor/results area; the inspector sits beyond it.
+	editorRight := m.width
+	if m.inspector.IsVisible() {
+		editorRight = m.width - InspectorWidth
+	}
+
+	resultsTop := editorHeight
+	resultsBottom := m.height - 2
+
+	// ── Inspector (right column) ──────────────────────────────
+	if m.inspector.IsVisible() && msg.X >= editorRight && msg.Y < resultsBottom {
+		if msg.Type == tea.MouseLeft {
+			m.focus = FocusInspector
+			m.applyFocus()
 		}
 		return m, nil
 	}
 
-	// ── Sidebar ────────────────────────────────────────────────
-	if msg.X < sidebarWidth-1 && msg.Y < m.height-2 {
+	// ── Sidebar (left column) ─────────────────────────────────
+	// A click anywhere in the sidebar — border, empty space, or a table —
+	// focuses it so its frame is highlighted.
+	if msg.X < sidebarWidth && msg.Y < resultsBottom {
 		switch msg.Type {
 		case tea.MouseWheelUp:
 			m = m.scrollSidebar(-1)
@@ -130,6 +136,8 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			m = m.scrollSidebar(1)
 			return m, nil
 		case tea.MouseLeft:
+			m.focus = FocusConnections
+			m.applyFocus()
 			items := m.sidebarItems()
 			if len(items) == 0 {
 				return m, nil
@@ -152,12 +160,49 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// ── Results panel ──────────────────────────────────────────
-	resultsTop := editorHeight
-	resultsBottom := m.height - 2
+	// ── Tab bar (inside editor panel) ─────────────────────────
+	// Tab text sits at Y=1 (below the editor's top border).
+	if msg.Type == tea.MouseLeft && msg.Y == 1 && msg.X >= sidebarWidth && msg.X < editorRight {
+		m.focus = FocusTabBar
+		m.applyFocus()
+		relX := msg.X - sidebarWidth - 1 // -1 for editor's left border
+		result := m.tabBar.ClickAt(relX)
+		if result >= 0 {
+			m.setActiveTab(result)
+		} else if result == -1 {
+			query := m.editor.Value()
+			m.addTab(generateTabTitle(query), query)
+		}
+		return m, nil
+	}
 
+	// ── Editor (top-right) ────────────────────────────────────
+	// Any click within the editor panel (border, separator, or text area)
+	// that is not the tab bar focuses the editor. The underlying textarea has
+	// no mouse support, so the cursor stays where it was — focus is what
+	// matters here.
+	if msg.Y < resultsTop && msg.X >= sidebarWidth && msg.X < editorRight {
+		if msg.Type == tea.MouseLeft {
+			m.focus = FocusEditor
+			m.applyFocus()
+			return m, m.editor.Focus()
+		}
+		return m, nil
+	}
+
+	// ── Results panel (bottom-right) ──────────────────────────
 	if msg.Y < resultsTop || msg.Y > resultsBottom {
 		return m, nil
+	}
+
+	// Any left-click within the results panel focuses it — whether on a cell,
+	// the header, or empty space.
+	if msg.Type == tea.MouseLeft {
+		m.focus = FocusResults
+		m.resultsPendingG = false
+		m.resultsPendingY = false
+		m.resultsPendingD = false
+		m.applyFocus()
 	}
 
 	// Scroll wheel — scroll results vertically.
@@ -194,10 +239,6 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		rowIdx := m.results.ScrollRow() + dataRow
 		colIdx := m.results.ColumnAtX(msg.X - sidebarWidth)
 		if rowIdx >= 0 && rowIdx < m.results.NumRows() && colIdx >= 0 {
-			m.focus = FocusResults
-			m.resultsPendingG = false
-			m.resultsPendingY = false
-			m.resultsPendingD = false
 			m.results.SetCursor(rowIdx, colIdx)
 		}
 	}
