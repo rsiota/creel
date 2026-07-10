@@ -272,6 +272,7 @@ type Model struct {
 	palette         palette
 	sidebarCursor   int
 	sidebarScroll   int              // cached scroll offset of the first visible sidebar item
+	sidebarViewAnchored bool        // mouse click froze the view; keyboard nav clears it
 	tableRowCounts  map[string]int64 // approximate row counts for sidebar display
 	expanded        map[string][]db.Column
 	columnCache     map[string][]db.Column
@@ -3491,19 +3492,13 @@ func (m Model) viewWorkspace() string {
 
 	items := m.sidebarItems()
 
-	// Scroll window centered on cursor.
-	half := maxVisible / 2
-	start := m.sidebarCursor - half
-	if start < 0 {
-		start = 0
-	}
+	// Scroll window: cursor-centered for keyboard nav, frozen when the view was
+	// anchored by a mouse click. The shared helper is also used by the mouse
+	// handler so a click always maps to the rendered item.
+	start := m.sidebarRenderedStart()
 	end := start + maxVisible
 	if end > len(items) {
 		end = len(items)
-		start = end - maxVisible
-		if start < 0 {
-			start = 0
-		}
 	}
 	m.sidebarScroll = start
 

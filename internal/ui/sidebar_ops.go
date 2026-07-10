@@ -208,6 +208,7 @@ func (m *Model) syncSidebarCursorToTable(tableName string) {
 	for i, item := range items {
 		if !item.isColumn && item.text == tableName {
 			m.sidebarCursor = i
+			m.sidebarViewAnchored = false // programmatic selection re-centers
 			return
 		}
 	}
@@ -227,6 +228,7 @@ func (m Model) scrollSidebar(delta int) Model {
 	if m.sidebarCursor > len(items)-1 {
 		m.sidebarCursor = len(items) - 1
 	}
+	m.sidebarViewAnchored = false // keyboard nav re-centers
 	return m
 }
 
@@ -272,6 +274,47 @@ func (m Model) sidebarScrollOffset() int {
 		}
 	}
 	return start
+}
+
+// sidebarStickyStart returns a scroll offset that keeps the cursor visible with
+// the smallest possible movement, preferring to leave prevStart unchanged. This
+// is the "don't jump" policy used after a mouse click: the clicked item is
+// already on screen, so the offset does not move.
+func sidebarStickyStart(cursor, prevStart, maxVisible, numItems int) int {
+	if numItems <= maxVisible {
+		return 0
+	}
+	start := prevStart
+	if start < 0 {
+		start = 0
+	}
+	if cursor < start {
+		start = cursor
+	}
+	if cursor >= start+maxVisible {
+		start = cursor - maxVisible + 1
+	}
+	if maxStart := numItems - maxVisible; start > maxStart {
+		start = maxStart
+	}
+	if start < 0 {
+		start = 0
+	}
+	return start
+}
+
+// sidebarRenderedStart returns the scroll offset the renderer is currently using
+// for the sidebar: the frozen offset when the view is anchored (after a mouse
+// click), otherwise the cursor-centered offset (keyboard navigation). The
+// renderer and the mouse handler both call this so a click always maps to the
+// item that was drawn, and a click freezes that exact view.
+func (m Model) sidebarRenderedStart() int {
+	items := m.sidebarItems()
+	maxVisible := m.sidebarMaxVisible()
+	if m.sidebarViewAnchored {
+		return sidebarStickyStart(m.sidebarCursor, m.sidebarScroll, maxVisible, len(items))
+	}
+	return m.sidebarScrollOffset()
 }
 
 // currentSidebarItem returns the item under the cursor.

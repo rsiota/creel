@@ -134,11 +134,14 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			if len(items) == 0 {
 				return m, nil
 			}
-			idx := m.sidebarScrollOffset() + msg.Y - 1 // -1 for top border
+			start := m.sidebarRenderedStart()
+			idx := start + msg.Y - 1 // -1 for top border
 			if idx < 0 || idx >= len(items) {
 				return m, nil
 			}
 			m.sidebarCursor = idx
+			m.sidebarScroll = start // freeze the view so the clicked table stays put
+			m.sidebarViewAnchored = true
 			item := &items[idx]
 			if item.isColumn {
 				return m, nil

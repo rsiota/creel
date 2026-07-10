@@ -54,3 +54,44 @@ func TestSidebarMouseClickTopWindow(t *testing.T) {
 		}
 	}
 }
+
+func TestSidebarClickDoesNotRecenter(t *testing.T) {
+	// Clicking a table must not scroll it to the middle of the sidebar — the
+	// view is anchored so the clicked table stays exactly where it was.
+	m := newSidebarMouseModel(40, 0)
+
+	target := "t30"
+	yBefore := workspaceLineY(t, m, target)
+
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: 5, Y: yBefore})
+	clicked := out.(Model)
+	if clicked.sidebarCursor != 30 {
+		t.Fatalf("cursor=%d, want 30", clicked.sidebarCursor)
+	}
+
+	yAfter := workspaceLineY(t, clicked, target)
+	if yAfter != yBefore {
+		t.Errorf("clicked table moved after selection: Y %d → %d (should stay put; the view must be anchored, not re-centered)", yBefore, yAfter)
+	}
+}
+
+func TestSidebarKeyboardNavClearsAnchor(t *testing.T) {
+	// After a click anchors the view, keyboard navigation should resume
+	// centering (the anchor is cleared), so the selected table moves toward
+	// the middle.
+	m := newSidebarMouseModel(40, 0)
+	yBefore := workspaceLineY(t, m, "t30")
+
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: 5, Y: yBefore})
+	clicked := out.(Model)
+
+	// j moves the cursor to t31 and clears the anchor → the view recenters.
+	scrolled := clicked.scrollSidebar(1)
+	if scrolled.sidebarCursor != 31 {
+		t.Fatalf("cursor=%d, want 31", scrolled.sidebarCursor)
+	}
+	yAfter := workspaceLineY(t, scrolled, "t31")
+	if yAfter == yBefore+1 {
+		t.Errorf("view still anchored after keyboard nav: t31 at Y=%d (same as t30+1); expected re-centering", yAfter)
+	}
+}
