@@ -375,6 +375,30 @@ func (f ConnectionForm) contentHeight() int {
 	return fieldCount*linesPerField + 1
 }
 
+// popupContentSize computes the inner content dimensions (width, height) the
+// add-connection form should be sized to, given the terminal height. The popup
+// has a fixed width (from popupDim); the height grows to fit every field and is
+// capped to the viewport so the popup scrolls internally instead of overflowing.
+// This is the single source of truth used by both layout (which sizes the real
+// model) and rendering, so the scroll math and what is drawn always agree.
+func popupContentSize(termHeight int) (width, height int) {
+	popupW, _ := popupDim()
+	const (
+		borderOverhead = 2 // rounded border on each side
+		padding        = 2 // padding(0,1) = 1 left + 1 right
+	)
+	innerW := popupW - borderOverhead - padding
+	maxContentH := termHeight - 1 - 4 // status bar + top/bottom margin
+	if maxContentH < 12 {
+		maxContentH = 12
+	}
+	contentH := fieldCount*linesPerField + 1
+	if contentH > maxContentH {
+		contentH = maxContentH
+	}
+	return innerW, contentH
+}
+
 // SetSize sets the content dimensions of the form: width is the usable content
 // width (inside border and padding), height is the available content height
 // (the form scrolls if it cannot fit all fields).

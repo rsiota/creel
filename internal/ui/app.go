@@ -1201,6 +1201,8 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "n":
 		m.state = stateAddConnection
 		m.connForm = NewConnectionForm()
+		iw, ch := popupContentSize(m.height)
+		m.connForm.SetSize(iw, ch)
 		cmd := m.connForm.Focus()
 		return m, cmd
 	case "e":
@@ -1248,6 +1250,8 @@ func (m Model) openEditForm() (tea.Model, tea.Cmd) {
 	}
 	m.state = stateAddConnection
 	m.connForm = NewConnectionFormEdit(*existing)
+	iw, ch := popupContentSize(m.height)
+	m.connForm.SetSize(iw, ch)
 	cmd := m.connForm.Focus()
 	return m, cmd
 }
@@ -3355,23 +3359,12 @@ func (m Model) viewConnections() string {
 }
 
 func (m Model) viewAddConnection() string {
-	popupW, _ := popupDim() // width stays at 71; height is computed below
-	borderOverhead := 2
-	padding := 2 // padding(0,1) = 1 left + 1 right
-	innerW := popupW - borderOverhead - padding
-
 	// Height: grow to fit all fields, capped to the viewport so the popup
-	// scrolls internally instead of overflowing. Reserve room for the status
-	// bar plus top/bottom margin.
-	contentNeeded := m.connForm.contentHeight()
-	maxContentH := m.height - 1 - 4
-	if maxContentH < 12 {
-		maxContentH = 12
-	}
-	contentH := contentNeeded
-	if contentH > maxContentH {
-		contentH = maxContentH
-	}
+	// scrolls internally instead of overflowing. Sizing is shared with
+	// layout.go via popupContentSize so the scroll model and rendering agree.
+	popupW, _ := popupDim() // width stays fixed; height is computed below
+	borderOverhead := 2
+	innerW, contentH := popupContentSize(m.height)
 	popupH := contentH + borderOverhead
 
 	m.connForm.SetSize(innerW, contentH)

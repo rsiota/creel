@@ -94,7 +94,8 @@ func (m Model) updateLayout() Model {
 	}
 
 	if m.state == stateAddConnection {
-		m.connForm.SetSize(m.width, m.height)
+		innerW, contentH := popupContentSize(m.height)
+		m.connForm.SetSize(innerW, contentH)
 		return m
 	}
 

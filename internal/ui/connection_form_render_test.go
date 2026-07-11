@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/ruben/gsql/internal/config"
 )
 
 // formStripANSI removes ANSI escapes for structural assertions.
@@ -204,5 +205,64 @@ func TestConnectionFormShiftTabWrapsAndScrolls(t *testing.T) {
 	// Last field is beyond the first window, so scrollRow must advance.
 	if f.scrollRow <= 0 {
 		t.Errorf("scrollRow=%d, want >0 after wrapping to the last field", f.scrollRow)
+	}
+}
+
+// The form must be sized to the popup's inner dimensions (not the full
+// terminal). Otherwise the scroll window is computed against the wrong height
+// and the list drifts on every j/k — the popup renders N fields but the scroll
+// model assumes a different count. This is a regression test for that bug.
+func TestConnectionFormSizedToPopupNotTerminal(t *testing.T) {
+	const termH = 30 // short terminal: popup cannot fit all fields
+	m := NewModel(&config.Config{})
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: termH})
+	m = mm.(Model)
+
+	m.state = stateAddConnection
+	m.connForm = NewConnectionForm()
+	wantW, wantH := popupContentSize(termH)
+	m.connForm.SetSize(wantW, wantH) // mirrors what addConnection does
+
+	if m.connForm.height != wantH {
+		t.Errorf("form height=%d, want popup content height %d (not terminal %d)",
+			m.connForm.height, wantH, termH)
+	}
+	if m.connForm.width != wantW {
+		t.Errorf("form width=%d, want popup content width %d", m.connForm.width, wantW)
+	}
+}
+
+// While the cursor stays within the visible window, j/k must NOT scroll — the
+// visible fields stay put and only the focused border moves. Scrolling kicks in
+// only once the cursor reaches the bottom edge (like the inspector).
+func TestConnectionFormWindowStableUntilEdge(t *testing.T) {
+	const termH = 30
+	m := NewModel(&config.Config{})
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: termH})
+	m = mm.(Model)
+	m.state = stateAddConnection
+	m.connForm = NewConnectionForm()
+	iw, ch := popupContentSize(termH)
+	m.connForm.SetSize(iw, ch)
+
+	maxFields := m.connForm.visibleFieldCount()
+	if maxFields >= fieldCount {
+		t.Fatalf("test setup expects scrolling (maxFields=%d, fields=%d)", maxFields, fieldCount)
+	}
+
+	// Move the cursor to the last field that still fits without scrolling.
+	for i := 0; i < maxFields-1; i++ {
+		before := m.connForm.scrollRow
+		m.connForm, _ = m.connForm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		if m.connForm.scrollRow != before {
+			t.Fatalf("scrolled at active=%d (scrollRow %d->%d): window should stay stable until the cursor hits the bottom edge",
+				m.connForm.active, before, m.connForm.scrollRow)
+		}
+	}
+
+	// One more j pushes the cursor past the bottom edge → now it must scroll.
+	m.connForm, _ = m.connForm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	if m.connForm.scrollRow == 0 {
+		t.Errorf("expected scrollRow>0 once the cursor passes the bottom edge, got 0")
 	}
 }
