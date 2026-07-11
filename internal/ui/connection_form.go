@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -31,12 +30,23 @@ const (
 	fieldCount
 )
 
-// formLabelWidth is the rendered width of the label column.
-// formLabelOverhead is label width + 1 space separator.
-const (
-	formLabelWidth   = 12
-	formLabelOverhead = formLabelWidth + 1
-)
+// formLabels is the display label for each field, parallel to the field
+// indices above. It is shared by rendering and any label lookups.
+var formLabels = [...]string{
+	"Name", "Driver", "Database", "Host", "Port", "Username", "Password",
+	"SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass", "Secrets",
+	"Read-only",
+}
+
+// formOptional marks fields that are not strictly required, shown with an
+// "(optional)" marker in the field's right-aligned slot (mirroring the
+// inspector's column-type marker). Required fields show no marker.
+var formOptional = [...]bool{
+	false, false, false, // name, driver, database
+	true, true, true, true, // host, port, username, password
+	true, true, true, true, true, // ssh host/port/user/key/pass
+	true, true, // secrets (defaults to keychain), read-only (defaults to no)
+}
 
 // formMode determines whether we are adding or editing.
 type formMode int
@@ -48,13 +58,14 @@ const (
 
 // ConnectionForm is the add/edit connection form.
 type ConnectionForm struct {
-	fields  []textinput.Model
-	active  int
-	mode    formMode
-	errMsg  string
-	width   int
-	height  int
-	editing string // name of connection being edited (for edit mode)
+	fields   []textinput.Model
+	active   int
+	mode     formMode
+	errMsg   string
+	width    int
+	height   int
+	scrollRow int // first visible field index when the form scrolls
+	editing  string // name of connection being edited (for edit mode)
 
 	// Test-connection feedback. testing is true while a background test is in
 	// flight; testMsg/testOK hold the result once it completes.
@@ -130,11 +141,11 @@ func newForm(mode formMode, name string) ConnectionForm {
 	fields[fieldPort] = newTextInput("Port (mysql default 3306, postgres default 5432)", "3306", false)
 	fields[fieldUser] = newTextInput("Username (mysql/postgres only)", "root", false)
 	fields[fieldPass] = newTextInput("Password (mysql/postgres only)", "", true)
-	fields[fieldSSHHost] = newTextInput("SSH host (optional)", "", false)
+	fields[fieldSSHHost] = newTextInput("SSH host", "", false)
 	fields[fieldSSHPort] = newTextInput("SSH port (default 22)", "22", false)
 	fields[fieldSSHUser] = newTextInput("SSH user", "", false)
 	fields[fieldSSHKeyPath] = newTextInput("SSH key path (~/.ssh/id_rsa)", "", false)
-	fields[fieldSSHPassword] = newTextInput("SSH password (optional)", "", true)
+	fields[fieldSSHPassword] = newTextInput("SSH password", "", true)
 	fields[fieldSecrets] = newTextInput("Secret storage (keychain/plain)", "", false)
 	fields[fieldReadOnly] = newTextInput("Read-only (yes/no)", "", false)
 
@@ -177,6 +188,7 @@ func (f ConnectionForm) Update(msg tea.Msg) (ConnectionForm, tea.Cmd) {
 			if f.active >= fieldCount {
 				f.active = fieldName
 			}
+			f.ensureFieldVisible()
 			cmd = f.fields[f.active].Focus()
 			return f, cmd
 		case "shift+tab":
@@ -185,6 +197,7 @@ func (f ConnectionForm) Update(msg tea.Msg) (ConnectionForm, tea.Cmd) {
 			if f.active < 0 {
 				f.active = fieldCount - 1
 			}
+			f.ensureFieldVisible()
 			cmd = f.fields[f.active].Focus()
 			return f, cmd
 		default:
@@ -200,66 +213,150 @@ func (f ConnectionForm) Update(msg tea.Msg) (ConnectionForm, tea.Cmd) {
 	return f, cmd
 }
 
-// View renders the form.
+// View renders the form as a scrollable list of bordered fields, matching
+// the inspector's field-box look (shared via renderFieldBox). One line is
+// reserved at the bottom for the validation/test-connection message.
 func (f ConnectionForm) View() string {
-	var b []string
-
-	labels := []string{
-		"Name", "Driver", "Database", "Host", "Port", "Username", "Password",
-		"SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass", "Secrets",
-		"Read-only",
+	contentW := f.width
+	valueWidth := contentW - 4
+	if valueWidth < 1 {
+		valueWidth = 1
 	}
 
-	for i, label := range labels {
-		labelStyled := lipgloss.NewStyle().
-			Foreground(colorPrimary).
-			Bold(true).
-			Width(formLabelWidth).
-			Render(label)
+	fieldsHeight := f.height - 1 // reserve 1 line for the message
+	if fieldsHeight < linesPerField {
+		fieldsHeight = linesPerField
+	}
+	maxFields := fieldsHeight / linesPerField
 
-		var inputRendered string
-		if i == f.active {
-			inputRendered = renderEditInput(f.fields[i], f.fields[i].Width, colorFg)
-		} else {
-			inputRendered = f.fields[i].View()
+	start := f.scrollRow
+	if start > fieldCount-maxFields && fieldCount > maxFields {
+		start = fieldCount - maxFields
+	}
+	if start < 0 {
+		start = 0
+	}
+	end := start + maxFields
+	if end > fieldCount {
+		end = fieldCount
+	}
+
+	labelSty := lipgloss.NewStyle().Foreground(colorLabel)
+	markerSty := lipgloss.NewStyle().Foreground(colorMuted)
+
+	var rendered strings.Builder
+	for fi := start; fi < end; fi++ {
+		labelStr := labelSty.Render(formLabels[fi])
+		markerStr := ""
+		if formOptional[fi] {
+			markerStr = markerSty.Render("(optional)")
 		}
-
-		line := fmt.Sprintf("%s %s", labelStyled, inputRendered)
-		b = append(b, line)
+		rendered.WriteString(renderFieldBox(labelStr, markerStr, f.fieldValueContent(fi, valueWidth), contentW, fi == f.active))
+		rendered.WriteString("\n")
 	}
 
-	if f.errMsg != "" {
-		b = append(b, errorStyle.Render(f.errMsg))
-	} else if f.testing {
-		b = append(b, mutedStyle.Render("Testing connection…"))
-	} else if f.testMsg != "" {
-		if f.testOK {
-			b = append(b, successStyle.Render(f.testMsg))
-		} else {
-			b = append(b, errorStyle.Render(f.testMsg))
-		}
-	}
+	fieldsBlock := lipgloss.NewStyle().
+		Height(fieldsHeight).
+		Render(strings.TrimRight(rendered.String(), "\n"))
 
-	b = append(b, "")
-
-	return lipgloss.JoinVertical(lipgloss.Left, b...)
+	return fieldsBlock + "\n" + f.messageLine()
 }
 
-// SetSize sets the dimensions of the form.
+// fieldValueContent returns the already-styled, valueWidth-wide interior for
+// field fi's value box. The active field renders a bar cursor; inactive fields
+// show their value, a masked value for password fields, or the muted
+// placeholder when empty.
+func (f ConnectionForm) fieldValueContent(fi, valueWidth int) string {
+	if fi == f.active {
+		return renderEditInput(f.fields[fi], valueWidth, colorFg)
+	}
+	ti := f.fields[fi]
+	val := ti.Value()
+	var displayVal string
+	sty := lipgloss.NewStyle().Foreground(colorFg)
+	switch {
+	case ti.EchoMode == textinput.EchoPassword && val != "":
+		displayVal = strings.Repeat("*", runeLen(val))
+	case val == "":
+		displayVal = ti.Placeholder
+		sty = lipgloss.NewStyle().Foreground(colorMuted)
+	default:
+		displayVal = val
+	}
+	return sty.Render(truncateCell(displayVal, valueWidth))
+}
+
+// messageLine returns the validation/test-connection status line (blank when
+// there is nothing to report).
+func (f ConnectionForm) messageLine() string {
+	switch {
+	case f.errMsg != "":
+		return errorStyle.Render(f.errMsg)
+	case f.testing:
+		return mutedStyle.Render("Testing connection…")
+	case f.testMsg != "":
+		if f.testOK {
+			return successStyle.Render(f.testMsg)
+		}
+		return errorStyle.Render(f.testMsg)
+	}
+	return ""
+}
+
+// visibleFieldCount returns how many complete fields fit in the fields area.
+func (f ConnectionForm) visibleFieldCount() int {
+	fieldsHeight := f.height - 1
+	if fieldsHeight < linesPerField {
+		fieldsHeight = linesPerField
+	}
+	return fieldsHeight / linesPerField
+}
+
+// ensureFieldVisible adjusts scrollRow so the active field stays in view.
+func (f *ConnectionForm) ensureFieldVisible() {
+	max := f.visibleFieldCount()
+	if f.active < f.scrollRow {
+		f.scrollRow = f.active
+	}
+	if f.active >= f.scrollRow+max {
+		f.scrollRow = f.active - max + 1
+	}
+	if f.scrollRow < 0 {
+		f.scrollRow = 0
+	}
+}
+
+// contentHeight returns the total content height needed to show every field
+// plus the message line, so the popup can size itself (before capping).
+func (f ConnectionForm) contentHeight() int {
+	return fieldCount*linesPerField + 1
+}
+
+// SetSize sets the content dimensions of the form: width is the usable content
+// width (inside border and padding), height is the available content height
+// (the form scrolls if it cannot fit all fields).
 func (f *ConnectionForm) SetSize(width, height int) {
 	f.width = width
 	f.height = height
+	valueWidth := width - 4
+	if valueWidth < 1 {
+		valueWidth = 1
+	}
 	for i := range f.fields {
-		f.fields[i].Width = width - formLabelOverhead
+		f.fields[i].Width = valueWidth - 1
 	}
 }
 
-// SetMaxWidth adjusts the text input widths so the form renders at the given
-// content width (excluding border/padding).
+// SetMaxWidth adjusts the form's content width (height unchanged). Kept for
+// callers that only resize horizontally.
 func (f *ConnectionForm) SetMaxWidth(width int) {
 	f.width = width
+	valueWidth := width - 4
+	if valueWidth < 1 {
+		valueWidth = 1
+	}
 	for i := range f.fields {
-		f.fields[i].Width = width - formLabelOverhead
+		f.fields[i].Width = valueWidth - 1
 	}
 }
 

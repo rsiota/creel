@@ -13,10 +13,6 @@ import (
 // (including borders) when it is visible.
 const InspectorWidth = 45
 
-// linesPerField is the vertical space each field occupies in the form layout:
-// label line + top border + value line + bottom border.
-const linesPerField = 4
-
 // Inspector is a right-side panel that displays all column values of the
 // currently selected result row as a vertical form. Each field shows the
 // column name as a label above a bordered value box. When the underlying
@@ -483,7 +479,6 @@ func (i Inspector) View(results ResultsTable) string {
 	if valueWidth < 5 {
 		valueWidth = 5
 	}
-	borderWidth := valueWidth + 2
 
 	maxFields := i.visibleFieldCount()
 
@@ -507,8 +502,6 @@ func (i Inspector) View(results ResultsTable) string {
 		end = numFields
 	}
 
-	borderNormal := lipgloss.NewStyle().Foreground(colorBorder)
-	borderFocused := lipgloss.NewStyle().Foreground(colorPrimary)
 	labelStyle := lipgloss.NewStyle().Foreground(colorLabel)
 	pkLabelStyle := lipgloss.NewStyle().Foreground(colorLabel).Bold(true)
 	typeStyle := lipgloss.NewStyle().Foreground(colorMuted)
@@ -533,7 +526,7 @@ func (i Inspector) View(results ResultsTable) string {
 			val = i.insertValues[c]
 		}
 
-		// Label line: 1-char left pad + column name (left) + type (right) + 1-char right pad
+		// Label (left) and column type (right, marker slot).
 		labelRaw := colName
 		if isPK {
 			labelRaw = "* " + labelRaw
@@ -544,52 +537,34 @@ func (i Inspector) View(results ResultsTable) string {
 		if i.inserting && results.IsAutoIncrementCol(c) {
 			labelRaw += " (auto)"
 		}
-		typeRaw := strings.ToLower(results.ColumnType(c))
-
 		ls := labelStyle
 		if isPK {
 			ls = pkLabelStyle
 		}
 		labelStr := ls.Render(labelRaw)
-		typeStr := typeStyle.Render(typeRaw)
+		markerStr := typeStyle.Render(strings.ToLower(results.ColumnType(c)))
 
-		labelW := lipgloss.Width(labelStr)
-		typeW := lipgloss.Width(typeStr)
-		pad := i.width - 2 - labelW - typeW
-		if pad < 1 {
-			pad = 1
-		}
-
-		rendered.WriteString(" " + labelStr + strings.Repeat(" ", pad) + typeStr + " ")
-		rendered.WriteString("\n")
-
-		// Choose border color for this field's value box.
-		bs := borderNormal
-		if isFocused {
-			bs = borderFocused
-		}
-
-		// Top border
-		rendered.WriteString(bs.Render("┌" + strings.Repeat("─", borderWidth) + "┐"))
-		rendered.WriteString("\n")
-
-		// Value line(s)
-		if i.editing && isFocused {
-			inputView := renderEditInput(i.editInput, valueWidth, colorEdit)
-			rendered.WriteString(bs.Render("│ ") + inputView + bs.Render(" │"))
-			rendered.WriteString("\n")
-		} else if pretty, isJSON := formatJSON(val); isJSON && isFocused && !i.inserting {
-			// Multi-line highlighted JSON for the focused field.
-			jsonLines := strings.Split(pretty, "\n")
-			const maxJSONLines = 6
-			if len(jsonLines) > maxJSONLines {
-				jsonLines = jsonLines[:maxJSONLines]
+		// Value line(s) filling the box interior.
+		var valueContent string
+		switch {
+		case i.editing && isFocused:
+			valueContent = renderEditInput(i.editInput, valueWidth, colorEdit)
+		case !i.inserting && isFocused:
+			if pretty, isJSON := formatJSON(val); isJSON {
+				// Multi-line highlighted JSON for the focused field.
+				jsonLines := strings.Split(pretty, "\n")
+				const maxJSONLines = 6
+				if len(jsonLines) > maxJSONLines {
+					jsonLines = jsonLines[:maxJSONLines]
+				}
+				hl := make([]string, len(jsonLines))
+				for k, jl := range jsonLines {
+					hl[k] = highlightJSON(truncateCell(jl, valueWidth))
+				}
+				valueContent = strings.Join(hl, "\n")
 			}
-			for _, jl := range jsonLines {
-				rendered.WriteString(bs.Render("│ ") + highlightJSON(truncateCell(jl, valueWidth)) + bs.Render(" │"))
-				rendered.WriteString("\n")
-			}
-		} else {
+		}
+		if valueContent == "" {
 			displayVal := truncateCell(val, valueWidth)
 			valStyle := lipgloss.NewStyle().Foreground(colorFg)
 			if !i.inserting && val == "NULL" {
@@ -602,12 +577,10 @@ func (i Inspector) View(results ResultsTable) string {
 				valStyle = lipgloss.NewStyle().Foreground(colorMuted)
 				displayVal = truncateCell("(empty)", valueWidth)
 			}
-			rendered.WriteString(bs.Render("│ ") + valStyle.Render(displayVal) + bs.Render(" │"))
-			rendered.WriteString("\n")
+			valueContent = valStyle.Render(displayVal)
 		}
 
-		// Bottom border
-		rendered.WriteString(bs.Render("└" + strings.Repeat("─", borderWidth) + "┘"))
+		rendered.WriteString(renderFieldBox(labelStr, markerStr, valueContent, i.width, isFocused))
 		rendered.WriteString("\n")
 	}
 
