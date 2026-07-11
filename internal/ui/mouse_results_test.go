@@ -173,3 +173,78 @@ func TestResultsDoubleClickNotEditableDoesNotEdit(t *testing.T) {
 		t.Errorf("double click on non-editable results should not enter edit mode")
 	}
 }
+
+// TestResultsDoubleClickClosesInspectorAndEdits verifies that double-clicking a
+// results cell while the inspector is open closes the inspector and enters
+// inline edit mode on that cell, so the gesture isn't a silent no-op.
+func TestResultsDoubleClickClosesInspectorAndEdits(t *testing.T) {
+	m := newResultsMouseModel()
+	m.results.SetEditable("users", []string{"id"})
+
+	// Compute the click target before opening the inspector: the results row
+	// Y and column X are unchanged by the inspector toggle (only the panel
+	// width changes), and this avoids "alice" matching the inspector's field.
+	yAlice := workspaceLineY(t, m, "alice")
+	x, col := findResultsColumnX(t, m, yAlice)
+	if col < 0 {
+		t.Fatalf("no column under click")
+	}
+
+	m.inspector.Toggle() // open the inspector
+	m.layoutWorkspace()
+	if !m.inspector.IsVisible() {
+		t.Fatal("inspector should be visible")
+	}
+
+	// First click: cursor moves, inspector stays open, no edit.
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yAlice})
+	m = out.(Model)
+	if m.results.IsEditing() {
+		t.Fatal("single click should not enter edit mode")
+	}
+	if !m.inspector.IsVisible() {
+		t.Fatal("single click should not close the inspector")
+	}
+
+	// Second click (double-click): closes the inspector and edits the cell.
+	out, _ = m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yAlice})
+	m = out.(Model)
+	if m.inspector.IsVisible() {
+		t.Errorf("double click should close the inspector to edit the cell")
+	}
+	if !m.results.IsEditing() {
+		t.Errorf("double click should enter inline edit mode")
+	}
+}
+
+// TestResultsDoubleClickKeepsInspectorWhenInserting verifies that a double-click
+// on the grid does not close the inspector (or start a grid edit) while the
+// inspector is mid-insert, so in-progress insert data isn't discarded.
+func TestResultsDoubleClickKeepsInspectorWhenInserting(t *testing.T) {
+	m := newResultsMouseModel()
+	m.results.SetEditable("users", []string{"id"})
+
+	yAlice := workspaceLineY(t, m, "alice")
+	x, _ := findResultsColumnX(t, m, yAlice)
+
+	m.inspector.Toggle()
+	m.inspector.StartInsert()
+	m.layoutWorkspace()
+	if !m.inspector.IsInserting() {
+		t.Fatal("inspector should be in insert mode")
+	}
+
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yAlice})
+	m = out.(Model)
+	out, _ = m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yAlice})
+	m = out.(Model)
+	if !m.inspector.IsVisible() {
+		t.Errorf("inspector should stay open while inserting")
+	}
+	if !m.inspector.IsInserting() {
+		t.Errorf("insert mode should be preserved")
+	}
+	if m.results.IsEditing() {
+		t.Errorf("should not enter grid edit mode while inspector is inserting")
+	}
+}
