@@ -122,10 +122,28 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	// ── Inspector (right column) ──────────────────────────────
 	if m.inspector.IsVisible() && msg.X >= editorRight && msg.Y < resultsBottom {
-		if msg.Type == tea.MouseLeft {
-			m.focus = FocusInspector
-			m.applyFocus()
+		if msg.Type != tea.MouseLeft {
+			return m, nil
 		}
+		m.focus = FocusInspector
+		m.applyFocus()
+
+		// Map the click to a field. The inspector's top border is at Y=0,
+		// so content starts at Y=1.
+		col := m.inspector.ClickField(msg.Y-1, m.results)
+
+		// Double-click on the same field within doubleClickInterval →
+		// enter field edit mode (mirrors the "e"/"i" key binding).
+		if col >= 0 &&
+			!m.inspector.IsEditing() &&
+			!m.lastInspectorClickTime.IsZero() &&
+			time.Since(m.lastInspectorClickTime) <= doubleClickInterval &&
+			m.lastInspectorClickCol == col {
+			m.lastInspectorClickTime = time.Time{}
+			return m, m.startInspectorFieldEdit()
+		}
+		m.lastInspectorClickTime = time.Now()
+		m.lastInspectorClickCol = col
 		return m, nil
 	}
 

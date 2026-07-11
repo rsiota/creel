@@ -277,6 +277,46 @@ func (i *Inspector) CursorDown(results ResultsTable) {
 	i.ensureFieldVisible(results)
 }
 
+// ClickField moves the field cursor to the field at the given content-relative
+// Y coordinate (0 = first line below the inspector's top border) and returns
+// the result column index of that field. Returns -1 if the Y does not land on
+// a field (e.g. on the "[new record]" header or empty padding). It accounts
+// for insert-mode header and the current scroll offset.
+func (i *Inspector) ClickField(contentY int, results ResultsTable) int {
+	fieldIndices := i.fieldList(results)
+	numFields := len(fieldIndices)
+	if numFields == 0 {
+		return -1
+	}
+
+	// In insert mode the "[new record]" header occupies the first content line.
+	y := contentY
+	if i.inserting {
+		y--
+	}
+	if y < 0 {
+		return -1
+	}
+
+	maxFields := i.visibleFieldCount()
+	start := i.scrollRow
+	if start > numFields-maxFields && numFields > maxFields {
+		start = numFields - maxFields
+	}
+	if start < 0 {
+		start = 0
+	}
+
+	relField := y / linesPerField
+	fieldIdx := start + relField
+	if fieldIdx < 0 || fieldIdx >= numFields {
+		return -1
+	}
+	i.cursorField = fieldIdx
+	i.ensureFieldVisible(results)
+	return fieldIndices[fieldIdx]
+}
+
 // visibleFieldCount returns how many complete fields fit in the available height.
 func (i Inspector) visibleFieldCount() int {
 	avail := i.height

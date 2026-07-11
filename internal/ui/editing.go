@@ -223,6 +223,22 @@ func (m *Model) startResultsCellEdit() tea.Cmd {
 	return nil
 }
 
+// startInspectorFieldEdit begins editing the inspector field at the current
+// field cursor, opening the expanded cell-edit popup instead when the value
+// is wider than the field box. It mirrors the inspector "e"/"i" keyboard
+// binding. Returns nil when the inspector is not visible.
+func (m *Model) startInspectorFieldEdit() tea.Cmd {
+	if !m.inspector.IsVisible() {
+		return nil
+	}
+	col := m.inspector.selectedColumn(m.results)
+	if !m.inspector.IsInserting() && m.inspector.IsFieldTruncated(m.results) {
+		return m.openCellEditPopup(m.results.CursorRow(), col)
+	}
+	m.inspector.StartFieldEdit(m.results)
+	return nil
+}
+
 // saveEdits writes all pending dirty cells to the database using parameterized
 // UPDATE queries, wrapped in a single transaction so the batch is atomic.
 func (m *Model) saveEdits() tea.Cmd {

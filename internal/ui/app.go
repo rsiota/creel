@@ -297,8 +297,10 @@ type Model struct {
 	// Double-click-to-edit: records the time and cell of the most recent
 	// left-click in the results panel so a second click on the same cell
 	// within doubleClickInterval enters inline edit mode.
-	lastResultsClickTime time.Time
-	lastResultsClickCell cellRef
+	lastResultsClickTime   time.Time
+	lastResultsClickCell   cellRef
+	lastInspectorClickTime time.Time
+	lastInspectorClickCol  int // result column index of last inspector click (-1 = none)
 
 	// Discard confirmation dialog
 	discardConfirm bool
