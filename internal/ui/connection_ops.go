@@ -103,7 +103,7 @@ func (m *Model) testConnection() tea.Cmd {
 	// Preserve fields the form does not expose (ssh_passphrase) when editing,
 	// so the test exercises the saved config rather than a stripped copy.
 	if m.connForm.mode == formModeEdit {
-		if existing := m.config.GetConnection(m.connForm.editing); existing != nil {
+		if existing := m.config.GetConnection(m.connForm.editName); existing != nil {
 			connCfg.SSHPassphrase = existing.SSHPassphrase
 		}
 	}

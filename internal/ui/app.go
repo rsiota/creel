@@ -1271,53 +1271,58 @@ func (m Model) deleteSelectedConnection() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateAddConnection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.state = stateConnections
-		m.connError = ""
-		return m, nil
-	case "ctrl+t":
-		// Test the connection without saving. Disabled while a test is
-		// already in flight to avoid opening parallel connections.
+	// ctrl+t tests the connection from any mode (disabled while a test runs).
+	if msg.String() == "ctrl+t" {
 		if m.connForm.testing {
 			return m, nil
 		}
 		return m, m.testConnection()
-	case "enter":
-		connCfg, errMsg := m.connForm.EnterPressed()
-		if errMsg != "" {
-			m.connForm.SetError(errMsg)
-			return m, nil
-		}
+	}
 
-		if m.connForm.mode == formModeEdit {
-			// Preserve fields the form does not expose (currently
-			// ssh_passphrase) so editing a connection does not wipe them.
-			var oldPassphrase string
-			if existing := m.config.GetConnection(m.connForm.editing); existing != nil {
-				oldPassphrase = existing.SSHPassphrase
+	// Submit (enter) and cancel (esc) only fire from normal mode. In insert
+	// mode they fall through to the form, which exits insert instead.
+	if !m.connForm.editing {
+		switch msg.String() {
+		case "esc":
+			m.state = stateConnections
+			m.connError = ""
+			return m, nil
+		case "enter":
+			connCfg, errMsg := m.connForm.EnterPressed()
+			if errMsg != "" {
+				m.connForm.SetError(errMsg)
+				return m, nil
 			}
-			m.config.RemoveConnection(m.connForm.editing)
-			connCfg.SSHPassphrase = oldPassphrase
-		}
 
-		// Migrate secret fields to the OS keychain when requested. Falls back
-		// to plaintext (in the config file) if the keychain is unavailable.
-		connCfg, secErr := storeConnSecrets(connCfg, m.connForm.secretsMode())
-		m.connError = ""
-		if secErr != nil {
-			m.connError = secErr.Error()
-		}
+			if m.connForm.mode == formModeEdit {
+				// Preserve fields the form does not expose (currently
+				// ssh_passphrase) so editing a connection does not wipe them.
+				var oldPassphrase string
+				if existing := m.config.GetConnection(m.connForm.editName); existing != nil {
+					oldPassphrase = existing.SSHPassphrase
+				}
+				m.config.RemoveConnection(m.connForm.editName)
+				connCfg.SSHPassphrase = oldPassphrase
+			}
 
-		m.config.AddConnection(connCfg)
-		if err := m.config.Save(); err != nil {
-			m.connForm.SetError(err.Error())
+			// Migrate secret fields to the OS keychain when requested. Falls back
+			// to plaintext (in the config file) if the keychain is unavailable.
+			connCfg, secErr := storeConnSecrets(connCfg, m.connForm.secretsMode())
+			m.connError = ""
+			if secErr != nil {
+				m.connError = secErr.Error()
+			}
+
+			m.config.AddConnection(connCfg)
+			if err := m.config.Save(); err != nil {
+				m.connForm.SetError(err.Error())
+				return m, nil
+			}
+
+			m.state = stateConnections
+			m.loadConnections()
 			return m, nil
 		}
-
-		m.state = stateConnections
-		m.loadConnections()
-		return m, nil
 	}
 
 	var cmd tea.Cmd

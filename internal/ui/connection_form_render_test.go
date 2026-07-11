@@ -58,15 +58,99 @@ func TestConnectionFormOptionalMarkers(t *testing.T) {
 	}
 }
 
-// The active field shows the bar cursor (▏); inactive fields do not.
-func TestConnectionFormActiveFieldShowsBarCursor(t *testing.T) {
+// The bar cursor (▏) appears only in insert mode. In normal mode the cursor
+// is shown by the focused border instead.
+func TestConnectionFormBarCursorOnlyInInsertMode(t *testing.T) {
 	f := NewConnectionForm()
 	f.SetSize(67, f.contentHeight())
 
-	view := formStripANSI(f.View())
-	// Exactly one bar cursor for the single active field.
-	if got := strings.Count(view, "▏"); got != 1 {
-		t.Errorf("bar cursor count=%d, want 1 (only the active field)", got)
+	if f.IsEditing() {
+		t.Fatal("form should open in normal mode")
+	}
+	// Normal mode: no bar cursor anywhere.
+	if got := strings.Count(formStripANSI(f.View()), "▏"); got != 0 {
+		t.Errorf("normal mode bar cursor count=%d, want 0", got)
+	}
+
+	// Enter insert mode: exactly one bar cursor on the active field.
+	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	if !f.IsEditing() {
+		t.Fatal("expected insert mode after pressing 'i'")
+	}
+	if got := strings.Count(formStripANSI(f.View()), "▏"); got != 1 {
+		t.Errorf("insert mode bar cursor count=%d, want 1", got)
+	}
+
+	// Esc returns to normal mode and clears the bar cursor.
+	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if f.IsEditing() {
+		t.Error("expected normal mode after esc")
+	}
+	if got := strings.Count(formStripANSI(f.View()), "▏"); got != 0 {
+		t.Errorf("after esc bar cursor count=%d, want 0", got)
+	}
+}
+
+// In normal mode, j/k move the field cursor without entering insert mode, and
+// typing a letter does not edit the field (modal contract).
+func TestConnectionFormNormalModeNavigation(t *testing.T) {
+	f := NewConnectionForm()
+	f.SetSize(67, f.contentHeight())
+	if f.active != fieldName || f.IsEditing() {
+		t.Fatal("form should open in normal mode on the Name field")
+	}
+
+	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	if f.active != fieldDriver || f.IsEditing() {
+		t.Errorf("after j: active=%d editing=%v, want fieldDriver/not editing", f.active, f.IsEditing())
+	}
+
+	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	if f.active != fieldName {
+		t.Errorf("after k: active=%d, want fieldName", f.active)
+	}
+
+	// A letter in normal mode must not edit the field.
+	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	if f.fields[fieldName].Value() != "" {
+		t.Errorf("normal-mode key edited the field: %q", f.fields[fieldName].Value())
+	}
+}
+
+// Insert mode edits the active field; Enter commits and returns to normal.
+func TestConnectionFormInsertModeEditsAndCommits(t *testing.T) {
+	f := NewConnectionForm()
+	f.SetSize(67, f.contentHeight())
+
+	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	for _, r := range "mydb" {
+		f, _ = f.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	if got := f.fields[fieldName].Value(); got != "mydb" {
+		t.Fatalf("insert typing: name=%q, want %q", got, "mydb")
+	}
+
+	// Enter in insert commits the field and returns to normal (no submit).
+	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if f.IsEditing() {
+		t.Error("enter in insert should return to normal mode")
+	}
+	if got := f.fields[fieldName].Value(); got != "mydb" {
+		t.Errorf("committed value lost: %q", got)
+	}
+}
+
+// Tab navigates calmly (like j/k) without entering insert mode.
+func TestConnectionFormTabNavigatesWithoutEditing(t *testing.T) {
+	f := NewConnectionForm()
+	f.SetSize(67, f.contentHeight())
+
+	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if f.active != fieldDriver {
+		t.Errorf("after tab: active=%d, want fieldDriver", f.active)
+	}
+	if f.IsEditing() {
+		t.Error("tab should navigate without entering insert mode")
 	}
 }
 

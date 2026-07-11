@@ -67,8 +67,8 @@ func TestConnectionFormEditPreFill(t *testing.T) {
 	if f.mode != formModeEdit {
 		t.Error("expected formModeEdit")
 	}
-	if f.editing != "staging" {
-		t.Errorf("expected editing 'staging', got '%s'", f.editing)
+	if f.editName != "staging" {
+		t.Errorf("expected editing 'staging', got '%s'", f.editName)
 	}
 	if f.fields[fieldName].Value() != "staging" {
 		t.Errorf("expected name 'staging', got '%s'", f.fields[fieldName].Value())

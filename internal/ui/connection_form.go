@@ -58,14 +58,15 @@ const (
 
 // ConnectionForm is the add/edit connection form.
 type ConnectionForm struct {
-	fields   []textinput.Model
-	active   int
-	mode     formMode
-	errMsg   string
-	width    int
-	height   int
-	scrollRow int // first visible field index when the form scrolls
-	editing  string // name of connection being edited (for edit mode)
+	fields    []textinput.Model
+	active    int
+	mode      formMode
+	errMsg    string
+	width     int
+	height    int
+	scrollRow int    // first visible field index when the form scrolls
+	editing   bool   // insert mode: typing into the active field
+	editName  string // name of connection being edited (for edit mode)
 
 	// Test-connection feedback. testing is true while a background test is in
 	// flight; testMsg/testOK hold the result once it completes.
@@ -82,7 +83,7 @@ func NewConnectionForm() ConnectionForm {
 // NewConnectionFormEdit creates a form pre-filled from an existing connection.
 func NewConnectionFormEdit(cfg config.ConnectionConfig) ConnectionForm {
 	f := newForm(formModeEdit, cfg.Name)
-	f.editing = cfg.Name
+	f.editName = cfg.Name
 	f.fields[fieldDatabase].SetValue(cfg.Database)
 	f.fields[fieldHost].SetValue(cfg.Host)
 	if cfg.Port > 0 {
@@ -152,7 +153,6 @@ func newForm(mode formMode, name string) ConnectionForm {
 	fields[fieldName].SetValue(name)
 	fields[fieldSecrets].SetValue("keychain")
 	fields[fieldReadOnly].SetValue("no")
-	fields[fieldName].Focus()
 
 	return ConnectionForm{
 		fields: fields,
@@ -176,42 +176,85 @@ func (f *ConnectionForm) setDriverField(driver string) {
 	f.fields[fieldDriver].SetValue(driver)
 }
 
-// Update handles messages for the form.
+// Update handles messages for the form using a vim-like modal model that
+// mirrors the inspector: in normal mode j/k (and Tab/arrows) move the field
+// cursor without editing, and e/i/a enter insert mode on the current field.
+// In insert mode, keys edit the field; Esc/Enter return to normal mode.
 func (f ConnectionForm) Update(msg tea.Msg) (ConnectionForm, tea.Cmd) {
-	var cmd tea.Cmd
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "tab":
-			f.fields[f.active].Blur()
-			f.active++
-			if f.active >= fieldCount {
-				f.active = fieldName
-			}
-			f.ensureFieldVisible()
-			cmd = f.fields[f.active].Focus()
+	kmsg, isKey := msg.(tea.KeyMsg)
+	if !isKey {
+		// Non-key messages (e.g. WindowSizeMsg) only matter in insert mode,
+		// where they are forwarded to the active textinput.
+		if f.editing {
+			var cmd tea.Cmd
+			f.fields[f.active], cmd = f.fields[f.active].Update(msg)
 			return f, cmd
-		case "shift+tab":
-			f.fields[f.active].Blur()
-			f.active--
-			if f.active < 0 {
-				f.active = fieldCount - 1
-			}
-			f.ensureFieldVisible()
-			cmd = f.fields[f.active].Focus()
-			return f, cmd
-		default:
-			// Any field interaction clears a stale validation error or test
-			// result so the user is not misled by an outdated message.
-			f.errMsg = ""
-			f.testMsg = ""
-			f.testOK = false
 		}
+		return f, nil
+	}
+	key := kmsg.String()
+
+	if f.editing {
+		// Insert mode: Esc/Enter commit the field and return to normal mode;
+		// any other key edits the active field.
+		if key == "esc" || key == "enter" {
+			f.editing = false
+			f.fields[f.active].Blur()
+			return f, nil
+		}
+		f.clearTransient()
+		var cmd tea.Cmd
+		f.fields[f.active], cmd = f.fields[f.active].Update(msg)
+		return f, cmd
 	}
 
-	f.fields[f.active], cmd = f.fields[f.active].Update(msg)
-	return f, cmd
+	// Normal mode: navigate the field cursor or enter insert mode.
+	switch key {
+	case "j", "down":
+		f.moveActive(1)
+	case "k", "up":
+		f.moveActive(-1)
+	case "tab":
+		f.moveActive(1)
+	case "shift+tab":
+		f.moveActive(-1)
+	case "g":
+		f.active = fieldName
+		f.ensureFieldVisible()
+	case "G":
+		f.active = fieldCount - 1
+		f.ensureFieldVisible()
+	case "e", "i", "a":
+		f.editing = true
+		f.clearTransient()
+		cmd := f.fields[f.active].Focus()
+		return f, cmd
+	}
+	return f, nil
 }
+
+// moveActive advances the field cursor by delta (wrapping) and keeps it visible.
+func (f *ConnectionForm) moveActive(delta int) {
+	f.active += delta
+	if f.active >= fieldCount {
+		f.active = fieldName
+	}
+	if f.active < 0 {
+		f.active = fieldCount - 1
+	}
+	f.ensureFieldVisible()
+}
+
+// clearTransient wipes stale validation/test-connection messages so the user is
+// not misled by an outdated result once they start editing again.
+func (f *ConnectionForm) clearTransient() {
+	f.errMsg = ""
+	f.testMsg = ""
+	f.testOK = false
+}
+
+// IsEditing reports whether the form is in insert mode (typing into a field).
+func (f ConnectionForm) IsEditing() bool { return f.editing }
 
 // View renders the form as a scrollable list of bordered fields, matching
 // the inspector's field-box look (shared via renderFieldBox). One line is
@@ -267,7 +310,7 @@ func (f ConnectionForm) View() string {
 // show their value, a masked value for password fields, or the muted
 // placeholder when empty.
 func (f ConnectionForm) fieldValueContent(fi, valueWidth int) string {
-	if fi == f.active {
+	if fi == f.active && f.editing {
 		return renderEditInput(f.fields[fi], valueWidth, colorFg)
 	}
 	ti := f.fields[fi]
@@ -361,8 +404,12 @@ func (f *ConnectionForm) SetMaxWidth(width int) {
 }
 
 // Focus first field.
+// Focus is a no-op: the form opens in normal mode (field cursor on Name,
+// not editing). Insert mode is entered explicitly with e/i/a, which focuses
+// the underlying textinput. The form renders its own bar cursor, so the
+// textinput's blink command is not needed.
 func (f *ConnectionForm) Focus() tea.Cmd {
-	return f.fields[fieldName].Focus()
+	return nil
 }
 
 // EnterPressed is called when enter is pressed; it validates and returns the
