@@ -3359,15 +3359,17 @@ func (m Model) viewConnections() string {
 }
 
 func (m Model) viewAddConnection() string {
-	// Height: grow to fit all fields, capped to the viewport so the popup
-	// scrolls internally instead of overflowing. Sizing is shared with
-	// layout.go via popupContentSize so the scroll model and rendering agree.
-	popupW, _ := popupDim() // width stays fixed; height is computed below
+	// Sizing is shared with layout.go via popupContentSize so the scroll model
+	// and rendering agree. popupContentSize returns the max available content
+	// height (the cap); the form shrinks below it to fit the current field
+	// count (effectiveHeight), so the popup is short for sqlite and tall for a
+	// tunneled mysql connection.
+	popupW, _ := popupDim() // width stays fixed
 	borderOverhead := 2
-	innerW, contentH := popupContentSize(m.height)
+	innerW, capH := popupContentSize(m.height)
+	m.connForm.SetSize(innerW, capH)
+	contentH := m.connForm.effectiveHeight()
 	popupH := contentH + borderOverhead
-
-	m.connForm.SetSize(innerW, contentH)
 
 	formPanel := lipgloss.NewStyle().
 		Width(popupW - borderOverhead).

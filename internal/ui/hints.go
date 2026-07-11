@@ -61,6 +61,9 @@ func (m Model) hintList() []string {
 			if m.connForm.editing {
 				return []string{"enter", "esc"}
 			}
+			if m.connForm.ActiveIsChoice() {
+				return []string{"j/k", "h/l", "enter", "ctrl+t", "esc"}
+			}
 			return []string{"j/k", "e", "enter", "ctrl+t", "esc"}
 		case m.state == stateConnections:
 			if m.connList.IsFiltering() {
