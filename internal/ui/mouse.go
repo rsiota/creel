@@ -17,18 +17,18 @@ func (m Model) handleConnectionsMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Connection popup is centered at popupDim() = 71×19.
-	pw, ph := popupDim()
+	// Connection popup is dynamically sized and centered (see connListPopupDims).
+	pw, ph := m.connListPopupDims()
 	panelX := (m.width - pw) / 2
 	panelY := (m.height - 1 - ph) / 2
 
-	// Inside the border: border(1) + prompt(1) = offset 2 for first entry.
-	// Each entry renders as 2 lines (name + detail).
+	// Inside the border: border(1) + prompt(1) = offset 2 to the first entry.
+	// Each entry renders as a linesPerField-tall field box.
 	listY := msg.Y - panelY - 2
 	if listY < 0 || msg.X < panelX || msg.X >= panelX+pw {
 		return m, nil
 	}
-	idx := listY / 2
+	idx := listY / linesPerField
 	items := m.connList.VisibleItemsForMouse()
 	if idx < 0 || idx >= len(items) {
 		return m, nil

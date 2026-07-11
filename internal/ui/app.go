@@ -3302,17 +3302,60 @@ func (m Model) View() string {
 	return m.viewWorkspace()
 }
 
+// connListPopupDims returns the (width, height) of the connection-list popup.
+// The width is fixed (popupDim); the height fits the currently visible entries
+// (each a linesPerField-tall field box) plus the prompt and scroll-info lines,
+// capped to the viewport so the list scrolls internally instead of overflowing.
+// Using the visible (filtered) count keeps the popup gap-free as the user types.
+func (m Model) connListPopupDims() (w, h int) {
+	pw, _ := popupDim()
+	items := len(m.connList.visibleItems())
+	const (
+		chrome = 2 // prompt + scroll-info lines
+		border = 2
+		margin = 2 // top + bottom breathing room
+	)
+	maxListArea := m.height - 1 /*status bar*/ - margin - border - chrome
+	if maxListArea < linesPerField {
+		maxListArea = linesPerField
+	}
+	maxEntries := maxListArea / linesPerField
+	visible := items
+	if visible > maxEntries {
+		visible = maxEntries
+	}
+	if visible < 1 {
+		visible = 1 // keeps the geometry valid for the empty state too
+	}
+	return pw, border + chrome + visible*linesPerField
+}
+
+// connListContentDims returns the content width and list-area height the
+// connection list should be sized to, derived from connListPopupDims. Shared
+// by layout.go (which sizes the real model) and viewConnections (render) so the
+// scroll math and what is drawn always agree.
+func (m Model) connListContentDims() (contentW, listH int) {
+	pw, ph := m.connListPopupDims()
+	panelW := pw - 2 // border
+	panelH := ph - 2 // border
+	listH = panelH - 2 // prompt + scroll-info (chrome)
+	if listH < linesPerField {
+		listH = linesPerField
+	}
+	contentW = panelW - 2 // Padding(0,1) → 2 cols
+	return contentW, listH
+}
+
 func (m Model) viewConnections() string {
-	popupW, popupH := popupDim()
+	popupW, popupH := m.connListPopupDims()
 	borderOverhead := 2
-	padH, padW := 0, 2 // Padding(0, 1) → 0 rows, 2 cols
 
 	panelW := popupW - borderOverhead
 	panelH := popupH - borderOverhead
 
 	prompt := m.connList.Prompt()
-	listH := panelH - 2 - padH // prompt + scroll info
-	m.connList.SetSize(panelW-padW, listH)
+	contentW, listH := m.connListContentDims()
+	m.connList.SetSize(contentW, listH)
 
 	// Pin the list to a fixed height so ScrollInfo sits at the bottom.
 	listStyled := lipgloss.NewStyle().

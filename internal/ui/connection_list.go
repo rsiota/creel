@@ -142,11 +142,10 @@ func (c *ConnectionList) ensureVisible() {
 }
 
 func (c ConnectionList) maxVisibleItems() int {
-	// Each entry renders as 2 lines (name + detail). Reserve margin for
-	// the bottom scroll-info line.
-	max := c.height - 3
+	// Each entry renders as a field box (linesPerField lines).
+	max := c.height / linesPerField
 	if max < 1 {
-		max = 1
+		return 1
 	}
 	return max
 }
@@ -206,12 +205,27 @@ func (c *ConnectionList) SetSize(width, height int) {
 	c.ensureVisible()
 }
 
-// View renders the connection list content (without outer border).
+// View renders the connection list as a column of inspector-style field
+// boxes: the connection name and driver badge on the label line, and the
+// connection detail inside a bordered value box. The cursor entry gets the
+// primary-coloured border, mirroring the focused field boxes in the form and
+// inspector. (Without outer border; the popup chrome is added by viewConnections.)
 func (c ConnectionList) View() string {
 	items := c.visibleItems()
+	contentW := c.width
+	valueWidth := contentW - 4
+	if valueWidth < 1 {
+		valueWidth = 1
+	}
+
+	if len(items) == 0 {
+		if c.filtering {
+			return mutedStyle.Render("  (no matches)")
+		}
+		return mutedStyle.Render("  No saved connections. Press 'n' to add one.")
+	}
 
 	maxVisible := c.maxVisibleItems()
-
 	scroll := c.scroll
 	if scroll > len(items)-maxVisible && len(items) > maxVisible {
 		scroll = len(items) - maxVisible
@@ -224,56 +238,40 @@ func (c ConnectionList) View() string {
 		end = len(items)
 	}
 
+	badgeSty := lipgloss.NewStyle().Foreground(colorAccent)
+	nameBold := lipgloss.NewStyle().Foreground(colorFg).Bold(true)
+	namePlain := lipgloss.NewStyle().Foreground(colorFg)
+	detailSty := lipgloss.NewStyle().Foreground(colorMuted)
+	detailCurSty := lipgloss.NewStyle().Foreground(colorLabel)
+
 	var b strings.Builder
-
-	if len(items) == 0 {
-		emptyHeight := c.height - 2
-		if emptyHeight < 1 {
-			emptyHeight = 1
-		}
-		if c.filtering {
-			b.WriteString(mutedStyle.Render("  (no matches)"))
-		} else {
-			b.WriteString(mutedStyle.Render("  No saved connections. Press 'n' to add one."))
-		}
-		padding := emptyHeight - 1
-		for i := 0; i < padding; i++ {
-			b.WriteString("\n")
-		}
-		return b.String()
-	}
-
-	// Connection entries — 2 lines each (name + detail)
 	for i := scroll; i < end; i++ {
 		item := items[i]
 		isCursor := i == c.cursor
 
-		// Name line with driver badge
-		nameText := item.name
-		if c.filtering {
-			nameText = highlightMatches(item.name, item.matchIdx)
+		// Label: the connection name (bold when cursor; fuzzy-highlighted when
+		// filtering, in which case per-char styling replaces the bold).
+		var labelStr string
+		switch {
+		case c.filtering:
+			labelStr = highlightMatches(item.name, item.matchIdx)
+		case isCursor:
+			labelStr = nameBold.Render(item.name)
+		default:
+			labelStr = namePlain.Render(item.name)
 		}
 
-		driverBadge := lipgloss.NewStyle().Foreground(colorAccent).Render(
-			fmt.Sprintf("[%s]", strings.ToUpper(item.driver)),
-		)
+		// Marker: the driver badge, right-aligned.
+		markerStr := badgeSty.Render("[" + strings.ToUpper(item.driver) + "]")
 
-		nameLine := nameText + "  " + driverBadge
-		nameRowStyle := lipgloss.NewStyle().Foreground(colorFg).Padding(0, 1, 0, 2)
+		// Value: host/db detail, brightened for the cursor entry.
+		dSty := detailSty
 		if isCursor {
-			nameRowStyle = nameRowStyle.Bold(true)
+			dSty = detailCurSty
 		}
-		nameLine = nameRowStyle.Render(nameLine)
-		b.WriteString(nameLine)
-		b.WriteString("\n")
+		valueContent := dSty.Render(truncateCell(item.detail, valueWidth))
 
-		// Detail line
-		detailStyle := lipgloss.NewStyle().Foreground(colorMuted)
-		if isCursor {
-			detailStyle = lipgloss.NewStyle().Foreground(colorLabel)
-		}
-		detail := truncateSidebarLine("  "+item.detail, c.width)
-		b.WriteString(detailStyle.Render(detail))
+		b.WriteString(renderFieldBox(labelStr, markerStr, valueContent, contentW, isCursor))
 		b.WriteString("\n")
 	}
 
@@ -303,5 +301,9 @@ func (c ConnectionList) ScrollInfo() string {
 		}
 		return mutedStyle.Render(fmt.Sprintf(" %d-%d of %d", scroll+1, end, len(items)))
 	}
-	return ""
+	noun := "connections"
+	if len(items) == 1 {
+		noun = "connection"
+	}
+	return mutedStyle.Render(fmt.Sprintf(" %d %s", len(items), noun))
 }

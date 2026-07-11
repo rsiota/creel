@@ -90,6 +90,8 @@ func (m Model) updateLayout() Model {
 	}
 
 	if m.state == stateConnections {
+		contentW, listH := m.connListContentDims()
+		m.connList.SetSize(contentW, listH)
 		return m
 	}
 
