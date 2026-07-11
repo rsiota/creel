@@ -204,6 +204,25 @@ func replaceSimpleSelectTable(query, oldName, newName string) string {
 	return query[:afterFromStart] + newName + restTrim[tableEnd:]
 }
 
+// startResultsCellEdit enters inline edit mode on the cell under the results
+// cursor, opening the expanded cell-edit popup instead when the value is
+// wider than its column. It mirrors the "e"/"i" keyboard binding and is a
+// no-op when the results are not editable, have no primary key, or when the
+// inspector panel is open (where edits happen in the inspector instead).
+func (m *Model) startResultsCellEdit() tea.Cmd {
+	if !m.results.IsEditable() || !m.results.HasPrimaryKey() {
+		return nil
+	}
+	if m.inspector.IsVisible() {
+		return nil
+	}
+	if m.results.IsCellTruncated(m.results.CursorRow(), m.results.CursorCol()) {
+		return m.openCellEditPopup(m.results.CursorRow(), m.results.CursorCol())
+	}
+	m.results.StartEdit()
+	return nil
+}
+
 // saveEdits writes all pending dirty cells to the database using parameterized
 // UPDATE queries, wrapped in a single transaction so the batch is atomic.
 func (m *Model) saveEdits() tea.Cmd {

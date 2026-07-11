@@ -294,6 +294,12 @@ type Model struct {
 	resultsPendingY bool
 	resultsPendingD bool // dd double-tap state for row deletion
 
+	// Double-click-to-edit: records the time and cell of the most recent
+	// left-click in the results panel so a second click on the same cell
+	// within doubleClickInterval enters inline edit mode.
+	lastResultsClickTime time.Time
+	lastResultsClickCell cellRef
+
 	// Discard confirmation dialog
 	discardConfirm bool
 

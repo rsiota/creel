@@ -107,3 +107,69 @@ func TestResultsMouseClickSelectsClickedRow(t *testing.T) {
 		t.Errorf("click on header separator (Y=%d): cursorRow=%d, want none", yHeader+1, clicked.results.cursorRow)
 	}
 }
+
+// TestResultsDoubleClickEntersEditMode verifies that two left-clicks on the
+// same data cell within doubleClickInterval enter inline edit mode, while a
+// single click does not.
+func TestResultsDoubleClickEntersEditMode(t *testing.T) {
+	m := newResultsMouseModel()
+	m.results.SetEditable("users", []string{"id"})
+
+	yAlice := workspaceLineY(t, m, "alice")
+	x, col := findResultsColumnX(t, m, yAlice)
+	if col < 0 {
+		t.Fatalf("no column under click")
+	}
+
+	// First click: moves cursor, must NOT enter edit mode.
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yAlice})
+	m = out.(Model)
+	if m.results.IsEditing() {
+		t.Fatal("single click should not enter edit mode")
+	}
+
+	// Second click on the same cell: enters edit mode.
+	out, _ = m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yAlice})
+	m = out.(Model)
+	if !m.results.IsEditing() {
+		t.Errorf("double click on a cell should enter inline edit mode")
+	}
+}
+
+// TestResultsDoubleClickDifferentCellsDoesNotEdit verifies that clicking two
+// different cells does not trigger edit mode even within doubleClickInterval.
+func TestResultsDoubleClickDifferentCellsDoesNotEdit(t *testing.T) {
+	m := newResultsMouseModel()
+	m.results.SetEditable("users", []string{"id"})
+
+	yAlice := workspaceLineY(t, m, "alice")
+	yBob := workspaceLineY(t, m, "bob")
+	x, _ := findResultsColumnX(t, m, yAlice)
+
+	// Click alice then bob: different rows, no edit.
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yAlice})
+	m = out.(Model)
+	out, _ = m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yBob})
+	m = out.(Model)
+	if m.results.IsEditing() {
+		t.Errorf("clicking two different cells should not enter edit mode")
+	}
+}
+
+// TestResultsDoubleClickNotEditableDoesNotEdit verifies that double-clicking a
+// cell on non-editable results (no primary key) does not enter edit mode.
+func TestResultsDoubleClickNotEditableDoesNotEdit(t *testing.T) {
+	m := newResultsMouseModel()
+	// Not editable: SetEditable is never called.
+
+	yAlice := workspaceLineY(t, m, "alice")
+	x, _ := findResultsColumnX(t, m, yAlice)
+
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yAlice})
+	m = out.(Model)
+	out, _ = m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yAlice})
+	m = out.(Model)
+	if m.results.IsEditing() {
+		t.Errorf("double click on non-editable results should not enter edit mode")
+	}
+}

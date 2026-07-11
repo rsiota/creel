@@ -2,9 +2,14 @@ package ui
 
 import (
 	"fmt"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// doubleClickInterval is the maximum gap between two left-clicks on the same
+// results cell that is interpreted as a double-click (entering inline edit).
+const doubleClickInterval = 500 * time.Millisecond
 
 // handleConnectionsMouse routes mouse events on the connection list screen.
 func (m Model) handleConnectionsMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
@@ -240,6 +245,19 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		colIdx := m.results.ColumnAtX(msg.X - sidebarWidth)
 		if rowIdx >= 0 && rowIdx < m.results.NumRows() && colIdx >= 0 {
 			m.results.SetCursor(rowIdx, colIdx)
+
+			// Double-click on the same cell within doubleClickInterval →
+			// enter inline edit mode (mirrors the "e"/"i" key binding).
+			cell := cellRef{row: rowIdx, col: colIdx}
+			if !m.results.IsEditing() &&
+				!m.lastResultsClickTime.IsZero() &&
+				time.Since(m.lastResultsClickTime) <= doubleClickInterval &&
+				m.lastResultsClickCell == cell {
+				m.lastResultsClickTime = time.Time{}
+				return m, m.startResultsCellEdit()
+			}
+			m.lastResultsClickTime = time.Now()
+			m.lastResultsClickCell = cell
 		}
 	}
 
