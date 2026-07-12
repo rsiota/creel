@@ -4,19 +4,31 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/ruben/gsql/internal/db"
 )
 
-// exportToCSV writes result rows to a CSV file in ~/Downloads. If rows are
-// marked, it re-queries the full set of marked rows by primary key; otherwise
-// it exports the current page. Returns a command that delivers exportDoneMsg.
+// exportToCSV writes result rows to a CSV file in ~/Downloads. It is the
+// fast path for the `x` key (instant CSV). The format-aware path is
+// exportResults, opened with `g x`.
 func (m *Model) exportToCSV() tea.Cmd {
+	return m.exportResults(fmtCSV)
+}
+
+// exportResults writes the current result set to ~/Downloads in the given
+// format. If rows are marked on an editable table, it re-queries the full set
+// of marked rows by primary key (which may span multiple pages) and exports
+// those asynchronously; otherwise it exports the current page from memory.
+// Returns a command that delivers exportDoneMsg (nil for the in-memory path,
+// which sets exportMsg directly).
+func (m *Model) exportResults(format exportFormat) tea.Cmd {
 	if m.results.NumRows() == 0 {
 		m.exportMsg = "nothing to export"
 		return nil
@@ -35,7 +47,7 @@ func (m *Model) exportToCSV() tea.Cmd {
 		conn := m.connection
 		query := fmt.Sprintf("SELECT * FROM %s WHERE %s", table, clause)
 		timestamp := time.Now().Format("20060102_150405")
-		filename := exportFilename(table, timestamp)
+		filename := exportFilename(table, timestamp, format)
 
 		return func() tea.Msg {
 			result, err := conn.DB().Execute(query)
@@ -46,27 +58,28 @@ func (m *Model) exportToCSV() tea.Cmd {
 			for i, c := range result.Columns {
 				exportCols[i] = c.Name
 			}
-			path, count, err := writeCSV(exportCols, result.Rows, filename)
+			path, count, err := writeExport(format, exportCols, result.Rows, filename)
 			return exportDoneMsg{path: path, count: count, err: err}
 		}
 	}
 
 	// No marks: export current page in memory.
 	timestamp := time.Now().Format("20060102_150405")
-	filename := exportFilename(table, timestamp)
+	filename := exportFilename(table, timestamp, format)
 	rows := m.results.rows
-	path, count, err := writeCSV(cols, rows, filename)
+	path, count, err := writeExport(format, cols, rows, filename)
 	m.exportMsg = exportStatusMessage(path, count, err)
 	return nil
 }
 
-// exportFilename builds a safe filename for a CSV export.
-func exportFilename(table, timestamp string) string {
+// exportFilename builds a safe filename for an export in the given format.
+func exportFilename(table, timestamp string, format exportFormat) string {
 	name := table
 	if name == "" {
 		name = "query"
 	}
-	return fmt.Sprintf("gsql_%s_%s.csv", name, timestamp)
+	ext := exportFormatExt[format]
+	return fmt.Sprintf("gsql_%s_%s.%s", name, timestamp, ext)
 }
 
 // exportStatusMessage renders the result of an export for the status bar.
@@ -117,7 +130,68 @@ func writeCSV(cols []string, rows [][]string, filename string) (string, int, err
 	return path, len(rows), w.Error()
 }
 
-// serializeCSV renders columns and rows as CSV to a string, for testing.
+// writeExport serializes columns and rows in the given format to a file in
+// ~/Downloads and returns the absolute path and row count. It dispatches to a
+// per-format writer; CSV reuses writeCSV to keep the existing NULL → empty
+// behaviour identical.
+func writeExport(format exportFormat, cols []string, rows [][]string, filename string) (string, int, error) {
+	if format == fmtCSV {
+		return writeCSV(cols, rows, filename)
+	}
+	content, err := serializeFormat(format, cols, rows)
+	if err != nil {
+		return "", 0, err
+	}
+	return writeFile(filename, content, len(rows))
+}
+
+// writeFile writes content to ~/Downloads/<filename> and returns the absolute
+// path and row count.
+func writeFile(filename, content string, count int) (string, int, error) {
+	dir, err := os.UserHomeDir()
+	if err != nil {
+		return "", 0, err
+	}
+	dir = filepath.Join(dir, "Downloads")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", 0, err
+	}
+	path := filepath.Join(dir, filename)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return path, 0, err
+	}
+	return path, count, nil
+}
+
+// serializeFormat renders columns and rows in the given format to a string, for
+// writing to a file (writeExport) or for testing.
+func serializeFormat(format exportFormat, cols []string, rows [][]string) (string, error) {
+	switch format {
+	case fmtJSON:
+		return serializeJSON(cols, rows), nil
+	case fmtJSONL:
+		return serializeJSONL(cols, rows), nil
+	case fmtMarkdown:
+		return serializeMarkdown(cols, rows), nil
+	case fmtTSV:
+		return serializeTSV(cols, rows), nil
+	case fmtCSV:
+		return serializeCSV(cols, rows)
+	}
+	return "", fmt.Errorf("unsupported export format: %s", format)
+}
+
+// cellValue returns the value to emit for a tabular (CSV/TSV/Markdown) export:
+// the NULL sentinel becomes an empty cell, matching the existing CSV behaviour.
+func cellValue(v string) string {
+	if v == "NULL" {
+		return ""
+	}
+	return v
+}
+
+// serializeCSV renders columns and rows as CSV to a string, for testing and for
+// the in-memory export path. NULL cells become empty fields.
 func serializeCSV(cols []string, rows [][]string) (string, error) {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
@@ -127,11 +201,7 @@ func serializeCSV(cols []string, rows [][]string) (string, error) {
 	for _, row := range rows {
 		out := make([]string, len(row))
 		for i, v := range row {
-			if v == "NULL" {
-				out[i] = ""
-			} else {
-				out[i] = v
-			}
+			out[i] = cellValue(v)
 		}
 		if err := w.Write(out); err != nil {
 			return "", err
@@ -139,6 +209,90 @@ func serializeCSV(cols []string, rows [][]string) (string, error) {
 	}
 	w.Flush()
 	return buf.String(), nil
+}
+
+// serializeJSON renders the result set as a JSON array of objects keyed by
+// column name. NULL cells become JSON null; all other values are strings
+// (result rows are already stringly-typed).
+func serializeJSON(cols []string, rows [][]string) string {
+	out := make([]map[string]interface{}, len(rows))
+	for r, row := range rows {
+		obj := make(map[string]interface{}, len(cols))
+		for i, col := range cols {
+			if i < len(row) && row[i] != "NULL" {
+				obj[col] = row[i]
+			} else {
+				obj[col] = nil
+			}
+		}
+		out[r] = obj
+	}
+	b, _ := json.MarshalIndent(out, "", "  ")
+	return string(b) + "\n"
+}
+
+// serializeJSONL renders the result set as one JSON object per line (JSON
+// Lines), convenient for streaming/log-style consumption.
+func serializeJSONL(cols []string, rows [][]string) string {
+	var b strings.Builder
+	for _, row := range rows {
+		obj := make(map[string]interface{}, len(cols))
+		for i, col := range cols {
+			if i < len(row) && row[i] != "NULL" {
+				obj[col] = row[i]
+			} else {
+				obj[col] = nil
+			}
+		}
+		line, _ := json.Marshal(obj)
+		b.Write(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// serializeMarkdown renders the result set as a GitHub-flavoured Markdown table.
+// Pipes in values are escaped so they don't break the table layout.
+func serializeMarkdown(cols []string, rows [][]string) string {
+	var b strings.Builder
+	escape := func(v string) string { return strings.ReplaceAll(cellValue(v), "|", "\\|") }
+
+	writeRow := func(cells []string) {
+		b.WriteString("|")
+		for _, c := range cells {
+			b.WriteString(" " + escape(c) + " |")
+		}
+		b.WriteString("\n")
+	}
+
+	writeRow(cols)
+	b.WriteString("|")
+	for range cols {
+		b.WriteString(" --- |")
+	}
+	b.WriteString("\n")
+	for _, row := range rows {
+		writeRow(row)
+	}
+	return b.String()
+}
+
+// serializeTSV renders the result set as tab-separated values.
+func serializeTSV(cols []string, rows [][]string) string {
+	var b strings.Builder
+	writeTSVRow := func(cells []string) {
+		parts := make([]string, len(cells))
+		for i, c := range cells {
+			parts[i] = cellValue(c)
+		}
+		b.WriteString(strings.Join(parts, "\t"))
+		b.WriteString("\n")
+	}
+	writeTSVRow(cols)
+	for _, row := range rows {
+		writeTSVRow(row)
+	}
+	return b.String()
 }
 
 // execExportDump starts a table-by-table SQL dump of the selected tables,

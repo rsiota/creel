@@ -872,7 +872,7 @@ func TestSerializeCSV_EmptyRows(t *testing.T) {
 }
 
 func TestExportFilename(t *testing.T) {
-	got := exportFilename("users", "20260619_120000")
+	got := exportFilename("users", "20260619_120000", fmtCSV)
 	want := "gsql_users_20260619_120000.csv"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
@@ -880,7 +880,7 @@ func TestExportFilename(t *testing.T) {
 }
 
 func TestExportFilename_EmptyTable(t *testing.T) {
-	got := exportFilename("", "20260619")
+	got := exportFilename("", "20260619", fmtCSV)
 	if got != "gsql_query_20260619.csv" {
 		t.Errorf("got %q", got)
 	}

@@ -270,6 +270,7 @@ type Model struct {
 	filterPicker    FilterPicker
 	columnPicker    ColumnPicker
 	exportPicker    ExportPicker
+	formatPicker    FormatPicker
 	importPrompt    ImportPrompt
 	addColumnForm   AddColumnForm
 	tableRenameForm TableRenameForm
@@ -443,6 +444,7 @@ func NewModel(cfg *config.Config) Model {
 		filterPicker:    NewFilterPicker(),
 		columnPicker:    NewColumnPicker(),
 		exportPicker:    NewExportPicker(),
+		formatPicker:    NewFormatPicker(),
 		importPrompt:    NewImportPrompt(),
 		addColumnForm:   NewAddColumnForm(),
 		tableRenameForm: NewTableRenameForm(),
@@ -1668,6 +1670,25 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Format picker (g x) is modal — intercept all keys.
+	if m.formatPicker.IsVisible() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.formatPicker.Hide()
+			return m, nil
+		case "enter":
+			format := m.formatPicker.Commit()
+			return m, m.exportResults(format)
+		case "up", "k":
+			m.formatPicker.Up()
+			return m, nil
+		case "down", "j":
+			m.formatPicker.Down()
+			return m, nil
+		}
+		return m, nil
+	}
+
 	// Drop-table typed-name confirmation is modal — intercept all keys.
 	if m.dropTableConfirm != "" {
 		switch msg.String() {
@@ -2648,6 +2669,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.resultsPendingG = false
 			m.resultsPendingY = false
 			return m, m.explainQuery()
+		}
+
+		// g X — export current results in a chosen format (opens format picker).
+		// Capital X avoids the g x (close tab) tab-management prefix.
+		if msg.String() == "X" && m.resultsPendingG {
+			m.resultsPendingG = false
+			m.resultsPendingY = false
+			if m.results.NumRows() > 0 {
+				m.formatPicker.Show()
+			}
+			return m, nil
 		}
 
 		// g/G navigation works on empty tables too.
@@ -3965,6 +3997,16 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, exportPanel, panelX, panelY)
+	}
+
+	// Overlay format picker (g x) if visible
+	if m.formatPicker.IsVisible() {
+		formatPanel := m.formatPicker.View()
+		panelW := lipgloss.Width(formatPanel)
+		panelH := lipgloss.Height(formatPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, formatPanel, panelX, panelY)
 	}
 
 	// Overlay import prompt if visible
