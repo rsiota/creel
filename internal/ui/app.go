@@ -3303,13 +3303,16 @@ func (m Model) View() string {
 }
 
 // connListPopupDims returns the (width, height) of the connection-list popup.
-// The width is fixed (popupDim); the height fits the currently visible entries
-// (each a linesPerField-tall field box) plus the prompt and scroll-info lines,
-// capped to the viewport so the list scrolls internally instead of overflowing.
-// Using the visible (filtered) count keeps the popup gap-free as the user types.
+// The width is fixed (popupDim); the height fits the total (unfiltered) entry
+// count (each a linesPerField-tall field box) plus the prompt and scroll-info
+// lines, capped to the viewport so the list scrolls internally instead of
+// overflowing. Using the total — not the filtered — count keeps the popup
+// height constant while the user types in the filter, so it doesn't jump
+// around; the list area simply shows fewer boxes (with breathing room at the
+// bottom) as matches drop out.
 func (m Model) connListPopupDims() (w, h int) {
 	pw, _ := popupDim()
-	items := len(m.connList.visibleItems())
+	total := m.connList.TotalCount()
 	const (
 		chrome = 2 // prompt + scroll-info lines
 		border = 2
@@ -3320,14 +3323,14 @@ func (m Model) connListPopupDims() (w, h int) {
 		maxListArea = linesPerField
 	}
 	maxEntries := maxListArea / linesPerField
-	visible := items
-	if visible > maxEntries {
-		visible = maxEntries
+	fit := total
+	if fit > maxEntries {
+		fit = maxEntries
 	}
-	if visible < 1 {
-		visible = 1 // keeps the geometry valid for the empty state too
+	if fit < 1 {
+		fit = 1 // keeps the geometry valid for the empty state too
 	}
-	return pw, border + chrome + visible*linesPerField
+	return pw, border + chrome + fit*linesPerField
 }
 
 // connListContentDims returns the content width and list-area height the

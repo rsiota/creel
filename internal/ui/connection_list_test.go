@@ -88,6 +88,25 @@ func TestConnectionListPopupGrowsWithItems(t *testing.T) {
 	}
 }
 
+// While filtering, the popup height must stay constant — sized to the total
+// connection count, not the shrinking match set — so it doesn't jump as the
+// user types. (The list area just shows fewer boxes with breathing room.)
+func TestConnectionListPopupHeightConstantWhileFiltering(t *testing.T) {
+	m := newConnListModel(t, makeConns(6), 60)
+	_, h0 := m.connListPopupDims()
+
+	m.connList.StartFilter()
+	// makeConns names are "conn0".."conn5": "1" matches only "conn1".
+	m.connList.FilterAddChar("1")
+	if got := len(m.connList.visibleItems()); got != 1 {
+		t.Fatalf("filter setup: visible=%d, want 1", got)
+	}
+	_, h1 := m.connListPopupDims()
+	if h1 != h0 {
+		t.Errorf("popup height changed while filtering: before=%d after=%d (want equal)", h0, h1)
+	}
+}
+
 // While the cursor stays within the visible window, j/k must NOT scroll — the
 // cards stay put and only the focused border moves. Scrolling kicks in only
 // once the cursor reaches the bottom edge (like the inspector/form). This is a

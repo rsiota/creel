@@ -82,6 +82,13 @@ func (c ConnectionList) VisibleItemsForMouse() []connectionItem {
 	return items
 }
 
+// TotalCount returns the total number of connections, ignoring any active
+// filter. Used for sizing the popup so its height stays constant while the
+// user filters, instead of growing/shrinking with the match count.
+func (c ConnectionList) TotalCount() int {
+	return len(c.items)
+}
+
 // SelectedName returns the name of the currently highlighted connection.
 func (c ConnectionList) SelectedName() string {
 	items := c.visibleItems()
