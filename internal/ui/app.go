@@ -414,25 +414,28 @@ type Model struct {
 	queryStart     time.Time          // when the current query started (for elapsed display)
 	queryCancelled bool               // true if the user cancelled the running query
 	queryTimeout   time.Duration      // per-query deadline; 0 = wait indefinitely (esc still cancels)
+	settings       config.Settings    // effective app-level settings
 }
 
-const defaultPageSize = 200
-
-// defaultQueryTimeout bounds a single query so a runaway SELECT can't hang the
-// TUI. esc cancels immediately regardless; the timeout is a safety net. 0 would
-// disable it. Override per app via Model.queryTimeout (config wiring to come
-// with the Settings block).
-const defaultQueryTimeout = 30 * time.Second
+// defaultPageSize / defaultQueryTimeout mirror the config-package defaults so
+// the UI has a single source of truth (page size is also used by NewResultsTab).
+const (
+	defaultPageSize     = config.DefaultPageSize
+	defaultQueryTimeout = config.DefaultQueryTimeout
+)
 
 // NewModel creates a new top-level application model.
 func NewModel(cfg *config.Config) Model {
 	// Create initial tab
 	firstTab := NewResultsTab(0, "New Query")
 
+	settings := cfg.Settings.Effective()
+
 	m := Model{
 		state:           stateConnections,
 		focus:           FocusConnections,
 		config:          cfg,
+		settings:        settings,
 		editor:          NewQueryEditor(),
 		results:         firstTab.Results,
 		inspector:       NewInspector(),
@@ -454,8 +457,8 @@ func NewModel(cfg *config.Config) Model {
 		historyStore:    history.NewStore(historyDir()),
 		bookmarkStore:   bookmarks.NewStore(historyDir()),
 		expanded:        make(map[string][]db.Column),
-		pageSize:        defaultPageSize,
-		queryTimeout:    defaultQueryTimeout,
+		pageSize:        settings.PageSize,
+		queryTimeout:    settings.QueryTimeout.Std(),
 		// Tab management
 		resultsTabs:  []*ResultsTab{firstTab},
 		activeTabID:  0,
@@ -1219,6 +1222,7 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "n":
 		m.state = stateAddConnection
 		m.connForm = NewConnectionForm()
+		m.connForm.setDriverField(m.settings.DefaultDriver)
 		iw, ch := popupContentSize(m.height)
 		m.connForm.SetSize(iw, ch)
 		cmd := m.connForm.Focus()

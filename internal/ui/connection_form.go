@@ -193,7 +193,18 @@ func newTextInput(placeholder, def string, masked bool) textinput.Model {
 }
 
 func (f *ConnectionForm) setDriverField(driver string) {
-	f.fields[fieldDriver].SetValue(driver)
+	f.fields[fieldDriver].SetValue(sanitizeDriver(driver))
+}
+
+// sanitizeDriver normalizes a default-driver value to one of the supported
+// drivers, falling back to sqlite for anything unrecognized (including the
+// empty string) so a bad setting never leaves the form in an invalid state.
+func sanitizeDriver(driver string) string {
+	switch strings.ToLower(strings.TrimSpace(driver)) {
+	case "mysql", "postgres", "sqlite":
+		return strings.ToLower(strings.TrimSpace(driver))
+	}
+	return "sqlite"
 }
 
 // --- dynamic field list -----------------------------------------------------

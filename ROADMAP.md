@@ -68,19 +68,26 @@ picker for JSON (array/lines), Markdown, TSV, and SQL INSERT dump. Reuse the
 `export_picker.go` pattern.
 - Files: `internal/ui/export_import.go`, `internal/ui/export_picker.go`.
 
-### 7. App-level settings in config
-`Config` only has `Connections`. Move hardcoded values into a `Settings` block:
-```yaml
-settings:
-  page_size: 500
-  theme: tokyo-night      # tokyo-night | gruvbox | catppuccin | nord | light
-  confirm_destructive: true
-  default_driver: sqlite
-  query_timeout: 30s
-  cursor_style: block
-```
-- Files: `internal/config/config.go`, `internal/ui/app.go` (`defaultPageSize`),
-  `internal/ui/styles.go`.
+### 7. App-level settings in config ✅ DONE (2026-07-12)
+Added a `Settings` block to the config with a custom YAML `Duration` type
+(friendly `30s` / `2m` form) and an `Effective()` normalizer. Currently wired:
+`page_size`, `query_timeout` (replacing the hardcoded `defaultPageSize`/`defaultQueryTimeout`),
+and `default_driver` (seeds the add-connection form, validated with a sqlite
+fallback). Zero values fall back to defaults, and a missing/zero settings block
+is omitted on save so connection edits don't sprout a `settings:` block.
+
+**Follow-ups still open:**
+- `confirm_destructive` (gate the ~8 destructive confirmation sites — drop
+  table/db, truncate, clear history/bookmarks, discard edits, schema DDL).
+  Safety-critical; the field is reserved on `Settings` but not yet applied.
+- `theme` (tokyo-night | gruvbox | catppuccin | nord | light): needs a palette
+  system + live re-render of `styles.go`. Field reserved.
+- `cursor_style`: needs results-cursor rendering work. Field reserved.
+- Letting `query_timeout: 0` disable the deadline via config — currently
+  `Effective` replaces 0 with the 30s default (the runner already supports 0 =
+  no deadline; needs a sentinel to opt out through config).
+- Files: `internal/config/settings.go`, `internal/config/config.go`,
+  `internal/ui/app.go`, `internal/ui/connection_form.go`.
 
 ### 8. Configurable query timeout
 Only the SSH tunnel has a timeout (`ssh_tunnel.go`). A runaway `SELECT` hangs

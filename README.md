@@ -132,6 +132,29 @@ connections:
     readonly: true
 ```
 
+### Settings
+
+Top-level app preferences live under a `settings:` block. All fields are
+optional and fall back to defaults when omitted:
+
+| Key              | Default | Description                                                              |
+| ---------------- | ------- | ------------------------------------------------------------------------ |
+| `page_size`      | 200     | Rows fetched per page in results                                         |
+| `query_timeout`  | 30s     | Per-query deadline (friendly form: `2m`, `1h30m`, or a bare seconds int) |
+| `default_driver` | sqlite  | Driver pre-filled in the add-connection form                             |
+
+```yaml
+settings:
+  page_size: 500
+  query_timeout: 1m
+  default_driver: postgres
+```
+
+`query_timeout` accepts values like `30s`, `2m`, `1h30m`, or a bare number of
+seconds (`45`). An invalid value makes config load fail loudly rather than
+silently falling back. (`theme`, `confirm_destructive`, and `cursor_style` are
+reserved for upcoming work.)
+
 ## Keybindings
 
 Press `?` inside the TUI for the full overlay, or `Ctrl+P` for the fuzzy command palette.

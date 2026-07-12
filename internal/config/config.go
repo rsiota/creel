@@ -11,6 +11,7 @@ import (
 // Config is the top-level application configuration.
 type Config struct {
 	Connections []ConnectionConfig `yaml:"connections"`
+	Settings    Settings           `yaml:"settings,omitempty"`
 }
 
 // ConnectionConfig mirrors db.ConnectionConfig but lives in config package
