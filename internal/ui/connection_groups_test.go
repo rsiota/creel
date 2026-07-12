@@ -220,9 +220,10 @@ func TestGroupsChildrenIndentedUnderHeader(t *testing.T) {
 	m.connList.CancelFilter()
 	view := stripAnsi(m.connList.View())
 
-	// Child boxes are indented three spaces under the header.
-	if !strings.Contains(view, "\n   \u250c") { // "   ┌"
-		t.Errorf("grouped child boxes should be indented (expected '   ┌'):\n%s", view)
+	// Child boxes expand exactly under the first letter of the header (past the
+	// "▾ " marker prefix = 2 columns).
+	if !strings.Contains(view, "\n  \u250c") { // "  ┌"
+		t.Errorf("grouped child boxes should be indented under the first letter (expected '  ┌'):\n%s", view)
 	}
 	// The Work header carries its connection count.
 	var workLine string
@@ -241,7 +242,7 @@ func TestGroupsChildrenIndentedUnderHeader(t *testing.T) {
 
 	// Flat mode (no groups) is not indented at all.
 	flat := newConnListModel(t, makeConns(2), 40)
-	if strings.Contains(stripAnsi(flat.connList.View()), "\n   \u250c") {
+	if strings.Contains(stripAnsi(flat.connList.View()), "\n  \u250c") {
 		t.Errorf("flat mode should not indent child boxes")
 	}
 }

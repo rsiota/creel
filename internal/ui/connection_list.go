@@ -177,8 +177,9 @@ func (c ConnectionList) groupedRows() []connRow {
 }
 
 // groupIndent returns the number of leading spaces to shift a connection box
-// so it reads as a child of its group header. Zero in flat mode (no groups)
-// and while filtering (which flattens), preserving the original layout there.
+// so it expands exactly under the first letter of its group header (i.e. past
+// the "▾ " marker prefix). Zero in flat mode (no groups) and while filtering
+// (which flattens), preserving the original layout there.
 func (c ConnectionList) groupIndent() int {
 	if c.filtering && c.filter != "" {
 		return 0
@@ -186,7 +187,7 @@ func (c ConnectionList) groupIndent() int {
 	if !c.hasGroups() {
 		return 0
 	}
-	return 3
+	return 2 // len("▾ "): marker + space before the group name
 }
 
 // groupCount returns the number of connections in a group ("" = ungrouped).
