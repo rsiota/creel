@@ -212,6 +212,53 @@ func TestGroupsPopupHeightConstantWhileFolding(t *testing.T) {
 	}
 }
 
+// Grouped connection boxes render indented under their header (so the
+// parent-child relationship reads visually), and the header shows the
+// connection count. Flat mode is not indented.
+func TestGroupsChildrenIndentedUnderHeader(t *testing.T) {
+	m := newConnListModel(t, groupedConns(), 40)
+	m.connList.CancelFilter()
+	view := stripAnsi(m.connList.View())
+
+	// Child boxes are indented three spaces under the header.
+	if !strings.Contains(view, "\n   \u250c") { // "   ┌"
+		t.Errorf("grouped child boxes should be indented (expected '   ┌'):\n%s", view)
+	}
+	// The Work header carries its connection count.
+	var workLine string
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, "Work") {
+			workLine = line
+			break
+		}
+	}
+	if workLine == "" {
+		t.Fatalf("Work header not found:\n%s", view)
+	}
+	if !strings.Contains(workLine, "2") {
+		t.Errorf("Work header should show count '2': %q", workLine)
+	}
+
+	// Flat mode (no groups) is not indented at all.
+	flat := newConnListModel(t, makeConns(2), 40)
+	if strings.Contains(stripAnsi(flat.connList.View()), "\n   \u250c") {
+		t.Errorf("flat mode should not indent child boxes")
+	}
+}
+
+// space folds/unfolds the group under the cursor, mirroring the sidebar.
+func TestGroupsSpaceFoldsViaApp(t *testing.T) {
+	m := newConnListModel(t, groupedConns(), 40)
+	m.connList.CancelFilter()
+	m.connList.SetCursor(indexOfConnName(m.connList.rows(), "pers-c"))
+
+	mm, _ := m.updateConnections(tea.KeyMsg{Type: tea.KeySpace})
+	m = mm.(Model)
+	if !m.connList.collapsed["Personal"] {
+		t.Error("space on pers-c should collapse Personal")
+	}
+}
+
 // enter on a group header folds it; enter on a connection connects (returns a
 // non-nil connect command path). tab folds from anywhere within a group.
 func TestGroupsEnterAndTabFoldViaApp(t *testing.T) {

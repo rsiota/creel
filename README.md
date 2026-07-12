@@ -150,12 +150,12 @@ connections:
     group: Personal
 ```
 
-In the connection list, grouped connections appear under `▾ Group` headers
-(ungrouped ones lead under "Ungrouped", then named groups alphabetically). Press
-`tab` to fold/unfold the group under the cursor, or `enter` on a header to
-toggle it. Filtering (`/`) flattens the list to ranked matches regardless of
-groups. Connections with no `group` render exactly as before when none of your
-connections use groups.
+In the connection list, grouped connections render indented under `▾ Group`
+headers (with a connection count), ungrouped ones lead under "Ungrouped", then
+named groups alphabetically. Press `space` (or `tab`) to fold/unfold the group
+under the cursor, or `enter` on a header to toggle it. Filtering (`/`) flattens
+the list to ranked matches regardless of groups. Connections with no `group`
+render exactly as before when none of your connections use groups.
 
 ### Settings
 

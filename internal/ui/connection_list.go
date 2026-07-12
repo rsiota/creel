@@ -176,6 +176,44 @@ func (c ConnectionList) groupedRows() []connRow {
 	return out
 }
 
+// groupIndent returns the number of leading spaces to shift a connection box
+// so it reads as a child of its group header. Zero in flat mode (no groups)
+// and while filtering (which flattens), preserving the original layout there.
+func (c ConnectionList) groupIndent() int {
+	if c.filtering && c.filter != "" {
+		return 0
+	}
+	if !c.hasGroups() {
+		return 0
+	}
+	return 3
+}
+
+// groupCount returns the number of connections in a group ("" = ungrouped).
+func (c ConnectionList) groupCount(group string) int {
+	n := 0
+	for _, it := range c.items {
+		if it.group == group {
+			n++
+		}
+	}
+	return n
+}
+
+// indentBlock prefixes every line of a (possibly multi-line) string with n
+// spaces, used to nest connection boxes under their group header.
+func indentBlock(s string, n int) string {
+	if n <= 0 {
+		return s
+	}
+	pad := strings.Repeat(" ", n)
+	lines := strings.Split(s, "\n")
+	for i := range lines {
+		lines[i] = pad + lines[i]
+	}
+	return strings.Join(lines, "\n")
+}
+
 // rowHeight returns the rendered height of a row: group headers are a single
 // line, connection boxes are linesPerField lines.
 func rowHeight(r connRow) int {
@@ -521,17 +559,26 @@ func (c ConnectionList) View() string {
 		if bot > scroll+c.height {
 			break // would overflow — stop (cursor is kept visible by ensureVisible)
 		}
-		b.WriteString(c.renderRow(r, i, contentW, valueWidth))
+		b.WriteString(c.renderRow(r, i, contentW))
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
 
 // renderRow renders a single row (group header or connection field box).
-func (c ConnectionList) renderRow(r connRow, idx, contentW, valueWidth int) string {
+// Connection boxes are indented under their group header so the parent-child
+// relationship reads visually; headers are flush-left with a connection count.
+func (c ConnectionList) renderRow(r connRow, idx, contentW int) string {
 	isCursor := idx == c.cursor
 	if r.kind == rowGroup {
-		return renderGroupHeader(r.group, c.collapsed[r.group], isCursor, contentW)
+		return renderGroupHeader(r.group, c.collapsed[r.group], isCursor, contentW, c.groupCount(r.group))
+	}
+
+	indent := c.groupIndent()
+	boxW := contentW - indent
+	valueWidth := boxW - 4
+	if valueWidth < 1 {
+		valueWidth = 1
 	}
 
 	item := r.conn
@@ -564,13 +611,14 @@ func (c ConnectionList) renderRow(r connRow, idx, contentW, valueWidth int) stri
 	}
 	valueContent := dSty.Render(truncateCell(item.detail, valueWidth))
 
-	return renderFieldBox(labelStr, markerStr, valueContent, contentW, fieldBoxBorder(isCursor))
+	box := renderFieldBox(labelStr, markerStr, valueContent, boxW, fieldBoxBorder(isCursor))
+	return indentBlock(box, indent)
 }
 
 // renderGroupHeader renders a foldable section header: a triangle marker, the
-// group name (or "Ungrouped"), and the connection count. The cursor header is
-// rendered in the primary colour.
-func renderGroupHeader(group string, collapsed, isCursor bool, contentW int) string {
+// group name (or "Ungrouped"), and the connection count right-aligned. The
+// cursor header is rendered in the primary colour.
+func renderGroupHeader(group string, collapsed, isCursor bool, contentW, count int) string {
 	label := group
 	if label == "" {
 		label = "Ungrouped"
@@ -579,11 +627,17 @@ func renderGroupHeader(group string, collapsed, isCursor bool, contentW int) str
 	if collapsed {
 		marker = "▸"
 	}
-	sty := lipgloss.NewStyle().Foreground(colorLabel).Bold(true)
+	nameSty := lipgloss.NewStyle().Foreground(colorLabel).Bold(true)
 	if isCursor {
-		sty = lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
+		nameSty = lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
 	}
-	return " " + sty.Render(marker+" "+label)
+	head := nameSty.Render(marker + " " + label)
+	cnt := lipgloss.NewStyle().Foreground(colorMuted).Render(fmt.Sprintf("%d", count))
+	pad := contentW - lipgloss.Width(head) - lipgloss.Width(cnt)
+	if pad < 1 {
+		pad = 1
+	}
+	return head + strings.Repeat(" ", pad) + cnt
 }
 
 // YToRow maps a y-offset within the list content area to a row index,

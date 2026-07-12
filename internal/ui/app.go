@@ -1222,8 +1222,9 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, m.connectToDB()
-	case "tab":
+	case "tab", " ":
 		// Fold/unfold the group under the cursor (header or one of its entries).
+		// Space mirrors the sidebar's expand/collapse convention.
 		m.connList.ToggleGroupAtCursor()
 		return m, nil
 	case "?":

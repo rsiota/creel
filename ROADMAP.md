@@ -122,17 +122,19 @@ unaffected. Ungrouped connections lead under an "Ungrouped" header, then named
 groups alphabetically; within a group, config order is preserved.
 
 Navigation is unified over a single row sequence (headers + connection boxes):
-- `tab` folds/unfolds the group under the cursor; `enter` toggles on a header
-  and connects on a connection.
+- `space` (or `tab`) folds/unfolds the group under the cursor; `enter` toggles
+  on a header and connects on a connection.
 - `g`/`G` skip headers and land on the first/last connection.
 - Filtering flattens to ranked matches (no headers); committing a filter keeps
   the cursor on the selected connection in the restored grouped layout.
 - Mouse clicks fold a header / select+connect a connection.
 
 Scroll is line-based (headers are 1 line, boxes are `linesPerField`), snapped to
-row boundaries. The popup height is based on the fully-expanded layout, so it
-stays constant while filtering or folding. The add/edit form gained a `Group`
-field (editing preserves the group). Collapse state survives connection
+row boundaries. Grouped connection boxes are indented under their header (with
+a right-aligned count) so the parent-child relationship reads visually; flat
+mode is unchanged. The popup height is based on the fully-expanded layout, so
+it stays constant while filtering or folding. The add/edit form gained a
+`Group` field (editing preserves the group). Collapse state survives connection
 reloads.
 - Files: `internal/config/config.go`, `internal/ui/connection_list.go`,
   `internal/ui/connection_form.go`, `internal/ui/app.go`, `internal/ui/mouse.go`.
