@@ -22,18 +22,22 @@ func (m Model) handleConnectionsMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	panelX := (m.width - pw) / 2
 	panelY := (m.height - 1 - ph) / 2
 
-	// Inside the border: border(1) + prompt(1) = offset 2 to the first entry.
-	// Each entry renders as a linesPerField-tall field box.
+	// Inside the border: border(1) + prompt(1) = offset 2 to the first row.
 	listY := msg.Y - panelY - 2
 	if listY < 0 || msg.X < panelX || msg.X >= panelX+pw {
 		return m, nil
 	}
-	idx := listY / linesPerField
-	items := m.connList.VisibleItemsForMouse()
-	if idx < 0 || idx >= len(items) {
+	idx := m.connList.YToRow(listY)
+	if idx < 0 {
 		return m, nil
 	}
 	m.connList.SetCursor(idx)
+	// Clicking a group header folds/unfolds it; clicking a connection selects
+	// and connects (matching the keyboard enter behaviour).
+	if m.connList.CursorOnGroupHeader() {
+		m.connList.ToggleGroupAtCursor()
+		return m, nil
+	}
 	if m.connList.IsFiltering() {
 		m.connList.CommitFilter()
 	}

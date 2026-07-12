@@ -28,6 +28,10 @@ type ConnectionConfig struct {
 	// ReadOnly disables writes on this connection (see db.ConnectionConfig).
 	ReadOnly bool `yaml:"readonly,omitempty"`
 
+	// Group is an optional folder label used to group connections in the
+	// connection list (e.g. "Work", "Personal"). Empty means ungrouped.
+	Group string `yaml:"group,omitempty"`
+
 	// SSH tunnel (optional)
 	SSHHost       string `yaml:"ssh_host,omitempty"`
 	SSHPort       int    `yaml:"ssh_port,omitempty"`

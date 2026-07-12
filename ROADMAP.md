@@ -114,10 +114,29 @@ FK data already exists (`ForeignKeys`). A `g R` overlay rendering
 boxes + arrows (Lipgloss) or exporting Mermaid would be distinctive.
 - Files: new `internal/ui/erd.go`, `internal/ui/app.go`.
 
-### 12. Connection groups / folders
-Collapsible groups ("Work", "Personal", "Prod") in the connection list for users
-with many connections.
-- Files: `internal/ui/connection_list.go`, `internal/config/config.go`.
+### 12. Connection groups / folders ✅ DONE (2026-07-12)
+Connections carry an optional `group` field; the connection list renders
+collapsible folder headers (▾/▸) when any connection is grouped, and stays flat
+(byte-for-byte the old layout) when none are — so existing configs are
+unaffected. Ungrouped connections lead under an "Ungrouped" header, then named
+groups alphabetically; within a group, config order is preserved.
+
+Navigation is unified over a single row sequence (headers + connection boxes):
+- `tab` folds/unfolds the group under the cursor; `enter` toggles on a header
+  and connects on a connection.
+- `g`/`G` skip headers and land on the first/last connection.
+- Filtering flattens to ranked matches (no headers); committing a filter keeps
+  the cursor on the selected connection in the restored grouped layout.
+- Mouse clicks fold a header / select+connect a connection.
+
+Scroll is line-based (headers are 1 line, boxes are `linesPerField`), snapped to
+row boundaries. The popup height is based on the fully-expanded layout, so it
+stays constant while filtering or folding. The add/edit form gained a `Group`
+field (editing preserves the group). Collapse state survives connection
+reloads.
+- Files: `internal/config/config.go`, `internal/ui/connection_list.go`,
+  `internal/ui/connection_form.go`, `internal/ui/app.go`, `internal/ui/mouse.go`.
+  Tests: `internal/ui/connection_groups_test.go` (13).
 
 ### 13. Per-query timing history
 `Elapsed` is captured per query. Persist it in history to surface slowest

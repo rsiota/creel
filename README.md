@@ -85,6 +85,7 @@ connections:
     port: 3306
     username: admin
     password: secret://staging/password   # looked up in the OS keychain
+    group: Work                            # optional folder in the connection list
   - name: prod-pg
     driver: postgres
     database: analytics
@@ -131,6 +132,30 @@ connections:
     password: secret://prod-pg/password
     readonly: true
 ```
+
+### Connection groups
+
+Give a connection a `group` to organize the connection list into collapsible
+folders (see the `staging` example above):
+
+```yaml
+connections:
+  - name: staging
+    driver: mysql
+    # ...
+    group: Work
+  - name: personal-db
+    driver: sqlite
+    database: ~/notes.db
+    group: Personal
+```
+
+In the connection list, grouped connections appear under `▾ Group` headers
+(ungrouped ones lead under "Ungrouped", then named groups alphabetically). Press
+`tab` to fold/unfold the group under the cursor, or `enter` on a header to
+toggle it. Filtering (`/`) flattens the list to ranked matches regardless of
+groups. Connections with no `group` render exactly as before when none of your
+connections use groups.
 
 ### Settings
 

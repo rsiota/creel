@@ -30,6 +30,7 @@ const (
 	fieldSSHPassword
 	fieldSecrets  // keychain vs plaintext storage for secret fields
 	fieldReadOnly // yes/no toggle
+	fieldGroup    // optional folder label for grouping in the connection list
 	fieldCount
 )
 
@@ -38,7 +39,7 @@ const (
 var formLabels = [...]string{
 	"Name", "Driver", "Database", "Host", "Port", "Username", "Password",
 	"SSH Tunnel", "SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass",
-	"Secrets", "Read-only",
+	"Secrets", "Read-only", "Group",
 }
 
 // formChoices lists the selectable values for "choice" fields, rendered as
@@ -122,6 +123,7 @@ func NewConnectionFormEdit(cfg config.ConnectionConfig) ConnectionForm {
 	// without changes preserves it as-is.
 	f.fields[fieldSecrets].SetValue(secretsModeFromConfig(cfg))
 	f.fields[fieldReadOnly].SetValue(boolField(cfg.ReadOnly))
+	f.fields[fieldGroup].SetValue(cfg.Group)
 	f.setDriverField(cfg.Driver)
 	return f
 }
@@ -167,12 +169,14 @@ func newForm(mode formMode, name string) ConnectionForm {
 	fields[fieldSSHPassword] = newTextInput("SSH password", "", true)
 	fields[fieldSecrets] = newTextInput("keychain / plain", "", false)
 	fields[fieldReadOnly] = newTextInput("no / yes", "", false)
+	fields[fieldGroup] = newTextInput("Folder name (optional, e.g. Work)", "", false)
 
 	fields[fieldName].SetValue(name)
 	fields[fieldDriver].SetValue("sqlite")
 	fields[fieldSSHTunnel].SetValue("no")
 	fields[fieldSecrets].SetValue("keychain")
 	fields[fieldReadOnly].SetValue("no")
+	fields[fieldGroup].SetValue("")
 
 	return ConnectionForm{
 		fields: fields,
@@ -237,7 +241,7 @@ func (f ConnectionForm) visibleFields() []int {
 			out = append(out, fieldSSHHost, fieldSSHPort, fieldSSHUser, fieldSSHKeyPath, fieldSSHPassword)
 		}
 	}
-	out = append(out, fieldSecrets, fieldReadOnly)
+	out = append(out, fieldSecrets, fieldReadOnly, fieldGroup)
 	return out
 }
 
@@ -630,6 +634,7 @@ func (f *ConnectionForm) EnterPressed() (config.ConnectionConfig, string) {
 		Driver:   driver,
 		Database: database,
 		ReadOnly: parseBoolField(f.fields[fieldReadOnly].Value()),
+		Group:    strings.TrimSpace(f.fields[fieldGroup].Value()),
 	}
 
 	if isNetworkDriver(driver) {

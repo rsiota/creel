@@ -494,6 +494,7 @@ func (m *Model) loadConnections() {
 			Name:   conn.Name,
 			Driver: conn.Driver,
 			Detail: detail,
+			Group:  conn.Group,
 		})
 	}
 	m.connList.SetItems(entries)
@@ -1215,7 +1216,16 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "enter":
+		// Folding a group header; otherwise connect to the selected entry.
+		if m.connList.CursorOnGroupHeader() {
+			m.connList.ToggleGroupAtCursor()
+			return m, nil
+		}
 		return m, m.connectToDB()
+	case "tab":
+		// Fold/unfold the group under the cursor (header or one of its entries).
+		m.connList.ToggleGroupAtCursor()
+		return m, nil
 	case "?":
 		m.help.Show()
 		return m, nil
@@ -1244,11 +1254,10 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.connList.MoveCursor(1)
 		return m, nil
 	case "G":
-		items := m.connList.visibleItems()
-		m.connList.SetCursor(len(items) - 1)
+		m.connList.SetCursor(m.connList.lastConnRow())
 		return m, nil
 	case "g":
-		m.connList.SetCursor(0)
+		m.connList.SetCursor(m.connList.firstConnRow())
 		return m, nil
 	}
 
@@ -3355,16 +3364,16 @@ func (m Model) View() string {
 }
 
 // connListPopupDims returns the (width, height) of the connection-list popup.
-// The width is fixed (popupDim); the height fits the total (unfiltered) entry
-// count (each a linesPerField-tall field box) plus the prompt and scroll-info
-// lines, capped to the viewport so the list scrolls internally instead of
-// overflowing. Using the total — not the filtered — count keeps the popup
-// height constant while the user types in the filter, so it doesn't jump
-// around; the list area simply shows fewer boxes (with breathing room at the
-// bottom) as matches drop out.
+// The width is fixed (popupDim); the height fits the fully-expanded layout
+// (each connection a linesPerField-tall field box, plus one line per group
+// header) plus the prompt and scroll-info chrome, capped to the viewport so
+// the list scrolls internally instead of overflowing. Using the expanded —
+// not the filtered/collapsed — height keeps the popup height constant while
+// the user types in the filter or folds groups, so it doesn't jump around; the
+// list area simply shows fewer boxes (with breathing room at the bottom).
 func (m Model) connListPopupDims() (w, h int) {
 	pw, _ := popupDim()
-	total := m.connList.TotalCount()
+	expanded := m.connList.ExpandedHeight()
 	const (
 		chrome = 2 // prompt + scroll-info lines
 		border = 2
@@ -3374,15 +3383,14 @@ func (m Model) connListPopupDims() (w, h int) {
 	if maxListArea < linesPerField {
 		maxListArea = linesPerField
 	}
-	maxEntries := maxListArea / linesPerField
-	fit := total
-	if fit > maxEntries {
-		fit = maxEntries
+	fit := expanded
+	if fit > maxListArea {
+		fit = maxListArea
 	}
 	if fit < 1 {
 		fit = 1 // keeps the geometry valid for the empty state too
 	}
-	return pw, border + chrome + fit*linesPerField
+	return pw, border + chrome + fit
 }
 
 // connListContentDims returns the content width and list-area height the
