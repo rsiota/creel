@@ -62,8 +62,10 @@ func (m *Model) explainQuery() tea.Cmd {
 	}
 
 	conn := m.connection
+	ctx, cancel := m.queryContext()
 	return func() tea.Msg {
-		result, err := conn.DB().ExecuteContext(context.Background(), explainStmt)
+		defer cancel()
+		result, err := conn.DB().ExecuteContext(ctx, explainStmt)
 		return explainResultMsg{result: result, err: err}
 	}
 }
@@ -140,6 +142,28 @@ func spinnerTick() tea.Cmd {
 	})
 }
 
+// queryContext returns a context for an async query. The returned cancel
+// func is stored on the model so esc/ctrl+c can cancel immediately; when
+// queryTimeout > 0 the context also carries a deadline so a runaway query
+// can't hang the TUI. A zero/negative queryTimeout disables the deadline
+// (wait indefinitely — esc still cancels).
+func (m Model) queryContext() (context.Context, context.CancelFunc) {
+	if m.queryTimeout > 0 {
+		return context.WithTimeout(context.Background(), m.queryTimeout)
+	}
+	return context.WithCancel(context.Background())
+}
+
+// cancelHint is the in-flight hint shown beside the spinner: esc cancels,
+// and when a deadline is set the limit is shown so the user knows it will
+// auto-cancel.
+func (m Model) cancelHint() string {
+	if m.queryTimeout > 0 {
+		return fmt.Sprintf("(esc to cancel · %s limit)", m.queryTimeout)
+	}
+	return "(esc to cancel)"
+}
+
 // runPageQuery wraps the original query with LIMIT/OFFSET and executes it
 // asynchronously with cancellation support. Non-SELECT statements (DESCRIBE,
 // SHOW, EXPLAIN, etc.) are executed directly without pagination wrapping, since
@@ -159,7 +183,7 @@ func (m *Model) runPageQuery() tea.Cmd {
 	pageSize := m.pageSize
 	lastQuery := m.lastQuery
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := m.queryContext()
 	m.queryCancel = cancel
 	m.queryRunning = true
 	m.queryCancelled = false
@@ -187,6 +211,7 @@ func (m *Model) runPageQuery() tea.Cmd {
 			page:      page,
 			pageSize:  pageSize,
 			cancelled: errors.Is(err, context.Canceled),
+			timedOut:  errors.Is(err, context.DeadlineExceeded),
 		}
 	}
 

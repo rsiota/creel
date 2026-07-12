@@ -106,7 +106,8 @@ type queryExecutedMsg struct {
 	err       error
 	page      int
 	pageSize  int
-	cancelled bool
+	cancelled bool // context was cancelled (superseded by a newer query)
+	timedOut  bool // query exceeded the per-query deadline
 }
 
 // schemasLoadedMsg carries prefetched table schemas for autocomplete.
@@ -411,9 +412,16 @@ type Model struct {
 	querySpinner   int                // spinner animation frame index
 	queryStart     time.Time          // when the current query started (for elapsed display)
 	queryCancelled bool               // true if the user cancelled the running query
+	queryTimeout   time.Duration      // per-query deadline; 0 = wait indefinitely (esc still cancels)
 }
 
 const defaultPageSize = 200
+
+// defaultQueryTimeout bounds a single query so a runaway SELECT can't hang the
+// TUI. esc cancels immediately regardless; the timeout is a safety net. 0 would
+// disable it. Override per app via Model.queryTimeout (config wiring to come
+// with the Settings block).
+const defaultQueryTimeout = 30 * time.Second
 
 // NewModel creates a new top-level application model.
 func NewModel(cfg *config.Config) Model {
@@ -445,6 +453,7 @@ func NewModel(cfg *config.Config) Model {
 		bookmarkStore:   bookmarks.NewStore(historyDir()),
 		expanded:        make(map[string][]db.Column),
 		pageSize:        defaultPageSize,
+		queryTimeout:    defaultQueryTimeout,
 		// Tab management
 		resultsTabs:  []*ResultsTab{firstTab},
 		activeTabID:  0,
@@ -762,6 +771,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.queryCancelled {
 			m.results.SetError("Query cancelled")
 			m.queryCancelled = false
+			return m, nil
+		}
+
+		// A query that exceeded the deadline gets a clear, distinct message
+		// (the raw driver error is opaque). Existing results are kept.
+		if msg.timedOut {
+			m.results.SetError(fmt.Sprintf("Query timed out (limit %s) — press esc in-flight to cancel sooner", m.queryTimeout))
 			return m, nil
 		}
 
@@ -3505,7 +3521,7 @@ func (m Model) viewWorkspace() string {
 			elapsed := time.Since(m.queryStart).Round(time.Millisecond)
 			content := lipgloss.NewStyle().Foreground(colorPrimary).Render(frame) +
 				"  " + mutedStyle.Render(fmt.Sprintf("running query… %s", elapsed)) +
-				"  " + lipgloss.NewStyle().Foreground(colorMuted).Render("(esc to cancel)")
+				"  " + lipgloss.NewStyle().Foreground(colorMuted).Render(m.cancelHint())
 			resultsPanel = lipgloss.NewStyle().
 				Width(rightWidth).
 				Height(resultsHeight).
