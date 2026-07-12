@@ -28,15 +28,18 @@ func fieldBoxBorder(focused bool) lipgloss.Style {
 // contentW-4 columns. labelStr and markerStr are already-styled (markerStr may
 // be ""). valueContent is one or more newline-joined, already-styled strings,
 // each exactly (contentW-4) columns wide, that become the boxed value line(s).
+// border is the lipgloss style whose Foreground is used to draw the box
+// borders; callers pass fieldBoxBorder(focused) for the usual focus colouring,
+// or a green/red style to signal a per-field test result (connection form).
 // This is the single source of truth used by both the inspector and the
 // connection form so their field rendering never drifts.
-func renderFieldBox(labelStr, markerStr, valueContent string, contentW int, focused bool) string {
+func renderFieldBox(labelStr, markerStr, valueContent string, contentW int, border lipgloss.Style) string {
 	valueWidth := contentW - 4
 	if valueWidth < 1 {
 		valueWidth = 1
 	}
 	borderWidth := valueWidth + 2
-	bs := fieldBoxBorder(focused)
+	bs := border
 
 	// Label line: " " + label + pad + marker + " ", padded to contentW.
 	labelW := lipgloss.Width(labelStr)

@@ -80,10 +80,13 @@ type ConnectionForm struct {
 	editName  string // name of connection being edited (for edit mode)
 
 	// Test-connection feedback. testing is true while a background test is in
-	// flight; testMsg/testOK hold the result once it completes.
-	testing bool
-	testMsg string
-	testOK  bool
+	// flight; testMsg/testOK hold the result once it completes. testStates maps
+	// each visible field to its outcome (ok/fail) so the field box can be
+	// tinted green/red like TablePlus; nil/untested entries stay neutral.
+	testing    bool
+	testMsg    string
+	testOK     bool
+	testStates map[int]testState
 }
 
 // NewConnectionForm creates a new form for adding connections.
@@ -356,11 +359,13 @@ func (f *ConnectionForm) cycleChoice(fi, dir int) {
 }
 
 // clearTransient wipes stale validation/test-connection messages so the user is
-// not misled by an outdated result once they start editing again.
+// not misled by an outdated result once they start editing again. Field test
+// colours are cleared too — once a value changes, the old verdict is stale.
 func (f *ConnectionForm) clearTransient() {
 	f.errMsg = ""
 	f.testMsg = ""
 	f.testOK = false
+	f.testStates = nil
 }
 
 // IsEditing reports whether the form is in insert mode (typing into a field).
@@ -410,8 +415,10 @@ func (f ConnectionForm) View() string {
 	var rendered strings.Builder
 	for p := start; p < end; p++ {
 		fi := vis[p]
+		st := f.statusOf(fi)
 		labelStr := labelSty.Render(formLabels[fi])
-		rendered.WriteString(renderFieldBox(labelStr, "", f.fieldValueContent(fi, valueWidth), contentW, p == f.active))
+		marker := fieldTestMarker(st)
+		rendered.WriteString(renderFieldBox(labelStr, marker, f.fieldValueContent(fi, valueWidth), contentW, formFieldBorder(p == f.active, st)))
 		rendered.WriteString("\n")
 	}
 
@@ -683,13 +690,14 @@ func (f *ConnectionForm) SetTesting(b bool) {
 }
 
 // SetTestResult records the outcome of a connection test, clearing any stale
-// validation error. A non-empty message with ok=true is shown as success;
-// otherwise it is shown as an error.
-func (f *ConnectionForm) SetTestResult(msg string, ok bool) {
+// validation error. A nil err is a success; a non-nil err is a failure whose
+// fields are attributed (see classifyTestError) so the form can tint them.
+func (f *ConnectionForm) SetTestResult(msg string, err error) {
 	f.testing = false
 	f.testMsg = msg
-	f.testOK = ok
+	f.testOK = err == nil
 	f.errMsg = ""
+	f.testStates = f.classifyTestError(err)
 }
 
 // boolField renders a bool as the form's toggle vocabulary ("yes"/"no").

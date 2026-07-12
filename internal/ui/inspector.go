@@ -580,7 +580,7 @@ func (i Inspector) View(results ResultsTable) string {
 			valueContent = valStyle.Render(displayVal)
 		}
 
-		rendered.WriteString(renderFieldBox(labelStr, markerStr, valueContent, i.width, isFocused))
+		rendered.WriteString(renderFieldBox(labelStr, markerStr, valueContent, i.width, fieldBoxBorder(isFocused)))
 		rendered.WriteString("\n")
 	}
 

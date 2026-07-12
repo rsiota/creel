@@ -975,9 +975,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.err != nil {
-			m.connForm.SetTestResult(msg.err.Error(), false)
+			m.connForm.SetTestResult("✗ "+msg.err.Error(), msg.err)
 		} else {
-			m.connForm.SetTestResult(fmt.Sprintf("✓ Connected (%s)", msg.driver), true)
+			m.connForm.SetTestResult(fmt.Sprintf("✓ Connected (%s)", msg.driver), nil)
 		}
 		return m, nil
 

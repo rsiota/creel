@@ -278,7 +278,7 @@ func (c ConnectionList) View() string {
 		}
 		valueContent := dSty.Render(truncateCell(item.detail, valueWidth))
 
-		b.WriteString(renderFieldBox(labelStr, markerStr, valueContent, contentW, isCursor))
+		b.WriteString(renderFieldBox(labelStr, markerStr, valueContent, contentW, fieldBoxBorder(isCursor)))
 		b.WriteString("\n")
 	}
 
