@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/ruben/gsql/internal/config"
 )
 
@@ -212,27 +213,17 @@ func TestGroupsPopupHeightConstantWhileFolding(t *testing.T) {
 	}
 }
 
-// Grouped connection boxes render indented under their header (so the
-// parent-child relationship reads visually), and the header shows the
-// connection count. Flat mode is not indented.
+// Grouped connection boxes render indented under their header so the
+// connection name expands exactly under the first letter of the group, and the
+// header shows the connection count. Flat mode is not indented.
 func TestGroupsChildrenIndentedUnderHeader(t *testing.T) {
 	m := newConnListModel(t, groupedConns(), 40)
 	m.connList.CancelFilter()
 	view := stripAnsi(m.connList.View())
+	lines := strings.Split(view, "\n")
 
-	// Child boxes expand exactly under the first letter of the header (past the
-	// "▾ " marker prefix = 2 columns).
-	if !strings.Contains(view, "\n  \u250c") { // "  ┌"
-		t.Errorf("grouped child boxes should be indented under the first letter (expected '  ┌'):\n%s", view)
-	}
 	// The Work header carries its connection count.
-	var workLine string
-	for _, line := range strings.Split(view, "\n") {
-		if strings.Contains(line, "Work") {
-			workLine = line
-			break
-		}
-	}
+	workLine := lineContaining(lines, "Work")
 	if workLine == "" {
 		t.Fatalf("Work header not found:\n%s", view)
 	}
@@ -240,11 +231,37 @@ func TestGroupsChildrenIndentedUnderHeader(t *testing.T) {
 		t.Errorf("Work header should show count '2': %q", workLine)
 	}
 
+	// The connection name expands exactly under the first letter of its group
+	// header ("▾ Work" -> 'W' at col 2; the connection name also at col 2).
+	// Measure display columns (lipgloss.Width), not byte offsets — '▾' is
+	// multibyte but one column wide.
+	hIdx := strings.Index(workLine, "Work")
+	nameLine := lineContaining(lines, "wk-a")
+	nIdx := strings.Index(nameLine, "wk-a")
+	if hIdx < 0 || nIdx < 0 {
+		t.Fatalf("can't locate header/name:\n%s", view)
+	}
+	firstLetterCol := lipgloss.Width(workLine[:hIdx])
+	nameCol := lipgloss.Width(nameLine[:nIdx])
+	if nameCol != firstLetterCol {
+		t.Errorf("connection name col %d != header first-letter col %d\n%s", nameCol, firstLetterCol, view)
+	}
+
 	// Flat mode (no groups) is not indented at all.
 	flat := newConnListModel(t, makeConns(2), 40)
-	if strings.Contains(stripAnsi(flat.connList.View()), "\n  \u250c") {
+	if strings.Contains(stripAnsi(flat.connList.View()), "\n \u250c") {
 		t.Errorf("flat mode should not indent child boxes")
 	}
+}
+
+// lineContaining returns the first list line containing name.
+func lineContaining(lines []string, name string) string {
+	for _, l := range lines {
+		if strings.Contains(l, name) {
+			return l
+		}
+	}
+	return ""
 }
 
 // space folds/unfolds the group under the cursor, mirroring the sidebar.

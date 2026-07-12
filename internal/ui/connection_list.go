@@ -187,7 +187,7 @@ func (c ConnectionList) groupIndent() int {
 	if !c.hasGroups() {
 		return 0
 	}
-	return 2 // len("▾ "): marker + space before the group name
+	return 1 // aligns the connection name under the first letter of "▾ Group"
 }
 
 // groupCount returns the number of connections in a group ("" = ungrouped).
