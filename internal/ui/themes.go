@@ -1,6 +1,10 @@
 package ui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"sort"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 // defaultThemeName is the theme used when settings.Theme is empty or
 // unrecognized. It matches the key for defaultPalette in the themes map.
@@ -114,11 +118,10 @@ var lightPalette = colorPalette{
 	statusBarBg:     lipgloss.Color("#eaeef2"), // light grey status bar
 }
 
-// themes maps theme names (as used in settings.Theme) to their palettes. The
-// default theme — "tokyo-night" — resolves to defaultPalette (defined in
-// styles.go) so the shipped default stays the single source of truth for those
-// colors.
-var themes = map[string]colorPalette{
+// curatedThemes are the hand-tuned palettes. They take precedence over any
+// auto-derived entry (generatedThemes) with the same normalized name, so the
+// shipped defaults always stay under our control.
+var curatedThemes = map[string]colorPalette{
 	"tokyo-night": defaultPalette,
 	"gruvbox":     gruvboxPalette,
 	"nord":        nordPalette,
@@ -126,10 +129,42 @@ var themes = map[string]colorPalette{
 	"light":       lightPalette,
 }
 
-// themeNames returns the available theme names in a stable order, with the
-// default first. Used by the theme picker (step 3) and for validation.
+// curatedThemeNames is the display order for the curated themes (default
+// first); auto-derived themes follow in sorted order in the picker.
+var curatedThemeNames = []string{defaultThemeName, "gruvbox", "nord", "catppuccin", "light"}
+
+// themes is the full registry: curated plus auto-derived (see
+// themes_generated.go, produced by cmd/genthemes from iTerm2-Color-Schemes).
+// Built in init so generatedThemes is available before any caller reads it.
+var themes map[string]colorPalette
+
+func init() {
+	themes = make(map[string]colorPalette, len(curatedThemes)+len(generatedThemes))
+	for k, v := range curatedThemes {
+		themes[k] = v
+	}
+	for k, v := range generatedThemes {
+		// Curated wins on collision: a generated entry with the same
+		// normalized name is dropped so the hand-tuned palette is used.
+		if _, ok := themes[k]; !ok {
+			themes[k] = v
+		}
+	}
+}
+
+// themeNames returns the available theme names: curated themes first (default
+// first, in curatedThemeNames order), then the auto-derived catalog in sorted
+// order. Used by the theme picker and for validation.
 func themeNames() []string {
-	return []string{defaultThemeName, "gruvbox", "nord", "catppuccin", "light"}
+	names := append([]string{}, curatedThemeNames...)
+	gen := make([]string, 0, len(generatedThemes))
+	for k := range generatedThemes {
+		if _, ok := curatedThemes[k]; !ok {
+			gen = append(gen, k)
+		}
+	}
+	sort.Strings(gen)
+	return append(names, gen...)
 }
 
 // paletteForTheme returns the palette for name, falling back to defaultPalette

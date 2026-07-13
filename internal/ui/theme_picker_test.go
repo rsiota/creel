@@ -114,11 +114,9 @@ func TestThemePickerView(t *testing.T) {
 	if got == "" {
 		t.Fatal("visible View should be non-empty")
 	}
-	// Every theme name appears in its own row.
-	for _, name := range themeNames() {
-		if !strings.Contains(got, name) {
-			t.Errorf("View missing theme name %q", name)
-		}
+	// The cursor's theme is visible (Show starts it in the first window).
+	if !strings.Contains(got, "tokyo-night") {
+		t.Errorf("View missing the selected theme name %q", "tokyo-night")
 	}
 	// Width and height match the column-visibility picker (opened with v),
 	// which uses popupDim.
@@ -150,6 +148,35 @@ func TestThemePickerView(t *testing.T) {
 		if !strings.HasSuffix(vis, "●") {
 			t.Errorf("row for %q does not end with a swatch dot: %q", name, line)
 		}
+	}
+}
+
+// TestThemePickerScroll verifies the picker scrolls when the cursor moves
+// past the visible window (needed once the catalog exceeds the panel height).
+func TestThemePickerScroll(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	applyPalette(defaultPalette)
+
+	p := NewThemePicker()
+	p.Show("tokyo-night")
+	_, popupH := popupDim()
+	maxVisible := popupH - 2
+
+	// The first theme is visible initially.
+	if !strings.Contains(stripAnsi(p.View()), "tokyo-night") {
+		t.Fatal("initial view should contain the first theme")
+	}
+	// Move the cursor past the bottom of the window; the view scrolls and the
+	// first theme leaves the visible area while the cursor's theme appears.
+	for i := 0; i < maxVisible; i++ {
+		p.Down()
+	}
+	view := stripAnsi(p.View())
+	if strings.Contains(view, "tokyo-night") {
+		t.Errorf("after scrolling past the first window, tokyo-night should be off-screen")
+	}
+	if !strings.Contains(view, p.Selected()) {
+		t.Errorf("scrolled view should contain the cursor's theme %q", p.Selected())
 	}
 }
 

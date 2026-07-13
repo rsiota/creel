@@ -114,6 +114,9 @@ func TestThemeNamesCoversRegistry(t *testing.T) {
 	names := themeNames()
 	seen := map[string]bool{}
 	for _, n := range names {
+		if seen[n] {
+			t.Errorf("themeNames() has duplicate %q", n)
+		}
 		seen[n] = true
 	}
 	for n := range themes {
@@ -121,9 +124,15 @@ func TestThemeNamesCoversRegistry(t *testing.T) {
 			t.Errorf("themeNames() missing %q (in themes map but not listed)", n)
 		}
 	}
-	// The light theme should trail the dark themes in the picker.
-	if names[len(names)-1] != "light" {
-		t.Errorf("light should be last in themeNames(), got %v", names)
+	if len(names) != len(themes) {
+		t.Errorf("themeNames() has %d names, themes map has %d", len(names), len(themes))
+	}
+	// Curated themes come first, in their defined order (default first); the
+	// auto-derived catalog follows in sorted order.
+	for i, n := range curatedThemeNames {
+		if i >= len(names) || names[i] != n {
+			t.Errorf("themeNames()[%d] = %q, want curated %q", i, names[i], n)
+		}
 	}
 }
 

@@ -26,9 +26,10 @@ var swatchColors = []func(p colorPalette) lipgloss.Color{
 // applyPalette for live preview, and it remembers the open-time theme so esc
 // can undo a preview even after cycling through several themes.
 type ThemePicker struct {
-	items   []string
-	cursor  int
-	visible bool
+	items     []string
+	cursor    int
+	scrollRow int
+	visible   bool
 	// appliedAtOpen is the theme name active when Show was called, so esc can
 	// revert a live-previewed change. Empty means the default theme.
 	appliedAtOpen string
@@ -49,12 +50,14 @@ func (p *ThemePicker) Show(activeTheme string) {
 	}
 	p.appliedAtOpen = activeTheme
 	p.cursor = 0
+	p.scrollRow = 0
 	for i, name := range p.items {
 		if name == activeTheme {
 			p.cursor = i
 			break
 		}
 	}
+	p.adjustScroll()
 }
 
 // Hide hides the picker without changing the active palette.
@@ -81,6 +84,7 @@ func (p *ThemePicker) Up() {
 	if p.cursor > 0 {
 		p.cursor--
 	}
+	p.adjustScroll()
 	applyPalette(paletteForTheme(p.Selected()))
 }
 
@@ -89,7 +93,24 @@ func (p *ThemePicker) Down() {
 	if p.cursor < len(p.items)-1 {
 		p.cursor++
 	}
+	p.adjustScroll()
 	applyPalette(paletteForTheme(p.Selected()))
+}
+
+// adjustScroll keeps the cursor within the visible window. The window size is
+// the panel's content height (popupDim height minus the top/bottom borders).
+func (p *ThemePicker) adjustScroll() {
+	_, popupH := popupDim()
+	maxVisible := popupH - 2
+	if maxVisible < 1 {
+		maxVisible = 1
+	}
+	if p.cursor < p.scrollRow {
+		p.scrollRow = p.cursor
+	}
+	if p.cursor >= p.scrollRow+maxVisible {
+		p.scrollRow = p.cursor - maxVisible + 1
+	}
 }
 
 // Commit hides the picker and returns the selected theme name for the caller
@@ -104,14 +125,13 @@ func (p *ThemePicker) Commit() string {
 // View renders the picker as a centered bordered overlay. It matches both the
 // width and height of the column-visibility picker (opened with v in the
 // results panel), derived from popupDim, so the two popups share a footprint.
-// The theme rows are top-aligned within the panel and padded to its full
-// height, leaving room to add more themes without the layout shifting (the
-// column picker instead fills its height with a scrollable list). Each row
-// shows the theme name on the left and a
-// row of colored swatch dots sampled from that theme's palette right-aligned
-// to the panel's edge; the border uses the live palette, so it too re-themes
-// as the user cycles. Keybindings are shown on the status bar, so the picker
-// itself has no title or footer.
+// Only the visible window of themes is rendered, so the picker scrolls when
+// there are more themes than fit (j/k move the cursor and the window follows);
+// short lists are top-aligned and padded to the full height. Each row shows
+// the theme name on the left and a row of colored swatch dots sampled from
+// that theme's palette right-aligned to the panel's edge; the border uses the
+// live palette, so it too re-themes as the user cycles. Keybindings are shown
+// on the status bar, so the picker itself has no title or footer.
 func (p ThemePicker) View() string {
 	if !p.visible {
 		return ""
@@ -120,13 +140,31 @@ func (p ThemePicker) View() string {
 	// Match the column-visibility picker's footprint (popupDim). contentW is
 	// the usable width between the border and horizontal padding (swatch dots
 	// are right-aligned against it); contentH is the usable height between the
-	// top/bottom borders (vertical padding is 0).
+	// top/bottom borders (vertical padding is 0) and doubles as the max number
+	// of visible rows.
 	popupW, popupH := popupDim()
 	contentW := popupW - 4 // 2 border + 2 padding
 	contentH := popupH - 2 // 2 border (Padding(0,1) adds no vertical padding)
 
+	// Render only the visible window [scrollRow, scrollRow+contentH) so the
+	// picker scrolls when there are more themes than fit; pad with blank lines
+	// when fewer.
+	n := len(p.items)
+	start := p.scrollRow
+	if start < 0 {
+		start = 0
+	}
+	if start > n {
+		start = n
+	}
+	end := start + contentH
+	if end > n {
+		end = n
+	}
+
 	var rows []string
-	for i, name := range p.items {
+	for i := start; i < end; i++ {
+		name := p.items[i]
 		pal := themes[name]
 		swatch := renderSwatch(pal)
 
@@ -146,12 +184,6 @@ func (p ThemePicker) View() string {
 		}
 		rows = append(rows, left+strings.Repeat(" ", gap)+swatch)
 	}
-
-	// Top-align the rows and pad to contentH so the panel keeps a fixed
-	// height (matching the column-visibility picker) even with few themes;
-	// blank lines are padded to contentW by the Width below, keeping the
-	// right border straight. If more themes are added than contentH can hold,
-	// they extend the panel downward rather than being clipped.
 	for len(rows) < contentH {
 		rows = append(rows, "")
 	}

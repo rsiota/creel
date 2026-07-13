@@ -167,7 +167,7 @@ optional and fall back to defaults when omitted:
 | `page_size`      | 200          | Rows fetched per page in results                                         |
 | `query_timeout`  | 30s          | Per-query deadline (friendly form: `2m`, `1h30m`, or a bare seconds int) |
 | `default_driver` | sqlite       | Driver pre-filled in the add-connection form                             |
-| `theme`          | tokyo-night  | Color palette: `tokyo-night`, `gruvbox`, `nord`, `catppuccin`, `light`    |
+| `theme`          | tokyo-night  | Palette: `tokyo-night`, `gruvbox`, `nord`, `catppuccin`, `light` + ~35 auto-derived from iTerm2-Color-Schemes (dracula, solarized, …). Unknown → default |
 
 ```yaml
 settings:
