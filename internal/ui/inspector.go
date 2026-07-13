@@ -571,7 +571,7 @@ func (i Inspector) View(results ResultsTable) string {
 				valStyle = lipgloss.NewStyle().Foreground(colorMuted)
 			}
 			if isDirty {
-				valStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68"))
+				valStyle = lipgloss.NewStyle().Foreground(colorWarn)
 			}
 			if i.inserting && val == "" {
 				valStyle = lipgloss.NewStyle().Foreground(colorMuted)

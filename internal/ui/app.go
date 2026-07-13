@@ -271,6 +271,7 @@ type Model struct {
 	columnPicker    ColumnPicker
 	exportPicker    ExportPicker
 	formatPicker    FormatPicker
+	themePicker     ThemePicker
 	importPrompt    ImportPrompt
 	addColumnForm   AddColumnForm
 	tableRenameForm TableRenameForm
@@ -431,6 +432,11 @@ func NewModel(cfg *config.Config) Model {
 
 	settings := cfg.Settings.Effective()
 
+	// Apply the configured theme (falls back to the default when unset or
+	// unknown) before any component renders, so the whole UI is themed from
+	// the first frame. init() already applied the default; this overrides it.
+	applyPalette(paletteForTheme(settings.Theme))
+
 	m := Model{
 		state:           stateConnections,
 		focus:           FocusConnections,
@@ -448,6 +454,7 @@ func NewModel(cfg *config.Config) Model {
 		columnPicker:    NewColumnPicker(),
 		exportPicker:    NewExportPicker(),
 		formatPicker:    NewFormatPicker(),
+		themePicker:     NewThemePicker(),
 		importPrompt:    NewImportPrompt(),
 		addColumnForm:   NewAddColumnForm(),
 		tableRenameForm: NewTableRenameForm(),
@@ -615,13 +622,14 @@ func (m *Model) clearPendingG() {
 	m.inspector.pendingG = false
 }
 
-// handleTabKey processes tab-related keybindings that work from any focused
-// panel (except the editor in insert mode). Returns true if the key was
-// consumed.
+// handleTabKey processes workspace-global g-chord keybindings that work
+// from any focused panel (except the editor in insert mode). Returns true if
+// the key was consumed.
 //
 // g t / g T — next / previous tab
 // g x       — close tab
 // g 1-9     — go to tab N
+// g c       — open theme picker (live preview)
 // t         — new tab (sidebar, results, tab bar only)
 func (m *Model) handleTabKey(msg tea.KeyMsg) bool {
 	if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() ||
@@ -651,6 +659,11 @@ func (m *Model) handleTabKey(msg tea.KeyMsg) bool {
 		case "x":
 			m.clearPendingG()
 			m.closeTab(m.activeTabID)
+			return true
+		case "c":
+			// g c — open the theme picker for live-preview theme switching.
+			m.clearPendingG()
+			m.themePicker.Show(m.settings.Theme)
 			return true
 		case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 			m.clearPendingG()
@@ -1698,6 +1711,31 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "down", "j":
 			m.formatPicker.Down()
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Theme picker (g c) is modal — intercept all keys. Moving the cursor
+	// live-previews the theme (the picker applies the palette itself); enter
+	// persists the choice to the config, esc reverts to the open-time theme.
+	if m.themePicker.IsVisible() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			applyPalette(paletteForTheme(m.themePicker.AppliedAtOpen()))
+			m.themePicker.Hide()
+			return m, nil
+		case "enter":
+			name := m.themePicker.Commit()
+			m.settings.Theme = name
+			m.config.Settings.Theme = name
+			_ = m.config.Save()
+			return m, nil
+		case "up", "k":
+			m.themePicker.Up()
+			return m, nil
+		case "down", "j":
+			m.themePicker.Down()
 			return m, nil
 		}
 		return m, nil
@@ -4020,6 +4058,16 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, formatPanel, panelX, panelY)
+	}
+
+	// Overlay theme picker (g c) if visible
+	if m.themePicker.IsVisible() {
+		themePanel := m.themePicker.View()
+		panelW := lipgloss.Width(themePanel)
+		panelH := lipgloss.Height(themePanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, themePanel, panelX, panelY)
 	}
 
 	// Overlay import prompt if visible

@@ -24,14 +24,27 @@ type sqlToken struct {
 }
 
 var (
-	sqlKeywordStyle   = lipgloss.NewStyle().Foreground(colorPrimary)
-	sqlStringStyle    = lipgloss.NewStyle().Foreground(colorSuccess)
-	sqlNumberStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff9e64"))
-	sqlCommentStyle   = lipgloss.NewStyle().Foreground(colorMuted)
-	sqlOperatorStyle  = lipgloss.NewStyle().Foreground(colorAccent)
-	sqlPlainStyle     = lipgloss.NewStyle().Foreground(colorFg)
-	sqlKeywordSet     = buildSQLKeywordSet()
+	sqlKeywordStyle  lipgloss.Style
+	sqlStringStyle   lipgloss.Style
+	sqlNumberStyle   lipgloss.Style
+	sqlCommentStyle  lipgloss.Style
+	sqlOperatorStyle lipgloss.Style
+	sqlPlainStyle    lipgloss.Style
+
+	sqlKeywordSet = buildSQLKeywordSet()
 )
+
+// rebuildSQLHighlightStyles re-creates the SQL highlight styles from the
+// active palette. Called by applyPalette so a theme switch recolours
+// highlighted SQL on the next render.
+func rebuildSQLHighlightStyles() {
+	sqlKeywordStyle = lipgloss.NewStyle().Foreground(colorPrimary)
+	sqlStringStyle = lipgloss.NewStyle().Foreground(colorSuccess)
+	sqlNumberStyle = lipgloss.NewStyle().Foreground(colorEdit)
+	sqlCommentStyle = lipgloss.NewStyle().Foreground(colorMuted)
+	sqlOperatorStyle = lipgloss.NewStyle().Foreground(colorAccent)
+	sqlPlainStyle = lipgloss.NewStyle().Foreground(colorFg)
+}
 
 func buildSQLKeywordSet() map[string]bool {
 	set := make(map[string]bool, len(sqlKeywords))

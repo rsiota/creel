@@ -20,8 +20,8 @@ const (
 // Settings holds app-level preferences read from the "settings:" block of the
 // config file. Zero values fall back to the defaults above (see Effective).
 //
-// Currently wired: page_size, query_timeout, default_driver.
-// Reserved for follow-ups (not yet applied): theme, confirm_destructive,
+// Currently wired: page_size, query_timeout, default_driver, theme.
+// Reserved for follow-ups (not yet applied): confirm_destructive,
 // cursor_style — the struct is designed so adding fields is the only change
 // needed here.
 type Settings struct {
@@ -29,9 +29,14 @@ type Settings struct {
 	QueryTimeout  Duration `yaml:"query_timeout,omitempty"`
 	DefaultDriver string   `yaml:"default_driver,omitempty"`
 
+	// Theme selects the color palette (tokyo-night, gruvbox, nord, catppuccin,
+	// light). Empty or unknown values fall back to the default theme at apply
+	// time, so it is left unsanitized here to avoid sprouting `theme:` on
+	// every config save.
+	Theme string `yaml:"theme,omitempty"`
+
 	// Reserved: stored but not yet applied by the UI.
-	Theme              string `yaml:"theme,omitempty"`
-	ConfirmDestructive *bool  `yaml:"confirm_destructive,omitempty"`
+	ConfirmDestructive *bool `yaml:"confirm_destructive,omitempty"`
 }
 
 // Effective returns a copy of s with zero-values replaced by the defaults, so

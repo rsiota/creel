@@ -116,6 +116,16 @@ func registry() []Section {
 			},
 		},
 		{
+			Title:  "Theme Picker",
+			Source: "app.go",
+			Items: []Binding{
+				{"g c", []string{"g", "c"}, "open theme picker (live preview)", ""},
+				{"j/k", []string{"j", "k"}, "preview theme", "j/k"},
+				{"enter", []string{"enter"}, "apply & save", "enter"},
+				{"esc", []string{"esc"}, "revert", "esc"},
+			},
+		},
+		{
 			Title:  "Database Picker",
 			Source: "app.go",
 			Items: []Binding{

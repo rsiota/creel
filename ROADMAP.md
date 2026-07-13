@@ -80,8 +80,14 @@ is omitted on save so connection edits don't sprout a `settings:` block.
 - `confirm_destructive` (gate the ~8 destructive confirmation sites — drop
   table/db, truncate, clear history/bookmarks, discard edits, schema DDL).
   Safety-critical; the field is reserved on `Settings` but not yet applied.
-- `theme` (tokyo-night | gruvbox | catppuccin | nord | light): needs a palette
-  system + live re-render of `styles.go`. Field reserved.
+- `theme` ✅ DONE (2026-07-13): a `colorPalette` type + `applyPalette` in
+  `styles.go` rebuilds every package-level color and derived style var from a
+  palette, so a single call re-themes the whole UI on the next `View()` pass.
+  Five themes ship (`tokyo-night`, `gruvbox`, `nord`, `catppuccin`, `light`) in
+  `internal/ui/themes.go`; `settings.theme` applies one at startup via
+  `NewModel`, and `g c` opens a live-preview theme picker (`theme_picker.go`)
+  — cursor movement applies the palette immediately, `enter` persists to
+  config, `esc` reverts.
 - `cursor_style`: needs results-cursor rendering work. Field reserved.
 - Letting `query_timeout: 0` disable the deadline via config — currently
   `Effective` replaces 0 with the 30s default (the runner already supports 0 =

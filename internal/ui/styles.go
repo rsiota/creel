@@ -6,78 +6,221 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Color palette - Tokyo Night inspired.
+// colorPalette is the full set of colors a theme provides. Every package-level
+// color var and derived style below is (re)built from the active palette via
+// applyPalette, so switching themes is a single call that propagates to every
+// renderer on the next View() pass — no per-component plumbing required.
+type colorPalette struct {
+	primary         lipgloss.Color
+	accent          lipgloss.Color
+	success         lipgloss.Color
+	mark            lipgloss.Color
+	search          lipgloss.Color
+	visual          lipgloss.Color
+	cursorRow       lipgloss.Color
+	edit            lipgloss.Color
+	warn            lipgloss.Color
+	err             lipgloss.Color
+	muted           lipgloss.Color
+	label           lipgloss.Color
+	border          lipgloss.Color
+	borderUnfocused lipgloss.Color
+	bg              lipgloss.Color
+	stripe          lipgloss.Color
+	fg              lipgloss.Color
+	highlight       lipgloss.Color
+	statusBarBg     lipgloss.Color
+}
+
+// defaultPalette is the Tokyo Night–inspired palette shipped as the default
+// theme. Additional named palettes (gruvbox, nord, …) will be added alongside
+// it as part of the theming roadmap.
+var defaultPalette = colorPalette{
+	primary:         lipgloss.Color("#7aa2f7"),
+	accent:          lipgloss.Color("#bb9af7"),
+	success:         lipgloss.Color("#9ece6a"),
+	mark:            lipgloss.Color("#73daca"),
+	search:          lipgloss.Color("#4c4c6e"),
+	visual:          lipgloss.Color("#283457"),
+	cursorRow:       lipgloss.Color("#3B4252"), // Nord nord1 — ambient cursor-row tint
+	edit:            lipgloss.Color("#ff9e64"),
+	warn:            lipgloss.Color("#e0af68"),
+	err:             lipgloss.Color("#f7768e"),
+	muted:           lipgloss.Color("#565f89"),
+	label:           lipgloss.Color("#8089ab"),
+	border:          lipgloss.Color("#3b4261"),
+	borderUnfocused: lipgloss.Color("#5e6686"), // midpoint between border and label
+	bg:              lipgloss.Color("#1a1b26"),
+	stripe:          lipgloss.Color("#323946"), // subtle zebra tint: ~35% between bg and cursorRow
+	fg:              lipgloss.Color("#c0caf5"),
+	highlight:       lipgloss.Color("#292e42"),
+	statusBarBg:     lipgloss.Color("#343B49"), // midpoint between bg and cursorRow
+}
+
+// Color palette — these are the only color values referenced elsewhere in the
+// package. They carry no initializers: applyPalette (called from init with
+// defaultPalette, and again on theme switch) assigns them all.
 var (
-	colorPrimary   = lipgloss.Color("#7aa2f7")
-	colorAccent    = lipgloss.Color("#bb9af7")
-	colorSuccess   = lipgloss.Color("#9ece6a")
-	colorMark      = lipgloss.Color("#73daca")
-	colorSearch    = lipgloss.Color("#4c4c6e")
-	colorVisual    = lipgloss.Color("#283457")
-	colorCursorRow = lipgloss.Color("#3B4252") // Nord nord1 — ambient cursor-row tint
-	colorEdit      = lipgloss.Color("#ff9e64")
-	colorError     = lipgloss.Color("#f7768e")
-	colorMuted     = lipgloss.Color("#565f89")
-	colorLabel     = lipgloss.Color("#8089ab")
-	colorBorder    = lipgloss.Color("#3b4261")
-	colorBorderUnfocused = lipgloss.Color("#5e6686") // midpoint between colorBorder and colorLabel
-	colorBg        = lipgloss.Color("#1a1b26")
-	colorStripe    = lipgloss.Color("#323946") // subtle zebra tint: ~35% between Nord nord0 (bg) and nord1 (cursor row)
-	colorFg        = lipgloss.Color("#c0caf5")
-	colorHighlight    = lipgloss.Color("#292e42")
-	colorStatusBarBg  = lipgloss.Color("#343B49") // midpoint between nord0 and nord1
+	colorPrimary         lipgloss.Color
+	colorAccent          lipgloss.Color
+	colorSuccess         lipgloss.Color
+	colorMark            lipgloss.Color
+	colorSearch          lipgloss.Color
+	colorVisual          lipgloss.Color
+	colorCursorRow       lipgloss.Color
+	colorEdit            lipgloss.Color
+	colorWarn            lipgloss.Color
+	colorError           lipgloss.Color
+	colorMuted           lipgloss.Color
+	colorLabel           lipgloss.Color
+	colorBorder          lipgloss.Color
+	colorBorderUnfocused lipgloss.Color
+	colorBg              lipgloss.Color
+	colorStripe          lipgloss.Color
+	colorFg              lipgloss.Color
+	colorHighlight       lipgloss.Color
+	colorStatusBarBg     lipgloss.Color
 )
 
 // sbStyles are status-bar-specific styles that carry the status bar background
 // so that ANSI resets within multi-segment rendered strings don't lose the bg.
+// Declared here, assigned by applyPalette.
 var (
-	sbMuted   = lipgloss.NewStyle().Foreground(colorMuted).Background(colorStatusBarBg)
-	sbSuccess = lipgloss.NewStyle().Foreground(colorSuccess).Background(colorStatusBarBg)
-	sbError   = lipgloss.NewStyle().Foreground(colorError).Background(colorStatusBarBg)
-	sbPrimary = lipgloss.NewStyle().Foreground(colorPrimary).Background(colorStatusBarBg)
-	sbLabel   = lipgloss.NewStyle().Foreground(colorLabel).Background(colorStatusBarBg)
-	sbAccent  = lipgloss.NewStyle().Foreground(colorAccent).Background(colorStatusBarBg)
-	sbMark    = lipgloss.NewStyle().Foreground(colorMark).Background(colorStatusBarBg)
-	sbFg      = lipgloss.NewStyle().Foreground(colorFg).Background(colorStatusBarBg)
+	sbMuted   lipgloss.Style
+	sbSuccess lipgloss.Style
+	sbError   lipgloss.Style
+	sbPrimary lipgloss.Style
+	sbLabel   lipgloss.Style
+	sbAccent  lipgloss.Style
+	sbMark    lipgloss.Style
+	sbFg      lipgloss.Style
 )
 
-// Shared styles used across components.
+// Shared styles used across components. Declared here, assigned by applyPalette.
 var (
-	appStyle = lipgloss.NewStyle().
-			Padding(0, 1)
+	appStyle           lipgloss.Style
+	titleStyle         lipgloss.Style
+	selectedStyle      lipgloss.Style
+	panelSelectedStyle lipgloss.Style
+	normalStyle        lipgloss.Style
+	mutedStyle         lipgloss.Style
+	errorStyle         lipgloss.Style
+	successStyle       lipgloss.Style
+	borderStyle        lipgloss.Style
+)
 
+func init() {
+	applyPalette(defaultPalette)
+}
+
+// applyPalette sets every package-level color var from p and rebuilds the
+// derived styles that capture those colors at construction — the sb*, shared,
+// and tab-bar styles declared in this file, plus the SQL-highlight styles in
+// sql_highlight.go.
+//
+// Because Bubble Tea re-runs View() on every frame, calling applyPalette is
+// all it takes to re-theme the live UI. Today only defaultPalette is applied
+// (at init); a later step will call this from a theme picker for live preview.
+func applyPalette(p colorPalette) {
+	colorPrimary = p.primary
+	colorAccent = p.accent
+	colorSuccess = p.success
+	colorMark = p.mark
+	colorSearch = p.search
+	colorVisual = p.visual
+	colorCursorRow = p.cursorRow
+	colorEdit = p.edit
+	colorWarn = p.warn
+	colorError = p.err
+	colorMuted = p.muted
+	colorLabel = p.label
+	colorBorder = p.border
+	colorBorderUnfocused = p.borderUnfocused
+	colorBg = p.bg
+	colorStripe = p.stripe
+	colorFg = p.fg
+	colorHighlight = p.highlight
+	colorStatusBarBg = p.statusBarBg
+
+	// Status-bar styles (carry the status-bar bg so ANSI resets within
+	// multi-segment rendered strings don't lose it).
+	sbMuted = lipgloss.NewStyle().Foreground(colorMuted).Background(colorStatusBarBg)
+	sbSuccess = lipgloss.NewStyle().Foreground(colorSuccess).Background(colorStatusBarBg)
+	sbError = lipgloss.NewStyle().Foreground(colorError).Background(colorStatusBarBg)
+	sbPrimary = lipgloss.NewStyle().Foreground(colorPrimary).Background(colorStatusBarBg)
+	sbLabel = lipgloss.NewStyle().Foreground(colorLabel).Background(colorStatusBarBg)
+	sbAccent = lipgloss.NewStyle().Foreground(colorAccent).Background(colorStatusBarBg)
+	sbMark = lipgloss.NewStyle().Foreground(colorMark).Background(colorStatusBarBg)
+	sbFg = lipgloss.NewStyle().Foreground(colorFg).Background(colorStatusBarBg)
+
+	// Shared styles.
+	appStyle = lipgloss.NewStyle().Padding(0, 1)
 	titleStyle = lipgloss.NewStyle().
-			Foreground(colorPrimary).
-			Bold(true).
-			Padding(0, 1)
-
+		Foreground(colorPrimary).
+		Bold(true).
+		Padding(0, 1)
 	selectedStyle = lipgloss.NewStyle().
-			Foreground(colorBg).
-			Background(colorPrimary).
-			Padding(0, 1)
-
+		Foreground(colorBg).
+		Background(colorPrimary).
+		Padding(0, 1)
 	panelSelectedStyle = lipgloss.NewStyle().
-				Foreground(colorPrimary).
-				Bold(true).
-				Padding(0, 1)
-
+		Foreground(colorPrimary).
+		Bold(true).
+		Padding(0, 1)
 	normalStyle = lipgloss.NewStyle().
-			Foreground(colorFg).
-			Padding(0, 1)
-
+		Foreground(colorFg).
+		Padding(0, 1)
 	mutedStyle = lipgloss.NewStyle().
-			Foreground(colorMuted)
-
+		Foreground(colorMuted)
 	errorStyle = lipgloss.NewStyle().
-			Foreground(colorError).
-			Padding(0, 1)
-
+		Foreground(colorError).
+		Padding(0, 1)
 	successStyle = lipgloss.NewStyle().
-			Foreground(colorSuccess).
-			Padding(0, 1)
-
+		Foreground(colorSuccess).
+		Padding(0, 1)
 	borderStyle = lipgloss.NewStyle().
-			BorderForeground(colorBorder)
+		BorderForeground(colorBorder)
+
+	// Tab bar styles — fixed width so every tab occupies the same space.
+	// Inactive tabs carry no background tint; their text uses the same grey
+	// (colorLabel) as the database name on the status bar, shifting to white
+	// (colorFg) when the tab bar is focused so the user can tell the panel is
+	// active even when looking at an inactive tab.
+	activeTabStyle = lipgloss.NewStyle().
+		Foreground(colorBg).
+		Background(colorPrimary).
+		Padding(0, 1).
+		Width(tabWidth).
+		Align(lipgloss.Center)
+	activeTabStyleFocused = lipgloss.NewStyle().
+		Foreground(colorBg).
+		Background(colorPrimary).
+		Padding(0, 1).
+		Width(tabWidth).
+		Align(lipgloss.Center).
+		Bold(true)
+	inactiveTabStyle = lipgloss.NewStyle().
+		Foreground(colorLabel).
+		Padding(0, 1).
+		Width(tabWidth).
+		Align(lipgloss.Center)
+	inactiveTabStyleFocused = lipgloss.NewStyle().
+		Foreground(colorFg).
+		Padding(0, 1).
+		Width(tabWidth).
+		Align(lipgloss.Center)
+
+	// SQL highlight styles (declared in sql_highlight.go) also capture colors
+	// at construction, so rebuild them from the now-updated palette.
+	rebuildSQLHighlightStyles()
+}
+
+// Tab bar styles — declared here, assigned by applyPalette.
+var (
+	activeTabStyle          lipgloss.Style
+	activeTabStyleFocused   lipgloss.Style
+	inactiveTabStyle        lipgloss.Style
+	inactiveTabStyleFocused lipgloss.Style
 )
 
 // renderConfirmDialog builds a centered y/n confirmation overlay.
@@ -202,8 +345,8 @@ func renderInputDialog(prompt, input, errMsg string, width, height int) string {
 
 	lines = append(lines, "",
 		lipgloss.NewStyle().Width(contentW).Align(lipgloss.Center).Render(
-			lipgloss.NewStyle().Foreground(colorLabel).Render("enter") + mutedStyle.Render(" confirm    ") +
-				lipgloss.NewStyle().Foreground(colorLabel).Render("esc") + mutedStyle.Render(" cancel"),
+			lipgloss.NewStyle().Foreground(colorLabel).Render("enter")+mutedStyle.Render(" confirm    ")+
+				lipgloss.NewStyle().Foreground(colorLabel).Render("esc")+mutedStyle.Render(" cancel"),
 		))
 
 	content := lipgloss.JoinVertical(lipgloss.Center, lines...)
@@ -263,37 +406,3 @@ func renderSQLConfirmDialog(prompt, sql string) string {
 			),
 		)
 }
-
-// Tab bar styles — fixed width so every tab occupies the same space.
-// Inactive tabs carry no background tint; their text uses the same grey
-// (colorLabel) as the database name on the status bar, shifting to white
-// (colorFg) when the tab bar is focused so the user can tell the panel is
-// active even when looking at an inactive tab.
-var (
-	activeTabStyle = lipgloss.NewStyle().
-		Foreground(colorBg).
-		Background(colorPrimary).
-		Padding(0, 1).
-		Width(tabWidth).
-		Align(lipgloss.Center)
-
-	activeTabStyleFocused = lipgloss.NewStyle().
-		Foreground(colorBg).
-		Background(colorPrimary).
-		Padding(0, 1).
-		Width(tabWidth).
-		Align(lipgloss.Center).
-		Bold(true)
-
-	inactiveTabStyle = lipgloss.NewStyle().
-		Foreground(colorLabel).
-		Padding(0, 1).
-		Width(tabWidth).
-		Align(lipgloss.Center)
-
-	inactiveTabStyleFocused = lipgloss.NewStyle().
-		Foreground(colorFg).
-		Padding(0, 1).
-		Width(tabWidth).
-		Align(lipgloss.Center)
-)

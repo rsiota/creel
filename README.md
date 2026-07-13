@@ -162,23 +162,30 @@ render exactly as before when none of your connections use groups.
 Top-level app preferences live under a `settings:` block. All fields are
 optional and fall back to defaults when omitted:
 
-| Key              | Default | Description                                                              |
-| ---------------- | ------- | ------------------------------------------------------------------------ |
-| `page_size`      | 200     | Rows fetched per page in results                                         |
-| `query_timeout`  | 30s     | Per-query deadline (friendly form: `2m`, `1h30m`, or a bare seconds int) |
-| `default_driver` | sqlite  | Driver pre-filled in the add-connection form                             |
+| Key              | Default      | Description                                                              |
+| ---------------- | ------------ | ------------------------------------------------------------------------ |
+| `page_size`      | 200          | Rows fetched per page in results                                         |
+| `query_timeout`  | 30s          | Per-query deadline (friendly form: `2m`, `1h30m`, or a bare seconds int) |
+| `default_driver` | sqlite       | Driver pre-filled in the add-connection form                             |
+| `theme`          | tokyo-night  | Color palette: `tokyo-night`, `gruvbox`, `nord`, `catppuccin`, `light`    |
 
 ```yaml
 settings:
   page_size: 500
   query_timeout: 1m
   default_driver: postgres
+  theme: gruvbox
 ```
 
 `query_timeout` accepts values like `30s`, `2m`, `1h30m`, or a bare number of
 seconds (`45`). An invalid value makes config load fail loudly rather than
-silently falling back. (`theme`, `confirm_destructive`, and `cursor_style` are
+silently falling back. An unknown `theme` silently falls back to the default
+rather than blocking startup. (`confirm_destructive` and `cursor_style` are
 reserved for upcoming work.)
+
+To experiment with themes live, press `g c` in the workspace to open the
+theme picker; moving the cursor re-themes the UI immediately, `enter` saves
+the choice to config, and `esc` reverts.
 
 ## Keybindings
 
@@ -202,6 +209,7 @@ Press `?` inside the TUI for the full overlay, or `Ctrl+P` for the fuzzy command
 | `tab` / `shift+tab` | Cycle focus                |
 | `ctrl+d` / `ctrl+u` | Next / previous page        |
 | `ctrl+p`        | Command palette                 |
+| `g c`           | Theme picker (live preview)     |
 | `?`             | Toggle help                     |
 | `q` / `ctrl+q`  | Quit (not while editing)        |
 
