@@ -1,0 +1,23 @@
+{
+  "name": "Noctis Viola",
+  "black": "#362f3d",
+  "red": "#e66533",
+  "green": "#49e9a6",
+  "yellow": "#e4b781",
+  "blue": "#49ace9",
+  "purple": "#df769b",
+  "cyan": "#49d6e9",
+  "white": "#bfafcf",
+  "brightBlack": "#594e65",
+  "brightRed": "#e97749",
+  "brightGreen": "#60ebb1",
+  "brightYellow": "#e69533",
+  "brightBlue": "#60b6eb",
+  "brightPurple": "#e798b3",
+  "brightCyan": "#60dbeb",
+  "brightWhite": "#ccbfd9",
+  "background": "#30243d",
+  "foreground": "#ccbfd9",
+  "cursorColor": "#ccbfd9",
+  "selectionBackground": "#3e3352"
+}

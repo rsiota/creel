@@ -251,41 +251,41 @@ type Model struct {
 	height   int
 	quitting bool
 
-	connList        ConnectionList
-	connForm        ConnectionForm
-	editor          QueryEditor
-	results         ResultsTable // active tab's results (synced on tab switch)
-	inspector       Inspector
+	connList  ConnectionList
+	connForm  ConnectionForm
+	editor    QueryEditor
+	results   ResultsTable // active tab's results (synced on tab switch)
+	inspector Inspector
 
 	// Tab management
-	resultsTabs  []*ResultsTab // All result tabs
-	activeTabID  int           // Currently active tab ID
-	nextTabID    int           // Counter for generating unique tab IDs
-	tabBar       TabBar        // Tab navigation component
-	history         HistoryPanel
-	bookmarks       BookmarkPanel
-	crossSearch     CrossSearchPanel
-	dbPicker        DatabasePicker
-	help            HelpPanel
-	filterPicker    FilterPicker
-	columnPicker    ColumnPicker
-	exportPicker    ExportPicker
-	formatPicker    FormatPicker
-	themePicker     ThemePicker
-	importPrompt    ImportPrompt
-	addColumnForm   AddColumnForm
-	tableRenameForm TableRenameForm
-	tableDesigner   TableDesigner
-	schemaEditor    SchemaEditor
-	cellEdit        CellEditPopup
-	explainPanel    ExplainPanel
-	palette         palette
-	sidebarCursor   int
-	sidebarScroll   int              // cached scroll offset of the first visible sidebar item
-	sidebarViewAnchored bool        // mouse click froze the view; keyboard nav clears it
-	tableRowCounts  map[string]int64 // approximate row counts for sidebar display
-	expanded        map[string][]db.Column
-	columnCache     map[string][]db.Column
+	resultsTabs         []*ResultsTab // All result tabs
+	activeTabID         int           // Currently active tab ID
+	nextTabID           int           // Counter for generating unique tab IDs
+	tabBar              TabBar        // Tab navigation component
+	history             HistoryPanel
+	bookmarks           BookmarkPanel
+	crossSearch         CrossSearchPanel
+	dbPicker            DatabasePicker
+	help                HelpPanel
+	filterPicker        FilterPicker
+	columnPicker        ColumnPicker
+	exportPicker        ExportPicker
+	formatPicker        FormatPicker
+	themePicker         ThemePicker
+	importPrompt        ImportPrompt
+	addColumnForm       AddColumnForm
+	tableRenameForm     TableRenameForm
+	tableDesigner       TableDesigner
+	schemaEditor        SchemaEditor
+	cellEdit            CellEditPopup
+	explainPanel        ExplainPanel
+	palette             palette
+	sidebarCursor       int
+	sidebarScroll       int              // cached scroll offset of the first visible sidebar item
+	sidebarViewAnchored bool             // mouse click froze the view; keyboard nav clears it
+	tableRowCounts      map[string]int64 // approximate row counts for sidebar display
+	expanded            map[string][]db.Column
+	columnCache         map[string][]db.Column
 
 	// Fuzzy table search
 	sidebarFilter    string
@@ -467,10 +467,10 @@ func NewModel(cfg *config.Config) Model {
 		pageSize:        settings.PageSize,
 		queryTimeout:    settings.QueryTimeout.Std(),
 		// Tab management
-		resultsTabs:  []*ResultsTab{firstTab},
-		activeTabID:  0,
-		nextTabID:     1,
-		tabBar:       NewTabBar(),
+		resultsTabs: []*ResultsTab{firstTab},
+		activeTabID: 0,
+		nextTabID:   1,
+		tabBar:      NewTabBar(),
 	}
 	m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
 	m.loadConnections()
@@ -1719,6 +1719,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Theme picker (g c) is modal — intercept all keys. Moving the cursor
 	// live-previews the theme (the picker applies the palette itself); enter
 	// persists the choice to the config, esc reverts to the open-time theme.
+	// Theme picker (g c) is modal — intercept all keys. Arrow keys move the
+	// cursor (live-previewing the theme); every other key filters the list by
+	// display name. enter persists the choice to the config (a no-op if the
+	// filter has no matches), esc reverts to the open-time theme.
 	if m.themePicker.IsVisible() {
 		switch msg.String() {
 		case "esc", "ctrl+c":
@@ -1727,15 +1731,25 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "enter":
 			name := m.themePicker.Commit()
+			if name == "" {
+				return m, nil // no match — keep the picker open
+			}
 			m.settings.Theme = name
 			m.config.Settings.Theme = name
 			_ = m.config.Save()
 			return m, nil
-		case "up", "k":
+		case "up":
 			m.themePicker.Up()
 			return m, nil
-		case "down", "j":
+		case "down":
 			m.themePicker.Down()
+			return m, nil
+		case "backspace":
+			m.themePicker.FilterBackspace()
+			return m, nil
+		}
+		if msg.Type == tea.KeyRunes {
+			m.themePicker.FilterAddChar(msg.String())
 			return m, nil
 		}
 		return m, nil
@@ -1880,35 +1894,35 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Column editing only applies on the Columns tab; read-only tabs
 			// (e.g. expand a trigger) handle enter inside Update.
 			if onColumnsTab {
-			if m.schemaEditor.IsEditing() {
-				m.schemaEditor, _ = m.schemaEditor.Update(msg)
-				// For existing rows, fire per-cell DDL immediately on commit.
-				// For new rows, the user fills in cells one by one and
-				// presses enter again (not editing) to submit ADD COLUMN.
-				if !m.schemaEditor.IsNewRow() {
-					sql, action, errMsg := m.schemaEditor.PendingEditDDL()
-					if errMsg != "" {
-						m.schemaEditor.SetError(errMsg)
-						return m, nil
+				if m.schemaEditor.IsEditing() {
+					m.schemaEditor, _ = m.schemaEditor.Update(msg)
+					// For existing rows, fire per-cell DDL immediately on commit.
+					// For new rows, the user fills in cells one by one and
+					// presses enter again (not editing) to submit ADD COLUMN.
+					if !m.schemaEditor.IsNewRow() {
+						sql, action, errMsg := m.schemaEditor.PendingEditDDL()
+						if errMsg != "" {
+							m.schemaEditor.SetError(errMsg)
+							return m, nil
+						}
+						if sql != "" {
+							m.schemaEditor.SetError("")
+							return m, m.execSchemaDDL(m.schemaEditor.Table(), sql, action, "")
+						}
 					}
-					if sql != "" {
-						m.schemaEditor.SetError("")
-						return m, m.execSchemaDDL(m.schemaEditor.Table(), sql, action, "")
-					}
+					return m, nil
 				}
-				return m, nil
-			}
-			// Not editing: fire pending DDL (ADD COLUMN for new rows).
-			sql, action, errMsg := m.schemaEditor.PendingEditDDL()
-			if errMsg != "" {
-				m.schemaEditor.SetError(errMsg)
-				return m, nil
-			}
-			if sql == "" {
-				return m, nil
-			}
-			m.schemaEditor.SetError("")
-			return m, m.execSchemaDDL(m.schemaEditor.Table(), sql, action, "")
+				// Not editing: fire pending DDL (ADD COLUMN for new rows).
+				sql, action, errMsg := m.schemaEditor.PendingEditDDL()
+				if errMsg != "" {
+					m.schemaEditor.SetError(errMsg)
+					return m, nil
+				}
+				if sql == "" {
+					return m, nil
+				}
+				m.schemaEditor.SetError("")
+				return m, m.execSchemaDDL(m.schemaEditor.Table(), sql, action, "")
 			}
 		case "d":
 			// dd to drop column — only existing rows go through the confirm
@@ -3438,8 +3452,8 @@ func (m Model) connListPopupDims() (w, h int) {
 // scroll math and what is drawn always agree.
 func (m Model) connListContentDims() (contentW, listH int) {
 	pw, ph := m.connListPopupDims()
-	panelW := pw - 2 // border
-	panelH := ph - 2 // border
+	panelW := pw - 2   // border
+	panelH := ph - 2   // border
 	listH = panelH - 2 // prompt + scroll-info (chrome)
 	if listH < linesPerField {
 		listH = linesPerField
@@ -3517,8 +3531,8 @@ func (m Model) viewAddConnection() string {
 	popupH := contentH + borderOverhead
 
 	formPanel := lipgloss.NewStyle().
-		Width(popupW - borderOverhead).
-		Height(popupH - borderOverhead).
+		Width(popupW-borderOverhead).
+		Height(popupH-borderOverhead).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).

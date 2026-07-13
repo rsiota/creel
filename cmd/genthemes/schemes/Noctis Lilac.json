@@ -1,0 +1,23 @@
+{
+  "name": "Noctis Lilac",
+  "black": "#0c006b",
+  "red": "#e34e1c",
+  "green": "#00b368",
+  "yellow": "#f49725",
+  "blue": "#0094f0",
+  "purple": "#ff5792",
+  "cyan": "#00bdd6",
+  "white": "#8ca6a6",
+  "brightBlack": "#0f0080",
+  "brightRed": "#ff4000",
+  "brightGreen": "#00d17a",
+  "brightYellow": "#ff8c00",
+  "brightBlue": "#0fa3ff",
+  "brightPurple": "#ff6b9f",
+  "brightCyan": "#00cbe6",
+  "brightWhite": "#bbc3c4",
+  "background": "#f2f1f8",
+  "foreground": "#0c006b",
+  "cursorColor": "#0c006b",
+  "selectionBackground": "#d5d3e5"
+}

@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // scheme is the subset of the Windows Terminal color-scheme JSON we consume.
@@ -56,10 +57,12 @@ type palette struct {
 	muted, label, border, borderUnfocused, bg, stripe, fg, highlight, statusBarBg string
 }
 
-// genEntry pairs a normalized theme name with its derived palette.
+// genEntry pairs a normalized theme key with its original display name and
+// derived palette.
 type genEntry struct {
-	key string
-	pal palette
+	key     string
+	display string
+	pal     palette
 }
 
 type rgb struct{ r, g, b int }
@@ -156,11 +159,26 @@ func derive(s scheme) palette {
 	}
 }
 
-// normalize lowercases a theme name and turns spaces into hyphens so it works
-// as a config key (e.g. "Atom One Dark" -> "atom-one-dark").
+// normalize turns a theme name into a config key: lowercased, with spaces
+// and camelCase boundaries become hyphens (e.g. "Atom One Dark" ->
+// "atom-one-dark", "TokyoNight Storm" -> "tokyo-night-storm"). The original
+// (display) name is preserved separately for the picker.
 func normalize(name string) string {
-	s := strings.ToLower(name)
-	s = strings.ReplaceAll(s, " ", "-")
+	var b strings.Builder
+	prevLower := false
+	for _, r := range name {
+		if r == ' ' {
+			b.WriteRune('-')
+			prevLower = false
+			continue
+		}
+		if unicode.IsUpper(r) && prevLower {
+			b.WriteRune('-')
+		}
+		b.WriteRune(unicode.ToLower(r))
+		prevLower = unicode.IsLower(r)
+	}
+	s := b.String()
 	for strings.Contains(s, "--") {
 		s = strings.ReplaceAll(s, "--", "-")
 	}
@@ -214,7 +232,7 @@ func main() {
 			continue
 		}
 		seen[key] = e.Name()
-		got = append(got, genEntry{key, pal})
+		got = append(got, genEntry{key, s.Name, pal})
 	}
 	sort.Slice(got, func(i, j int) bool { return got[i].key < got[j].key })
 
@@ -264,6 +282,14 @@ func emit(entries []genEntry) string {
 			fmt.Fprintf(&b, "\t\t%s: lipgloss.Color(%q),\n", f.name, f.val)
 		}
 		b.WriteString("\t},\n")
+	}
+	b.WriteString("}\n")
+
+	b.WriteString("\n// generatedDisplayNames maps each generated theme key to its original\n")
+	b.WriteString("// (display) name from the upstream scheme, shown in the picker.\n")
+	b.WriteString("var generatedDisplayNames = map[string]string{\n")
+	for _, e := range entries {
+		fmt.Fprintf(&b, "\t%q: %q,\n", e.key, e.display)
 	}
 	b.WriteString("}\n")
 	return b.String()

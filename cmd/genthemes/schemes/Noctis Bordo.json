@@ -1,0 +1,23 @@
+{
+  "name": "Noctis Bordo",
+  "black": "#47393e",
+  "red": "#e66533",
+  "green": "#49e9a6",
+  "yellow": "#e4b781",
+  "blue": "#49ace9",
+  "purple": "#df769b",
+  "cyan": "#49d6e9",
+  "white": "#b9acb0",
+  "brightBlack": "#69545b",
+  "brightRed": "#e97749",
+  "brightGreen": "#60ebb1",
+  "brightYellow": "#e69533",
+  "brightBlue": "#60b6eb",
+  "brightPurple": "#e798b3",
+  "brightCyan": "#60dbeb",
+  "brightWhite": "#cbbec2",
+  "background": "#322a2d",
+  "foreground": "#cbbec2",
+  "cursorColor": "#cbbec2",
+  "selectionBackground": "#4a3339"
+}

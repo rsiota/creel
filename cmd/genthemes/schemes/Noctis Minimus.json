@@ -1,0 +1,23 @@
+{
+  "name": "Noctis Minimus",
+  "black": "#182a35",
+  "red": "#c08872",
+  "green": "#72c09f",
+  "yellow": "#c8a984",
+  "blue": "#6196b8",
+  "purple": "#c28097",
+  "cyan": "#72b7c0",
+  "white": "#c5cdd3",
+  "brightBlack": "#425866",
+  "brightRed": "#ca8468",
+  "brightGreen": "#84c8ab",
+  "brightYellow": "#d1aa7b",
+  "brightBlue": "#68a4ca",
+  "brightPurple": "#c88da2",
+  "brightCyan": "#84c0c8",
+  "brightWhite": "#c5d1d3",
+  "background": "#1b2932",
+  "foreground": "#c5cdd3",
+  "cursorColor": "#c5cdd3",
+  "selectionBackground": "#263c4a"
+}

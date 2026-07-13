@@ -18,37 +18,42 @@ var swatchColors = []func(p colorPalette) lipgloss.Color{
 }
 
 // ThemePicker is a single-select overlay for choosing the color theme (opened
-// with g c in the workspace). Moving the cursor live-previews the theme by
+// with g c in the workspace). It supports type-to-filter (fuzzy match against
+// each theme's display name) and scrolls when the catalog exceeds the panel.
+// Moving the cursor (or changing the filter) live-previews the theme by
 // applying its palette immediately; enter persists the choice to the config,
 // and esc reverts to the theme that was active when the picker opened.
 //
-// It mirrors FormatPicker's shape, with two additions: cursor movement calls
-// applyPalette for live preview, and it remembers the open-time theme so esc
-// can undo a preview even after cycling through several themes.
+// It mirrors the column-visibility picker's shape (filter prompt + scrollable
+// list, arrow-key navigation so every letter can filter), with two additions:
+// cursor/filter changes call applyPalette for live preview, and it remembers
+// the open-time theme so esc can undo a preview even after cycling.
 type ThemePicker struct {
-	items     []string
+	items     []string // theme keys (curated first, then generated, sorted)
 	cursor    int
 	scrollRow int
+	filter    string
 	visible   bool
-	// appliedAtOpen is the theme name active when Show was called, so esc can
+	// appliedAtOpen is the theme key active when Show was called, so esc can
 	// revert a live-previewed change. Empty means the default theme.
 	appliedAtOpen string
 }
 
-// NewThemePicker returns a theme picker over the available theme names.
+// NewThemePicker returns a theme picker over the available theme keys.
 func NewThemePicker() ThemePicker {
 	return ThemePicker{items: themeNames()}
 }
 
-// Show reveals the picker with the cursor on the active theme. An empty
-// activeTheme is treated as the default theme. The value is recorded so esc
-// can revert a live preview.
+// Show reveals the picker with the cursor on the active theme, filter cleared.
+// An empty activeTheme is treated as the default theme. The value is recorded
+// so esc can revert a live preview.
 func (p *ThemePicker) Show(activeTheme string) {
 	p.visible = true
 	if activeTheme == "" {
 		activeTheme = defaultThemeName
 	}
 	p.appliedAtOpen = activeTheme
+	p.filter = ""
 	p.cursor = 0
 	p.scrollRow = 0
 	for i, name := range p.items {
@@ -66,16 +71,37 @@ func (p *ThemePicker) Hide() { p.visible = false }
 // IsVisible reports whether the picker is shown.
 func (p ThemePicker) IsVisible() bool { return p.visible }
 
-// AppliedAtOpen returns the theme name that was active when the picker was
+// AppliedAtOpen returns the theme key that was active when the picker was
 // opened, for esc-revert.
 func (p ThemePicker) AppliedAtOpen() string { return p.appliedAtOpen }
 
-// Selected returns the theme name under the cursor (falls back to the first).
-func (p ThemePicker) Selected() string {
-	if p.cursor < 0 || p.cursor >= len(p.items) {
-		return p.items[0]
+// filteredItems returns the theme keys whose display name fuzzy-matches the
+// filter (ranked), or all keys when the filter is empty.
+func (p ThemePicker) filteredItems() []string {
+	if p.filter == "" {
+		return p.items
 	}
-	return p.items[p.cursor]
+	ranked := fuzzyRank(p.filter, p.items,
+		func(s string) string { return themeDisplay(s) },
+		func(a, b fuzzyResult[string]) bool { return themeDisplay(a.Item) < themeDisplay(b.Item) })
+	out := make([]string, len(ranked))
+	for i, r := range ranked {
+		out[i] = r.Item
+	}
+	return out
+}
+
+// Selected returns the theme key under the cursor within the filtered list
+// (falls back to the first match, or "" if the filter has no matches).
+func (p ThemePicker) Selected() string {
+	items := p.filteredItems()
+	if len(items) == 0 {
+		return ""
+	}
+	if p.cursor < 0 || p.cursor >= len(items) {
+		return items[0]
+	}
+	return items[p.cursor]
 }
 
 // Up moves the cursor up and live-applies the newly selected palette so the
@@ -90,18 +116,43 @@ func (p *ThemePicker) Up() {
 
 // Down moves the cursor down and live-applies the newly selected palette.
 func (p *ThemePicker) Down() {
-	if p.cursor < len(p.items)-1 {
+	if p.cursor < len(p.filteredItems())-1 {
 		p.cursor++
 	}
 	p.adjustScroll()
 	applyPalette(paletteForTheme(p.Selected()))
 }
 
+// FilterAddChar appends ch to the filter, resets the cursor to the top match,
+// and live-previews it.
+func (p *ThemePicker) FilterAddChar(ch string) {
+	p.filter += ch
+	p.cursor = 0
+	p.scrollRow = 0
+	if items := p.filteredItems(); len(items) > 0 {
+		applyPalette(paletteForTheme(items[0]))
+	}
+}
+
+// FilterBackspace removes the last filter character and re-previews the top
+// match.
+func (p *ThemePicker) FilterBackspace() {
+	if len(p.filter) == 0 {
+		return
+	}
+	p.filter = p.filter[:len(p.filter)-1]
+	p.cursor = 0
+	p.scrollRow = 0
+	if items := p.filteredItems(); len(items) > 0 {
+		applyPalette(paletteForTheme(items[0]))
+	}
+}
+
 // adjustScroll keeps the cursor within the visible window. The window size is
-// the panel's content height (popupDim height minus the top/bottom borders).
+// the panel content height minus one row for the filter prompt.
 func (p *ThemePicker) adjustScroll() {
 	_, popupH := popupDim()
-	maxVisible := popupH - 2
+	maxVisible := popupH - 3 // 2 border + 1 prompt row
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -113,43 +164,35 @@ func (p *ThemePicker) adjustScroll() {
 	}
 }
 
-// Commit hides the picker and returns the selected theme name for the caller
-// to persist. The palette is already applied (preview), so no re-apply is
-// needed.
+// Commit hides the picker and returns the selected theme key for the caller to
+// persist. Returns "" (without hiding) if the filter has no matches, so enter
+// is a no-op in that case. The palette is already applied (preview), so no
+// re-apply is needed.
 func (p *ThemePicker) Commit() string {
 	name := p.Selected()
-	p.visible = false
+	if name != "" {
+		p.visible = false
+	}
 	return name
 }
 
-// View renders the picker as a centered bordered overlay. It matches both the
-// width and height of the column-visibility picker (opened with v in the
-// results panel), derived from popupDim, so the two popups share a footprint.
-// Only the visible window of themes is rendered, so the picker scrolls when
-// there are more themes than fit (j/k move the cursor and the window follows);
-// short lists are top-aligned and padded to the full height. Each row shows
-// the theme name on the left and a row of colored swatch dots sampled from
-// that theme's palette right-aligned to the panel's edge; the border uses the
-// live palette, so it too re-themes as the user cycles. Keybindings are shown
-// on the status bar, so the picker itself has no title or footer.
+// View renders the picker as a centered bordered overlay matching the
+// column-visibility picker's footprint (popupDim). A filter prompt leads,
+// followed by a scrolling window of theme rows; each row shows the theme's
+// display name on the left and a row of colored swatch dots right-aligned to
+// the panel's edge. The border and prompt use the live palette, so they too
+// re-theme as the user cycles. Keybindings are shown on the status bar.
 func (p ThemePicker) View() string {
 	if !p.visible {
 		return ""
 	}
 
-	// Match the column-visibility picker's footprint (popupDim). contentW is
-	// the usable width between the border and horizontal padding (swatch dots
-	// are right-aligned against it); contentH is the usable height between the
-	// top/bottom borders (vertical padding is 0) and doubles as the max number
-	// of visible rows.
 	popupW, popupH := popupDim()
 	contentW := popupW - 4 // 2 border + 2 padding
-	contentH := popupH - 2 // 2 border (Padding(0,1) adds no vertical padding)
+	listH := popupH - 3    // 2 border + 1 prompt row
 
-	// Render only the visible window [scrollRow, scrollRow+contentH) so the
-	// picker scrolls when there are more themes than fit; pad with blank lines
-	// when fewer.
-	n := len(p.items)
+	items := p.filteredItems()
+	n := len(items)
 	start := p.scrollRow
 	if start < 0 {
 		start = 0
@@ -157,24 +200,25 @@ func (p ThemePicker) View() string {
 	if start > n {
 		start = n
 	}
-	end := start + contentH
+	end := start + listH
 	if end > n {
 		end = n
 	}
 
 	var rows []string
 	for i := start; i < end; i++ {
-		name := p.items[i]
-		pal := themes[name]
+		key := items[i]
+		disp := themeDisplay(key)
+		pal := themes[key]
 		swatch := renderSwatch(pal)
 
 		var marker, nameStyled string
 		if i == p.cursor {
 			marker = lipgloss.NewStyle().Foreground(colorPrimary).Render("›")
-			nameStyled = lipgloss.NewStyle().Foreground(colorFg).Bold(true).Render(name)
+			nameStyled = lipgloss.NewStyle().Foreground(colorFg).Bold(true).Render(disp)
 		} else {
 			marker = lipgloss.NewStyle().Foreground(colorMuted).Render(" ")
-			nameStyled = lipgloss.NewStyle().Foreground(colorMuted).Render(name)
+			nameStyled = lipgloss.NewStyle().Foreground(colorMuted).Render(disp)
 		}
 		left := marker + " " + nameStyled
 
@@ -184,14 +228,19 @@ func (p ThemePicker) View() string {
 		}
 		rows = append(rows, left+strings.Repeat(" ", gap)+swatch)
 	}
-	for len(rows) < contentH {
+	if len(rows) == 0 {
+		rows = append(rows, lipgloss.NewStyle().Foreground(colorMuted).Render("  no matches"))
+	}
+	for len(rows) < listH {
 		rows = append(rows, "")
 	}
-	content := strings.Join(rows, "\n")
+
+	prompt := renderPalettePrompt(p.filter, true)
+	content := lipgloss.JoinVertical(lipgloss.Left, prompt, strings.Join(rows, "\n"))
 
 	return lipgloss.NewStyle().
 		Width(popupW-2).
-		Height(contentH).
+		Height(popupH-2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).

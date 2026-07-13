@@ -133,6 +133,29 @@ var curatedThemes = map[string]colorPalette{
 // first); auto-derived themes follow in sorted order in the picker.
 var curatedThemeNames = []string{defaultThemeName, "gruvbox", "nord", "catppuccin", "light"}
 
+// curatedDisplayNames maps curated theme keys to their display names.
+var curatedDisplayNames = map[string]string{
+	defaultThemeName: "Tokyo Night",
+	"gruvbox":        "Gruvbox",
+	"nord":           "Nord",
+	"catppuccin":     "Catppuccin",
+	"light":          "Light",
+}
+
+// themeDisplay returns the human-readable name for a theme key, for display in
+// the picker. Generated themes use their upstream scheme name
+// (generatedDisplayNames); curated themes use curatedDisplayNames; unknown
+// keys fall back to themselves.
+func themeDisplay(name string) string {
+	if d, ok := generatedDisplayNames[name]; ok {
+		return d
+	}
+	if d, ok := curatedDisplayNames[name]; ok {
+		return d
+	}
+	return name
+}
+
 // themes is the full registry: curated plus auto-derived (see
 // themes_generated.go, produced by cmd/genthemes from iTerm2-Color-Schemes).
 // Built in init so generatedThemes is available before any caller reads it.

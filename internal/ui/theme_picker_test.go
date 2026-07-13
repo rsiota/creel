@@ -114,9 +114,10 @@ func TestThemePickerView(t *testing.T) {
 	if got == "" {
 		t.Fatal("visible View should be non-empty")
 	}
-	// The cursor's theme is visible (Show starts it in the first window).
-	if !strings.Contains(got, "tokyo-night") {
-		t.Errorf("View missing the selected theme name %q", "tokyo-night")
+	// The cursor's theme is visible (Show starts it in the first window);
+	// rows show display names (e.g. "Tokyo Night"), not keys.
+	if !strings.Contains(got, themeDisplay(defaultThemeName)) {
+		t.Errorf("View missing the selected theme display %q", themeDisplay(defaultThemeName))
 	}
 	// Width and height match the column-visibility picker (opened with v),
 	// which uses popupDim.
@@ -134,7 +135,7 @@ func TestThemePickerView(t *testing.T) {
 		vis := stripAnsi(line)
 		name := ""
 		for _, n := range themeNames() {
-			if strings.Contains(vis, n) {
+			if d := themeDisplay(n); strings.Contains(vis, d) {
 				name = n
 				break
 			}
@@ -160,10 +161,10 @@ func TestThemePickerScroll(t *testing.T) {
 	p := NewThemePicker()
 	p.Show("tokyo-night")
 	_, popupH := popupDim()
-	maxVisible := popupH - 2
+	maxVisible := popupH - 3 // 2 border + 1 prompt row
 
 	// The first theme is visible initially.
-	if !strings.Contains(stripAnsi(p.View()), "tokyo-night") {
+	if !strings.Contains(stripAnsi(p.View()), themeDisplay(defaultThemeName)) {
 		t.Fatal("initial view should contain the first theme")
 	}
 	// Move the cursor past the bottom of the window; the view scrolls and the
@@ -172,11 +173,49 @@ func TestThemePickerScroll(t *testing.T) {
 		p.Down()
 	}
 	view := stripAnsi(p.View())
-	if strings.Contains(view, "tokyo-night") {
-		t.Errorf("after scrolling past the first window, tokyo-night should be off-screen")
+	if strings.Contains(view, themeDisplay(defaultThemeName)) {
+		t.Errorf("after scrolling, %q should be off-screen", themeDisplay(defaultThemeName))
 	}
-	if !strings.Contains(view, p.Selected()) {
-		t.Errorf("scrolled view should contain the cursor's theme %q", p.Selected())
+	if !strings.Contains(view, themeDisplay(p.Selected())) {
+		t.Errorf("scrolled view should contain the cursor's theme %q", themeDisplay(p.Selected()))
+	}
+}
+
+// Typing filters the list by display name (fuzzy) and live-previews the top
+// match; backspace removes the last character.
+func TestThemePickerFilter(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	applyPalette(defaultPalette)
+
+	p := NewThemePicker()
+	p.Show("tokyo-night")
+
+	// "drac" should narrow to Dracula (at least).
+	p.FilterAddChar("d")
+	p.FilterAddChar("r")
+	p.FilterAddChar("a")
+	p.FilterAddChar("c")
+	items := p.filteredItems()
+	if len(items) == 0 {
+		t.Fatal("filter 'drac' should match at least Dracula")
+	}
+	if items[0] != "dracula" {
+		t.Errorf("top match for 'drac' = %q, want dracula", items[0])
+	}
+	if p.Selected() != "dracula" {
+		t.Errorf("Selected = %q, want dracula", p.Selected())
+	}
+	if colorPrimary != themes["dracula"].primary {
+		t.Errorf("filter did not live-preview dracula: colorPrimary = %s", colorPrimary)
+	}
+
+	// Backspace removes the last char; "dra" still matches Dracula.
+	p.FilterBackspace()
+	if p.filter != "dra" {
+		t.Errorf("filter = %q, want dra", p.filter)
+	}
+	if p.Selected() != "dracula" {
+		t.Errorf("Selected after backspace = %q, want dracula", p.Selected())
 	}
 }
 
@@ -216,7 +255,7 @@ func TestThemePickerOpenViaGC(t *testing.T) {
 	}
 }
 
-// j live-previews the next theme; esc reverts the palette to the open-time
+// ↓ live-previews the next theme; esc reverts the palette to the open-time
 // theme and closes the picker.
 func TestThemePickerEscReverts(t *testing.T) {
 	defer applyPalette(defaultPalette)
@@ -225,10 +264,10 @@ func TestThemePickerEscReverts(t *testing.T) {
 
 	m = sendKey(m, runeKey('g'))
 	m = sendKey(m, runeKey('c'))
-	m = sendKey(m, runeKey('j')) // preview gruvbox
+	m = sendKey(m, tea.KeyMsg{Type: tea.KeyDown}) // preview gruvbox
 
 	if colorPrimary != gruvboxPalette.primary {
-		t.Fatalf("j should live-preview gruvbox, colorPrimary = %s", colorPrimary)
+		t.Fatalf("down should live-preview gruvbox, colorPrimary = %s", colorPrimary)
 	}
 
 	m = sendKey(m, tea.KeyMsg{Type: tea.KeyEsc})
@@ -249,7 +288,7 @@ func TestThemePickerCommitPersists(t *testing.T) {
 	m := newWorkspaceModel(t)
 	m = sendKey(m, runeKey('g'))
 	m = sendKey(m, runeKey('c'))
-	m = sendKey(m, runeKey('j')) // preview gruvbox
+	m = sendKey(m, tea.KeyMsg{Type: tea.KeyDown}) // preview gruvbox
 	m = sendKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 
 	if m.themePicker.IsVisible() {
