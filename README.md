@@ -168,6 +168,7 @@ optional and fall back to defaults when omitted:
 | `query_timeout`  | 30s          | Per-query deadline (friendly form: `2m`, `1h30m`, or a bare seconds int) |
 | `default_driver` | sqlite       | Driver pre-filled in the add-connection form                             |
 | `theme`          | tokyo-night  | Palette: `tokyo-night`, `gruvbox`, `nord`, `catppuccin`, `light` + ~565 auto-derived from iTerm2-Color-Schemes (dracula, solarized, …). Unknown → default |
+| `transparent_background` | false | By default gsql fills the app background with the theme's bg colour (required for light themes to be readable). Set `true` to leave it unpainted so the terminal's own background / transparency shows through — at the cost of light themes looking wrong. |
 
 ```yaml
 settings:
@@ -186,7 +187,8 @@ reserved for upcoming work.)
 To experiment with themes live, press `g c` in the workspace to open the
 theme picker (a scrollable, filterable overlay — type to filter by name,
 `↑`/`↓` to preview); moving the selection re-themes the UI immediately,
-`enter` saves the choice to config, and `esc` reverts. See `THIRDPARTY.md`
+`enter` saves the choice to config, and `esc` reverts. The theme's background
+is painted too, so light themes preview correctly. See `THIRDPARTY.md`
 for theme attribution.
 
 ## Keybindings

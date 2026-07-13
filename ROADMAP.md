@@ -92,8 +92,10 @@ is omitted on save so connection edits don't sprout a `settings:` block.
   `settings.theme` applies one at startup via `NewModel`, and `g c` opens a
   live-preview theme picker (`theme_picker.go`) — `↑`/`↓` (or typing to
   filter) applies the palette immediately, `enter` persists to config, `esc`
-  reverts. Regenerate the derived catalog with `go run ./cmd/genthemes`;
-  see `THIRDPARTY.md` for attribution.
+  reverts. The theme's background is painted via a compositing pass
+  (`background.go`) so light themes render readably; `transparent_background`
+  in config opts out to keep terminal transparency. Regenerate the derived
+  catalog with `go run ./cmd/genthemes`; see `THIRDPARTY.md` for attribution.
 - `cursor_style`: needs results-cursor rendering work. Field reserved.
 - Letting `query_timeout: 0` disable the deadline via config — currently
   `Effective` replaces 0 with the 30s default (the runner already supports 0 =

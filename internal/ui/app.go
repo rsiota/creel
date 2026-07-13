@@ -3362,11 +3362,11 @@ func (m Model) View() string {
 	}
 
 	if m.state == stateAddConnection {
-		return m.viewAddConnection()
+		return m.paintBg(m.viewAddConnection())
 	}
 
 	if m.state == stateConnections {
-		return m.viewConnections()
+		return m.paintBg(m.viewConnections())
 	}
 
 	// Database picker: render on a blank background (like the connection picker).
@@ -3410,10 +3410,10 @@ func (m Model) View() string {
 			Foreground(colorMuted).
 			Background(colorStatusBarBg).
 			Render(" " + m.statusBar(connName))
-		return lipgloss.JoinVertical(lipgloss.Left, view, statusBar)
+		return m.paintBg(lipgloss.JoinVertical(lipgloss.Left, view, statusBar))
 	}
 
-	return m.viewWorkspace()
+	return m.paintBg(m.viewWorkspace())
 }
 
 // connListPopupDims returns the (width, height) of the connection-list popup.
