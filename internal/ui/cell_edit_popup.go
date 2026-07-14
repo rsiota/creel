@@ -136,7 +136,7 @@ func (p CellEditPopup) View() string {
 	if p.jsonMode {
 		cursorLine := p.ta.Line()
 		cursorCol := p.ta.LineInfo().CharOffset
-		cursorStyle := lipgloss.NewStyle().Reverse(true)
+		cursorStyle := lipgloss.NewStyle().Foreground(colorFg).Underline(true)
 		for idx, line := range strings.Split(p.ta.Value(), "\n") {
 			raw := truncateCell(line, p.width)
 			var content string
@@ -155,11 +155,31 @@ func (p CellEditPopup) View() string {
 			lines = append(lines, bs.Render("│ ")+content+bs.Render(" │"))
 		}
 	} else {
-		for _, line := range strings.Split(p.ta.View(), "\n") {
+		// The bubbles textarea cursor hardcodes a reverse-video block —
+		// cursor.Model.View() appends .Reverse(true), with no public override.
+		// Every other style on this textarea is free of reverse, so the only
+		// "\x1b[7m" in ta.View() is the cursor; swap it for the insert-mode
+		// underline so the popup matches the rest of the app.
+		under := sgrPrefix(lipgloss.NewStyle().Foreground(colorFg).Underline(true))
+		view := strings.ReplaceAll(p.ta.View(), "\x1b[7m", under)
+		for _, line := range strings.Split(view, "\n") {
 			lines = append(lines, bs.Render("│ ")+line+bs.Render(" │"))
 		}
 	}
 
 	lines = append(lines, bottom)
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
+// sgrPrefix returns the leading SGR escape sequence sty applies, with no
+// trailing reset or content. It splices a style's attributes onto a marker
+// emitted elsewhere (e.g. replacing the textarea cursor's "\x1b[7m" reverse
+// marker with an underline prefix), staying correct across color profiles.
+func sgrPrefix(sty lipgloss.Style) string {
+	r := sty.Render("\x00")
+	i := strings.IndexByte(r, 0)
+	if i < 0 {
+		return ""
+	}
+	return r[:i]
 }
