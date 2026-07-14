@@ -99,9 +99,10 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m.handleDatabasePickerMouse(msg)
 	}
 
-	// Ignore mouse when inline editors or text-input modes are active.
-	if m.tableDesigner.IsVisible() || m.schemaEditor.IsVisible() ||
-		m.columnJumping || m.searching || m.backendSearching ||
+	// Ignore mouse when inline editors or text-input modes are active. The
+	// schema editor and table designer are handled separately below (they
+	// replace the editor/results panels and own content-area clicks).
+	if m.columnJumping || m.searching || m.backendSearching ||
 		m.cellEdit.IsVisible() {
 		return m, nil
 	}
@@ -123,6 +124,19 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	resultsTop := editorHeight
 	resultsBottom := m.height - 2
+
+	// ── Structure view (schema editor) ────────────────────────
+	// When open it replaces the editor+results content area. Route clicks inside
+	// its panel to it; sidebar (X<sidebarWidth) and inspector (X>=editorRight)
+	// clicks fall through to their own handlers.
+	if m.schemaEditor.IsVisible() && msg.X >= sidebarWidth && msg.X < editorRight && msg.Y < resultsBottom {
+		return m.handleSchemaEditorMouse(msg)
+	}
+	// ── Table designer ────────────────────────────────────────
+	// Same content-area takeover as the schema editor.
+	if m.tableDesigner.IsVisible() && msg.X >= sidebarWidth && msg.X < editorRight && msg.Y < resultsBottom {
+		return m.handleTableDesignerMouse(msg)
+	}
 
 	// ── Inspector (right column) ──────────────────────────────
 	if m.inspector.IsVisible() && msg.X >= editorRight && msg.Y < resultsBottom {
@@ -295,6 +309,110 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	return m, nil
+}
+
+// handleTableDesignerMouse routes mouse events to the table designer, which
+// replaces the editor/results panels when open. Screen coordinates are
+// translated to the designer's content-relative grid (0-based, inside the
+// panel's rounded border): content origin is (sidebarWidth+1, 1).
+func (m Model) handleTableDesignerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	sidebarWidth := 30
+	statusHeight := 1
+	borderOverhead := 2
+	editorHeight := 12
+	if m.editorMaximized {
+		editorHeight = m.height - statusHeight - borderOverhead - 12
+		if editorHeight < 8 {
+			editorHeight = 8
+		}
+	}
+	resultsHeight := m.height - editorHeight - statusHeight - borderOverhead
+	if resultsHeight < 3 {
+		resultsHeight = 3
+	}
+	panelH := editorHeight + resultsHeight
+	rightWidth := m.width - sidebarWidth - borderOverhead
+	if m.inspector.IsVisible() {
+		rightWidth -= InspectorWidth
+	}
+
+	x := msg.X - sidebarWidth - 1
+	y := msg.Y - 1
+	contentW := rightWidth - borderOverhead
+	contentH := panelH - borderOverhead
+	// Keep the designer's size/column widths fresh for click mapping. SetSize is
+	// otherwise applied only during View (a value-receiver), so the model that
+	// handles mouse events would carry stale colWidths/height and the
+	// click→cell mapping would drift.
+	m.tableDesigner.SetSize(contentW, contentH)
+	if x < 0 || x >= contentW || y < 0 || y >= contentH {
+		return m, nil
+	}
+
+	switch msg.Type {
+	case tea.MouseWheelUp:
+		m.tableDesigner.Wheel(-1)
+		return m, nil
+	case tea.MouseWheelDown:
+		m.tableDesigner.Wheel(1)
+		return m, nil
+	case tea.MouseLeft:
+		return m, m.tableDesigner.Click(x, y)
+	}
+	return m, nil
+}
+
+// handleSchemaEditorMouse routes mouse events to the structure-view editor,
+// which replaces the editor/results panels when open. Screen coordinates are
+// translated to the editor's content-relative grid (0-based, inside the
+// panel's rounded border): the panel's top-left content cell is at screen
+// (sidebarWidth+1, 1).
+func (m Model) handleSchemaEditorMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	sidebarWidth := 30
+	statusHeight := 1
+	borderOverhead := 2
+	editorHeight := 12
+	if m.editorMaximized {
+		editorHeight = m.height - statusHeight - borderOverhead - 12
+		if editorHeight < 8 {
+			editorHeight = 8
+		}
+	}
+	resultsHeight := m.height - editorHeight - statusHeight - borderOverhead
+	if resultsHeight < 3 {
+		resultsHeight = 3
+	}
+	panelH := editorHeight + resultsHeight // matches viewWorkspace's editorH
+	rightWidth := m.width - sidebarWidth - borderOverhead
+	if m.inspector.IsVisible() {
+		rightWidth -= InspectorWidth
+	}
+
+	// Content-relative coords (inside the border).
+	x := msg.X - sidebarWidth - 1
+	y := msg.Y - 1
+	contentW := rightWidth - borderOverhead
+	contentH := panelH - borderOverhead
+	// Keep the editor's size/column widths fresh for click mapping (SetSize is
+	// otherwise applied only during View, a value-receiver, so the model that
+	// handles mouse events would carry stale colWidths/height).
+	m.schemaEditor.SetSize(contentW, contentH)
+	if x < 0 || x >= contentW || y < 0 || y >= contentH {
+		return m, nil // outside the editor's content area
+	}
+
+	switch msg.Type {
+	case tea.MouseWheelUp:
+		m.schemaEditor.Wheel(-1)
+		return m, nil
+	case tea.MouseWheelDown:
+		m.schemaEditor.Wheel(1)
+		return m, nil
+	case tea.MouseLeft:
+		m.schemaEditor.Click(x, y)
+		return m, nil
+	}
 	return m, nil
 }
 

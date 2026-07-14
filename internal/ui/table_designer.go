@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -44,6 +45,12 @@ type TableDesigner struct {
 	height    int
 	errMsg    string
 	colWidths []int
+
+	// Mouse: last left-click, for double-click-to-edit detection (mirrors the
+	// schema editor / results panel).
+	lastClickTime time.Time
+	lastClickRow  int
+	lastClickCol  int
 }
 
 // NewTableDesigner creates a hidden designer.
@@ -62,6 +69,7 @@ func (d *TableDesigner) Show(driver db.Driver, existing []string) {
 	d.focusName = true
 	d.editing = false
 	d.pendingD = false
+	d.lastClickTime = time.Time{}
 
 	d.nameField = newAddColumnInput("table name", "")
 	d.nameField.Focus()
@@ -377,6 +385,100 @@ func (d *TableDesigner) Focus() tea.Cmd {
 	return d.nameField.Focus()
 }
 
+// gridColumnAtX maps a content-relative X to a grid column index using the fixed
+// colWidths. The grid's leading border is at X=0; each column spans
+// colWidths[j]+2 content chars (1-char cell padding) followed by a 1-char
+// separator. Returns -1 when X is past the last column.
+func (d TableDesigner) gridColumnAtX(x int) int {
+	if x < 0 || len(d.colWidths) == 0 {
+		return -1
+	}
+	cursor := 1 // skip the leading │
+	for j, w := range d.colWidths {
+		cellW := w + 2
+		if x < cursor+cellW {
+			return j
+		}
+		cursor += cellW + 1 // +1 for the trailing │
+	}
+	return -1
+}
+
+// blurName unfocuses the table-name field if it is focused.
+func (d *TableDesigner) blurName() {
+	if d.focusName {
+		d.nameField.Blur()
+		d.focusName = false
+	}
+}
+
+// Click handles a left mouse-click at content-relative coordinates (x,y),
+// where (0,0) is the first cell inside the panel border. The table-name line
+// (y==0) focuses the name field; a grid data cell moves the cursor there and,
+// on a double-click, starts an inline edit — mirroring the results table and
+// the structure view's Columns grid. Returns a focus command when it focuses
+// the name field.
+func (d *TableDesigner) Click(x, y int) tea.Cmd {
+	if x < 0 || y < 0 {
+		return nil
+	}
+	// A click always abandons an in-progress inline edit (cancel, not commit —
+	// press enter to save) so the edit input never lingers on the wrong cell
+	// after the cursor moves away.
+	if d.editing {
+		d.editing = false
+	}
+	// Table-name line.
+	if y == 0 {
+		if !d.focusName {
+			d.focusName = true
+			return d.nameField.Focus()
+		}
+		return nil
+	}
+	// Grid layout: name(0), blank(1), top border(2), header(3), separator(4),
+	// data rows from y==5.
+	if y < 5 {
+		d.blurName()
+		return nil
+	}
+	row := d.gridTopRow() + (y - 5)
+	col := d.gridColumnAtX(x)
+	if row < 0 || row >= len(d.rows) || col < 0 || col >= tdColCount {
+		d.blurName()
+		return nil
+	}
+	d.blurName()
+	// Double-click on the same cell → inline edit.
+	if !d.editing &&
+		!d.lastClickTime.IsZero() &&
+		time.Since(d.lastClickTime) <= doubleClickInterval &&
+		d.lastClickRow == row && d.lastClickCol == col {
+		d.lastClickTime = time.Time{}
+		d.cursorRow = row
+		d.cursorCol = col
+		d.startCellEdit()
+		return nil
+	}
+	d.lastClickTime = time.Now()
+	d.lastClickRow = row
+	d.lastClickCol = col
+	d.cursorRow = row
+	d.cursorCol = col
+	return nil
+}
+
+// Wheel scrolls the grid by one row (the viewport is cursor-centered, so the
+// cursor moves), matching j/k.
+func (d *TableDesigner) Wheel(delta int) {
+	d.blurName()
+	if delta > 0 {
+		d.cursorDown()
+	} else {
+		d.cursorUp()
+	}
+}
+
 // View renders the full designer: name input + grid + footer.
 func (d TableDesigner) View() string {
 	if !d.visible {
@@ -415,9 +517,9 @@ func (d TableDesigner) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
-func (d TableDesigner) renderGrid() string {
-	borderColor := lipgloss.NewStyle().Foreground(colorBorder)
-
+// gridTopRow returns the first visible data-row index, keeping the cursor
+// roughly centered. Shared by renderGrid and the click→row mapping.
+func (d TableDesigner) gridTopRow() int {
 	maxVisible := d.maxVisibleRows()
 	rowStart := d.cursorRow - maxVisible/2
 	if rowStart < 0 {
@@ -430,6 +532,17 @@ func (d TableDesigner) renderGrid() string {
 	rowStart = rowEnd - maxVisible
 	if rowStart < 0 {
 		rowStart = 0
+	}
+	return rowStart
+}
+
+func (d TableDesigner) renderGrid() string {
+	borderColor := lipgloss.NewStyle().Foreground(colorBorder)
+
+	rowStart := d.gridTopRow()
+	rowEnd := rowStart + d.maxVisibleRows()
+	if rowEnd > len(d.rows) {
+		rowEnd = len(d.rows)
 	}
 
 	var b strings.Builder

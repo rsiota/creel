@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -47,6 +48,12 @@ type SchemaEditor struct {
 	roCursor        int // row cursor for the active read-only tab
 	roScroll        int // scroll offset for read-only tabs / definition
 	triggerExpanded bool // triggers tab: show the selected trigger's statement
+
+	// Mouse: last left-click, for double-click-to-edit detection on the
+	// Columns grid (mirrors the results panel).
+	lastClickTime time.Time
+	lastClickRow  int
+	lastClickCol  int
 }
 
 // SchemaEditorResult carries the SQL built from a single cell edit so app.go
@@ -134,6 +141,7 @@ func (e *SchemaEditor) Show(table string, driver db.Driver, columns []db.TableCo
 	e.roCursor = 0
 	e.roScroll = 0
 	e.triggerExpanded = false
+	e.lastClickTime = time.Time{}
 
 	e.rows = make([][]string, len(columns))
 	e.rowOrigin = make([]int, len(columns))
@@ -798,6 +806,136 @@ func (e *SchemaEditor) updateReadOnly(msg tea.Msg) {
 	}
 }
 
+// tabAtX maps a content-relative X (0-based, inside the panel border) to the
+// structure tab whose rendered segment covers it. The tab bar left-aligns at
+// X=0; each tab is rendered with 1-char padding on both sides and a single
+// space between tabs (a click on that gap resolves to no tab). Returns the
+// tab index and true when X lands on a tab.
+func (e SchemaEditor) tabAtX(x int) (int, bool) {
+	if x < 0 {
+		return 0, false
+	}
+	cursor := 0
+	for _, t := range e.availableTabs() {
+		segWidth := len(seTabLabels[t]) + 2 // 1-char padding each side
+		if x < cursor+segWidth {
+			return t, true
+		}
+		cursor += segWidth + 1 // +1 for the space separator after this tab
+		// x lands in the gap before the next tab → no tab.
+		if x < cursor {
+			return 0, false
+		}
+	}
+	return 0, false
+}
+
+// gridColumnAtX maps a content-relative X to a Columns-grid column index using
+// the fixed colWidths. The grid's leading border is at X=0; each column spans
+// colWidths[j]+2 content chars (1-char cell padding) followed by a 1-char
+// separator. Returns -1 when X is past the last column.
+func (e SchemaEditor) gridColumnAtX(x int) int {
+	if x < 0 || len(e.colWidths) == 0 {
+		return -1
+	}
+	cursor := 1 // skip the leading │
+	for j, w := range e.colWidths {
+		cellW := w + 2
+		if x < cursor+cellW {
+			return j
+		}
+		cursor += cellW + 1 // +1 for the trailing │
+	}
+	return -1
+}
+
+// Click handles a left mouse-click at content-relative coordinates (x,y),
+// where (0,0) is the first cell inside the panel border. The tab-bar row
+// (y==2) switches tabs; the grid area moves the cursor — Columns grid to
+// (row, col), read-only tabs to a row. A double-click on an editable Columns
+// cell starts an inline edit, mirroring the results panel.
+func (e *SchemaEditor) Click(x, y int) {
+	if x < 0 || y < 0 {
+		return
+	}
+	// A click always abandons an in-progress inline edit (cancel, not commit —
+	// press enter to save) so the edit input never lingers on the wrong cell
+	// after the cursor moves away.
+	if e.editing {
+		e.editing = false
+	}
+	// Tab-bar row.
+	if y == 2 {
+		if t, ok := e.tabAtX(x); ok && t != e.activeTab {
+			e.activeTab = t
+			e.roCursor = 0
+			e.roScroll = 0
+			e.triggerExpanded = false
+		}
+		return
+	}
+	// Grid box: top border (y==4), header (5), separator (6), data from y==7.
+	if y < 4 {
+		return
+	}
+	if y < 7 {
+		return // header / borders: no action
+	}
+	dataRel := y - 7
+	if e.activeTab == seTabColumns {
+		row := e.gridTopRow() + dataRel
+		col := e.gridColumnAtX(x)
+		if row < 0 || row >= len(e.rows) || col < 0 || col >= seColCount {
+			return
+		}
+		// Double-click on the same editable cell → inline edit.
+		if !e.editing &&
+			!e.lastClickTime.IsZero() &&
+			time.Since(e.lastClickTime) <= doubleClickInterval &&
+			e.lastClickRow == row && e.lastClickCol == col &&
+			e.cellEditable(row, col) {
+			e.lastClickTime = time.Time{}
+			e.cursorRow = row
+			e.cursorCol = col
+			e.startCellEdit()
+			return
+		}
+		e.lastClickTime = time.Now()
+		e.lastClickRow = row
+		e.lastClickCol = col
+		e.cursorRow = row
+		e.cursorCol = col
+		return
+	}
+	// Read-only metadata tab: row selection only.
+	n := e.roCount()
+	row := e.roScroll + dataRel
+	if row < 0 || row >= n {
+		return
+	}
+	e.roCursor = row
+	e.roClampScroll()
+}
+
+// Wheel scrolls the active grid by one row in the given direction (+1 = down,
+// -1 = up). The Columns viewport follows the cursor, so the cursor moves; on
+// the read-only tabs the row cursor moves, matching j/k.
+func (e *SchemaEditor) Wheel(delta int) {
+	if e.activeTab == seTabColumns {
+		if delta > 0 {
+			e.cursorDown()
+		} else {
+			e.cursorUp()
+		}
+		return
+	}
+	if delta > 0 {
+		e.roDown()
+	} else {
+		e.roUp()
+	}
+}
+
 // View renders the editor: header + grid + footer.
 func (e SchemaEditor) View() string {
 	if !e.visible {
@@ -1064,9 +1202,10 @@ func (e SchemaEditor) windowRows(rows [][]string) (window [][]string) {
 	return rows[e.roScroll:end]
 }
 
-func (e SchemaEditor) renderGrid() string {
-	borderColor := lipgloss.NewStyle().Foreground(colorBorder)
-
+// gridTopRow returns the first visible data-row index of the Columns grid,
+// keeping the cursor roughly centered in the viewport. Shared by renderGrid
+// and the click→row mapping so the two never drift apart.
+func (e SchemaEditor) gridTopRow() int {
 	maxVisible := e.maxVisibleRows()
 	rowStart := e.cursorRow - maxVisible/2
 	if rowStart < 0 {
@@ -1079,6 +1218,17 @@ func (e SchemaEditor) renderGrid() string {
 	rowStart = rowEnd - maxVisible
 	if rowStart < 0 {
 		rowStart = 0
+	}
+	return rowStart
+}
+
+func (e SchemaEditor) renderGrid() string {
+	borderColor := lipgloss.NewStyle().Foreground(colorBorder)
+
+	rowStart := e.gridTopRow()
+	rowEnd := rowStart + e.maxVisibleRows()
+	if rowEnd > len(e.rows) {
+		rowEnd = len(e.rows)
 	}
 
 	var b strings.Builder
