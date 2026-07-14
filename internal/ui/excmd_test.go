@@ -171,6 +171,31 @@ func TestHandleExKeyEscCancels(t *testing.T) {
 	}
 }
 
+// Regression: Update (value receiver) asserts the returned model back to a
+// VALUE Model via model.(Model). handleExKey is a *Model method, so it must
+// return *m (the dereferenced value), not m (the pointer) — otherwise the
+// assertion panics with "tea.Model is *ui.Model, not ui.Model" the moment the
+// ex line handles any key. The other handleExKey/sub-handler tests above call
+// handleExKey directly and so bypass the assertion; this one pins the contract.
+func TestHandleExKeyReturnsValueModel(t *testing.T) {
+	cases := []tea.KeyMsg{
+		runeKey('q'),
+		{Type: tea.KeyEsc},
+		{Type: tea.KeyEnter},
+		{Type: tea.KeyUp},
+		{Type: tea.KeyDown},
+		{Type: tea.KeyBackspace},
+	}
+	for _, k := range cases {
+		m := &Model{results: NewResultsTable(), focus: FocusResults}
+		m.ex.Open()
+		mm, _ := m.handleExKey(k)
+		if _, ok := mm.(Model); !ok {
+			t.Errorf("key=%v: handleExKey returned %T, want value Model", k, mm)
+		}
+	}
+}
+
 func TestHandleExKeyHistoryRecall(t *testing.T) {
 	m := &Model{focus: FocusResults}
 	m.ex.hist = []string{"q", "sort name"}

@@ -26,34 +26,34 @@ func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+c":
 		m.ex.Hide()
-		return m, nil
+		return *m, nil
 	case "enter":
 		input := strings.TrimSpace(m.ex.input)
 		m.ex.input = ""
 		m.ex.visible = false
 		if input == "" {
-			return m, nil
+			return *m, nil
 		}
 		m.ex.hist = append(m.ex.hist, input)
 		m.ex.histIdx = len(m.ex.hist)
-		return m, m.runExCommand(input)
+		return *m, m.runExCommand(input)
 	case "up":
 		m.ex.recall(-1)
-		return m, nil
+		return *m, nil
 	case "down":
 		m.ex.recall(1)
-		return m, nil
+		return *m, nil
 	case "backspace":
 		if len(m.ex.input) > 0 {
 			r := []rune(m.ex.input)
 			m.ex.input = string(r[:len(r)-1])
 		}
-		return m, nil
+		return *m, nil
 	}
 	if msg.Type == tea.KeyRunes {
 		m.ex.input += msg.String()
 	}
-	return m, nil
+	return *m, nil
 }
 
 // Open shows the ex command line with an empty buffer.
