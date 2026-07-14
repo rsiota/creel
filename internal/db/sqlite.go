@@ -402,3 +402,349 @@ func (s *SQLite) ViewDefinition(view string) (string, error) {
 	}
 	return sqlStr.String, nil
 }
+
+// CheckConstraints returns CHECK constraints parsed from the table's CREATE
+// statement in sqlite_master. SQLite has no catalog view for checks (PRAGMA
+// only lists columns/indexes/FKs), so the DDL is parsed with a
+// literal/comment-aware scanner. Column-level checks are associated with the
+// column that opens their definition; table-level checks carry only a name
+// when `CONSTRAINT name` introduces them. Parsing is lenient — malformed DDL
+// yields a partial (possibly empty) slice rather than an error so a table is
+// always listed.
+func (s *SQLite) CheckConstraints(table string) ([]CheckConstraint, error) {
+	var sqlStr sql.NullString
+	err := s.db.QueryRow(
+		`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`,
+		table,
+	).Scan(&sqlStr)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return parseSQLiteCheckConstraints(sqlStr.String), nil
+}
+
+// parseSQLiteCheckConstraints extracts CHECK constraints from a CREATE TABLE
+// statement. It is literal- and comment-aware (skipping '...' strings,
+// "..."/`...`/[...] quoted identifiers, -- line comments, and /* */ block
+// comments) and paren-depth-aware so a CHECK expression may itself contain
+// parentheses and commas. Column-level checks are associated with the column
+// name that opens their definition; table-level checks (including those named
+// via CONSTRAINT) carry only a name when one is present.
+func parseSQLiteCheckConstraints(createSQL string) []CheckConstraint {
+	body := sqliteColumnListBody(createSQL)
+	if body == "" {
+		return nil
+	}
+	var out []CheckConstraint
+	for _, entry := range sqliteTopLevelEntries(body) {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		name, rest := sqliteConsumeConstraintName(entry)
+		leading, after, ok := sqliteLeadingIdentifier(rest)
+		if !ok {
+			continue
+		}
+		switch strings.ToUpper(leading) {
+		case "PRIMARY", "UNIQUE", "FOREIGN", "KEY":
+			// A table constraint that is not a CHECK; skip.
+			continue
+		}
+		expr := sqliteFindCheck(rest)
+		if expr == "" {
+			continue
+		}
+		if strings.EqualFold(leading, "CHECK") {
+			// Table-level (possibly CONSTRAINT-named) check.
+			out = append(out, CheckConstraint{Name: name, Expression: expr})
+			continue
+		}
+		// Column-level check: leading identifier is the column name. Drop a
+		// table-level name (only meaningful with CONSTRAINT).
+		out = append(out, CheckConstraint{Column: leading, Expression: expr})
+		_ = after
+	}
+	return out
+}
+
+// sqliteColumnListBody returns the text between the outer parentheses of a
+// CREATE TABLE statement (the column/constraint list). A CREATE TABLE ... AS
+// SELECT form has no such list and yields "". The scan skips literals and
+// comments so a stray '(' inside them does not fool it.
+func sqliteColumnListBody(s string) string {
+	i := 0
+	for i < len(s) {
+		if end, skipped := sqliteSkipLiteral(s, i); skipped {
+			i = end
+			continue
+		}
+		if s[i] == '(' {
+			// CREATE TABLE x AS SELECT ... has no column-list parens; the first
+			// '(' would belong to the SELECT, and " AS " precedes it.
+			if strings.Contains(strings.ToUpper(s[:i]), " AS ") {
+				return ""
+			}
+			close, ok := sqliteScanBalanced(s, i)
+			if !ok {
+				return ""
+			}
+			return s[i+1 : close]
+		}
+		i++
+	}
+	return ""
+}
+
+// sqliteTopLevelEntries splits a column-list body at commas that sit at the
+// body's own paren depth (depth 0), preserving nested commas inside CHECK
+// expressions, function calls, and parenthesized types.
+func sqliteTopLevelEntries(body string) []string {
+	var entries []string
+	depth := 0
+	start := 0
+	i := 0
+	for i < len(body) {
+		if end, skipped := sqliteSkipLiteral(body, i); skipped {
+			i = end
+			continue
+		}
+		switch body[i] {
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				entries = append(entries, body[start:i])
+				start = i + 1
+			}
+		}
+		i++
+	}
+	entries = append(entries, body[start:])
+	return entries
+}
+
+// sqliteFindCheck scans s for the word CHECK (case-insensitive, whole-word
+// bounded) followed by a parenthesized group and returns the group's inner
+// text, trimmed. Returns "" when no check is found.
+func sqliteFindCheck(s string) string {
+	const needle = "check"
+	i := 0
+	for i < len(s) {
+		if end, skipped := sqliteSkipLiteral(s, i); skipped {
+			i = end
+			continue
+		}
+		if i+len(needle) <= len(s) && strings.EqualFold(s[i:i+len(needle)], needle) {
+			beforeOk := i == 0 || !isLetterDigit(s[i-1])
+			afterIdx := i + len(needle)
+			afterOk := afterIdx >= len(s) || !isLetterDigit(s[afterIdx])
+			if beforeOk && afterOk {
+				j := afterIdx
+				for j < len(s) && (s[j] == ' ' || s[j] == '\t' || s[j] == '\n' || s[j] == '\r') {
+					j++
+				}
+				if j < len(s) && s[j] == '(' {
+					if close, ok := sqliteScanBalanced(s, j); ok {
+						return strings.TrimSpace(s[j+1 : close])
+					}
+				}
+			}
+		}
+		i++
+	}
+	return ""
+}
+
+// sqliteSkipLeadingNoise trims leading whitespace and any comments that
+// follow it, repeatedly, so a leading `-- ...` or `/* ... */` before a real
+// token does not fool the identifier parser. It intentionally does NOT skip
+// string literals or quoted identifiers — those may be the actual column
+// name that opens the entry.
+func sqliteSkipLeadingNoise(s string) string {
+	for {
+		s = strings.TrimLeft(s, " \t\r\n")
+		if len(s) >= 2 && s[0] == '-' && s[1] == '-' {
+			j := 2
+			for j < len(s) && s[j] != '\n' {
+				j++
+			}
+			s = s[j:]
+			continue
+		}
+		if len(s) >= 2 && s[0] == '/' && s[1] == '*' {
+			j := 2
+			for j+1 < len(s) && !(s[j] == '*' && s[j+1] == '/') {
+				j++
+			}
+			if j+1 < len(s) {
+				s = s[j+2:]
+			} else {
+				s = ""
+			}
+			continue
+		}
+		return s
+	}
+}
+
+// sqliteConsumeConstraintName peels a leading `CONSTRAINT name` from an entry,
+// returning the name and the remainder. If the entry does not start with
+// CONSTRAINT, name is "" and rest is the noise-trimmed entry.
+func sqliteConsumeConstraintName(entry string) (name, rest string) {
+	rest = sqliteSkipLeadingNoise(entry)
+	id, after, ok := sqliteLeadingIdentifier(rest)
+	if !ok || !strings.EqualFold(id, "CONSTRAINT") {
+		return "", rest
+	}
+	rest = sqliteSkipLeadingNoise(after)
+	nm, after2, ok2 := sqliteLeadingIdentifier(rest)
+	if !ok2 {
+		return "", rest
+	}
+	return nm, sqliteSkipLeadingNoise(after2)
+}
+
+// sqliteLeadingIdentifier returns the first identifier at the start of s
+// (after skipping whitespace and comments), handling double-quoted, backtick,
+// and [...] quoted forms by returning their unquoted text. ok is false when no
+// identifier starts s.
+func sqliteLeadingIdentifier(s string) (id, rest string, ok bool) {
+	s = sqliteSkipLeadingNoise(s)
+	if s == "" {
+		return "", s, false
+	}
+	switch s[0] {
+	case '"', '`':
+		q := s[0]
+		j := 1
+		for j < len(s) {
+			if s[j] == q {
+				if j+1 < len(s) && s[j+1] == q {
+					j += 2
+					continue
+				}
+				return s[1:j], s[j+1:], true
+			}
+			j++
+		}
+		return s[1:j], s[j:], true
+	case '[':
+		j := 1
+		for j < len(s) && s[j] != ']' {
+			j++
+		}
+		if j < len(s) {
+			return s[1:j], s[j+1:], true
+		}
+		return s[1:j], s[j:], true
+	}
+	j := 0
+	for j < len(s) && isLetterDigit(s[j]) {
+		j++
+	}
+	if j == 0 {
+		return "", s, false
+	}
+	return s[:j], s[j:], true
+}
+
+// sqliteScanBalanced returns the index of the ')' matching the '(' at open,
+// skipping literals and comments. ok is false if it is unbalanced.
+func sqliteScanBalanced(s string, open int) (int, bool) {
+	if open < 0 || open >= len(s) || s[open] != '(' {
+		return -1, false
+	}
+	depth := 0
+	i := open
+	for i < len(s) {
+		if end, skipped := sqliteSkipLiteral(s, i); skipped {
+			i = end
+			continue
+		}
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i, true
+			}
+		}
+		i++
+	}
+	return -1, false
+}
+
+// sqliteSkipLiteral reports whether a string literal, quoted identifier, or
+// SQL comment begins at i; if so it returns the index just past it.
+func sqliteSkipLiteral(s string, i int) (end int, skipped bool) {
+	if i >= len(s) {
+		return i, false
+	}
+	switch s[i] {
+	case '\'': // '' escapes a single quote
+		j := i + 1
+		for j < len(s) {
+			if s[j] == '\'' {
+				if j+1 < len(s) && s[j+1] == '\'' {
+					j += 2
+					continue
+				}
+				return j + 1, true
+			}
+			j++
+		}
+		return j, true
+	case '"', '`': // quoted identifier; doubled-quote escape
+		q := s[i]
+		j := i + 1
+		for j < len(s) {
+			if s[j] == q {
+				if j+1 < len(s) && s[j+1] == q {
+					j += 2
+					continue
+				}
+				return j + 1, true
+			}
+			j++
+		}
+		return j, true
+	case '[': // SQLite bracketed identifier
+		j := i + 1
+		for j < len(s) && s[j] != ']' {
+			j++
+		}
+		if j < len(s) {
+			return j + 1, true
+		}
+		return j, true
+	case '-':
+		if i+1 < len(s) && s[i+1] == '-' { // -- line comment
+			j := i + 2
+			for j < len(s) && s[j] != '\n' {
+				j++
+			}
+			return j, true
+		}
+	case '/':
+		if i+1 < len(s) && s[i+1] == '*' { // /* block comment */
+			j := i + 2
+			for j+1 < len(s) && !(s[j] == '*' && s[j+1] == '/') {
+				j++
+			}
+			if j+1 < len(s) {
+				return j + 2, true
+			}
+			return len(s), true
+		}
+	}
+	return i, false
+}

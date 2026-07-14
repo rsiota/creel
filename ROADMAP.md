@@ -39,13 +39,19 @@ connection form gained a `Read-only (yes/no)` toggle.
 
 ### 4. Indexes, triggers, views, and constraints ✅ DONE (2026-07-10)
 Implemented `Indexes`, `Triggers`, `ViewDefinition` across sqlite/mysql/postgres
-plus a read-only **Structure** overlay (`i` in the sidebar) showing columns,
-PK, FKs, indexes, triggers, and view definitions. Check constraints are the
-deferred fast-follow.
+plus a read-only **Structure** view (`d` in the sidebar) showing columns,
+PK, FKs, indexes, triggers, and view definitions.
 
 **Follow-ups still open:**
-- Check constraints (PG `pg_constraint`; MySQL `information_schema.check_constraints`;
-  SQLite parses them from the table DDL — fiddly).
+- Check constraints ✅ DONE (2026-07-14): new `CheckConstraints(table)` DB
+  method + a **Checks** tab in the structure view (Columns · Indexes ·
+  Foreign Keys · Checks · Triggers · Definition). PostgreSQL queries
+  `pg_constraint` (`contype='c'`, unwrapped via `pg_get_constraintdef`);
+  MySQL joins `information_schema.check_constraints` + `table_constraints`
+  (8.0.16+); SQLite parses `CHECK (...)` groups out of the table DDL with a
+  literal/comment/paren-aware scanner, associating column-level checks with
+  their column. Loaded async with its own per-section error like the other
+  metadata tabs.
 - Surface the partial-index predicate on SQLite (PRAGMA only gives a 0/1 flag;
   would need parsing `sqlite_master.sql`).
 - A small `view`/`table` type badge in the sidebar list (currently only shown
@@ -181,6 +187,7 @@ order:
    sites, safety win. _(done — 2026-07-14)_
 2. **Check constraints** (#4 follow-up) — closes the visible gap in the
    structure view; PG/MySQL are clean, SQLite parses DDL.
+   _(done — 2026-07-14)_
 3. **`.sql` file integration** (#14) — reuses the statement splitter, high
    everyday value, mostly entry-point wiring.
 4. **User-facing transactions** (#5) — `Begin()` exists; the work is UI +

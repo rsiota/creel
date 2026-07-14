@@ -402,3 +402,44 @@ func (m *MySQL) ViewDefinition(view string) (string, error) {
 	}
 	return def.String, nil
 }
+
+// CheckConstraints returns CHECK constraints from information_schema. The
+// check_constraints table holds the clause but not the table, so it is joined
+// to table_constraints (same constraint name + schema) to scope to this table.
+// Requires MySQL 8.0.16+ (which enforces checks); older versions store them
+// as ignored table options and return nothing here. check_clause is the raw
+// expression as written (often already parenthesized), and MySQL does not tie
+// a check to a single column, so Column is left empty.
+func (m *MySQL) CheckConstraints(table string) ([]CheckConstraint, error) {
+	rows, err := m.db.Query(
+		`SELECT cc.constraint_name, cc.check_clause
+		 FROM information_schema.check_constraints cc
+		 JOIN information_schema.table_constraints tc
+		   ON cc.constraint_name = tc.constraint_name
+		  AND cc.constraint_schema = tc.constraint_schema
+		 WHERE tc.table_schema = ? AND tc.table_name = ?
+		 ORDER BY cc.constraint_name`,
+		m.config.Database, table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []CheckConstraint
+	for rows.Next() {
+		var name string
+		var clause sql.NullString
+		if err := rows.Scan(&name, &clause); err != nil {
+			return nil, err
+		}
+		expr := strings.TrimSpace(clause.String)
+		// MySQL wraps the clause in parens; unwrap a single outer pair for a
+		// cleaner display (matching the PostgreSQL path).
+		if len(expr) >= 2 && expr[0] == '(' && expr[len(expr)-1] == ')' {
+			expr = strings.TrimSpace(expr[1 : len(expr)-1])
+		}
+		out = append(out, CheckConstraint{Name: name, Expression: expr})
+	}
+	return out, rows.Err()
+}

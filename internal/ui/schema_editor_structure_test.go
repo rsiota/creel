@@ -27,6 +27,10 @@ func showStructureEditor(t *testing.T) SchemaEditor {
 			{Name: "idx_email", Columns: []string{"email"}, Unique: true},
 			{Name: "idx_partial", Columns: []string{"id"}, Partial: "active = true"},
 		},
+		checks: []db.CheckConstraint{
+			{Name: "chk_email", Expression: "email ~ '^[^@]+@'"},
+			{Column: "age", Expression: "age >= 0"},
+		},
 		triggers: []db.Trigger{
 			{Name: "trg_audit", Timing: "AFTER", Event: "UPDATE", Statement: "BEGIN\n  UPDATE log SET t = now();\nEND"},
 		},
@@ -37,10 +41,10 @@ func showStructureEditor(t *testing.T) SchemaEditor {
 func TestStructureTabsAvailableAndSwitch(t *testing.T) {
 	e := showStructureEditor(t)
 
-	// A table exposes Columns + the three metadata tabs; Definition is absent
+	// A table exposes Columns + the four metadata tabs; Definition is absent
 	// for a non-view.
 	tabs := e.availableTabs()
-	want := []int{seTabColumns, seTabIndexes, seTabFK, seTabTriggers}
+	want := []int{seTabColumns, seTabIndexes, seTabFK, seTabChecks, seTabTriggers}
 	if len(tabs) != len(want) {
 		t.Fatalf("availableTabs = %v, want %v", tabs, want)
 	}
@@ -111,6 +115,36 @@ func TestStructureFKTabRendersGrid(t *testing.T) {
 	out := e.View()
 	if !strings.Contains(out, "org_id") || !strings.Contains(out, "orgs(id)") {
 		t.Errorf("FK tab missing reference\n%s", out)
+	}
+}
+
+func TestStructureChecksTabRendersGrid(t *testing.T) {
+	e := showStructureEditor(t)
+	e.activeTab = seTabChecks
+	e.SetSize(100, 24)
+	out := e.View()
+	// Table-level (named) and column-level checks both render.
+	for _, s := range []string{"chk_email", "email ~", "age", "age >= 0"} {
+		if !strings.Contains(out, s) {
+			t.Errorf("checks tab missing %q\n%s", s, out)
+		}
+	}
+	if !strings.Contains(out, "│") {
+		t.Error("checks tab should render a grid (│ borders)")
+	}
+}
+
+// The Checks tab surfaces a per-section catalog error without hiding the tab,
+// mirroring Indexes/Triggers.
+func TestStructureChecksTabSurfacesError(t *testing.T) {
+	e := NewSchemaEditor()
+	e.SetSize(80, 24)
+	e.Show("users", db.DriverPostgres, []db.TableColumnInfo{{Name: "id", Type: "INTEGER"}})
+	e.LoadStructure(structureData{checkErr: "permission denied"})
+	e.activeTab = seTabChecks
+	out := e.View()
+	if !strings.Contains(out, "permission denied") {
+		t.Errorf("expected check error surfaced, got %q", out)
 	}
 }
 

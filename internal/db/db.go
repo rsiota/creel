@@ -95,6 +95,9 @@ type DB interface {
 	// Triggers returns the triggers defined on a table. Drivers that do not
 	// support triggers return an empty slice (and nil error).
 	Triggers(table string) ([]Trigger, error)
+	// CheckConstraints returns the CHECK constraints defined on a table.
+	// Drivers that do not expose checks return an empty slice (and nil error).
+	CheckConstraints(table string) ([]CheckConstraint, error)
 	// ViewDefinition returns the defining SELECT statement of a view, or "" if
 	// the named relation is not a view or has no retrievable definition.
 	ViewDefinition(view string) (string, error)
@@ -225,6 +228,17 @@ type Trigger struct {
 	Timing    string
 	Event     string
 	Statement string
+}
+
+// CheckConstraint describes a table CHECK constraint. Name is the constraint
+// name (empty when the driver does not name it). Expression is the boolean
+// predicate as written. Column is the single column a column-level check
+// scopes to (empty for table-level checks, or when the driver cannot tie a
+// check to one column).
+type CheckConstraint struct {
+	Name       string
+	Column     string
+	Expression string
 }
 
 // TableColumnInfo describes column metadata needed for inserts and schema display.

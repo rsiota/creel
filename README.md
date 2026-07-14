@@ -16,7 +16,7 @@ Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `gsql`
 - **Query history & bookmarks** — per-connection, persisted, searchable
 - **EXPLAIN plans** — driver-aware rendering (`g e`) of query plans
 - **Schema editing** — add columns, rename tables, create/drop/truncate tables, and a grid-based table designer (`N`)
-- **Table structure view** (`d`) — a tabbed structure editor: columns (editable grid), foreign keys, indexes, and triggers in one view, plus a definition tab for views
+- **Table structure view** (`d`) — a tabbed structure editor: columns (editable grid), foreign keys, indexes, check constraints, and triggers in one view, plus a definition tab for views
 - **Read-only mode** — a per-connection `readonly: true` flag or a global `--readonly` CLI flag that rejects writes (INSERT/UPDATE/DELETE/DDL), blocks transactions and imports, and opens the connection read-only at the engine level (SQLite `query_only`, Postgres `default_transaction_read_only`); a `READ-ONLY` indicator shows in the status bar
 - **Import / export** — streaming SQL dump importer (`I`) and a pure-Go `mysqldump`-compatible exporter (`X`); CSV export (`x`) for result sets
 - **Cross-table search** (`S`) and **column statistics** (`g s`)
@@ -245,7 +245,7 @@ In the add/edit form:
 | `g g` / `G`| Top / bottom              |
 | `space`    | Expand columns            |
 | `enter` / `s` | `SELECT *` from table  |
-| `d`        | Structure (columns/indexes/triggers) |
+| `d`        | Structure (columns/indexes/FKs/checks/triggers) |
 | `a`        | Add column                |
 | `r`        | Rename table              |
 | `T`        | Truncate table            |

@@ -259,6 +259,11 @@ func (m *Model) loadStructureMetadata(table string) tea.Cmd {
 		} else {
 			data.triggerErr = err.Error()
 		}
+		if checks, err := dbDriver.CheckConstraints(table); err == nil {
+			data.checks = checks
+		} else {
+			data.checkErr = err.Error()
+		}
 		if vd, err := dbDriver.ViewDefinition(table); err == nil {
 			data.viewDef = vd
 		} else {

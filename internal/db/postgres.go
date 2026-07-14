@@ -576,3 +576,54 @@ func (p *Postgres) ViewDefinition(view string) (string, error) {
 	}
 	return def.String, nil
 }
+
+// CheckConstraints returns CHECK constraints from pg_constraint (contype='c').
+// pg_get_constraintdef renders each as `CHECK (<expr>)`; the wrapper is
+// stripped so the UI shows just the predicate. CHECK constraints in PostgreSQL
+// are always table-level (a single check may reference several columns), so
+// Column is left empty.
+func (p *Postgres) CheckConstraints(table string) ([]CheckConstraint, error) {
+	rows, err := p.db.Query(
+		`SELECT c.conname, pg_get_constraintdef(c.oid)
+		 FROM pg_constraint c
+		 JOIN pg_class t ON t.oid = c.conrelid
+		 JOIN pg_namespace n ON n.oid = t.relnamespace
+		 WHERE t.relname = $1 AND n.nspname = current_schema() AND c.contype = 'c'
+		 ORDER BY c.conname`,
+		table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []CheckConstraint
+	for rows.Next() {
+		var name, def string
+		if err := rows.Scan(&name, &def); err != nil {
+			return nil, err
+		}
+		out = append(out, CheckConstraint{
+			Name:       name,
+			Expression: stripCheckWrapper(def),
+		})
+	}
+	return out, rows.Err()
+}
+
+// stripCheckWrapper removes a leading `CHECK (` (case-insensitive) and its
+// matching trailing `)` from a constraint definition produced by
+// pg_get_constraintdef. If the shape is unexpected the definition is returned
+// unchanged so the constraint is still listed.
+func stripCheckWrapper(def string) string {
+	s := strings.TrimSpace(def)
+	const prefix = "CHECK"
+	if len(s) < len(prefix) || !strings.EqualFold(s[:len(prefix)], prefix) {
+		return s
+	}
+	rest := strings.TrimLeft(s[len(prefix):], " \t\r\n")
+	if len(rest) < 2 || rest[0] != '(' || rest[len(rest)-1] != ')' {
+		return s
+	}
+	return strings.TrimSpace(rest[1 : len(rest)-1])
+}

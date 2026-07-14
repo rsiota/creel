@@ -68,9 +68,11 @@ type structureData struct {
 	fks        []db.ForeignKey
 	indexes    []db.Index
 	triggers   []db.Trigger
+	checks     []db.CheckConstraint
 	viewDef    string
 	indexErr   string
 	triggerErr string
+	checkErr   string
 	viewErr    string
 }
 
@@ -86,21 +88,24 @@ const (
 var seHeaders = []string{"Name", "Type", "Null", "Default"}
 
 // Structure-view tabs. Columns is always present and editable; the rest are
-// read-only metadata loaded asynchronously (see LoadStructure). Definition is
+// read-only metadata loaded asynchronously (see LoadStructure). Checks sits
+// between Foreign Keys and Triggers (both are constraints). Definition is
 // only shown for views.
 const (
 	seTabColumns = iota
 	seTabIndexes
 	seTabFK
+	seTabChecks
 	seTabTriggers
 	seTabDefinition
 )
 
 var seTabLabels = map[int]string{
-	seTabColumns:   "Columns",
-	seTabIndexes:   "Indexes",
-	seTabFK:        "Foreign Keys",
-	seTabTriggers:  "Triggers",
+	seTabColumns:    "Columns",
+	seTabIndexes:    "Indexes",
+	seTabFK:         "Foreign Keys",
+	seTabChecks:     "Checks",
+	seTabTriggers:   "Triggers",
 	seTabDefinition: "Definition",
 }
 
@@ -611,10 +616,10 @@ func (e SchemaEditor) tabAvailable(tab int) bool {
 	return false
 }
 
-// availableTabs returns the tab set: Columns/Indexes/FK/Triggers always, plus
-// Definition when the relation is a view.
+// availableTabs returns the tab set: Columns/Indexes/FK/Checks/Triggers
+// always, plus Definition when the relation is a view.
 func (e SchemaEditor) availableTabs() []int {
-	tabs := []int{seTabColumns, seTabIndexes, seTabFK, seTabTriggers}
+	tabs := []int{seTabColumns, seTabIndexes, seTabFK, seTabChecks, seTabTriggers}
 	if e.structure.viewDef != "" {
 		tabs = append(tabs, seTabDefinition)
 	}
@@ -652,6 +657,8 @@ func (e SchemaEditor) roCount() int {
 		return len(e.structure.indexes)
 	case seTabFK:
 		return len(e.structure.fks)
+	case seTabChecks:
+		return len(e.structure.checks)
 	case seTabTriggers:
 		return len(e.structure.triggers)
 	}
@@ -808,6 +815,8 @@ func (e SchemaEditor) View() string {
 		lines = append(lines, e.renderIndexesTab())
 	case seTabFK:
 		lines = append(lines, e.renderFKTab())
+	case seTabChecks:
+		lines = append(lines, e.renderChecksTab())
 	case seTabTriggers:
 		lines = append(lines, e.renderTriggersTab())
 	case seTabDefinition:
@@ -920,6 +929,28 @@ func (e SchemaEditor) renderFKTab() string {
 	rows := make([][]string, len(e.structure.fks))
 	for i, fk := range e.structure.fks {
 		rows[i] = []string{fk.Column, fmt.Sprintf("%s(%s)", fk.RefTable, fk.RefColumn)}
+	}
+	window := e.windowRows(rows)
+	return renderBoxTable(headers, window, e.roTableWidth())
+}
+
+// renderChecksTab renders the Checks tab as a box table. Check expressions
+// can be long; the box renderer shrinks columns to fit the panel width (widen
+// the terminal or the editor to see more of the expression).
+func (e SchemaEditor) renderChecksTab() string {
+	if !e.structLoaded {
+		return mutedStyle.Render("Loading check constraints…")
+	}
+	if e.structure.checkErr != "" {
+		return errorStyle.Render("Checks unavailable: " + e.structure.checkErr)
+	}
+	if len(e.structure.checks) == 0 {
+		return mutedStyle.Render("(no check constraints)")
+	}
+	headers := []string{"Name", "Column", "Expression"}
+	rows := make([][]string, len(e.structure.checks))
+	for i, c := range e.structure.checks {
+		rows[i] = []string{c.Name, c.Column, c.Expression}
 	}
 	window := e.windowRows(rows)
 	return renderBoxTable(headers, window, e.roTableWidth())
