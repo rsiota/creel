@@ -101,36 +101,43 @@ func TestConnectionFormSelectorRendering(t *testing.T) {
 	}
 }
 
-// The bar cursor (▏) appears only in insert mode. In normal mode the cursor
-// is shown by the focused border instead.
-func TestConnectionFormBarCursorOnlyInInsertMode(t *testing.T) {
+// The insert-mode cursor is an underline overlay on the edited field — never
+// an inserted "▏" glyph — so it shows only while editing and leaves no
+// artifact when returning to normal mode.
+func TestConnectionFormUnderlineCursorOnlyInInsertMode(t *testing.T) {
 	f := NewConnectionForm()
 	f.SetSize(67, f.contentHeight())
 
 	if f.IsEditing() {
 		t.Fatal("form should open in normal mode")
 	}
-	// Normal mode: no bar cursor anywhere.
+	// Normal mode: no bar glyph, and the active field has no underline cursor.
 	if got := strings.Count(formStripANSI(f.View()), "▏"); got != 0 {
-		t.Errorf("normal mode bar cursor count=%d, want 0", got)
+		t.Errorf("normal mode bar glyph count=%d, want 0", got)
+	}
+	if hasUnderline(f.fieldValueContent(f.activeField(), 40)) {
+		t.Error("normal mode field shows an underline cursor")
 	}
 
-	// Enter insert mode on the Name field: exactly one bar cursor.
+	// Enter insert mode on the active field: underline cursor appears; no glyph.
 	f, _ = f.Update(formKey('i'))
 	if !f.IsEditing() {
 		t.Fatal("expected insert mode after pressing 'i'")
 	}
-	if got := strings.Count(formStripANSI(f.View()), "▏"); got != 1 {
-		t.Errorf("insert mode bar cursor count=%d, want 1", got)
+	if got := strings.Count(formStripANSI(f.View()), "▏"); got != 0 {
+		t.Errorf("insert mode bar glyph count=%d, want 0", got)
+	}
+	if !hasUnderline(f.fieldValueContent(f.activeField(), 40)) {
+		t.Error("insert mode field missing underline cursor")
 	}
 
-	// Esc returns to normal mode and clears the bar cursor.
+	// Esc returns to normal mode and clears the underline cursor.
 	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if f.IsEditing() {
 		t.Error("expected normal mode after esc")
 	}
-	if got := strings.Count(formStripANSI(f.View()), "▏"); got != 0 {
-		t.Errorf("after esc bar cursor count=%d, want 0", got)
+	if hasUnderline(f.fieldValueContent(f.activeField(), 40)) {
+		t.Error("field still shows underline cursor after esc")
 	}
 }
 

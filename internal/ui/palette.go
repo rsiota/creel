@@ -231,14 +231,18 @@ func (p palette) View(width, height int) string {
 }
 
 // renderPalettePrompt renders the chevron-style fuzzy-search prompt used by
-// all pickers: a bold "❯ " followed by the current input and a cursor bar.
+// all pickers: a bold "❯ " followed by the current input and a trailing
+// cursor. The cursor is a single overlay cell — reverse when resting,
+// underline while filtering/typing — so it never shifts the text (an inserted
+// glyph like "▏" would).
 func renderPalettePrompt(input string, filtering bool) string {
-	cursor := lipgloss.NewStyle().Foreground(colorFg).Render("█")
+	chevron := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("❯ ")
+	text := lipgloss.NewStyle().Foreground(colorFg).Render(input)
+	cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
 	if filtering {
-		cursor = lipgloss.NewStyle().Foreground(colorFg).Render("▏")
+		cursor = lipgloss.NewStyle().Underline(true).Render(" ")
 	}
-	return lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("❯ ") +
-		input + cursor
+	return chevron + text + cursor
 }
 
 // renderPaletteRow renders a single list row with the palette's selection

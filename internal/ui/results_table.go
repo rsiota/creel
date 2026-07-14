@@ -1436,44 +1436,55 @@ func truncateCellRight(s string, width int) string {
 	return b.String() + "…"
 }
 
-// renderEditInput renders the textinput value with a bar cursor ("▏") at the
-// cursor position instead of the textinput's default reverse-video block. width
-// is the total display width to fill, matching the cell's column width. fg is
-// the foreground color applied to the text (the bar cursor always uses colorFg).
+// renderEditInput renders the textinput value with an underline cursor that
+// overlays the character at the cursor position (a space when the cursor is at
+// the end). Because the cursor is an overlay rather than an inserted glyph, the
+// field always occupies exactly width columns — switching between normal and
+// insert modes never shifts the text by a column, which an inserted bar glyph
+// ("▏") would do. width is the total display width to fill, matching the
+// field's column width. fg is the foreground color applied to the text; the
+// cursor cell uses colorFg.
 func renderEditInput(ti textinput.Model, width int, fg lipgloss.Color) string {
+	if width < 1 {
+		return ""
+	}
 	value := ti.Value()
 	pos := ti.Position()
 	runes := []rune(value)
 
-	// The bar cursor occupies 1 column; the remaining space is for text.
-	textW := width - 1
-	if textW < 0 {
-		textW = 0
-	}
-
-	// Scroll window: keep the cursor visible, biasing toward the right edge.
+	// Scroll window over the full width (cursor cell included): keep the
+	// cursor visible, biasing toward the right edge.
 	textStart := 0
-	if pos > textW {
-		textStart = pos - textW
+	if pos > width-1 {
+		textStart = pos - (width - 1)
 	}
-	textEnd := textStart + textW
+	textEnd := textStart + width
 	if textEnd > len(runes) {
 		textEnd = len(runes)
 	}
 
 	before := string(runes[textStart:pos])
-	after := string(runes[pos:textEnd])
+	after := ""
+	if pos+1 <= textEnd {
+		after = string(runes[pos+1 : textEnd])
+	}
 
-	pad := width - runeLen(before) - 1 - runeLen(after)
+	// The character under the cursor (a space when at the end / empty).
+	cursorChar := " "
+	if pos < len(runes) {
+		cursorChar = string(runes[pos])
+	}
+
+	pad := width - runeLen(before) - runeLen(cursorChar) - runeLen(after)
 	if pad < 0 {
 		pad = 0
 	}
 
 	textStyle := lipgloss.NewStyle().Foreground(fg)
-	barStyle := lipgloss.NewStyle().Foreground(colorFg)
+	cursorStyle := lipgloss.NewStyle().Foreground(colorFg).Underline(true)
 
 	return textStyle.Render(before) +
-		barStyle.Render("▏") +
+		cursorStyle.Render(cursorChar) +
 		textStyle.Render(after) +
 		strings.Repeat(" ", pad)
 }

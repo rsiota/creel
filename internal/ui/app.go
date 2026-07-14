@@ -3685,12 +3685,12 @@ func (m Model) viewWorkspace() string {
 				view := m.results.View()
 				if m.columnJumping {
 					prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render(":"+m.columnJump) +
-						lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
+						lipgloss.NewStyle().Foreground(colorAccent).Underline(true).Render(" ")
 					view = prompt + "\n" + view
 				}
 				if m.searching {
 					prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+m.searchQuery) +
-						lipgloss.NewStyle().Foreground(colorAccent).Render("▏")
+						lipgloss.NewStyle().Foreground(colorAccent).Underline(true).Render(" ")
 					view = prompt + "\n" + view
 				}
 				if m.backendSearching {

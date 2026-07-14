@@ -592,7 +592,7 @@ func (d TableDesigner) renderGrid() string {
 
 			// Inline edit input.
 			if d.editing && isCursorCell {
-				b.WriteString(" " + d.editInput.View() + " ")
+				b.WriteString(" " + renderEditInput(d.editInput, d.colWidths[j], colorEdit) + " ")
 				b.WriteString(borderColor.Render("│"))
 				continue
 			}

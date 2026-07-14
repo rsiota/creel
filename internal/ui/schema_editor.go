@@ -1276,7 +1276,7 @@ func (e SchemaEditor) renderGrid() string {
 			isCursorCell := isCursorRow && j == e.cursorCol
 
 			if e.editing && isCursorCell {
-				b.WriteString(" " + e.editInput.View() + " ")
+				b.WriteString(" " + renderEditInput(e.editInput, e.colWidths[j], colorEdit) + " ")
 				b.WriteString(borderColor.Render("│"))
 				continue
 			}
