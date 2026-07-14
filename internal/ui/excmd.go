@@ -50,7 +50,7 @@ func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return *m, nil
 	}
-	if msg.Type == tea.KeyRunes {
+	if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
 		m.ex.input += msg.String()
 	}
 	return *m, nil

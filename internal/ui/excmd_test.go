@@ -214,6 +214,25 @@ func TestHandleExKeyHistoryRecall(t *testing.T) {
 	}
 }
 
+// Regression: the space bar arrives as tea.KeySpace (NOT KeyRunes), so the
+// insertion guard must accept it — otherwise every multi-word command loses
+// its separator (":gt users" -> "gtusers" -> E492).
+func TestHandleExKeyInsertsSpace(t *testing.T) {
+	m := &Model{results: NewResultsTable(), focus: FocusResults}
+	m.ex.Open()
+	keys := []tea.KeyMsg{
+		runeKey('g'), runeKey('t'),
+		{Type: tea.KeySpace},
+		runeKey('u'), runeKey('s'), runeKey('e'), runeKey('r'), runeKey('s'),
+	}
+	for _, k := range keys {
+		m.handleExKey(k)
+	}
+	if m.ex.input != "gt users" {
+		t.Fatalf("input=%q, want `gt users` (space must be inserted)", m.ex.input)
+	}
+}
+
 // --- commands ---
 
 func TestExHelp(t *testing.T) {
