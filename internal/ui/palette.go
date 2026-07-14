@@ -200,8 +200,8 @@ func (p palette) View(width, height int) string {
 				Foreground(colorBg).
 				Render("❯ " + key + "  " + it.desc + "  " + it.section)
 		} else {
-			keyStr := lipgloss.NewStyle().Foreground(colorLabel).Render(key)
-			desc := mutedStyle.Render(it.desc)
+			keyStr := lipgloss.NewStyle().Foreground(colorPrimary).Render(key)
+			desc := lipgloss.NewStyle().Foreground(colorLabel).Render(it.desc)
 			secStr := lipgloss.NewStyle().Foreground(colorMuted).Render(it.section)
 			line = "  " + keyStr + "  " + desc + "  " + secStr
 		}
