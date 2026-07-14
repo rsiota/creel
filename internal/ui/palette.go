@@ -172,8 +172,8 @@ func (p palette) View(width, height int) string {
 
 	keyW := 0
 	for _, it := range p.filtered {
-		if len(it.display) > keyW {
-			keyW = len(it.display)
+		if w := runeLen(it.display); w > keyW {
+			keyW = w
 		}
 	}
 	if keyW < 6 {
@@ -192,7 +192,7 @@ func (p palette) View(width, height int) string {
 	var lines []string
 	for i := start; i < end; i++ {
 		it := p.filtered[i]
-		key := it.display + strings.Repeat(" ", keyW-len(it.display))
+		key := it.display + strings.Repeat(" ", keyW-runeLen(it.display))
 		var line string
 		if i == p.cursor {
 			line = lipgloss.NewStyle().

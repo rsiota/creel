@@ -52,8 +52,8 @@ func (h HelpPanel) View() string {
 	keyWidth := 0
 	for _, s := range sections {
 		for _, b := range s.Items {
-			if len(b.Display) > keyWidth {
-				keyWidth = len(b.Display)
+			if w := runeLen(b.Display); w > keyWidth {
+				keyWidth = w
 			}
 		}
 	}
@@ -106,8 +106,8 @@ func (h HelpPanel) View() string {
 			b.WriteString("\n")
 			for _, bd := range s.Items {
 				key := lipgloss.NewStyle().Foreground(colorLabel).Render(bd.Display)
-				pad := strings.Repeat(" ", keyWidth-len(bd.Display))
-				desc := mutedStyle.Render(bd.Desc)
+				pad := strings.Repeat(" ", keyWidth-runeLen(bd.Display))
+				desc := lipgloss.NewStyle().Foreground(colorFg).Render(bd.Desc)
 				b.WriteString("  " + key + pad + "  " + desc + "\n")
 			}
 		}

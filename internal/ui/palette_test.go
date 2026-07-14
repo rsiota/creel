@@ -171,6 +171,44 @@ func TestPaletteView(t *testing.T) {
 	}
 }
 
+// Descriptions must align in one display column even when a key display has
+// multi-byte glyphs ("↑/↓"). Padding used to be len()-based (bytes), so arrow
+// rows drifted left of ASCII rows.
+func TestPaletteDescriptionAlignmentWithArrowKeys(t *testing.T) {
+	var p palette
+	p.Open()
+	// "move" matches several bindings spanning ASCII ("j/k", "h/j/k/l") and
+	// arrow ("↑/↓", "j/k, ↑/↓") keys. "remove row" also fuzzy-matches, so we
+	// key off the fixed 2-space gap that precedes each description ("  move")
+	// to catch only descs that START with move.
+	p.input = "move"
+	p.refilter()
+
+	const gap = "  " // fixed gap between the key field and the description
+	lines := strings.Split(stripAnsi(p.View(120, 40)), "\n")
+	var cols []int
+	for _, ln := range lines {
+		if strings.Contains(ln, "❯") {
+			continue // skip the prompt line (its input echoes "move")
+		}
+		idx := strings.Index(ln, gap+"move")
+		if idx < 0 {
+			continue
+		}
+		// Display column where the description starts (the gap is constant).
+		cols = append(cols, runeLen(ln[:idx+len(gap)]))
+	}
+	if len(cols) < 2 {
+		t.Fatalf("expected >=2 aligned rows to compare, got %d", len(cols))
+	}
+	for _, c := range cols[1:] {
+		if c != cols[0] {
+			t.Errorf("palette descriptions misaligned: columns=%v", cols)
+			break
+		}
+	}
+}
+
 func TestPaletteDoublePressNotExecutable(t *testing.T) {
 	// The "dd" and "y y" chords use a pending-boolean mechanism — a single
 	// keypress won't trigger them, so they must not be marked executable.
