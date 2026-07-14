@@ -214,6 +214,7 @@ Press `?` inside the TUI for the full overlay, or `Ctrl+P` for the fuzzy command
 | `tab` / `shift+tab` | Cycle focus                |
 | `ctrl+d` / `ctrl+u` | Next / previous page        |
 | `ctrl+p`        | Command palette                 |
+| `:`             | Ex command line (`:q`, `:sort`, `:goto`, …) |
 | `g c`           | Theme picker (live preview)     |
 | `?`             | Toggle help                     |
 | `q` / `ctrl+q`  | Quit (not while editing)        |
@@ -301,7 +302,7 @@ In the add/edit form:
 | `H`        | Hide column                                  |
 | `g H`      | Show all columns                             |
 | `v`        | Column visibility overlay                    |
-| `:`        | Jump to column                               |
+| `:`        | Ex command line (`:q`, `:sort`, `:goto`, …; column jump in results) |
 | `y` / `p`  | Copy cell / paste to cell                    |
 | `Y`        | Copy rows as INSERT statements               |
 | `P`        | Clone marked/cursor row                      |

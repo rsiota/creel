@@ -135,7 +135,8 @@ The `DB` interface also exposes catalog metadata used by the structure panel:
 - [x] Table designer — `N` full-screen grid editor to define and create a new table
 - [x] Add column / rename table — `a` modal add-column form, `r` rename-table form
 - [x] Column statistics — `g s` computes count/distinct/min/max/sum/avg for the cursor column (server-side for `SELECT *`, client-side fallback)
-- [x] Column sort + jump — `o` cycles sort on a column, `:` jumps to a column by name
+- [x] Column sort + jump — `o` cycles sort on a column, `:` ex-command line (column jump is the bare-identifier fallback in results)
+- [x] Ex command line (`:`) — vim-style modal command line: `:q`/`:q!`/`:w`/`:wq`/`:x` (close tab / save edits), `:sort <col>`, `:goto <table>`/`:gt` (open by name), `:help`/`:h`, with `↑`/`↓` history recall. Unknown input is `E492`; a bare identifier in the results view falls back to a fuzzy column jump (legacy `:` behaviour). Replaces the old `:` column-jump prompt.
 - [x] Database picker — `ctrl+b` browse/switch/create/drop databases (MySQL) with fuzzy filter
 - [x] Bookmarks — `ctrl+g` opens a per-connection saved-query panel, `B` bookmarks the current query; load/delete/clear inside the panel
 - [x] Copy / export from results — `yy` copies a cell, `x` exports the result set to CSV, `Y` copies rows as INSERT statements

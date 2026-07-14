@@ -102,7 +102,7 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// Ignore mouse when inline editors or text-input modes are active. The
 	// schema editor and table designer are handled separately below (they
 	// replace the editor/results panels and own content-area clicks).
-	if m.columnJumping || m.searching || m.backendSearching ||
+	if m.ex.visible || m.searching || m.backendSearching ||
 		m.cellEdit.IsVisible() {
 		return m, nil
 	}

@@ -131,11 +131,29 @@ connection restores where you left off. History store is a natural home.
 
 ## 🟢 Polish / nice-to-haves
 
-### 10. Vim `:` ex-command mode
-Power-user delight, fits the vim ethos. `:w` save edits, `:q` close tab,
-`:sort name`, `:goto users`, `:filter status=active`. The palette's replay
-mechanism (`keymsg.go`) could execute some.
-- Files: `internal/ui/app.go`, new `internal/ui/excmd.go`, `internal/ui/registry.go`.
+### 10. Vim `:` ex-command mode ✅ DONE (2026-07-14, v1)
+A modal `:` command line (`internal/ui/excmd.go`) opens globally on `:` and is
+routed ahead of all other workspace keys. `enter` parses and runs, `esc`
+cancels, `↑`/`↓` recalls history. v1 commands: `:q`/`:q!`/`:w`/`:wq`/`:x`
+(close tab, blocking on unsaved edits unless forced), `:sort <col>`
+(`sortByColName`), `:goto <table>`/`:gt` (exact/substring match → `SELECT * FROM`),
+`:help`/`:h`. A shell-like parser (`splitShellFields`) honors quotes/escapes and
+a trailing `!`. Unknown input is `E492: not a command`; a bare identifier in the
+results view falls back to a fuzzy column jump (`bestColumnMatch`), preserving
+the legacy `:` behaviour — the standalone column-jump prompt (`columnJumping`)
+was removed and its render/mouse/tab sites now key off `ex.IsVisible()`.
+Feedback/errors surface via the transient status-bar message.
+- Files: `internal/ui/excmd.go`, `internal/ui/app.go`, `internal/ui/tabs.go`,
+  `internal/ui/mouse.go`, `internal/ui/registry.go`.
+  Tests: `internal/ui/excmd_test.go` (parser, state, key handling, each command,
+  fallback, unknown).
+
+**Follow-ups still open (v2):** argument commands needing more wiring
+(`:filter <expr>`, `:open`/`:save` — pairs with #14, `:theme <name>`,
+`:set <opt>`), and live command completion/suggestions as you type.
+- Originally: `:w` save edits, `:q` close tab, `:sort name`, `:goto users`,
+  `:filter status=active`. The palette's replay mechanism (`keymsg.go`) could
+  execute some.
 
 ### 11. ERD / relationship view
 FK data already exists (`ForeignKeys`). A `g R` overlay rendering

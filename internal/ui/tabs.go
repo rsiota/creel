@@ -104,12 +104,11 @@ func (m *Model) restoreTabState() {
 }
 
 // cancelTransientModes exits active input modes that should not persist
-// across tab switches (search, column-jump, backend search).
+// across tab switches (search, ex command line, backend search).
 func (m *Model) cancelTransientModes() {
 	m.searching = false
 	m.searchQuery = ""
-	m.columnJumping = false
-	m.columnJump = ""
+	m.ex.Hide()
 	m.backendSearching = false
 	m.backendSearchInput = ""
 	if m.backendSearchTimer != nil {

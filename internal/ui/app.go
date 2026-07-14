@@ -280,6 +280,7 @@ type Model struct {
 	cellEdit            CellEditPopup
 	explainPanel        ExplainPanel
 	palette             palette
+	ex                  exCmd
 	sidebarCursor       int
 	sidebarScroll       int              // cached scroll offset of the first visible sidebar item
 	sidebarViewAnchored bool             // mouse click froze the view; keyboard nav clears it
@@ -389,10 +390,6 @@ type Model struct {
 	restoreCursor    bool
 	restoreCursorRow int
 	restoreCursorCol int
-
-	// Column jump (: to fuzzy-match and move the column cursor).
-	columnJumping bool
-	columnJump    string
 
 	// Client-side regex search (g/ to search, n/N to jump between matches).
 	searching   bool
@@ -633,7 +630,7 @@ func (m *Model) clearPendingG() {
 // t         — new tab (sidebar, results, tab bar only)
 func (m *Model) handleTabKey(msg tea.KeyMsg) bool {
 	if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() ||
-		m.searching || m.columnJumping || m.backendSearching ||
+		m.searching || m.ex.visible || m.backendSearching ||
 		m.sidebarFiltering || m.inspector.IsFiltering() ||
 		(m.focus == FocusEditor && m.editor.VimMode() == VimInsert) {
 		return false
@@ -2050,6 +2047,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	// Ex command line (":") is modal — intercept all keys when visible.
+	if m.ex.visible {
+		return m.handleExKey(msg)
+	}
+
 	// Tab navigation keys work from any panel (except editor insert mode).
 	if m.handleTabKey(msg) {
 		return m, nil
@@ -2059,6 +2061,15 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "?":
 		m.help.Show()
+		return m, nil
+	case ":":
+		// Ex command line — not while a text-input / editing mode is active.
+		if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() || m.inspector.IsFiltering() ||
+			m.sidebarFiltering || m.searching || m.backendSearching ||
+			(m.focus == FocusEditor && m.editor.VimMode() == VimInsert) {
+			break
+		}
+		m.ex.Open()
 		return m, nil
 	case "ctrl+p":
 		// Command palette — but not while the editor is in insert mode,
@@ -2586,36 +2597,6 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if msg.String() != "d" {
 			m.resultsPendingD = false
 		}
-		// Column jump mode intercepts all keys.
-		if m.columnJumping {
-			switch msg.String() {
-			case "esc":
-				m.columnJumping = false
-				m.columnJump = ""
-				return m, nil
-			case "enter":
-				if idx := bestColumnMatch(m.results.columns, m.columnJump); idx >= 0 {
-					m.results.SetCursor(m.results.CursorRow(), idx)
-				}
-				m.columnJumping = false
-				m.columnJump = ""
-				return m, nil
-			case "backspace":
-				if len(m.columnJump) > 0 {
-					m.columnJump = m.columnJump[:len(m.columnJump)-1]
-				}
-				return m, nil
-			case "ctrl+c":
-				m.columnJumping = false
-				m.columnJump = ""
-				return m, nil
-			}
-			if msg.Type == tea.KeyRunes {
-				m.columnJump += msg.String()
-				return m, nil
-			}
-			return m, nil
-		}
 		// Search mode (g/) intercepts all keys.
 		if m.searching {
 			updateSearchMatcher := func() {
@@ -3038,12 +3019,6 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				return m, m.cloneRows()
-			case ":":
-				if m.results.NumCols() > 0 {
-					m.columnJumping = true
-					m.columnJump = ""
-				}
-				return m, nil
 			case "H":
 				if m.resultsPendingG {
 					// g H — show all columns.
@@ -3679,13 +3654,11 @@ func (m Model) viewWorkspace() string {
 				m.results.SetSort(m.sortCol, m.sortDir)
 				// Shrink the table by one row when a prompt line is
 				// shown above it, so the total height stays the same.
-				if m.columnJumping || m.searching || m.backendSearching {
+				if m.ex.visible || m.searching || m.backendSearching {
 					m.results.SetSize(rightWidth+borderOverhead, resultsHeight+borderOverhead-1)
 				}
 				view := m.results.View()
-				if m.columnJumping {
-					prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render(":"+m.columnJump) +
-						lipgloss.NewStyle().Foreground(colorAccent).Underline(true).Render(" ")
+				if prompt := m.ex.View(); prompt != "" {
 					view = prompt + "\n" + view
 				}
 				if m.searching {
