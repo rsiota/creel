@@ -19,6 +19,35 @@ func (m *Model) execSchemaDDL(table, query string, action db.SchemaAction, newTa
 	}
 }
 
+// confirmDestructive reports whether destructive-action confirmation dialogs
+// are enabled. It defaults to true (the safe choice) when
+// settings.confirm_destructive is unset; set confirm_destructive: false in
+// config to skip the prompts and run each destructive action immediately
+// instead. Every destructive trigger site (drop table/database, truncate,
+// delete rows, discard edits, drop column, clear history/bookmarks) consults
+// this before staging its confirmation.
+func (m *Model) confirmDestructive() bool {
+	if m.settings.ConfirmDestructive == nil {
+		return true
+	}
+	return *m.settings.ConfirmDestructive
+}
+
+// execDropTable builds and runs DROP TABLE asynchronously. Shared by the
+// typed drop-table confirmation flow and the confirm-skipped fast path so the
+// confirmed action is identical whether or not the prompt runs.
+func (m *Model) execDropTable(table string) tea.Cmd {
+	if m.connection == nil || table == "" {
+		return nil
+	}
+	sql, err := db.BuildDropTableSQL(m.connection.Config().Driver, table)
+	if err != nil {
+		m.schemaMsg = fmt.Sprintf("drop table failed: %v", err)
+		return nil
+	}
+	return m.execSchemaDDL(table, sql, db.SchemaDropTable, "")
+}
+
 func (m *Model) setSchemaConfirm(table, sql string, action db.SchemaAction) {
 	m.schemaConfirmTable = table
 	m.schemaConfirmSQL = sql
@@ -230,8 +259,11 @@ func (m *Model) dropCurrentColumn() tea.Cmd {
 		m.schemaEditor.SetNotice(err.Error())
 		return nil
 	}
-	m.setSchemaConfirm(m.schemaEditor.Table(), sql, db.SchemaDropColumn)
-	return nil
+	if m.confirmDestructive() {
+		m.setSchemaConfirm(m.schemaEditor.Table(), sql, db.SchemaDropColumn)
+		return nil
+	}
+	return m.execSchemaDDL(m.schemaEditor.Table(), sql, db.SchemaDropColumn, "")
 }
 
 // reloadSchemaPanel refreshes column metadata when the editor is open.

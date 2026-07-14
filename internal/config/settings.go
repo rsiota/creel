@@ -20,10 +20,10 @@ const (
 // Settings holds app-level preferences read from the "settings:" block of the
 // config file. Zero values fall back to the defaults above (see Effective).
 //
-// Currently wired: page_size, query_timeout, default_driver, theme.
-// Reserved for follow-ups (not yet applied): confirm_destructive,
-// cursor_style — the struct is designed so adding fields is the only change
-// needed here.
+// Currently wired: page_size, query_timeout, default_driver, theme,
+// transparent_background, confirm_destructive.
+// Reserved for follow-ups (not yet applied): cursor_style — the struct is
+// designed so adding fields is the only change needed here.
 type Settings struct {
 	PageSize      int      `yaml:"page_size,omitempty"`
 	QueryTimeout  Duration `yaml:"query_timeout,omitempty"`
@@ -44,7 +44,11 @@ type Settings struct {
 	// left unsanitized because false (the zero value) is the desired default.
 	TransparentBackground bool `yaml:"transparent_background,omitempty"`
 
-	// Reserved: stored but not yet applied by the UI.
+	// ConfirmDestructive gates the destructive-action confirmation dialogs
+	// (drop table/database, truncate, delete rows, discard edits, drop column,
+	// clear history/bookmarks). nil (the default) and true keep the prompts;
+	// false runs each action immediately with no prompt. It is a pointer so the
+	// safe default (confirm) differs from the zero value of bool.
 	ConfirmDestructive *bool `yaml:"confirm_destructive,omitempty"`
 }
 

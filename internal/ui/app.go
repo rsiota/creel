@@ -1558,8 +1558,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "D":
 			name := m.dbPicker.SelectedDatabase()
 			if name != "" {
-				m.dropDBConfirm = name
-				m.dropDBInput = ""
+				if m.confirmDestructive() {
+					m.dropDBConfirm = name
+					m.dropDBInput = ""
+					return m, nil
+				}
+				return m, m.execDropDatabase(name)
 			}
 			return m, nil
 		}
@@ -1763,12 +1767,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				table := m.dropTableConfirm
 				m.dropTableConfirm = ""
 				m.dropTableInput = ""
-				sql, err := db.BuildDropTableSQL(m.connection.Config().Driver, table)
-				if err != nil {
-					m.schemaMsg = fmt.Sprintf("drop table failed: %v", err)
-					return m, nil
-				}
-				return m, m.execSchemaDDL(table, sql, db.SchemaDropTable, "")
+				return m, m.execDropTable(table)
 			}
 			return m, nil
 		case "esc", "ctrl+c":
@@ -2365,7 +2364,15 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.history.CursorDown()
 			return m, nil
 		case "D":
-			m.clearHistoryConfirm = true
+			if m.confirmDestructive() {
+				m.clearHistoryConfirm = true
+				return m, nil
+			}
+			if m.connection != nil && m.historyStore != nil {
+				m.historyStore.Clear(m.connection.Config().Name)
+			}
+			m.history.SetEntries(nil)
+			m.history.StartFilter()
 			return m, nil
 		case "b":
 			// Promote the selected history entry to bookmarks.
@@ -2430,7 +2437,15 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "D":
-			m.clearBookmarksConfirm = true
+			if m.confirmDestructive() {
+				m.clearBookmarksConfirm = true
+				return m, nil
+			}
+			if m.connection != nil && m.bookmarkStore != nil {
+				m.bookmarkStore.Clear(m.connection.Config().Name)
+			}
+			m.bookmarks.SetEntries(nil)
+			m.bookmarks.StartFilter()
 			return m, nil
 		}
 		// Printable characters extend the filter.
@@ -2811,8 +2826,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				if m.resultsPendingD {
 					m.resultsPendingD = false
-					m.startDeleteRows()
-					return m, nil
+					return m, m.startDeleteRows()
 				}
 				m.resultsPendingD = true
 				return m, nil
@@ -2923,7 +2937,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				if m.results.HasDirtyCells() {
-					m.discardConfirm = true
+					if m.confirmDestructive() {
+						m.discardConfirm = true
+						return m, nil
+					}
+					m.results.DiscardEdits()
 				}
 				return m, nil
 			case "/":
@@ -3179,14 +3197,22 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebarPendingG = false
 			item := m.currentSidebarItem()
 			if item != nil && !item.isColumn {
-				m.truncateConfirm = item.text
+				if m.confirmDestructive() {
+					m.truncateConfirm = item.text
+					return m, nil
+				}
+				return m, m.execTruncate(item.text)
 			}
 		case "D":
 			m.sidebarPendingG = false
 			item := m.currentSidebarItem()
 			if item != nil && !item.isColumn {
-				m.dropTableConfirm = item.text
-				m.dropTableInput = ""
+				if m.confirmDestructive() {
+					m.dropTableConfirm = item.text
+					m.dropTableInput = ""
+					return m, nil
+				}
+				return m, m.execDropTable(item.text)
 			}
 		case "r":
 			m.sidebarPendingG = false
@@ -3317,7 +3343,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "D":
 			m.inspector.pendingG = false
 			if m.results.HasDirtyCells() {
-				m.discardConfirm = true
+				if m.confirmDestructive() {
+					m.discardConfirm = true
+					return m, nil
+				}
+				m.results.DiscardEdits()
 			}
 			return m, nil
 		}

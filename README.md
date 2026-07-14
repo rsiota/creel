@@ -169,6 +169,7 @@ optional and fall back to defaults when omitted:
 | `default_driver` | sqlite       | Driver pre-filled in the add-connection form                             |
 | `theme`          | tokyo-night  | Palette: `tokyo-night`, `gruvbox`, `nord`, `catppuccin`, `light` + ~565 auto-derived from iTerm2-Color-Schemes (dracula, solarized, …). Unknown → default |
 | `transparent_background` | false | By default gsql fills the app background with the theme's bg colour (required for light themes to be readable). Set `true` to leave it unpainted so the terminal's own background / transparency shows through — at the cost of light themes looking wrong. |
+| `confirm_destructive` | true | Destructive actions (drop table/database, truncate, delete rows, discard edits, drop column, clear history/bookmarks) prompt for confirmation. Set `false` to skip the prompts and run each action immediately. |
 
 ```yaml
 settings:
@@ -176,13 +177,13 @@ settings:
   query_timeout: 1m
   default_driver: postgres
   theme: gruvbox
+  confirm_destructive: false
 ```
 
 `query_timeout` accepts values like `30s`, `2m`, `1h30m`, or a bare number of
 seconds (`45`). An invalid value makes config load fail loudly rather than
 silently falling back. An unknown `theme` silently falls back to the default
-rather than blocking startup. (`confirm_destructive` and `cursor_style` are
-reserved for upcoming work.)
+rather than blocking startup. (`cursor_style` is reserved for upcoming work.)
 
 To experiment with themes live, press `g c` in the workspace to open the
 theme picker (a scrollable, filterable overlay — type to filter by name,

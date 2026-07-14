@@ -62,11 +62,13 @@ indicator like `TXN ●`.
 - Files: `internal/ui/app.go`, `internal/ui/editing.go`,
   `internal/ui/statusbar.go`, `internal/ui/registry.go`.
 
-### 6. More export formats
-`export_import.go` only writes CSV (plus `Y` → INSERT statements). Add a format
-picker for JSON (array/lines), Markdown, TSV, and SQL INSERT dump. Reuse the
-`export_picker.go` pattern.
-- Files: `internal/ui/export_import.go`, `internal/ui/export_picker.go`.
+### 6. More export formats ✅ DONE (2026-07-11)
+The `g X` results-export path now offers a format picker (`format_picker.go`):
+CSV, JSON (array), JSONL, Markdown, TSV, and SQL INSERT dump, all sharing one
+`serializeFormat` renderer and filename/extension mapping. The legacy `x` keeps
+CSV as the one-key default.
+- Files: `internal/ui/export_import.go`, `internal/ui/format_picker.go`,
+  `internal/ui/export_format_test.go`.
 
 ### 7. App-level settings in config ✅ DONE (2026-07-12)
 Added a `Settings` block to the config with a custom YAML `Duration` type
@@ -77,9 +79,14 @@ fallback). Zero values fall back to defaults, and a missing/zero settings block
 is omitted on save so connection edits don't sprout a `settings:` block.
 
 **Follow-ups still open:**
-- `confirm_destructive` (gate the ~8 destructive confirmation sites — drop
-  table/db, truncate, clear history/bookmarks, discard edits, schema DDL).
-  Safety-critical; the field is reserved on `Settings` but not yet applied.
+- `confirm_destructive` ✅ DONE (2026-07-14): a `Model.confirmDestructive()`
+  helper (default true / safe; `false` skips) guards every destructive trigger
+  site — drop table, drop database, truncate, delete rows, discard edits, drop
+  column, clear history, clear bookmarks. When skipped, the action runs
+  immediately via the same exec helpers the confirmation handlers use
+  (`execTruncate`, `execDeleteRows`, `execDropDatabase`, `execSchemaDDL`, plus
+  a new shared `execDropTable`). The confirmation dialogs themselves are
+  unchanged.
 - `theme` ✅ DONE (2026-07-13): a `colorPalette` type + `applyPalette` in
   `styles.go` rebuilds every package-level color and derived style var from a
   palette, so a single call re-themes the whole UI on the next `View()` pass.
@@ -103,10 +110,11 @@ is omitted on save so connection edits don't sprout a `settings:` block.
 - Files: `internal/config/settings.go`, `internal/config/config.go`,
   `internal/ui/app.go`, `internal/ui/connection_form.go`.
 
-### 8. Configurable query timeout
-Only the SSH tunnel has a timeout (`ssh_tunnel.go`). A runaway `SELECT` hangs
-the TUI until `esc`. Wire a `settings.query_timeout` into `ExecuteContext`.
-- Files: `internal/db/db.go`, `sqlite.go`, `mysql.go`, `postgres.go`.
+### 8. Configurable query timeout ✅ DONE
+Superseded by #7's `settings.query_timeout` (wired into `ExecuteContext` in
+2026-07-11 commit `e0a785e`). The only remaining bit is the `query_timeout: 0`
+opt-out sentinel, tracked under #7 follow-ups. Kept for history; no standalone
+work remains.
 
 ### 9. Session restore
 Persist the active tab's editor content + table per connection so reopening a
@@ -167,6 +175,17 @@ the statement splitter (`statements.go`).
 ---
 
 ## Suggested starting order
-1. **Keyring password storage** (#1) — self-contained, biggest real-world blocker.
-2. **Indexes/triggers/views metadata** (#4) — most visible feature gap.
-3. **Read-only mode** (#3) — small change, big safety win for prod.
+The original top three are all shipped (#1, #4, #3). Next up, in suggested
+order:
+1. **`confirm_destructive`** (#7 follow-up) — field reserved, ~8 well-defined
+   sites, safety win. _(done — 2026-07-14)_
+2. **Check constraints** (#4 follow-up) — closes the visible gap in the
+   structure view; PG/MySQL are clean, SQLite parses DDL.
+3. **`.sql` file integration** (#14) — reuses the statement splitter, high
+   everyday value, mostly entry-point wiring.
+4. **User-facing transactions** (#5) — `Begin()` exists; the work is UI +
+   status indicator + read-only interplay.
+5. **Session restore** (#9) — persistence delight feature.
+
+Original historical order (all complete): keyring storage (#1),
+indexes/triggers/views (#4), read-only mode (#3).

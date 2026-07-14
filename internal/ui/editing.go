@@ -471,13 +471,16 @@ func (m *Model) execDeleteRows(table, query string, count int) tea.Cmd {
 // startDeleteRows prepares a row deletion confirmation. If rows are marked,
 // those are targeted; otherwise the cursor row is targeted. The built DELETE
 // query and metadata are stored in confirmation fields for the modal handler.
-func (m *Model) startDeleteRows() {
+// When confirm_destructive is disabled the DELETE runs immediately and the
+// returned command drives it; otherwise the fields are staged and nil is
+// returned.
+func (m *Model) startDeleteRows() tea.Cmd {
 	if !m.results.IsEditable() || m.results.NumRows() == 0 {
-		return
+		return nil
 	}
 	pkNames := m.results.PKColumns()
 	if len(pkNames) == 0 {
-		return
+		return nil
 	}
 	table := m.results.SourceTable()
 	pkTypes := m.results.PKTypes()
@@ -491,15 +494,19 @@ func (m *Model) startDeleteRows() {
 	} else {
 		tuple := m.results.CursorPKTuple()
 		if tuple == nil {
-			return
+			return nil
 		}
 		count = 1
 		query = buildDeleteQuery(table, pkNames, pkTypes, [][]string{tuple})
 	}
 
-	m.deleteRowsConfirmTable = table
-	m.deleteRowsConfirmQuery = query
-	m.deleteRowsConfirmCount = count
+	if m.confirmDestructive() {
+		m.deleteRowsConfirmTable = table
+		m.deleteRowsConfirmQuery = query
+		m.deleteRowsConfirmCount = count
+		return nil
+	}
+	return m.execDeleteRows(table, query, count)
 }
 
 // commitVisualMarks marks every row in the visual selection range.
