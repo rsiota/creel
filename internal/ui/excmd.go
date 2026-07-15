@@ -19,8 +19,16 @@ import (
 type exCmd struct {
 	visible bool
 	input   string
-	hist    []string // command history, most-recent last
-	histIdx int      // recall cursor; len(hist) == "fresh input"
+	hist    []string     // command history, most-recent last
+	histIdx int          // recall cursor; len(hist) == "fresh input"
+	comp    []exCompItem // verb-completion candidates; empty = no popup
+}
+
+// exCompItem is one row in the ":" verb-completion popup.
+type exCompItem struct {
+	verb  string // canonical verb inserted by Tab
+	usage string // invocation form, e.g. ":w [file]"
+	desc  string
 }
 
 // handleExKey routes keys to the open ":" command line. It is modal: every
@@ -35,6 +43,7 @@ func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		input := strings.TrimSpace(m.ex.input)
 		m.ex.input = ""
 		m.ex.visible = false
+		m.ex.comp = nil
 		if input == "" {
 			return *m, nil
 		}
@@ -43,35 +52,139 @@ func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return *m, m.runExCommand(input)
 	case "up":
 		m.ex.recall(-1)
+		m.ex.recomputeCompletion()
 		return *m, nil
 	case "down":
 		m.ex.recall(1)
+		m.ex.recomputeCompletion()
+		return *m, nil
+	case "tab":
+		// Complete the verb to the top match (its canonical name). recompute
+		// then hides the popup, since the verb is now an exact match.
+		if len(m.ex.comp) > 0 {
+			m.ex.input = m.ex.comp[0].verb
+			m.ex.recomputeCompletion()
+		}
 		return *m, nil
 	case "backspace":
 		if len(m.ex.input) > 0 {
 			r := []rune(m.ex.input)
 			m.ex.input = string(r[:len(r)-1])
+			m.ex.recomputeCompletion()
 		}
 		return *m, nil
 	}
 	if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
 		m.ex.input += msg.String()
+		m.ex.recomputeCompletion()
 	}
 	return *m, nil
 }
 
-// Open shows the ex command line with an empty buffer.
+// Open shows the ex command line with an empty buffer and seeds the
+// verb-completion popup with every command, so ":" alone is discoverable.
 func (ex *exCmd) Open() {
 	ex.visible = true
 	ex.input = ""
 	ex.histIdx = len(ex.hist)
+	ex.recomputeCompletion()
 }
 
-// Hide closes the ex command line.
-func (ex *exCmd) Hide() { ex.visible = false }
+// Hide closes the ex command line and drops any completion popup.
+func (ex *exCmd) Hide() {
+	ex.visible = false
+	ex.comp = nil
+}
 
 // IsVisible reports whether the ex command line is shown.
 func (ex exCmd) IsVisible() bool { return ex.visible }
+
+// verbPrefix returns the command verb being typed (the run of input before the
+// first space/tab) and whether a separator follows it — i.e. whether the
+// cursor has moved past the verb into arguments, where verb completion no
+// longer applies.
+func verbPrefix(input string) (verb string, hasSpace bool) {
+	for i, r := range input {
+		if r == ' ' || r == '\t' {
+			return input[:i], true
+		}
+	}
+	return input, false
+}
+
+// recomputeCompletion refreshes the verb-completion list from the current
+// input. Completion applies only to the verb (before any space); matches are
+// prefix-based and case-insensitive, one row per command even if several of
+// its aliases match. The popup is hidden once the typed verb is an exact,
+// unambiguous canonical match (the user has fully specified the command).
+func (ex *exCmd) recomputeCompletion() {
+	ex.comp = ex.comp[:0]
+	verb, hasSpace := verbPrefix(ex.input)
+	if hasSpace {
+		return
+	}
+	needle := strings.ToLower(verb)
+	for _, s := range exCommands() {
+		for _, v := range s.verbs {
+			if strings.HasPrefix(v, needle) {
+				ex.comp = append(ex.comp, exCompItem{
+					verb:  s.verbs[0],
+					usage: s.usage,
+					desc:  s.desc,
+				})
+				break
+			}
+		}
+	}
+	if len(ex.comp) == 1 && ex.comp[0].verb == needle && needle != "" {
+		ex.comp = nil
+	}
+}
+
+// completionView renders the verb-completion popup (one row per candidate)
+// for display directly above the ":" prompt, or "" when nothing applies. The
+// first row is the Tab target. Rendering mirrors the palette (Ctrl+P): blue
+// commands, grey descriptions, and a solid highlight bar on the Tab target.
+// Only the matching and anchoring differ (the command line is a bottom
+// prompt, so the popup sits above it rather than at the editor cursor).
+func (ex exCmd) completionView() string {
+	if !ex.visible || len(ex.comp) == 0 {
+		return ""
+	}
+	const maxRows = 9
+	items := ex.comp
+	if len(items) > maxRows {
+		items = items[:maxRows]
+	}
+	usageW := 0
+	for _, it := range items {
+		if w := runeLen(it.usage); w > usageW {
+			usageW = w
+		}
+	}
+	var lines []string
+	for i, it := range items {
+		usage := it.usage + strings.Repeat(" ", usageW-runeLen(it.usage))
+		var row string
+		if i == 0 {
+			// Tab target: a solid highlight bar, mirroring the palette's
+			// selected row (bg colorPrimary, fg colorBg, "❯" marker).
+			row = lipgloss.NewStyle().
+				Background(colorPrimary).
+				Foreground(colorBg).
+				Render("❯ " + usage + "  " + it.desc)
+		} else {
+			usageStr := lipgloss.NewStyle().Foreground(colorPrimary).Render(usage)
+			desc := lipgloss.NewStyle().Foreground(colorLabel).Render(it.desc)
+			row = "  " + usageStr + "  " + desc
+		}
+		lines = append(lines, row)
+	}
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPrimary).
+		Render(strings.Join(lines, "\n"))
+}
 
 // recall steps through command history (delta < 0 = older, > 0 = newer).
 func (ex *exCmd) recall(delta int) {
@@ -156,86 +269,27 @@ func splitShellFields(s string) []string {
 }
 
 // runExCommand parses and executes a ":" command line, returning any async
-// command. Errors and short feedback are reported via the transient status-bar
-// message (m.schemaMsg), mirroring the other action handlers.
+// command. Known verbs are dispatched through the ex command registry
+// (exCommands in excmd_registry.go); an unknown bare identifier in the
+// results view falls back to a column jump, preserving the legacy ":"
+// behaviour, and anything else is reported as E492. Errors and short feedback
+// are set via the transient status-bar message (m.schemaMsg).
 func (m *Model) runExCommand(input string) tea.Cmd {
 	verb, args, force := parseExLine(input)
-	switch verb {
-	case "e", "edit":
-		if len(args) == 0 {
-			m.schemaMsg = ":e needs a file path"
-			return nil
-		}
-		return m.exEditFile(args[0])
-	case "w", "write":
-		// With a file argument, write the editor buffer to disk (vim :w file);
-		// without one, :w saves staged cell edits (the legacy meaning).
-		if len(args) > 0 {
-			return m.exWriteFile(args[0])
-		}
-		return m.exWrite(force)
-	case "q", "quit":
-		return m.exQuit(force)
-	case "wq", "x":
-		cmd := m.saveEdits() // no-op when there are no dirty cells
-		if len(m.resultsTabs) > 1 {
-			m.closeTab(m.activeTabID)
-		} else {
-			m.schemaMsg = "cannot close the last tab"
-		}
-		return cmd
-	case "sort":
-		if len(args) == 0 {
-			m.schemaMsg = ":sort needs a column name"
-			return nil
-		}
-		return m.sortByColName(args[0])
-	case "goto", "gt":
-		if len(args) == 0 {
-			m.schemaMsg = ":goto needs a table name"
-			return nil
-		}
-		return m.exGoto(args[0])
-	case "export":
-		arg := ""
-		if len(args) > 0 {
-			arg = args[0]
-		}
-		return m.exExport(arg)
-	case "refs", "references":
-		arg := ""
-		if len(args) > 0 {
-			arg = args[0]
-		}
-		return m.exRefs(arg)
-	case "uses":
-		arg := ""
-		if len(args) > 0 {
-			arg = args[0]
-		}
-		return m.exUses(arg)
-	case "begin", "transaction":
-		return m.exBegin()
-	case "commit":
-		return m.exCommit()
-	case "rollback":
-		return m.exRollback()
-	case "help", "h":
-		m.help.Show()
-		return nil
-	default:
-		// Legacy ":" behaviour: in the results view a bare identifier jumps
-		// to the best-matching column. Use the original input so column-name
-		// case is preserved.
-		if m.focus == FocusResults && m.results.NumCols() > 0 && len(args) == 0 {
-			if idx := bestColumnMatch(m.results.columns, input); idx >= 0 {
-				m.results.SetCursor(m.results.CursorRow(), idx)
-				return nil
-			}
-		}
-		m.schemaMsg = fmt.Sprintf("E492: not a command: %s", input)
-		return nil
+	if spec := exLookup(verb); spec != nil {
+		return spec.run(m, args, force)
 	}
+	// Legacy fallback: in the results view a bare identifier jumps to the
+	// best-matching column. Use the original input so column-name case is
+	// preserved.
+	if m.focus == FocusResults && m.results.NumCols() > 0 && len(args) == 0 {
+		if idx := bestColumnMatch(m.results.columns, input); idx >= 0 {
+			m.results.SetCursor(m.results.CursorRow(), idx)
+			return nil
+		}
+	}
+	m.schemaMsg = fmt.Sprintf("E492: not a command: %s", input)
+	return nil
 }
 
 // exWrite commits staged cell edits (:w).

@@ -58,15 +58,22 @@ func (h HelpPanel) View() string {
 		}
 	}
 
+	// The Commands block (rendered from exCommands) sits below the keybinding
+	// columns; reserve its height plus a blank separator so the columns don't
+	// crowd it out.
+	cmdCount := len(exCommands())
+	cmdReserved := commandsBlockHeight(cmdCount) + 1
+
 	// sectionHeight returns the rendered line count of a single section
 	// (title + one line per binding).
 	sectionHeight := func(s Section) int { return 1 + len(s.Items) }
 
 	// Available content height inside the panel (terminal minus border(2),
-	// padding(2), header(1), blank(1), footer(1), blank(1)).
-	availH := h.height - 8
-	if availH < 20 {
-		availH = 20
+	// padding(2), header(1), blank(1), footer(1), blank(1), and the reserved
+	// Commands block).
+	availH := h.height - 8 - cmdReserved
+	if availH < 16 {
+		availH = 16
 	}
 
 	// Greedily distribute sections across columns so no column exceeds
@@ -123,6 +130,13 @@ func (h HelpPanel) View() string {
 	for i := range seps {
 		seps[i] = "    "
 	}
+	// Constrain to terminal size.
+	maxW := h.width - 4
+	if maxW < 40 {
+		maxW = 40
+	}
+	cmdBlock := renderCommandsBlock(maxW)
+
 	body := lipgloss.JoinHorizontal(lipgloss.Top, joinInterleaved(colStrs, seps)...)
 
 	header := lipgloss.NewStyle().
@@ -131,19 +145,13 @@ func (h HelpPanel) View() string {
 		Render("Keybindings")
 	footer := mutedStyle.Render("press ? or esc to close")
 
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		header,
-		"",
-		body,
-		"",
-		footer,
-	)
-
-	// Constrain to terminal size.
-	maxW := h.width - 4
-	if maxW < 40 {
-		maxW = 40
+	layers := []string{header, "", body}
+	if cmdBlock != "" {
+		layers = append(layers, "", cmdBlock)
 	}
+	layers = append(layers, "", footer)
+	content := lipgloss.JoinVertical(lipgloss.Left, layers...)
+
 	maxH := h.height - 2
 	if maxH < 10 {
 		maxH = 10
@@ -177,4 +185,66 @@ func joinInterleaved(items, seps []string) []string {
 		}
 	}
 	return result
+}
+
+// renderCommandsBlock renders the ":" commands (from exCommands) as a titled
+// two-column block for the help overlay: "usage   description" per row. It is
+// independent of the keybinding column layout (sized to key displays, far
+// narrower than command usages) so neither widens the other. maxWidth bounds
+// the block; descs are truncated to fit. Returns "" when there is no room.
+func renderCommandsBlock(maxWidth int) string {
+	cmds := exCommands()
+	if len(cmds) == 0 || maxWidth < 40 {
+		return ""
+	}
+	const descW = 30
+	usageW := 0
+	for _, c := range cmds {
+		if w := runeLen(c.usage); w > usageW {
+			usageW = w
+		}
+	}
+	half := (len(cmds) + 1) / 2
+	groups := [][]exCmdSpec{cmds[:half], cmds[half:]}
+	renderCol := func(items []exCmdSpec) string {
+		var b strings.Builder
+		for _, c := range items {
+			usage := lipgloss.NewStyle().Foreground(colorLabel).Render(c.usage)
+			usage += strings.Repeat(" ", usageW-runeLen(c.usage))
+			desc := lipgloss.NewStyle().Foreground(colorFg).Render(truncateRunes(c.desc, descW))
+			b.WriteString("  " + usage + "  " + desc + "\n")
+		}
+		return b.String()
+	}
+	left := renderCol(groups[0])
+	right := renderCol(groups[1])
+	body := lipgloss.JoinHorizontal(lipgloss.Top,
+		joinInterleaved([]string{left, right}, []string{"    "})...)
+	title := titleStyle.Render("Commands")
+	return lipgloss.JoinVertical(lipgloss.Left, title, body)
+}
+
+// truncateRunes clips s to max visible runes with a trailing "…" when clipped.
+// exCmdSpec.desc values are plain (unstyled) strings, so rune slicing is safe.
+func truncateRunes(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	if runeLen(s) <= max {
+		return s
+	}
+	r := []rune(s)
+	if len(r) > max-1 {
+		r = r[:max-1]
+	}
+	return string(r) + "…"
+}
+
+// commandsBlockHeight returns the rendered height of renderCommandsBlock for n
+// commands (title + ceil(n/2) rows across two columns), used to reserve space.
+func commandsBlockHeight(n int) int {
+	if n == 0 {
+		return 0
+	}
+	return 1 + (n+1)/2
 }

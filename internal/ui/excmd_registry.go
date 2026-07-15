@@ -1,0 +1,202 @@
+package ui
+
+import (
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+// exCmdSpec describes one ":" command: the verb(s) that invoke it, a short
+// description and usage string for help/autocomplete, an argument kind for
+// validation/hints, and the executor. The table returned by exCommands is the
+// single source of truth for the ":" command line; runExCommand resolves the
+// parsed verb here and calls the matching executor.
+//
+// verbs[0] is the canonical name (used in help/autocomplete); the rest are
+// aliases. Verb lookup is case-insensitive — parseExLine lower-cases the verb.
+type exCmdSpec struct {
+	verbs   []string // canonical first, then aliases (e.g. ["write", "w"])
+	desc    string   // short human description
+	usage   string   // usage shown in help/autocomplete, e.g. ":w [file]"
+	argKind exArgKind
+	run     func(m *Model, args []string, force bool) tea.Cmd
+}
+
+// exArgKind classifies a command's arguments, used by autocomplete hints and
+// (later) by argument completion.
+type exArgKind int
+
+const (
+	exArgNone     exArgKind = iota // no arguments
+	exArgOptional                  // zero or one argument
+	exArgRequired                  // exactly one argument required
+	exArgTable                     // optional table name; defaults to current
+)
+
+// exCommands returns every ":" command, in display order. To add a command,
+// append a spec here; runExCommand, autocomplete, and the help listing all
+// pick it up automatically. The executors are thin wrappers over the ex*
+// helper methods in excmd.go, so this table is pure dispatch — no logic lives
+// here that isn't "which verb runs which method with which args".
+func exCommands() []exCmdSpec {
+	return []exCmdSpec{
+		{
+			verbs:   []string{"edit", "e"},
+			desc:    "load a file into the editor",
+			usage:   ":e <file>",
+			argKind: exArgRequired,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				if len(args) == 0 {
+					m.schemaMsg = ":e needs a file path"
+					return nil
+				}
+				return m.exEditFile(args[0])
+			},
+		},
+		{
+			verbs:   []string{"write", "w"},
+			desc:    "save edits, or write the editor buffer to a file",
+			usage:   ":w [file]",
+			argKind: exArgOptional,
+			run: func(m *Model, args []string, force bool) tea.Cmd {
+				// With a file argument, write the editor buffer to disk
+				// (vim :w file); without one, :w saves staged cell edits
+				// (the legacy meaning).
+				if len(args) > 0 {
+					return m.exWriteFile(args[0])
+				}
+				return m.exWrite(force)
+			},
+		},
+		{
+			verbs:   []string{"quit", "q"},
+			desc:    "close the active tab",
+			usage:   ":q[!]",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, force bool) tea.Cmd { return m.exQuit(force) },
+		},
+		{
+			verbs:   []string{"wq", "x"},
+			desc:    "save edits and close the active tab",
+			usage:   ":wq",
+			argKind: exArgNone,
+			run: func(m *Model, _ []string, _ bool) tea.Cmd {
+				cmd := m.saveEdits() // no-op when there are no dirty cells
+				if len(m.resultsTabs) > 1 {
+					m.closeTab(m.activeTabID)
+				} else {
+					m.schemaMsg = "cannot close the last tab"
+				}
+				return cmd
+			},
+		},
+		{
+			verbs:   []string{"sort"},
+			desc:    "sort results by a column",
+			usage:   ":sort <column>",
+			argKind: exArgRequired,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				if len(args) == 0 {
+					m.schemaMsg = ":sort needs a column name"
+					return nil
+				}
+				return m.sortByColName(args[0])
+			},
+		},
+		{
+			verbs:   []string{"goto", "gt"},
+			desc:    "open a table by name (SELECT *)",
+			usage:   ":goto <table>",
+			argKind: exArgRequired,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				if len(args) == 0 {
+					m.schemaMsg = ":goto needs a table name"
+					return nil
+				}
+				return m.exGoto(args[0])
+			},
+		},
+		{
+			verbs:   []string{"export"},
+			desc:    "export the current result set to ~/Downloads",
+			usage:   ":export <csv|json|jsonl|md|tsv>",
+			argKind: exArgOptional,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				arg := ""
+				if len(args) > 0 {
+					arg = args[0]
+				}
+				return m.exExport(arg)
+			},
+		},
+		{
+			verbs:   []string{"refs", "references"},
+			desc:    "foreign keys referencing a table",
+			usage:   ":refs [table]",
+			argKind: exArgTable,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				arg := ""
+				if len(args) > 0 {
+					arg = args[0]
+				}
+				return m.exRefs(arg)
+			},
+		},
+		{
+			verbs:   []string{"uses"},
+			desc:    "objects referencing a table in their definition",
+			usage:   ":uses [table]",
+			argKind: exArgTable,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				arg := ""
+				if len(args) > 0 {
+					arg = args[0]
+				}
+				return m.exUses(arg)
+			},
+		},
+		{
+			verbs:   []string{"begin", "transaction"},
+			desc:    "start a manual transaction",
+			usage:   ":begin",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exBegin() },
+		},
+		{
+			verbs:   []string{"commit"},
+			desc:    "commit the active transaction",
+			usage:   ":commit",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exCommit() },
+		},
+		{
+			verbs:   []string{"rollback"},
+			desc:    "roll back the active transaction",
+			usage:   ":rollback",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exRollback() },
+		},
+		{
+			verbs:   []string{"help", "h"},
+			desc:    "open the help overlay",
+			usage:   ":help",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.help.Show(); return nil },
+		},
+	}
+}
+
+// exLookup resolves a parsed verb (already lower-cased by parseExLine) to its
+// command spec, or nil if no command matches. Linear scan: the registry is
+// small and lookup happens once per executed command, so a map cache isn't
+// worth the global state. The returned pointer is only valid for the duration
+// of the call (it points into a freshly built local slice).
+func exLookup(verb string) *exCmdSpec {
+	specs := exCommands()
+	for i := range specs {
+		for _, v := range specs[i].verbs {
+			if v == verb {
+				return &specs[i]
+			}
+		}
+	}
+	return nil
+}

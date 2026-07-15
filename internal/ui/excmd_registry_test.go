@@ -1,0 +1,63 @@
+package ui
+
+import "testing"
+
+// TestExRegistryConsistency mirrors the keybinding registry's consistency
+// test: every spec is well-formed and no verb is claimed by two commands.
+func TestExRegistryConsistency(t *testing.T) {
+	specs := exCommands()
+	if len(specs) == 0 {
+		t.Fatal("exCommands() returned no commands")
+	}
+	seen := map[string]int{}
+	for i, s := range specs {
+		if len(s.verbs) == 0 {
+			t.Errorf("spec #%d has no verbs", i)
+			continue
+		}
+		canonical := s.verbs[0]
+		if canonical == "" {
+			t.Errorf("spec #%d canonical verb is empty", i)
+		}
+		if s.desc == "" {
+			t.Errorf("command %q has empty Desc", canonical)
+		}
+		if s.usage == "" {
+			t.Errorf("command %q has empty Usage", canonical)
+		}
+		if s.run == nil {
+			t.Errorf("command %q has nil Run", canonical)
+		}
+		for _, v := range s.verbs {
+			if v == "" {
+				t.Errorf("command %q has an empty alias", canonical)
+				continue
+			}
+			if prev, ok := seen[v]; ok {
+				t.Errorf("verb %q claimed by both %q and %q",
+					v, specs[prev].verbs[0], canonical)
+			}
+			seen[v] = i
+		}
+	}
+}
+
+// TestExLookupResolvesKnownVerbs pins the verb/alias set so a refactor can't
+// silently drop a command name. The old switch could lose a case without any
+// test noticing; the registry dispatch can't, but the names themselves can
+// still drift, so this guards them explicitly.
+func TestExLookupResolvesKnownVerbs(t *testing.T) {
+	known := []string{
+		"e", "edit", "w", "write", "q", "quit", "wq", "x", "sort", "goto", "gt",
+		"export", "refs", "references", "uses", "begin", "transaction",
+		"commit", "rollback", "help", "h",
+	}
+	for _, v := range known {
+		if exLookup(v) == nil {
+			t.Errorf("exLookup(%q) = nil, want a command", v)
+		}
+	}
+	if exLookup("definitely-not-a-command") != nil {
+		t.Error("exLookup should return nil for an unknown verb")
+	}
+}
