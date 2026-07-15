@@ -9,10 +9,10 @@ import (
 
 // paletteItem is a single searchable entry in the command palette.
 type paletteItem struct {
-	display string // key display (e.g. "X", "ctrl+r")
-	desc    string // human description
-	section string // section title for context
-	token   string // dispatch token to replay ("" = not executable)
+	display string   // key display (e.g. "X", "ctrl+r")
+	desc    string   // human description
+	section string   // section title for context
+	replay  []string // key sequence to replay through dispatch (nil = not executable)
 }
 
 // palette is the fuzzy-searchable command palette overlay (Ctrl+P).
@@ -54,29 +54,59 @@ func buildPaletteItems() []paletteItem {
 				display: b.Display,
 				desc:    b.Desc,
 				section: sec.Title,
-				token:   b.execToken(),
+				replay:  b.replayTokens(),
 			})
 		}
 	}
 	return items
 }
 
-// execToken returns the dispatch token to replay when this binding is selected
-// in the palette, or "" if the binding cannot be directly executed. Bindings
-// with multiple tokens (alternative keys for different actions) and
-// double-press chords (dd, yy) are not directly executable.
-func (b Binding) execToken() string {
+// chordReplays maps a binding's Display to the explicit key sequence the
+// command palette replays for it. It covers chords (g d, g e, …) and double-
+// presses (dd, y y, ==) that can't be expressed as a single dispatch token.
+// The palette replays these through the normal dispatch with tea.Sequence, so
+// the stateful pending-G/pending-D flag set by the first key is consumed by
+// the second — there is no parallel code path. Keyed by Display;
+// TestChordReplaysAreRealBindings pins that every key is a real binding, so a
+// rename can't silently strand a chord.
+var chordReplays = map[string][]string{
+	"g x": {"g", "x"},
+	"g c": {"g", "c"},
+	"==":  {"=", "="},
+	"g d": {"g", "d"},
+	"g b": {"g", "b"},
+	"g f": {"g", "f"},
+	"g s": {"g", "s"},
+	"g e": {"g", "e"},
+	"g H": {"g", "H"},
+	"g /": {"g", "/"},
+	"g X": {"g", "X"},
+	"dd":  {"d", "d"},
+	"y y": {"y", "y"},
+}
+
+// replayTokens returns the key sequence the command palette should replay to
+// invoke this binding, or nil if it isn't directly executable. Chords and
+// double-presses (g d, dd, …) are looked up in chordReplays; a single-token
+// binding replays its one token. Multi-token "alternative" bindings (e.g.
+// "g t / g T", "ctrl+e / \") have no single replay sequence and return nil —
+// they'd need to be split into separate one-action entries to become
+// palette-reachable.
+func (b Binding) replayTokens() []string {
+	if seq, ok := chordReplays[b.Display]; ok {
+		return seq
+	}
 	if len(b.Tokens) != 1 {
-		return ""
+		return nil
 	}
 	t := b.Tokens[0]
-	// Detect double-press chords (dd, yy): the display starts with the
-	// token doubled once spaces are removed.
+	// Detect double-press chords (dd, yy) not listed in chordReplays: the
+	// display starts with the token doubled once spaces are removed.
 	compact := strings.ReplaceAll(b.Display, " ", "")
 	if strings.HasPrefix(compact, t+t) {
-		return ""
+		return nil
 	}
-	return t
+	return []string{t}
 }
 
 // refilter rebuilds the filtered list from the current input using fuzzy
@@ -108,12 +138,13 @@ func (p *palette) moveCursor(delta int) {
 	p.cursor = (p.cursor + delta + n) % n
 }
 
-// selectedToken returns the replay token for the highlighted item, or "".
-func (p palette) selectedToken() string {
+// selectedReplay returns the replay key sequence for the highlighted item, or
+// nil if it isn't directly executable.
+func (p palette) selectedReplay() []string {
 	if p.cursor < 0 || p.cursor >= len(p.filtered) {
-		return ""
+		return nil
 	}
-	return p.filtered[p.cursor].token
+	return p.filtered[p.cursor].replay
 }
 
 // selectedDisplay returns the display string of the highlighted item.
@@ -133,16 +164,12 @@ func (p palette) Update(msg tea.KeyMsg) (palette, tea.Cmd) {
 		p.visible = false
 		return p, nil
 	case "enter":
-		token := p.selectedToken()
+		seq := p.selectedReplay()
 		p.visible = false
-		if token == "" {
+		if len(seq) == 0 {
 			return p, nil
 		}
-		kmsg, ok := synthesizeKeyMsg(token)
-		if !ok {
-			return p, nil
-		}
-		return p, func() tea.Msg { return kmsg }
+		return p, replayKeySequence(seq)
 	case "up", "ctrl+p":
 		p.moveCursor(-1)
 		return p, nil

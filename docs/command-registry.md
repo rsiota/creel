@@ -54,10 +54,26 @@ picks them up.
 - `:commands` listing; fold Ex verbs into the `?` help sheet (verb, usage, desc).
 - Drift test: every spec appears in the help output.
 
-### Step 3 — Action layer + palette-by-action
-- `Action` type: ID, keybinding (display+tokens), optional ex verbs, executor.
-- Palette calls executors by ID instead of replaying keys → chords become
-  reachable. Key dispatch stays as-is initially; `:` and palette share executors.
+### Step 3 — Palette reaches chords (sequence replay) ✅ DONE
+The palette now replays chord/double-press bindings through the *existing*
+dispatch via `tea.Sequence` (no parallel executors, no behaviour divergence):
+- `palette.go`: `paletteItem.token` → `replay []string`; `Binding.replayTokens()`
+  resolves an explicit sequence from `chordReplays`, else a single token, else nil.
+- `keymsg.go`: `replayKeySequence` builds a `tea.Sequence` of synthesised keys so
+  the stateful pending-G/pending-D flag set by key 1 is consumed by key 2.
+- `chordReplays` (palette.go) lists the unambiguous single-action chords now
+  reachable from Ctrl+P: `g d/b/f/s/e/H//X`, `g c`, `g x`, `dd`, `y y`, `==`.
+  Alternative-action lines (`g t / g T`, `g g / G`, `ctrl+e / \`) stay
+  non-executable until split into one-action entries.
+- Tests: `TestPaletteChordsExecutableViaSequence`, `TestReplayKeySequence`,
+  `TestChordReplaysAreRealBindings` (drift guard).
+
+The full `Action` type (ID + keybinding + ex verbs + executor, merging the
+keybinding and ex registries) was DEFERRED — sequence-replay already delivers
+the reachability goal without a big refactor or behaviour-divergence risk.
+Known limitation (pre-existing, shared with single-key palette actions): a
+results-context chord only fires when results is focused, since replay drives
+the panel-specific dispatch.
 
 ### Step 4 — Semantic fixes
 - `:q` = quit app (vim); `:bd`/`:tabclose` = close tab.

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -100,10 +101,10 @@ func TestPaletteEnterExecutableSingleKey(t *testing.T) {
 	var p palette
 	p.Open()
 
-	// Find a single-token binding (e.g. "ctrl+r" — clear editor).
+	// Find a single-token binding (e.g. "ctrl+r" — refresh).
 	target := -1
 	for i, it := range p.items {
-		if it.token != "" && it.token == "ctrl+r" {
+		if len(it.replay) == 1 && it.replay[0] == "ctrl+r" {
 			target = i
 			break
 		}
@@ -114,9 +115,9 @@ func TestPaletteEnterExecutableSingleKey(t *testing.T) {
 
 	// Navigate to it.
 	p.cursor = target
-	token := p.selectedToken()
-	if token != "ctrl+r" {
-		t.Fatalf("expected token 'ctrl+r', got %q", token)
+	seq := p.selectedReplay()
+	if len(seq) != 1 || seq[0] != "ctrl+r" {
+		t.Fatalf("expected replay [ctrl+r], got %v", seq)
 	}
 
 	p, cmd := p.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -132,10 +133,11 @@ func TestPaletteEnterNonExecutable(t *testing.T) {
 	var p palette
 	p.Open()
 
-	// Find a multi-token binding (not executable).
+	// Find a multi-token "alternative" binding (not executable): e.g. "g t / g T"
+	// or "ctrl+e / \".
 	target := -1
 	for i, it := range p.items {
-		if it.token == "" {
+		if len(it.replay) == 0 {
 			target = i
 			break
 		}
@@ -209,17 +211,64 @@ func TestPaletteDescriptionAlignmentWithArrowKeys(t *testing.T) {
 	}
 }
 
-func TestPaletteDoublePressNotExecutable(t *testing.T) {
-	// The "dd" and "y y" chords use a pending-boolean mechanism — a single
-	// keypress won't trigger them, so they must not be marked executable.
+// Chords and double-presses are reachable from the palette by replaying their
+// key sequence through the normal (stateful) dispatch — the pending-G /
+// pending-D flag set by the first key is consumed by the second. This is the
+// behaviour change Step 3 introduces: these used to be non-executable.
+func TestPaletteChordsExecutableViaSequence(t *testing.T) {
 	var p palette
 	p.Open()
+	want := map[string][]string{
+		"g d": {"g", "d"},
+		"g e": {"g", "e"},
+		"g s": {"g", "s"},
+		"g X": {"g", "X"},
+		"g c": {"g", "c"},
+		"dd":  {"d", "d"},
+		"y y": {"y", "y"},
+		"==":  {"=", "="},
+	}
+	seen := map[string]bool{}
 	for _, it := range p.items {
-		if it.display == "dd" && it.token != "" {
-			t.Errorf("dd binding should not be executable, got token %q", it.token)
+		if exp, ok := want[it.display]; ok {
+			seen[it.display] = true
+			if !reflect.DeepEqual(it.replay, exp) {
+				t.Errorf("binding %q replay = %v, want %v", it.display, it.replay, exp)
+			}
 		}
-		if it.display == "y y" && it.token != "" {
-			t.Errorf("y y binding should not be executable, got token %q", it.token)
+	}
+	for k := range want {
+		if !seen[k] {
+			t.Errorf("expected a palette item for %q", k)
+		}
+	}
+}
+
+func TestReplayKeySequence(t *testing.T) {
+	if replayKeySequence(nil) != nil {
+		t.Error("empty sequence should yield nil cmd")
+	}
+	if replayKeySequence([]string{"g", "d"}) == nil {
+		t.Error("sequence [g d] should yield a non-nil cmd")
+	}
+	// An unsynthesizable token aborts the whole sequence (nothing replayed).
+	if replayKeySequence([]string{"g", ""}) != nil {
+		t.Error("sequence with a bad token should yield nil")
+	}
+}
+
+// Every chordReplays entry must correspond to a real binding Display, so
+// renaming a binding can't silently strand a chord replay.
+func TestChordReplaysAreRealBindings(t *testing.T) {
+	displays := map[string]bool{}
+	for _, sec := range registry() {
+		for _, b := range sec.Items {
+			displays[b.Display] = true
+		}
+	}
+	for k := range chordReplays {
+		if !displays[k] {
+			t.Errorf("chordReplays key %q is not a binding Display", k)
 		}
 	}
 }

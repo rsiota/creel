@@ -53,3 +53,29 @@ func synthesizeKeyMsg(token string) (tea.KeyMsg, bool) {
 
 	return tea.KeyMsg{}, false
 }
+
+// replayKeySequence builds a tea.Cmd that synthesizes the given key sequence
+// through the normal dispatch. A single key produces one command; a chord
+// (e.g. ["g","d"]) uses tea.Sequence so the stateful pending-G/pending-D flag
+// set by the first key is still set when the second arrives (the command
+// palette drives the same dispatch a real keypress would). Returns nil — and
+// replays nothing — if any token can't be synthesized.
+func replayKeySequence(seq []string) tea.Cmd {
+	var cmds []tea.Cmd
+	for _, tok := range seq {
+		kmsg, ok := synthesizeKeyMsg(tok)
+		if !ok {
+			return nil
+		}
+		msg := kmsg
+		cmds = append(cmds, func() tea.Msg { return msg })
+	}
+	switch len(cmds) {
+	case 0:
+		return nil
+	case 1:
+		return cmds[0]
+	default:
+		return tea.Sequence(cmds...)
+	}
+}
