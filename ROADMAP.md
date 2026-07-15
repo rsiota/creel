@@ -267,8 +267,9 @@ distinct; a command that just replays an existing key is low value.
 **Tier 2 — monitoring & graph (bigger builds):**
 - `:watch [n]` — re-run the current query every n seconds; `:watch off`.
 - `:tail <table>` — stream newly-appended rows (append-only / event tables).
-- `:refs <table>` — reverse foreign keys (who points at me); complements `g d`
-  (forward FK).
+- `:refs <table>` — ✅ done. Reverse foreign keys (who points at me);
+  complements `g d` (forward FK). Shown in a scrollable overlay panel.
+  Defaults to the current table with no argument.
 - `:uses <table>` — views / functions / procedures referencing a table
   (dependency graph).
 
@@ -306,8 +307,8 @@ remaining work is framed by the `:` command-set roadmap (#15). Next up:
 3. **`:`-line export shortcut** (#15 Tier 1) — ✅ done (2026-07-15):
    `:export <fmt>` reuses the #6 exporter (csv, json, jsonl, md, tsv),
    skipping the `g X` picker UI.
-4. **Monitoring commands** (#15 Tier 2) — `:watch`, `:tail`, `:refs`, `:uses`.
-   **← active next**
+4. **Monitoring commands** (#15 Tier 2) — `:refs` ✅ done (2026-07-15);
+   `:watch`, `:tail`, `:uses` remain. **← active next**
 5. **Session restore** (#9) — persistence delight feature.
 
 Original historical order (all complete): keyring storage (#1),

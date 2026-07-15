@@ -229,6 +229,32 @@ func (m *MySQL) ForeignKeys(table string) ([]ForeignKey, error) {
 	return fks, rows.Err()
 }
 
+// ReferencingForeignKeys returns FKs pointing AT the given table (the reverse
+// of ForeignKeys) by querying the referenced side of key_column_usage.
+func (m *MySQL) ReferencingForeignKeys(table string) ([]Referrer, error) {
+	rows, err := m.db.Query(
+		`SELECT table_name, column_name, referenced_column_name
+		 FROM information_schema.key_column_usage
+		 WHERE table_schema = ? AND referenced_table_name = ?
+		 ORDER BY table_name, ordinal_position`,
+		m.config.Database, table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var refs []Referrer
+	for rows.Next() {
+		var tbl, col, refCol string
+		if err := rows.Scan(&tbl, &col, &refCol); err != nil {
+			return nil, err
+		}
+		refs = append(refs, Referrer{Table: tbl, Column: col, RefColumn: refCol})
+	}
+	return refs, rows.Err()
+}
+
 func (m *MySQL) TableColumnInfo(table string) ([]TableColumnInfo, error) {
 	rows, err := m.db.Query(
 		`SELECT column_name, column_type, is_nullable, column_default, column_key, extra

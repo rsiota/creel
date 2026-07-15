@@ -40,6 +40,8 @@ func (m Model) hintList() []string {
 		return []string{"enter", "j/k", "esc"}
 	case m.explainPanel.IsVisible():
 		return []string{"j/k", "esc"}
+	case m.refsPanel.IsVisible():
+		return []string{"j/k", "esc"}
 	case m.tableDesigner.IsVisible():
 		return hintsForSection("Table Designer")
 	case m.schemaEditor.IsVisible():

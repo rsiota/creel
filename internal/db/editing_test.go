@@ -144,3 +144,45 @@ func TestSQLiteForeignKeys(t *testing.T) {
 		t.Fatalf("unexpected FK: %+v", fks[0])
 	}
 }
+
+func TestSQLiteReferencingForeignKeys(t *testing.T) {
+	s := setupTestSQLite(t)
+
+	for _, q := range []string{
+		`CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT NOT NULL)`,
+		`CREATE TABLE employees (id INTEGER PRIMARY KEY, dept_id INTEGER, name TEXT, FOREIGN KEY (dept_id) REFERENCES departments(id))`,
+		`CREATE TABLE budgets (id INTEGER PRIMARY KEY, dept_id INTEGER, amount REAL, FOREIGN KEY (dept_id) REFERENCES departments(id))`,
+		`CREATE TABLE unrelated (id INTEGER PRIMARY KEY)`,
+	} {
+		if _, err := s.Exec(q); err != nil {
+			t.Fatalf("create table: %v\n%s", err, q)
+		}
+	}
+
+	refs, err := s.ReferencingForeignKeys("departments")
+	if err != nil {
+		t.Fatalf("ReferencingForeignKeys: %v", err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("expected 2 referrers of departments, got %d: %+v", len(refs), refs)
+	}
+	seen := map[string]bool{}
+	for _, r := range refs {
+		if r.Column != "dept_id" || r.RefColumn != "id" {
+			t.Errorf("unexpected referrer: %+v", r)
+		}
+		seen[r.Table] = true
+	}
+	if !seen["employees"] || !seen["budgets"] {
+		t.Errorf("expected employees and budgets; got %v", seen)
+	}
+
+	// A table nobody references returns nothing.
+	none, err := s.ReferencingForeignKeys("unrelated")
+	if err != nil {
+		t.Fatalf("ReferencingForeignKeys(unrelated): %v", err)
+	}
+	if len(none) != 0 {
+		t.Errorf("expected 0 referrers for unrelated, got %d: %+v", len(none), none)
+	}
+}

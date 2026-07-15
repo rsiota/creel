@@ -67,6 +67,11 @@ type DB interface {
 	PrimaryKeys(table string) ([]string, error)
 	// ForeignKeys returns outbound foreign keys defined on a table.
 	ForeignKeys(table string) ([]ForeignKey, error)
+	// ReferencingForeignKeys returns the foreign keys that reference the given
+	// table — other tables' FK columns pointing at it (the reverse of
+	// ForeignKeys). Useful for understanding delete/rename impact: "who
+	// depends on this table?".
+	ReferencingForeignKeys(table string) ([]Referrer, error)
 	// TableColumnInfo returns detailed column metadata for inserts and validation.
 	TableColumnInfo(table string) ([]TableColumnInfo, error)
 	// Execute runs a query and returns the result set.
@@ -225,6 +230,16 @@ type ForeignKey struct {
 	Column    string
 	RefTable  string
 	RefColumn string
+}
+
+// Referrer describes a foreign key that references a given (parent) table: the
+// child table and its FK column, plus the parent column they target. It is the
+// reverse of ForeignKey — ForeignKeys(table) lists table's outbound FKs;
+// ReferencingForeignKeys(table) lists other tables' FKs pointing IN at it.
+type Referrer struct {
+	Table     string // child table that owns the FK
+	Column    string // child's FK column
+	RefColumn string // parent column referenced
 }
 
 // Index describes a secondary index on a table. Columns holds the indexed

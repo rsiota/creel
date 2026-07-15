@@ -200,6 +200,12 @@ func (m *Model) runExCommand(input string) tea.Cmd {
 			arg = args[0]
 		}
 		return m.exExport(arg)
+	case "refs", "references":
+		arg := ""
+		if len(args) > 0 {
+			arg = args[0]
+		}
+		return m.exRefs(arg)
 	case "begin", "transaction":
 		return m.exBegin()
 	case "commit":
@@ -424,6 +430,57 @@ func (m *Model) exExport(arg string) tea.Cmd {
 		return nil
 	}
 	return m.exportResults(format)
+}
+
+// resolveTableName finds the canonical (sidebar) name for a table the user
+// typed: an exact case-insensitive match first, then a substring fallback.
+// Returns "" if nothing matches. Shared by ex commands that take a table arg.
+func (m Model) resolveTableName(name string) string {
+	items := m.sidebarItems()
+	for _, it := range items {
+		if !it.isColumn && strings.EqualFold(it.text, name) {
+			return it.text
+		}
+	}
+	needle := strings.ToLower(name)
+	for _, it := range items {
+		if !it.isColumn && strings.Contains(strings.ToLower(it.text), needle) {
+			return it.text
+		}
+	}
+	return ""
+}
+
+// exRefs lists the foreign keys referencing a table (:refs <table>) — the
+// reverse of g d. With no argument it uses the current table (the focused
+// sidebar selection or the results' source table), per the default-to-
+// current-object convention. The lookup runs async and opens in the refs
+// overlay panel. It reads connection metadata, so it is unaffected by (and
+// does not block on) an active transaction.
+func (m *Model) exRefs(name string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if name == "" {
+		if t := m.currentTable(); t != "" {
+			name = t
+		} else {
+			m.schemaMsg = ":refs needs a table name"
+			return nil
+		}
+	} else if resolved := m.resolveTableName(name); resolved != "" {
+		name = resolved
+	} else {
+		m.schemaMsg = fmt.Sprintf("no such table: %s", name)
+		return nil
+	}
+	conn := m.connection
+	table := name
+	return func() tea.Msg {
+		refs, err := conn.DB().ReferencingForeignKeys(table)
+		return refsResultMsg{table: table, refs: refs, err: err}
+	}
 }
 
 // lineCount returns the number of lines in s (a trailing newline does not add

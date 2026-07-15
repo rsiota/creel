@@ -170,6 +170,13 @@ type explainResultMsg struct {
 	err    error
 }
 
+// refsResultMsg carries the reverse-FK lookup result for ":refs <table>".
+type refsResultMsg struct {
+	table string
+	refs  []db.Referrer
+	err   error
+}
+
 // countMsg carries the total row count for the current table.
 type countMsg struct {
 	total int
@@ -279,6 +286,7 @@ type Model struct {
 	schemaEditor        SchemaEditor
 	cellEdit            CellEditPopup
 	explainPanel        ExplainPanel
+	refsPanel           RefsPanel
 	palette             palette
 	ex                  exCmd
 	sidebarCursor       int
@@ -1133,6 +1141,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			driver = m.connection.Config().Driver
 		}
 		m.explainPanel.Show(msg.result, driver)
+		return m, nil
+	case refsResultMsg:
+		if msg.err != nil {
+			m.schemaMsg = fmt.Sprintf("refs failed: %v", msg.err)
+			return m, nil
+		}
+		m.refsPanel.Show(msg.table, msg.refs)
 		return m, nil
 
 	case backendSearchTickMsg:
@@ -2039,6 +2054,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.explainPanel = m.explainPanel.Update(msg)
+		return m, nil
+	}
+
+	// Refs panel is modal — j/k scroll, esc/q close.
+	if m.refsPanel.IsVisible() {
+		switch msg.String() {
+		case "esc", "q", "ctrl+c":
+			m.refsPanel.Hide()
+			return m, nil
+		}
+		m.refsPanel = m.refsPanel.Update(msg)
 		return m, nil
 	}
 
@@ -3811,7 +3837,7 @@ func (m Model) viewWorkspace() string {
 
 	// Dim the workspace panels behind long-lived editing overlays.
 	// The status bar is kept undimmed so hints remain clearly visible.
-	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() || m.crossSearch.IsVisible() || m.explainPanel.IsVisible() {
+	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() || m.crossSearch.IsVisible() || m.explainPanel.IsVisible() || m.refsPanel.IsVisible() {
 		workspace = dimBackground(workspace)
 	}
 
@@ -3866,6 +3892,17 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, explainPanelView, panelX, panelY)
+	}
+
+	// Overlay refs panel if visible
+	if m.refsPanel.IsVisible() {
+		m.refsPanel.SetSize(m.width*70/100, (m.height-1)*70/100)
+		refsPanelView := m.refsPanel.View()
+		panelW := lipgloss.Width(refsPanelView)
+		panelH := lipgloss.Height(refsPanelView)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, refsPanelView, panelX, panelY)
 	}
 
 	// Overlay filter picker if visible

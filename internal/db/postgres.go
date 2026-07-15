@@ -293,6 +293,40 @@ func (p *Postgres) ForeignKeys(table string) ([]ForeignKey, error) {
 	return fks, rows.Err()
 }
 
+// ReferencingForeignKeys returns FKs pointing AT the given table (the reverse
+// of ForeignKeys) by joining the constraint's referencing side (key_column_usage)
+// against the referenced table (constraint_column_usage).
+func (p *Postgres) ReferencingForeignKeys(table string) ([]Referrer, error) {
+	rows, err := p.db.Query(
+		`SELECT kcu.table_name, kcu.column_name, ccu.column_name
+		 FROM information_schema.table_constraints tc
+		 JOIN information_schema.key_column_usage kcu
+		   ON tc.constraint_name = kcu.constraint_name
+		   AND tc.table_schema = kcu.table_schema
+		 JOIN information_schema.constraint_column_usage ccu
+		   ON tc.constraint_name = ccu.constraint_name
+		 WHERE tc.table_schema = current_schema()
+		   AND tc.constraint_type = 'FOREIGN KEY'
+		   AND ccu.table_name = $1
+		 ORDER BY kcu.table_name, kcu.ordinal_position`,
+		table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var refs []Referrer
+	for rows.Next() {
+		var tbl, col, refCol string
+		if err := rows.Scan(&tbl, &col, &refCol); err != nil {
+			return nil, err
+		}
+		refs = append(refs, Referrer{Table: tbl, Column: col, RefColumn: refCol})
+	}
+	return refs, rows.Err()
+}
+
 func (p *Postgres) TableColumnInfo(table string) ([]TableColumnInfo, error) {
 	rows, err := p.db.Query(
 		`SELECT

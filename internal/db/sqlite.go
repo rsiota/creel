@@ -161,6 +161,59 @@ func (s *SQLite) ForeignKeys(table string) ([]ForeignKey, error) {
 	return fks, rows.Err()
 }
 
+// ReferencingForeignKeys returns FKs pointing AT the given table (the reverse
+// of ForeignKeys). SQLite has no reverse-FK pragma, so every table's
+// foreign_key_list is scanned and rows whose referenced table matches are
+// collected. The match is case-insensitive to survive differing casing
+// between a user-typed name and the FK definition. O(tables) pragmas — fine
+// for typical schemas.
+func (s *SQLite) ReferencingForeignKeys(table string) ([]Referrer, error) {
+	tr, err := s.db.Query(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`)
+	if err != nil {
+		return nil, err
+	}
+	var tables []string
+	for tr.Next() {
+		var name string
+		if err := tr.Scan(&name); err != nil {
+			tr.Close()
+			return nil, err
+		}
+		tables = append(tables, name)
+	}
+	tr.Close()
+	if err := tr.Err(); err != nil {
+		return nil, err
+	}
+
+	var refs []Referrer
+	for _, t := range tables {
+		fr, err := s.db.Query(fmt.Sprintf(`PRAGMA foreign_key_list("%s")`, t))
+		if err != nil {
+			return nil, err
+		}
+		for fr.Next() {
+			var id, seq int
+			var refTable, localCol, refCol, onUpdate, onDelete, match string
+			if err := fr.Scan(&id, &seq, &refTable, &localCol, &refCol, &onUpdate, &onDelete, &match); err != nil {
+				fr.Close()
+				return nil, err
+			}
+			if strings.EqualFold(refTable, table) {
+				if refCol == "" {
+					refCol = "id"
+				}
+				refs = append(refs, Referrer{Table: t, Column: localCol, RefColumn: refCol})
+			}
+		}
+		fr.Close()
+		if err := fr.Err(); err != nil {
+			return nil, err
+		}
+	}
+	return refs, nil
+}
+
 func isIntegerType(typeName string) bool {
 	t := strings.ToUpper(strings.TrimSpace(typeName))
 	return strings.Contains(t, "INT")
