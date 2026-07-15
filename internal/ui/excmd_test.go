@@ -315,11 +315,14 @@ func TestExQuitGuards(t *testing.T) {
 			t.Errorf(":q! should close the tab, got %d tabs", len(m.resultsTabs))
 		}
 	})
-	t.Run("last tab refused", func(t *testing.T) {
+	t.Run("last tab quits app", func(t *testing.T) {
 		m := &Model{resultsTabs: []*ResultsTab{{ID: 1}}}
-		m.runExCommand("q")
-		if !strings.Contains(m.schemaMsg, "last tab") {
-			t.Errorf(":q last tab -> %q", m.schemaMsg)
+		cmd := m.runExCommand("q")
+		if !m.quitting {
+			t.Error(":q on the last tab should quit the app")
+		}
+		if cmd == nil {
+			t.Error(":q on the last tab should return tea.Quit")
 		}
 	})
 }
@@ -343,7 +346,18 @@ func TestExGoto(t *testing.T) {
 	}
 }
 
-// --- fallback column jump + unknown ---
+// Regression: :wq/:x on the last tab now quits the app (it used to refuse),
+// matching :q. With no dirty cells the save is a no-op so the quit is direct.
+func TestExWqLastTabQuits(t *testing.T) {
+	m := &Model{resultsTabs: []*ResultsTab{{ID: 1}}, results: NewResultsTable()}
+	cmd := m.runExCommand("x")
+	if !m.quitting {
+		t.Error(":x on the last tab should quit the app")
+	}
+	if cmd == nil {
+		t.Error(":x on the last tab should return a quit cmd")
+	}
+}
 
 func TestExFallbackColumnJump(t *testing.T) {
 	m := &Model{results: NewResultsTable(), focus: FocusResults}

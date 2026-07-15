@@ -68,24 +68,29 @@ func exCommands() []exCmdSpec {
 		},
 		{
 			verbs:   []string{"quit", "q"},
-			desc:    "close the active tab",
+			desc:    "close the active tab (quit if last)",
 			usage:   ":q[!]",
 			argKind: exArgNone,
 			run:     func(m *Model, _ []string, force bool) tea.Cmd { return m.exQuit(force) },
 		},
 		{
 			verbs:   []string{"wq", "x"},
-			desc:    "save edits and close the active tab",
+			desc:    "save edits and close the tab (quit if last)",
 			usage:   ":wq",
 			argKind: exArgNone,
 			run: func(m *Model, _ []string, _ bool) tea.Cmd {
-				cmd := m.saveEdits() // no-op when there are no dirty cells
+				save := m.saveEdits() // no-op when there are no dirty cells
 				if len(m.resultsTabs) > 1 {
 					m.closeTab(m.activeTabID)
-				} else {
-					m.schemaMsg = "cannot close the last tab"
+					return save
 				}
-				return cmd
+				// Last tab: save (if any) then quit, sequenced so the write
+				// completes before the program exits.
+				m.quitting = true
+				if save == nil {
+					return tea.Quit
+				}
+				return tea.Sequence(save, tea.Quit)
 			},
 		},
 		{
@@ -180,6 +185,83 @@ func exCommands() []exCmdSpec {
 			usage:   ":help",
 			argKind: exArgNone,
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.help.Show(); return nil },
+		},
+		{
+			verbs:   []string{"explain"},
+			desc:    "show the query plan for the editor's statement",
+			usage:   ":explain",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.explainQuery() },
+		},
+		{
+			verbs:   []string{"refresh", "reload"},
+			desc:    "refresh schema and re-run the last query",
+			usage:   ":refresh",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.refreshSchema() },
+		},
+		{
+			verbs:   []string{"history"},
+			desc:    "toggle the query history panel",
+			usage:   ":history",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.toggleHistory(); return nil },
+		},
+		{
+			verbs:   []string{"bookmarks", "bm"},
+			desc:    "toggle the bookmarks panel",
+			usage:   ":bookmarks",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.toggleBookmarks(); return nil },
+		},
+		{
+			verbs:   []string{"describe", "desc"},
+			desc:    "open the structure view for a table",
+			usage:   ":describe [table]",
+			argKind: exArgTable,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				name := ""
+				if len(args) > 0 {
+					name = args[0]
+				}
+				return m.exDescribe(name)
+			},
+		},
+		{
+			verbs:   []string{"stats"},
+			desc:    "summary stats for a column (min/max/avg/…)",
+			usage:   ":stats [column]",
+			argKind: exArgOptional,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				arg := ""
+				if len(args) > 0 {
+					arg = args[0]
+				}
+				return m.exStats(arg)
+			},
+		},
+		{
+			verbs:   []string{"format"},
+			desc:    "format the SQL in the editor",
+			usage:   ":format",
+			argKind: exArgNone,
+			run: func(m *Model, _ []string, _ bool) tea.Cmd {
+				m.editor.SetValue(formatSQL(m.editor.Value()))
+				return nil
+			},
+		},
+		{
+			verbs:   []string{"theme"},
+			desc:    "switch to a named theme",
+			usage:   ":theme <name>",
+			argKind: exArgRequired,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				if len(args) == 0 {
+					m.schemaMsg = ":theme needs a name (try :theme dark)"
+					return nil
+				}
+				return m.exTheme(args[0])
+			},
 		},
 	}
 }

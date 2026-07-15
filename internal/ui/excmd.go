@@ -302,15 +302,18 @@ func (m *Model) exWrite(force bool) tea.Cmd {
 	return m.saveEdits()
 }
 
-// exQuit closes the active tab (:q). Unsaved edits block unless forced (:q!).
+// exQuit closes the active tab (:q), or quits the app when it is the last tab
+// — mirroring vim, where :q on the final window exits. (The q / ctrl+q keys
+// quit unconditionally; :q reaches the same path once no tabs remain.) Unsaved
+// edits block unless forced (:q!).
 func (m *Model) exQuit(force bool) tea.Cmd {
 	if !force && m.results.HasDirtyCells() {
 		m.schemaMsg = "unsaved changes — use :q! to discard"
 		return nil
 	}
 	if len(m.resultsTabs) <= 1 {
-		m.schemaMsg = "cannot close the last tab"
-		return nil
+		m.quitting = true
+		return tea.Quit
 	}
 	m.closeTab(m.activeTabID)
 	return nil
@@ -590,6 +593,79 @@ func (m *Model) exUses(name string) tea.Cmd {
 			result: db.Result{Columns: cols, Rows: rows},
 		}
 	}
+}
+
+// exDescribe opens the structure view for a table (:describe [table]),
+// defaulting to the current table. It reuses resolveTableArg (so it works
+// unqualified on the focused/last-queried table) and points the sidebar at
+// the resolved table so openSchemaPanel — which reads the sidebar selection —
+// targets it. The d key does the same for the sidebar cursor; this adds a
+// name-addressable path.
+func (m *Model) exDescribe(name string) tea.Cmd {
+	table := m.resolveTableArg(name)
+	if table == "" {
+		return nil
+	}
+	items := m.sidebarItems()
+	for i, it := range items {
+		if !it.isColumn && it.text == table {
+			m.sidebarCursor = i
+			m.sidebarViewAnchored = false
+			break
+		}
+	}
+	return m.openSchemaPanel()
+}
+
+// exStats shows summary statistics for a column (:stats [column]), defaulting
+// to the cursor column. With an argument it first moves the cursor to that
+// column (case-insensitive exact match), so fetchColumnStats — which reads the
+// cursor column — summarizes it.
+func (m *Model) exStats(arg string) tea.Cmd {
+	if m.results.NumRows() == 0 || m.connection == nil {
+		m.schemaMsg = "no results to summarize"
+		return nil
+	}
+	if arg != "" {
+		idx := -1
+		for i := 0; i < m.results.NumCols(); i++ {
+			if strings.EqualFold(m.results.ColumnName(i), arg) {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			m.schemaMsg = fmt.Sprintf("no such column: %s", arg)
+			return nil
+		}
+		m.results.SetCursor(m.results.CursorRow(), idx)
+	}
+	return m.fetchColumnStats()
+}
+
+// exTheme switches to a named theme (:theme <name>), applying it live and
+// persisting the choice — the non-interactive counterpart of the g c picker.
+// The name must match a known theme (case-insensitive).
+func (m *Model) exTheme(name string) tea.Cmd {
+	resolved := ""
+	for _, t := range themeNames() {
+		if strings.EqualFold(t, name) {
+			resolved = t
+			break
+		}
+	}
+	if resolved == "" {
+		m.schemaMsg = fmt.Sprintf("no such theme: %s", name)
+		return nil
+	}
+	m.settings.Theme = resolved
+	if m.config != nil {
+		m.config.Settings.Theme = resolved
+		_ = m.config.Save()
+	}
+	applyPalette(paletteForTheme(resolved))
+	m.schemaMsg = "theme: " + resolved
+	return nil
 }
 
 // lineCount returns the number of lines in s (a trailing newline does not add

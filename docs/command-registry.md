@@ -75,14 +75,33 @@ Known limitation (pre-existing, shared with single-key palette actions): a
 results-context chord only fires when results is focused, since replay drives
 the panel-specific dispatch.
 
-### Step 4 — Semantic fixes
-- `:q` = quit app (vim); `:bd`/`:tabclose` = close tab.
-- Split the `:w` overload.
-- Update tests + help.
+### Step 4 — Semantic fixes ✅ DONE
+- `:q`/`:q!` now closes the active tab, and quits the app when it is the last
+  tab — vim-true (`:q` on the final window exits), resolving the `:q`/`q`/`g x`
+  clash WITHOUT adding a `:bd`/`:tabclose` command. `:wq`/`:x` save then close
+  the tab, or save-then-quit if last (sequenced via `tea.Sequence` so the write
+  completes before exit).
+- `:w` left as-is: the `:w` (save edits) / `:w <file>` (write buffer) overload
+  mirrors vim's `:w`/`:w file` and is documented in help; splitting it would
+  add commands without clear benefit. The `ctrl+s` overlap is intended (two
+  interfaces, one action).
+- Tests: `:q` last-tab now quits (was refused); added `:x` last-tab-quit.
 
-### Step 5 — High-value aliases (now one table entry each)
-`:describe`/`:desc`, `:explain`, `:stats`, `:connect`, `:theme`, `:refresh`,
-`:readonly`, `:history`, `:bookmarks`, `:format`.
+### Step 5 — High-value aliases ✅ DONE
+Added as single registry entries (autocomplete + help pick them up for free):
+`:explain`, `:refresh`/`:reload`, `:history`, `:bookmarks`/`:bm`,
+`:describe`/`:desc [table]`, `:stats [column]`, `:format`, `:theme <name>`.
+
+Each shares the SAME implementation as its keybinding, not a duplicate:
+- `:refresh`/`:reload`, `:history`, `:bookmarks` call freshly-extracted
+  `refreshSchema` / `toggleHistory` / `toggleBookmarks`, now also used by
+  ctrl+r / ctrl+y / ctrl+g.
+- `:explain`→`explainQuery`, `:stats`→`fetchColumnStats`,
+  `:describe`→`openSchemaPanel`, `:format`→`formatSQL` (the editor `==` path).
+
+Deferred: `:connect <name>` (async connect + keyring — not a quick alias) and
+`:readonly` (a connection/CLI flag opened at engine level, not a runtime
+toggle). Tests: `excmd_aliases_test.go`; known-verb set extended.
 
 ### Step 6 (optional) — `:map` / keymap config
 Enabled once actions have stable IDs + executors.

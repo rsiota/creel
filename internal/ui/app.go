@@ -629,6 +629,63 @@ func (m *Model) clearPendingG() {
 	m.inspector.pendingG = false
 }
 
+// refreshSchema reloads table/column metadata and re-runs the last query,
+// matching ctrl+r. Shared by the keybinding and the ":refresh" command so the
+// two cannot drift. A no-op while edits are pending (a re-run would discard
+// them). It is a pointer method so both the value-receiver key dispatch
+// (invoked as a statement before return) and the pointer-receiver ex dispatch
+// share one implementation.
+func (m *Model) refreshSchema() tea.Cmd {
+	if m.results.IsEditing() || m.results.HasDirtyCells() || m.inspector.IsInserting() {
+		return nil
+	}
+	m.loadTables()
+	cmd := m.prefetchSchemas()
+	if m.lastQuery != "" {
+		m.page = 0
+		m.filters = nil
+		m.sortCol = ""
+		m.sortDir = ""
+		m.queryStack = nil
+		m.schemaMsg = "refreshed schema & results"
+		return tea.Batch(cmd, m.runPageQuery())
+	}
+	m.schemaMsg = "refreshed schema"
+	return cmd
+}
+
+// toggleHistory opens/closes the query history panel, loading entries for the
+// current connection. Shared by ctrl+y and ":history".
+func (m *Model) toggleHistory() {
+	if m.connection == nil {
+		return
+	}
+	if m.history.IsVisible() {
+		m.history.Toggle()
+		return
+	}
+	if entries, err := m.historyStore.Get(m.connection.Config().Name); err == nil {
+		m.history.SetEntries(entries)
+	}
+	m.history.Toggle()
+}
+
+// toggleBookmarks opens/closes the bookmarks panel, loading entries for the
+// current connection. Shared by ctrl+g and ":bookmarks".
+func (m *Model) toggleBookmarks() {
+	if m.connection == nil {
+		return
+	}
+	if m.bookmarks.IsVisible() {
+		m.bookmarks.Toggle()
+		return
+	}
+	if entries, err := m.bookmarkStore.Get(m.connection.Config().Name); err == nil {
+		m.bookmarks.SetEntries(entries)
+	}
+	m.bookmarks.Toggle()
+}
+
 // handleTabKey processes workspace-global g-chord keybindings that work
 // from any focused panel (except the editor in insert mode). Returns true if
 // the key was consumed.
@@ -2123,17 +2180,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "ctrl+y":
-		if m.connection != nil {
-			if m.history.IsVisible() {
-				m.history.Toggle()
-			} else {
-				entries, err := m.historyStore.Get(m.connection.Config().Name)
-				if err == nil {
-					m.history.SetEntries(entries)
-				}
-				m.history.Toggle()
-			}
-		}
+		m.toggleHistory()
 		return m, nil
 	case "ctrl+e":
 		return m, m.executeQuery()
@@ -2160,22 +2207,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "ctrl+r":
 		// Refresh schema (tables + columns) and re-run the last query.
-		// Block while editing to avoid discarding unsaved changes.
-		if m.results.IsEditing() || m.results.HasDirtyCells() || m.inspector.IsInserting() {
-			return m, nil
-		}
-		m.loadTables()
-		cmd := m.prefetchSchemas()
-		if m.lastQuery != "" {
-			m.page = 0
-			m.filters = nil
-			m.sortCol = ""
-			m.sortDir = ""
-			m.queryStack = nil
-			m.schemaMsg = "refreshed schema & results"
-			return m, tea.Batch(cmd, m.runPageQuery())
-		}
-		m.schemaMsg = "refreshed schema"
+		cmd := m.refreshSchema()
 		return m, cmd
 	case "ctrl+w":
 		m.editorMaximized = !m.editorMaximized
@@ -2188,18 +2220,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "ctrl+g":
-		// Toggle bookmarks panel.
-		if m.connection != nil {
-			if m.bookmarks.IsVisible() {
-				m.bookmarks.Toggle()
-			} else {
-				entries, err := m.bookmarkStore.Get(m.connection.Config().Name)
-				if err == nil {
-					m.bookmarks.SetEntries(entries)
-				}
-				m.bookmarks.Toggle()
-			}
-		}
+		m.toggleBookmarks()
 		return m, nil
 	case "B":
 		// Bookmark the current editor query.
