@@ -9,6 +9,17 @@ import (
 	"github.com/ruben/gsql/internal/secrets"
 )
 
+// rollbackTxn rolls back and clears any active manual transaction. It is a
+// no-op when none is open. Called at every connection lifecycle boundary
+// (switch, disconnect, database change) so an open transaction is never
+// orphaned on a closed or replaced connection.
+func (m *Model) rollbackTxn() {
+	if m.tx != nil {
+		_ = m.tx.Rollback()
+		m.tx = nil
+	}
+}
+
 // connectToDB establishes a connection to the selected database.
 func (m *Model) connectToDB() tea.Cmd {
 	name := m.connList.SelectedName()
@@ -40,6 +51,8 @@ func (m *Model) connectToDB() tea.Cmd {
 		return nil
 	}
 
+	// Replacing the connection ends any manual transaction on the old one.
+	m.rollbackTxn()
 	m.connection = conn
 	m.state = stateWorkspace
 	m.focus = FocusConnections
@@ -137,6 +150,8 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	if m.connection == nil || name == "" {
 		return nil
 	}
+	// UseDatabase may re-open the connection, orphaning an active transaction.
+	m.rollbackTxn()
 	if err := m.connection.UseDatabase(name); err != nil {
 		m.connError = err.Error()
 		return nil

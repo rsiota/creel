@@ -12,6 +12,9 @@ func (m *Model) execSchemaDDL(table, query string, action db.SchemaAction, newTa
 	if m.connection == nil || table == "" || query == "" {
 		return nil
 	}
+	if m.txnBlocksWrite() {
+		return nil
+	}
 	conn := m.connection
 	return func() tea.Msg {
 		_, err := conn.DB().Exec(query)

@@ -245,6 +245,9 @@ func (m *Model) saveEdits() tea.Cmd {
 	if !m.results.HasDirtyCells() || m.connection == nil {
 		return nil
 	}
+	if m.txnBlocksWrite() {
+		return nil
+	}
 
 	conn := m.connection
 	table := m.results.SourceTable()
@@ -359,6 +362,9 @@ func (m *Model) saveInsert() tea.Cmd {
 	if !m.inspector.IsInserting() || m.connection == nil || !m.results.IsEditable() {
 		return nil
 	}
+	if m.txnBlocksWrite() {
+		return nil
+	}
 
 	conn := m.connection
 	table := m.results.SourceTable()
@@ -441,6 +447,9 @@ func (m *Model) execTruncate(table string) tea.Cmd {
 	if m.connection == nil || table == "" {
 		return nil
 	}
+	if m.txnBlocksWrite() {
+		return nil
+	}
 	conn := m.connection
 	query := buildTruncateQuery(conn.Config().Driver, table)
 	return func() tea.Msg {
@@ -452,6 +461,9 @@ func (m *Model) execTruncate(table string) tea.Cmd {
 // execDeleteRows removes specific rows by PK asynchronously.
 func (m *Model) execDeleteRows(table, query string, count int) tea.Cmd {
 	if m.connection == nil || table == "" || query == "" {
+		return nil
+	}
+	if m.txnBlocksWrite() {
 		return nil
 	}
 	conn := m.connection

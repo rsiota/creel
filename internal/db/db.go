@@ -108,6 +108,13 @@ type DB interface {
 type Tx interface {
 	// Exec runs a statement that doesn't return rows (INSERT, UPDATE, DELETE).
 	Exec(query string, args ...interface{}) (ExecResult, error)
+	// Execute runs a statement and returns its result set. Run on the
+	// transaction, it sees uncommitted changes made earlier in this tx —
+	// this is what makes a manual transaction useful (stage writes, then
+	// SELECT to verify before committing).
+	Execute(query string) (Result, error)
+	// ExecuteContext is Execute with cancellation support.
+	ExecuteContext(ctx context.Context, query string) (Result, error)
 	// Commit makes the transaction's changes permanent.
 	Commit() error
 	// Rollback discards the transaction's changes.
@@ -181,6 +188,17 @@ func (t *sqlTx) Exec(query string, args ...interface{}) (ExecResult, error) {
 		return ExecResult{}, err
 	}
 	return ExecResult{RowsAffected: affected}, nil
+}
+
+// Execute / ExecuteContext let a transaction return result sets (SELECTs run
+// on the tx see earlier uncommitted writes) by reusing the shared executeRows
+// path, which only needs QueryContext — common to *sql.DB and *sql.Tx.
+func (t *sqlTx) Execute(query string) (Result, error) {
+	return t.ExecuteContext(context.Background(), query)
+}
+
+func (t *sqlTx) ExecuteContext(ctx context.Context, query string) (Result, error) {
+	return executeRows(ctx, t.tx, query)
 }
 
 func (t *sqlTx) Commit() error   { return t.tx.Commit() }
@@ -320,9 +338,16 @@ func (c *Connection) UseDatabase(name string) error {
 	return nil
 }
 
-// executeRows runs a query against a *sql.DB with context support and builds a
-// Result. It is shared by all drivers.
-func executeRows(ctx context.Context, database *sql.DB, query string) (Result, error) {
+// queryRunner is the subset of *sql.DB / *sql.Tx that executeRows needs
+// (QueryContext). Accepting the interface lets a transaction return result
+// sets through the same row-scanning path as a plain connection.
+type queryRunner interface {
+	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+}
+
+// executeRows runs a query against a *sql.DB or *sql.Tx with context support
+// and builds a Result. It is shared by all drivers and by sqlTx.
+func executeRows(ctx context.Context, database queryRunner, query string) (Result, error) {
 	start := time.Now()
 
 	rows, err := database.QueryContext(ctx, query)

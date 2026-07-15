@@ -181,6 +181,12 @@ func (m *Model) runExCommand(input string) tea.Cmd {
 			return nil
 		}
 		return m.exGoto(args[0])
+	case "begin", "transaction":
+		return m.exBegin()
+	case "commit":
+		return m.exCommit()
+	case "rollback":
+		return m.exRollback()
 	case "help", "h":
 		m.help.Show()
 		return nil
@@ -251,4 +257,99 @@ func (m *Model) exGoto(name string) tea.Cmd {
 	m.sidebarViewAnchored = false
 	m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s;", items[target].text))
 	return m.executeQuery()
+}
+
+// exBegin starts a manual transaction (:begin). While it is active, statements
+// run from the editor execute on the tx — so SELECTs see the tx's own
+// uncommitted writes — and :commit / :rollback finish it. Cell edits / inserts
+// / deletes / DDL are refused for the duration (they use their own autocommit
+// path and would commit outside the tx). Refused while read-only, while a
+// query is in flight, or when a transaction is already open.
+//
+// begin/commit/rollback run synchronously: they're rare, explicit actions
+// that transfer no row data, and doing them inline (rather than as a goroutine
+// command) keeps the tx lifecycle single-threaded. The queryRunning guard
+// ensures no in-flight query goroutine is touching the tx when they run.
+func (m *Model) exBegin() tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if m.isReadOnly() {
+		m.schemaMsg = "read-only: transactions disabled"
+		return nil
+	}
+	if m.tx != nil {
+		m.schemaMsg = "transaction already in progress — use :commit or :rollback"
+		return nil
+	}
+	if m.queryRunning {
+		m.schemaMsg = "wait for the running query to finish"
+		return nil
+	}
+	tx, err := m.connection.DB().Begin()
+	if err != nil {
+		m.schemaMsg = "begin failed: " + err.Error()
+		return nil
+	}
+	m.tx = tx
+	m.schemaMsg = "transaction started — :commit or :rollback to finish"
+	return nil
+}
+
+// exCommit commits the active manual transaction (:commit). The displayed
+// results are left as-is; re-run a SELECT (or ctrl+r) to see the committed
+// state. We deliberately do NOT auto-re-run the statement under the cursor —
+// after a write that would re-execute it outside the tx (a double apply).
+func (m *Model) exCommit() tea.Cmd {
+	if m.tx == nil {
+		m.schemaMsg = "no transaction in progress"
+		return nil
+	}
+	if m.queryRunning {
+		m.schemaMsg = "wait for the running query to finish"
+		return nil
+	}
+	if err := m.tx.Commit(); err != nil {
+		m.schemaMsg = "commit failed: " + err.Error()
+		m.tx = nil // don't reuse a (likely) dead tx
+		return nil
+	}
+	m.tx = nil
+	m.schemaMsg = "transaction committed"
+	return nil
+}
+
+// exRollback discards the active manual transaction (:rollback).
+func (m *Model) exRollback() tea.Cmd {
+	if m.tx == nil {
+		m.schemaMsg = "no transaction in progress"
+		return nil
+	}
+	if m.queryRunning {
+		m.schemaMsg = "wait for the running query to finish"
+		return nil
+	}
+	if err := m.tx.Rollback(); err != nil {
+		m.schemaMsg = "rollback failed: " + err.Error()
+		m.tx = nil
+		return nil
+	}
+	m.tx = nil
+	m.schemaMsg = "transaction rolled back"
+	return nil
+}
+
+// txnBlocksWrite reports whether a manual transaction is active and, if so,
+// sets a transient status-bar message explaining why the write was refused.
+// Cell edits, inserts, deletes, and DDL each use their own autocommit path; if
+// allowed during a transaction they'd commit outside it, surprising the user
+// (and on MySQL/PG, DDL would implicitly commit the whole tx). Blocking them
+// keeps transaction semantics honest.
+func (m *Model) txnBlocksWrite() bool {
+	if m.tx != nil {
+		m.schemaMsg = "transaction active — :commit or :rollback before editing"
+		return true
+	}
+	return false
 }

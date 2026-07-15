@@ -159,6 +159,10 @@ func (m Model) statusBar(connName string) string {
 			fmt.Sprintf("VISUAL %d", m.results.VisualRangeSize())))
 	}
 
+	if m.tx != nil {
+		parts = append(parts, sbAccent.Render("TXN ●"))
+	}
+
 	if t := m.currentTable(); t != "" {
 		parts = append(parts,
 			sbLabel.Render(t))

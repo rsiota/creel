@@ -179,6 +179,7 @@ func (m *Model) runPageQuery() tea.Cmd {
 	query := strings.TrimRight(m.lastQuery, ";")
 
 	conn := m.connection
+	tx := m.tx // nil unless a manual transaction (:begin) is active
 	page := m.page
 	pageSize := m.pageSize
 	lastQuery := m.lastQuery
@@ -203,7 +204,19 @@ func (m *Model) runPageQuery() tea.Cmd {
 	}
 
 	execCmd := func() tea.Msg {
-		result, err := conn.DB().ExecuteContext(ctx, execQuery)
+		// Run on the active manual transaction when one is open, so reads see
+		// the tx's uncommitted writes and writes stage inside it. The ex
+		// guards (refuse :commit/:rollback while queryRunning) keep this
+		// goroutine from racing the tx lifecycle.
+		var (
+			result db.Result
+			err    error
+		)
+		if tx != nil {
+			result, err = tx.ExecuteContext(ctx, execQuery)
+		} else {
+			result, err = conn.DB().ExecuteContext(ctx, execQuery)
+		}
 		return queryExecutedMsg{
 			query:     lastQuery,
 			result:    result,

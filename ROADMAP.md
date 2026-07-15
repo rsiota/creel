@@ -61,21 +61,35 @@ PK, FKs, indexes, triggers, and view definitions.
 
 ## 🟡 Medium-value improvements
 
-### 5. User-facing transactions
-`Begin() (Tx, error)` exists and is used internally (`editing.go`). Expose a
-transaction mode: begin → stage writes → commit/rollback, with a status-bar
-indicator like `TXN ●`.
+### 5. User-facing transactions ✅ DONE (2026-07-15, v1)
+`Begin() (Tx, error)` was already used internally (`editing.go`) for atomic
+batched saves. v1 exposes a manual transaction via the ex line: `:begin` /
+`:commit` / `:rollback`, with a `TXN ●` status-bar indicator.
 
-**Command surface (Tier 1, see #15):** `:begin` / `:commit` / `:rollback` + a
-`TXN ●` status indicator. **Design fork:** the `Tx` interface is write-only
-today (`Exec`/`Commit`/`Rollback`, no `Query`), so v1 can only stage writes
-(via the cell-edit path on a held tx) and must accept that reads refresh
-after commit — a rollback leaves the UI's "saved" cells stale until a `ctrl+r`.
-A later v2 that lets you `SELECT` inside the tx to see uncommitted rows needs
-a `Query`/`Execute` method on `Tx` across all three drivers. Decide the v1/v2
-line before building.
-- Files: `internal/ui/app.go`, `internal/ui/excmd.go`, `internal/ui/editing.go`,
-  `internal/ui/statusbar.go`, `internal/ui/registry.go`.
+The planned v1/v2 fork (write-only Tx vs. read-in-tx) collapsed: extending
+`Tx` with `Execute`/`ExecuteContext` was cheap — `executeRows` only needed
+`QueryContext`, which `*sql.DB` and `*sql.Tx` already share, so a single
+interface change let a transaction return result sets. v1 therefore routes
+**editor-run statements** through the held tx: SELECTs run on the tx see its own
+uncommitted writes, so you can stage writes and verify them before committing.
+
+**Behaviour:**
+- `:begin` is refused while read-only, while a query is in flight, or when a
+  tx is already open; `:commit`/`:rollback` are refused with no tx or while a
+  query runs. begin/commit/rollback run synchronously (rare, transfer no row
+  data) and the `queryRunning` guard keeps them from racing in-flight query
+  goroutines.
+- Cell edits, inserts, deletes, and DDL are **blocked** for the duration
+  (`txnBlocksWrite`): they use their own autocommit path and would commit
+  outside the tx (and on MySQL/PG, DDL would implicitly commit the whole tx).
+  Staged local edits aren't lost — they persist until saved after the tx ends.
+- The tx is rolled back automatically at every connection lifecycle boundary
+  (switch, disconnect, database change) via `rollbackTxn`.
+- Files: `internal/db/db.go` (Tx.Execute, queryRunner), `internal/ui/app.go`,
+  `internal/ui/excmd.go`, `internal/ui/editing.go`, `internal/ui/schema_ops.go`,
+  `internal/ui/connection_ops.go`, `internal/ui/query.go`,
+  `internal/ui/statusbar.go`.
+  Tests: `internal/ui/transaction_test.go` (guards + live SQLite round-trip).
 
 ### 6. More export formats ✅ DONE (2026-07-11)
 The `g X` results-export path now offers a format picker (`format_picker.go`):
@@ -227,8 +241,7 @@ distinct; a command that just replays an existing key is low value.
 - **Stateful commands own a status-bar indicator** (`TXN ●`, `WATCH 5s`, …).
 
 **Tier 1 — parameterized / stateful, high value (start here):**
-- `:begin` / `:commit` / `:rollback` (+ `TXN` indicator) — see #5. Biggest
-  functional gap; `Begin()` exists.
+- `:begin` / `:commit` / `:rollback` (+ `TXN` indicator) — ✅ done, see #5.
 - `:w file.sql` / `:e file.sql` — save/load the editor buffer to/from disk —
   see #14. Cheap; reuses the statement splitter.
 - `:write results.<fmt>` / `:format <fmt>` — non-interactive shortcut to the
@@ -266,14 +279,13 @@ exists, then add via a tiny alias table — don't let them drive design.
 The original top three are all shipped (#1, #4, #3), and the two polish
 follow-ups are done (#7 `confirm_destructive`, #4 check constraints). The
 remaining work is framed by the `:` command-set roadmap (#15). Next up:
-1. **User-facing transactions** (#5, Tier 1 in #15) — `:begin` / `:commit` /
-   `:rollback` + a `TXN` status indicator. `Begin()` exists; the work is UI
-   routing, lifecycle (rollback on disconnect / connection-switch / quit),
-   read-only interplay, and the read-on-tx decision noted in #5/#15.
-   **← active next**
+1. **User-facing transactions** (#5, Tier 1 in #15) — ✅ done (2026-07-15):
+   `:begin` / `:commit` / `:rollback` + `TXN` indicator; editor statements route
+   through the held tx (reads see uncommitted writes); cell edits blocked
+   during the tx; auto-rollback on connection lifecycle changes.
 2. **`.sql` file integration** (#14, Tier 1 in #15) — `:e file.sql` load +
    `:w file.sql` save; reuses the statement splitter, mostly entry-point
-   wiring.
+   wiring. **← active next**
 3. **`:`-line export shortcut** (#15 Tier 1) — `:write results.<fmt>` /
    `:format <fmt>` as a non-interactive path over the #6 exporter.
 4. **Monitoring commands** (#15 Tier 2) — `:watch`, `:tail`, `:refs`, `:uses`.

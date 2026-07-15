@@ -347,7 +347,8 @@ type Model struct {
 
 	config            *config.Config
 	connection        *db.Connection
-	forceReadOnly     bool // --readonly CLI flag: forces every connection read-only
+	tx                db.Tx // active manual transaction (:begin/:commit/:rollback); nil = autocommit
+	forceReadOnly     bool  // --readonly CLI flag: forces every connection read-only
 	historyStore      *history.Store
 	historyNavEntries []string // cached queries for the current browse session
 	historyNavIdx     int      // -1 = not browsing; otherwise index into historyNavEntries (most recent = len-1)
@@ -1524,6 +1525,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "esc", "ctrl+c":
 			if m.dbPicker.MustChoose() {
+				m.rollbackTxn()
 				m.connection.Close()
 				m.connection = nil
 				m.dbPicker.Hide()
@@ -2227,6 +2229,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+t":
 		// Return to connection screen
 		if m.connection != nil {
+			m.rollbackTxn()
 			m.connection.Close()
 			m.connection = nil
 		}
