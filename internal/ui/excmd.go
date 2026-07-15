@@ -194,6 +194,12 @@ func (m *Model) runExCommand(input string) tea.Cmd {
 			return nil
 		}
 		return m.exGoto(args[0])
+	case "export":
+		arg := ""
+		if len(args) > 0 {
+			arg = args[0]
+		}
+		return m.exExport(arg)
 	case "begin", "transaction":
 		return m.exBegin()
 	case "commit":
@@ -403,6 +409,21 @@ func (m *Model) exWriteFile(path string) tea.Cmd {
 	}
 	m.schemaMsg = fmt.Sprintf("wrote %s (%d lines)", expanded, lineCount(content))
 	return nil
+}
+
+// exExport writes the current result set to ~/Downloads in the given format
+// (:export <fmt>) — a non-interactive shortcut over the g X export picker.
+// <fmt> is one of csv, json, jsonl, md, tsv (case-insensitive; "markdown" and
+// "json lines" are accepted). It reuses exportResults, so marked rows are
+// re-queried for complete data exactly as the picker does, and feedback flows
+// through the same export status message.
+func (m *Model) exExport(arg string) tea.Cmd {
+	format, ok := parseExportFormat(arg)
+	if !ok {
+		m.schemaMsg = ":export needs a format: csv, json, jsonl, md, tsv"
+		return nil
+	}
+	return m.exportResults(format)
 }
 
 // lineCount returns the number of lines in s (a trailing newline does not add

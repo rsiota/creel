@@ -40,6 +40,21 @@ var exportFormatExt = map[exportFormat]string{
 	fmtTSV:      "tsv",
 }
 
+// parseExportFormat resolves a user-typed format name (case-insensitive) to an
+// exportFormat. It accepts the canonical token ("csv"), the extension
+// ("md"), and the human label ("markdown", "json lines"). Used by the
+// ":export <fmt>" ex command — a non-interactive shortcut over the g X picker.
+// Returns false when the name doesn't match any format.
+func parseExportFormat(s string) (exportFormat, bool) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	for _, f := range exportFormats {
+		if s == string(f) || s == exportFormatExt[f] || s == strings.ToLower(exportFormatLabel[f]) {
+			return f, true
+		}
+	}
+	return "", false
+}
+
 // FormatPicker is a single-select overlay for choosing a results-export
 // format (opened with g x in the results panel). It remembers the last-used
 // format so the cursor starts there next time, keeping a repeat export a
