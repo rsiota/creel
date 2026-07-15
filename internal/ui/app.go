@@ -170,11 +170,12 @@ type explainResultMsg struct {
 	err    error
 }
 
-// refsResultMsg carries the reverse-FK lookup result for ":refs <table>".
-type refsResultMsg struct {
-	table string
-	refs  []db.Referrer
-	err   error
+// lookupResultMsg carries a lookup panel's title and result table, produced
+// by async ex commands like ":refs" and ":uses".
+type lookupResultMsg struct {
+	title  string
+	result db.Result
+	err    error
 }
 
 // countMsg carries the total row count for the current table.
@@ -286,7 +287,7 @@ type Model struct {
 	schemaEditor        SchemaEditor
 	cellEdit            CellEditPopup
 	explainPanel        ExplainPanel
-	refsPanel           RefsPanel
+	lookupPanel         LookupPanel
 	palette             palette
 	ex                  exCmd
 	sidebarCursor       int
@@ -1142,12 +1143,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.explainPanel.Show(msg.result, driver)
 		return m, nil
-	case refsResultMsg:
+	case lookupResultMsg:
 		if msg.err != nil {
-			m.schemaMsg = fmt.Sprintf("refs failed: %v", msg.err)
+			m.schemaMsg = fmt.Sprintf("lookup failed: %v", msg.err)
 			return m, nil
 		}
-		m.refsPanel.Show(msg.table, msg.refs)
+		m.lookupPanel.Show(msg.title, msg.result)
 		return m, nil
 
 	case backendSearchTickMsg:
@@ -2057,14 +2058,14 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Refs panel is modal — j/k scroll, esc/q close.
-	if m.refsPanel.IsVisible() {
+	// Lookup panel is modal — j/k scroll, esc/q close.
+	if m.lookupPanel.IsVisible() {
 		switch msg.String() {
 		case "esc", "q", "ctrl+c":
-			m.refsPanel.Hide()
+			m.lookupPanel.Hide()
 			return m, nil
 		}
-		m.refsPanel = m.refsPanel.Update(msg)
+		m.lookupPanel = m.lookupPanel.Update(msg)
 		return m, nil
 	}
 
@@ -3837,7 +3838,7 @@ func (m Model) viewWorkspace() string {
 
 	// Dim the workspace panels behind long-lived editing overlays.
 	// The status bar is kept undimmed so hints remain clearly visible.
-	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() || m.crossSearch.IsVisible() || m.explainPanel.IsVisible() || m.refsPanel.IsVisible() {
+	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() || m.crossSearch.IsVisible() || m.explainPanel.IsVisible() || m.lookupPanel.IsVisible() {
 		workspace = dimBackground(workspace)
 	}
 
@@ -3894,15 +3895,15 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, explainPanelView, panelX, panelY)
 	}
 
-	// Overlay refs panel if visible
-	if m.refsPanel.IsVisible() {
-		m.refsPanel.SetSize(m.width*70/100, (m.height-1)*70/100)
-		refsPanelView := m.refsPanel.View()
-		panelW := lipgloss.Width(refsPanelView)
-		panelH := lipgloss.Height(refsPanelView)
+	// Overlay lookup panel if visible
+	if m.lookupPanel.IsVisible() {
+		m.lookupPanel.SetSize(m.width*70/100, (m.height-1)*70/100)
+		lookupPanelView := m.lookupPanel.View()
+		panelW := lipgloss.Width(lookupPanelView)
+		panelH := lipgloss.Height(lookupPanelView)
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
-		view = placeOverlay(view, refsPanelView, panelX, panelY)
+		view = placeOverlay(view, lookupPanelView, panelX, panelY)
 	}
 
 	// Overlay filter picker if visible

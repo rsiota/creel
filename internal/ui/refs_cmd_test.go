@@ -18,7 +18,7 @@ func TestExRefsNotConnected(t *testing.T) {
 func TestExRefsNoArgNoCurrentTable(t *testing.T) {
 	m := &Model{connection: &db.Connection{}, results: NewResultsTable()}
 	m.runExCommand("refs")
-	if !strings.Contains(m.schemaMsg, "needs a table name") {
+	if !strings.Contains(m.schemaMsg, "no current table") {
 		t.Errorf(":refs (no arg, no current table) -> %q", m.schemaMsg)
 	}
 }
@@ -54,33 +54,35 @@ func TestExRefsLive(t *testing.T) {
 		tables:     []string{"departments", "employees", "budgets"},
 	}
 
-	// :refs departments → async fetch → refsResultMsg with both referrers.
 	cmd := m.runExCommand("refs departments")
 	if cmd == nil {
 		t.Fatalf(":refs returned nil cmd: %q", m.schemaMsg)
 	}
-	rr, ok := cmd().(refsResultMsg)
+	msg, ok := cmd().(lookupResultMsg)
 	if !ok {
-		t.Fatalf("expected refsResultMsg, got %T", cmd())
+		t.Fatalf("expected lookupResultMsg, got %T", cmd())
 	}
-	if rr.err != nil {
-		t.Fatalf("refs fetch error: %v", rr.err)
+	if msg.err != nil {
+		t.Fatalf("refs fetch error: %v", msg.err)
 	}
-	if len(rr.refs) != 2 {
-		t.Fatalf("expected 2 referrers, got %d: %+v", len(rr.refs), rr.refs)
+	if !strings.Contains(msg.title, "departments") {
+		t.Errorf("title %q should mention departments", msg.title)
 	}
-	seen := map[string]bool{}
-	for _, r := range rr.refs {
-		seen[r.Table] = true
+	if len(msg.result.Rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d: %+v", len(msg.result.Rows), msg.result.Rows)
 	}
-	if !seen["employees"] || !seen["budgets"] {
-		t.Errorf("expected employees+budgets, got %v", seen)
+	refTables := map[string]bool{}
+	for _, row := range msg.result.Rows {
+		refTables[row[0]] = true // first column = child table
+	}
+	if !refTables["employees"] || !refTables["budgets"] {
+		t.Errorf("expected employees+budgets, got %v", refTables)
 	}
 
 	// Handler path: opening the panel makes it visible with the rows.
-	m.refsPanel.Show(rr.table, rr.refs)
-	if !m.refsPanel.IsVisible() {
-		t.Fatal("refs panel should be visible after Show")
+	m.lookupPanel.Show(msg.title, msg.result)
+	if !m.lookupPanel.IsVisible() {
+		t.Fatal("lookup panel should be visible after Show")
 	}
 
 	// Default-to-current-table: no arg, with the results source set.
@@ -91,14 +93,14 @@ func TestExRefsLive(t *testing.T) {
 	}
 }
 
-func TestRefsPanelEmpty(t *testing.T) {
-	var p RefsPanel
-	p.Show("users", nil)
+func TestLookupPanelEmpty(t *testing.T) {
+	var p LookupPanel
+	p.Show("References to users", db.Result{})
 	if !p.IsVisible() {
 		t.Fatal("panel should be visible")
 	}
-	// lines() yields a single explanatory line for the empty case.
+	// An empty result yields just the header line (title + count 0).
 	if got := len(p.lines()); got != 1 {
-		t.Fatalf("empty refs panel lines = %d, want 1", got)
+		t.Fatalf("empty lookup panel lines = %d, want 1", got)
 	}
 }

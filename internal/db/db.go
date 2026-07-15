@@ -5,9 +5,43 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
+
+// definitionsReferencing returns defs whose Body mentions table via a
+// case-insensitive, word-boundary match. The table name is regex-quoted so
+// metacharacters in names (e.g. "my.table") are matched literally. Used by
+// the driver Uses implementations to filter collected object definitions.
+func definitionsReferencing(defs []Usage, table string) []Usage {
+	re, err := regexp.Compile("(?i)\\b" + regexp.QuoteMeta(table) + "\\b")
+	if err != nil {
+		return nil
+	}
+	var out []Usage
+	for _, d := range defs {
+		if re.MatchString(d.Body) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// scanNameBody iterates rows scanning a (name, body) pair and appends a Usage
+// with the given kind per row. NULLs become empty strings. Callers own the
+// rows (query + close). Shared by the driver Uses implementations for their
+// two-column definition queries (views, triggers, …).
+func scanNameBody(rows *sql.Rows, kind string, out *[]Usage) error {
+	for rows.Next() {
+		var name, body sql.NullString
+		if err := rows.Scan(&name, &body); err != nil {
+			return err
+		}
+		*out = append(*out, Usage{Kind: kind, Name: name.String, Body: body.String})
+	}
+	return rows.Err()
+}
 
 // Driver represents a supported database driver type.
 type Driver string
@@ -72,6 +106,12 @@ type DB interface {
 	// ForeignKeys). Useful for understanding delete/rename impact: "who
 	// depends on this table?".
 	ReferencingForeignKeys(table string) ([]Referrer, error)
+	// Uses returns schema objects (views, functions, procedures, triggers)
+	// whose definitions reference the given table — a textual dependency scan.
+	// It is the non-FK complement to ReferencingForeignKeys: :refs finds
+	// foreign-key references, :uses finds objects that mention the table in
+	// their body (views reading it, functions/triggers over it).
+	Uses(table string) ([]Usage, error)
 	// TableColumnInfo returns detailed column metadata for inserts and validation.
 	TableColumnInfo(table string) ([]TableColumnInfo, error)
 	// Execute runs a query and returns the result set.
@@ -240,6 +280,17 @@ type Referrer struct {
 	Table     string // child table that owns the FK
 	Column    string // child's FK column
 	RefColumn string // parent column referenced
+}
+
+// Usage describes a schema object (view, materialized view, function,
+// procedure, trigger) whose definition references a table. Body is the
+// object's definition text; Uses scans it for the table name. This is a
+// textual match, not a SQL parse, so it can false-positive on substring names
+// (mitigated by word-boundary matching) and miss dynamic SQL.
+type Usage struct {
+	Kind string // view, materialized view, function, procedure, trigger
+	Name string
+	Body string // definition text used for matching
 }
 
 // Index describes a secondary index on a table. Columns holds the indexed

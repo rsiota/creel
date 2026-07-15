@@ -8,6 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/ruben/gsql/internal/db"
 )
 
 // exCmd is the vim-style ":" command line: a modal prompt at the bottom of the
@@ -206,6 +208,12 @@ func (m *Model) runExCommand(input string) tea.Cmd {
 			arg = args[0]
 		}
 		return m.exRefs(arg)
+	case "uses":
+		arg := ""
+		if len(args) > 0 {
+			arg = args[0]
+		}
+		return m.exUses(arg)
 	case "begin", "transaction":
 		return m.exBegin()
 	case "commit":
@@ -451,35 +459,82 @@ func (m Model) resolveTableName(name string) string {
 	return ""
 }
 
-// exRefs lists the foreign keys referencing a table (:refs <table>) — the
-// reverse of g d. With no argument it uses the current table (the focused
-// sidebar selection or the results' source table), per the default-to-
-// current-object convention. The lookup runs async and opens in the refs
-// overlay panel. It reads connection metadata, so it is unaffected by (and
-// does not block on) an active transaction.
-func (m *Model) exRefs(name string) tea.Cmd {
+// resolveTableArg resolves an optional table argument for an ex command, shared
+// by :refs and :uses (and future table-targeted lookups). With no name it
+// falls back to the current table — the focused sidebar selection or the
+// results' source table (default-to-current-object convention, #15). With a
+// name it resolves case-insensitively against the sidebar (exact match, then
+// substring). On failure it sets schemaMsg and returns "".
+func (m *Model) resolveTableArg(name string) string {
 	if m.connection == nil {
 		m.schemaMsg = "not connected"
-		return nil
+		return ""
 	}
 	if name == "" {
 		if t := m.currentTable(); t != "" {
-			name = t
-		} else {
-			m.schemaMsg = ":refs needs a table name"
-			return nil
+			return t
 		}
-	} else if resolved := m.resolveTableName(name); resolved != "" {
-		name = resolved
-	} else {
-		m.schemaMsg = fmt.Sprintf("no such table: %s", name)
+		m.schemaMsg = "no current table — name one: e.g. :refs <table>"
+		return ""
+	}
+	if resolved := m.resolveTableName(name); resolved != "" {
+		return resolved
+	}
+	m.schemaMsg = fmt.Sprintf("no such table: %s", name)
+	return ""
+}
+
+// exRefs lists the foreign keys referencing a table (:refs <table>) — the
+// reverse of g d. The lookup runs async and opens in the lookup overlay panel.
+// It reads connection metadata, so it is unaffected by (and does not block on)
+// an active transaction.
+func (m *Model) exRefs(name string) tea.Cmd {
+	table := m.resolveTableArg(name)
+	if table == "" {
 		return nil
 	}
 	conn := m.connection
-	table := name
 	return func() tea.Msg {
 		refs, err := conn.DB().ReferencingForeignKeys(table)
-		return refsResultMsg{table: table, refs: refs, err: err}
+		if err != nil {
+			return lookupResultMsg{err: err}
+		}
+		cols := []db.Column{{Name: "Table"}, {Name: "Column"}, {Name: "References"}}
+		rows := make([][]string, 0, len(refs))
+		for _, r := range refs {
+			rows = append(rows, []string{r.Table, r.Column, table + "." + r.RefColumn})
+		}
+		return lookupResultMsg{
+			title:  fmt.Sprintf("References to %s", table),
+			result: db.Result{Columns: cols, Rows: rows},
+		}
+	}
+}
+
+// exUses lists the objects (views, functions, procedures, triggers) that
+// reference a table in their definitions (:uses <table>) — a textual
+// dependency scan, complementary to :refs. Same conventions as exRefs:
+// default to the current table, async, transaction-unaffected.
+func (m *Model) exUses(name string) tea.Cmd {
+	table := m.resolveTableArg(name)
+	if table == "" {
+		return nil
+	}
+	conn := m.connection
+	return func() tea.Msg {
+		uses, err := conn.DB().Uses(table)
+		if err != nil {
+			return lookupResultMsg{err: err}
+		}
+		cols := []db.Column{{Name: "Type"}, {Name: "Name"}}
+		rows := make([][]string, 0, len(uses))
+		for _, u := range uses {
+			rows = append(rows, []string{u.Kind, u.Name})
+		}
+		return lookupResultMsg{
+			title:  fmt.Sprintf("Objects using %s", table),
+			result: db.Result{Columns: cols, Rows: rows},
+		}
 	}
 }
 

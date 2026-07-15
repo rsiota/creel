@@ -270,8 +270,9 @@ distinct; a command that just replays an existing key is low value.
 - `:refs <table>` — ✅ done. Reverse foreign keys (who points at me);
   complements `g d` (forward FK). Shown in a scrollable overlay panel.
   Defaults to the current table with no argument.
-- `:uses <table>` — views / functions / procedures referencing a table
-  (dependency graph).
+- `:uses <table>` — ✅ done. Views / functions / procedures / triggers
+  referencing a table (textual dependency scan). Complements :refs; shares the
+  same lookup overlay panel. Defaults to the current table with no argument.
 
 **Tier 3 — small wins:**
 - `:count <table>`, `:sample <table>`, `:peek <table>` (composite summary),
@@ -307,8 +308,8 @@ remaining work is framed by the `:` command-set roadmap (#15). Next up:
 3. **`:`-line export shortcut** (#15 Tier 1) — ✅ done (2026-07-15):
    `:export <fmt>` reuses the #6 exporter (csv, json, jsonl, md, tsv),
    skipping the `g X` picker UI.
-4. **Monitoring commands** (#15 Tier 2) — `:refs` ✅ done (2026-07-15);
-   `:watch`, `:tail`, `:uses` remain. **← active next**
+4. **Monitoring commands** (#15 Tier 2) — `:refs` ✅ (2026-07-15) and `:uses`
+   ✅ done. `:watch`, `:tail` remain. **← active next**
 5. **Session restore** (#9) — persistence delight feature.
 
 Original historical order (all complete): keyring storage (#1),

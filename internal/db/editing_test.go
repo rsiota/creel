@@ -186,3 +186,57 @@ func TestSQLiteReferencingForeignKeys(t *testing.T) {
 		t.Errorf("expected 0 referrers for unrelated, got %d: %+v", len(none), none)
 	}
 }
+
+func TestSQLiteUses(t *testing.T) {
+	s := setupTestSQLite(t)
+
+	for _, q := range []string{
+		// 'users' is created by setupTestSQLite.
+		`CREATE TABLE superusers (id INTEGER)`,
+		`CREATE TABLE other (id INTEGER)`,
+		`CREATE TABLE lonely (id INTEGER)`,                                 // referenced by nothing
+		`CREATE VIEW active_users AS SELECT * FROM users`,                  // matches
+		`CREATE VIEW v_super AS SELECT * FROM superusers`,                  // must NOT match (substring guard)
+		`CREATE VIEW v_other AS SELECT * FROM other`,                       // must NOT match
+		`CREATE TRIGGER trg_ins AFTER INSERT ON users BEGIN SELECT 1; END`, // matches
+	} {
+		if _, err := s.Exec(q); err != nil {
+			t.Fatalf("create: %v\n%s", err, q)
+		}
+	}
+
+	uses, err := s.Uses("users")
+	if err != nil {
+		t.Fatalf("Uses: %v", err)
+	}
+	names := map[string]string{} // name -> kind
+	for _, u := range uses {
+		names[u.Name] = u.Kind
+	}
+	if len(names) != 2 {
+		t.Fatalf("expected 2 usages (active_users, trg_ins), got %d: %+v", len(names), uses)
+	}
+	if names["active_users"] != "view" {
+		t.Errorf("active_users: want view, got %q (all: %+v)", names["active_users"], names)
+	}
+	if names["trg_ins"] != "trigger" {
+		t.Errorf("trg_ins: want trigger, got %q (all: %+v)", names["trg_ins"], names)
+	}
+	// Word-boundary guard: 'superusers' contains 'users' as a substring but
+	// must not match. v_super must be absent.
+	if _, ok := names["v_super"]; ok {
+		t.Errorf("v_super matched 'users' — word-boundary guard failed: %+v", names)
+	}
+	if _, ok := names["v_other"]; ok {
+		t.Errorf("v_other unexpectedly matched: %+v", names)
+	}
+
+	// A table referenced by nothing returns empty.
+	none, err := s.Uses("lonely")
+	if err != nil {
+		t.Fatalf("Uses(lonely): %v", err)
+	}
+	if len(none) != 0 {
+		t.Errorf("expected 0 usages for 'lonely', got %d: %+v", len(none), none)
+	}
+}

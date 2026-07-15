@@ -255,6 +255,56 @@ func (m *MySQL) ReferencingForeignKeys(table string) ([]Referrer, error) {
 	return refs, rows.Err()
 }
 
+// Uses returns objects (views, functions, procedures, triggers) whose
+// definitions reference the given table, via a textual scan of
+// information_schema. routine_type distinguishes functions from procedures.
+func (m *MySQL) Uses(table string) ([]Usage, error) {
+	schema := m.config.Database
+	var defs []Usage
+
+	// Views.
+	vr, err := m.db.Query(`SELECT table_name, view_definition FROM information_schema.views WHERE table_schema = ?`, schema)
+	if err != nil {
+		return nil, fmt.Errorf("uses: views: %w", err)
+	}
+	if err := scanNameBody(vr, "view", &defs); err != nil {
+		vr.Close()
+		return nil, err
+	}
+	vr.Close()
+
+	// Functions and procedures.
+	rr, err := m.db.Query(`SELECT routine_name, routine_type, routine_definition FROM information_schema.routines WHERE routine_schema = ?`, schema)
+	if err != nil {
+		return nil, fmt.Errorf("uses: routines: %w", err)
+	}
+	for rr.Next() {
+		var name, typ, body sql.NullString
+		if err := rr.Scan(&name, &typ, &body); err != nil {
+			rr.Close()
+			return nil, err
+		}
+		defs = append(defs, Usage{Kind: strings.ToLower(typ.String), Name: name.String, Body: body.String})
+	}
+	rr.Close()
+	if err := rr.Err(); err != nil {
+		return nil, err
+	}
+
+	// Triggers.
+	tr, err := m.db.Query(`SELECT trigger_name, action_statement FROM information_schema.triggers WHERE trigger_schema = ?`, schema)
+	if err != nil {
+		return nil, fmt.Errorf("uses: triggers: %w", err)
+	}
+	if err := scanNameBody(tr, "trigger", &defs); err != nil {
+		tr.Close()
+		return nil, err
+	}
+	tr.Close()
+
+	return definitionsReferencing(defs, table), nil
+}
+
 func (m *MySQL) TableColumnInfo(table string) ([]TableColumnInfo, error) {
 	rows, err := m.db.Query(
 		`SELECT column_name, column_type, is_nullable, column_default, column_key, extra

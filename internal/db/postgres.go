@@ -327,6 +327,78 @@ func (p *Postgres) ReferencingForeignKeys(table string) ([]Referrer, error) {
 	return refs, rows.Err()
 }
 
+// Uses returns objects (views, materialized views, functions, procedures,
+// triggers) whose definitions reference the given table, via a textual scan
+// of the pg_catalog. pg_proc.prokind distinguishes procedures ('p') from
+// functions; internal triggers are skipped.
+func (p *Postgres) Uses(table string) ([]Usage, error) {
+	var defs []Usage
+
+	// Views.
+	vr, err := p.db.Query(`SELECT viewname, definition FROM pg_views WHERE schemaname = current_schema()`)
+	if err != nil {
+		return nil, fmt.Errorf("uses: views: %w", err)
+	}
+	if err := scanNameBody(vr, "view", &defs); err != nil {
+		vr.Close()
+		return nil, err
+	}
+	vr.Close()
+
+	// Materialized views.
+	mr, err := p.db.Query(`SELECT matviewname, definition FROM pg_matviews WHERE schemaname = current_schema()`)
+	if err != nil {
+		return nil, fmt.Errorf("uses: matviews: %w", err)
+	}
+	if err := scanNameBody(mr, "materialized view", &defs); err != nil {
+		mr.Close()
+		return nil, err
+	}
+	mr.Close()
+
+	// Functions and procedures.
+	fr, err := p.db.Query(`SELECT p.proname, p.prokind, pg_get_functiondef(p.oid)
+		FROM pg_proc p
+		JOIN pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname = current_schema()`)
+	if err != nil {
+		return nil, fmt.Errorf("uses: functions: %w", err)
+	}
+	for fr.Next() {
+		var name, kind, body sql.NullString
+		if err := fr.Scan(&name, &kind, &body); err != nil {
+			fr.Close()
+			return nil, err
+		}
+		k := "function"
+		if kind.String == "p" {
+			k = "procedure"
+		}
+		defs = append(defs, Usage{Kind: k, Name: name.String, Body: body.String})
+	}
+	fr.Close()
+	if err := fr.Err(); err != nil {
+		return nil, err
+	}
+
+	// Triggers (skip auto-generated/internal ones).
+	tr, err := p.db.Query(`SELECT t.tgname, pg_get_triggerdef(t.oid)
+		FROM pg_trigger t
+		JOIN pg_class c ON c.oid = t.tgrelid
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = current_schema() AND NOT t.tgisinternal`)
+	if err != nil {
+		return nil, fmt.Errorf("uses: triggers: %w", err)
+	}
+	if err := scanNameBody(tr, "trigger", &defs); err != nil {
+		tr.Close()
+		return nil, err
+	}
+	tr.Close()
+
+	return definitionsReferencing(defs, table), nil
+}
+
 func (p *Postgres) TableColumnInfo(table string) ([]TableColumnInfo, error) {
 	rows, err := p.db.Query(
 		`SELECT

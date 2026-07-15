@@ -56,7 +56,7 @@ func registry() []Section {
 				{"tab / shift+tab", []string{"tab", "shift+tab"}, "cycle focus", ""},
 				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "next / prev page", ""},
 				{"ctrl+p", []string{"ctrl+p"}, "command palette", ""},
-				{":", []string{":"}, "ex command line (:q, :w, :e, :goto, :export, :refs, :begin/:commit/:rollback, …; column jump in results)", ":"},
+				{":", []string{":"}, "ex command line (:q, :w, :e, :goto, :export, :refs, :uses, :begin/:commit/:rollback, …; column jump in results)", ":"},
 				{"?", []string{"?"}, "toggle this help", ""},
 				{"q / ctrl+q / ctrl+c", []string{"q", "ctrl+q", "ctrl+c"}, "quit (not while editing)", ""},
 			},

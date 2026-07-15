@@ -214,6 +214,28 @@ func (s *SQLite) ReferencingForeignKeys(table string) ([]Referrer, error) {
 	return refs, nil
 }
 
+// Uses returns objects (views, triggers) whose definitions reference the given
+// table, via a textual scan of sqlite_master. SQLite has no stored functions
+// or procedures, so those are not considered.
+func (s *SQLite) Uses(table string) ([]Usage, error) {
+	var defs []Usage
+
+	// Views and triggers: the sql column holds the full CREATE statement.
+	for _, kind := range []string{"view", "trigger"} {
+		rr, err := s.db.Query(`SELECT name, sql FROM sqlite_master WHERE type = ?`, kind)
+		if err != nil {
+			return nil, fmt.Errorf("uses: %ss: %w", kind, err)
+		}
+		if err := scanNameBody(rr, kind, &defs); err != nil {
+			rr.Close()
+			return nil, err
+		}
+		rr.Close()
+	}
+
+	return definitionsReferencing(defs, table), nil
+}
+
 func isIntegerType(typeName string) bool {
 	t := strings.ToUpper(strings.TrimSpace(typeName))
 	return strings.Contains(t, "INT")
