@@ -65,7 +65,16 @@ PK, FKs, indexes, triggers, and view definitions.
 `Begin() (Tx, error)` exists and is used internally (`editing.go`). Expose a
 transaction mode: begin → stage writes → commit/rollback, with a status-bar
 indicator like `TXN ●`.
-- Files: `internal/ui/app.go`, `internal/ui/editing.go`,
+
+**Command surface (Tier 1, see #15):** `:begin` / `:commit` / `:rollback` + a
+`TXN ●` status indicator. **Design fork:** the `Tx` interface is write-only
+today (`Exec`/`Commit`/`Rollback`, no `Query`), so v1 can only stage writes
+(via the cell-edit path on a held tx) and must accept that reads refresh
+after commit — a rollback leaves the UI's "saved" cells stale until a `ctrl+r`.
+A later v2 that lets you `SELECT` inside the tx to see uncommitted rows needs
+a `Query`/`Execute` method on `Tx` across all three drivers. Decide the v1/v2
+line before building.
+- Files: `internal/ui/app.go`, `internal/ui/excmd.go`, `internal/ui/editing.go`,
   `internal/ui/statusbar.go`, `internal/ui/registry.go`.
 
 ### 6. More export formats ✅ DONE (2026-07-11)
@@ -196,20 +205,78 @@ queries or a sparkline.
 the statement splitter (`statements.go`).
 - Files: `cmd/gsql/main.go`, `internal/ui/app.go`, `internal/db/statements.go`.
 
+### 15. `:` command-set roadmap
+A prioritized plan for growing the ex command line, distilled from a command
+survey. Guiding principle: **the `:` line earns its place on parameterized
+actions (things that take a name / path / number) and stateful modes
+(transactions, watch) — not by duplicating single-key actions already in the
+`ctrl+p` palette.** The three input surfaces (keys, palette, `:`) should stay
+distinct; a command that just replays an existing key is low value.
+
+**Conventions:**
+- **Default to the current object.** Commands with no argument operate on the
+  focused table (`currentTable()`): `:count`, `:sample`, `:refs`, `:peek`,
+  `:indexes`. Nearly free to implement (the helper exists) and the single
+  biggest lever for making the set feel native rather than pasted in.
+- **Explicit verbs over cryptic prefixes.** `:goto` is the canonical verb;
+  `:gt` stays as a tolerated alias (it predates the convention and breaks
+  nothing). Do **not** grow a `:gv`/`:gf`/`:gp` family — `:goto <name>` already
+  matches any non-column sidebar object (table/view) via substring, so one
+  verb covers navigation. New verbs are spelled out (`:refs`, `:uses`,
+  `:watch`, `:tail`) and may gain a short alias only after the feature ships.
+- **Stateful commands own a status-bar indicator** (`TXN ●`, `WATCH 5s`, …).
+
+**Tier 1 — parameterized / stateful, high value (start here):**
+- `:begin` / `:commit` / `:rollback` (+ `TXN` indicator) — see #5. Biggest
+  functional gap; `Begin()` exists.
+- `:w file.sql` / `:e file.sql` — save/load the editor buffer to/from disk —
+  see #14. Cheap; reuses the statement splitter.
+- `:write results.<fmt>` / `:format <fmt>` — non-interactive shortcut to the
+  `g X` export picker (#6); a power-user path that skips the picker UI.
+
+**Tier 2 — monitoring & graph (bigger builds):**
+- `:watch [n]` — re-run the current query every n seconds; `:watch off`.
+- `:tail <table>` — stream newly-appended rows (append-only / event tables).
+- `:refs <table>` — reverse foreign keys (who points at me); complements `g d`
+  (forward FK).
+- `:uses <table>` — views / functions / procedures referencing a table
+  (dependency graph).
+
+**Tier 3 — small wins:**
+- `:count <table>`, `:sample <table>`, `:peek <table>` (composite summary),
+  `:rerun <n>` (history by index), `:timing`, `:limit <n>` / `:limit off`.
+
+**Tier 4 — DBA / niche (only if the audience wants it):**
+- `:who`, `:locks`, `:kill <pid>` — session / lock inspection; driver-specific,
+  and `:kill` is dangerous.
+
+**Explicitly rejected (wrong layer / scope creep):** `:shell` / `:cd` / `:ls`
+(shell escape in a TUI), `:tee` / `:pager` / `:nopager` (the TUI *is* the
+pager), `:record` / `:play` macros, `:replace` (use the editor's vim `:s`),
+`:session save/load` (a persistence project, not a command — see #9),
+`:diff <a> <b>` (a separate schema-diff product), `:favorite` (duplicate of
+`:bookmark`).
+
+**psql aliases (`:dt` / `:dv` / `:df`, …):** defer until the underlying feature
+exists, then add via a tiny alias table — don't let them drive design.
+
 ---
 
 ## Suggested starting order
-The original top three are all shipped (#1, #4, #3). Next up, in suggested
-order:
-1. **`confirm_destructive`** (#7 follow-up) — field reserved, ~8 well-defined
-   sites, safety win. _(done — 2026-07-14)_
-2. **Check constraints** (#4 follow-up) — closes the visible gap in the
-   structure view; PG/MySQL are clean, SQLite parses DDL.
-   _(done — 2026-07-14)_
-3. **`.sql` file integration** (#14) — reuses the statement splitter, high
-   everyday value, mostly entry-point wiring.
-4. **User-facing transactions** (#5) — `Begin()` exists; the work is UI +
-   status indicator + read-only interplay.
+The original top three are all shipped (#1, #4, #3), and the two polish
+follow-ups are done (#7 `confirm_destructive`, #4 check constraints). The
+remaining work is framed by the `:` command-set roadmap (#15). Next up:
+1. **User-facing transactions** (#5, Tier 1 in #15) — `:begin` / `:commit` /
+   `:rollback` + a `TXN` status indicator. `Begin()` exists; the work is UI
+   routing, lifecycle (rollback on disconnect / connection-switch / quit),
+   read-only interplay, and the read-on-tx decision noted in #5/#15.
+   **← active next**
+2. **`.sql` file integration** (#14, Tier 1 in #15) — `:e file.sql` load +
+   `:w file.sql` save; reuses the statement splitter, mostly entry-point
+   wiring.
+3. **`:`-line export shortcut** (#15 Tier 1) — `:write results.<fmt>` /
+   `:format <fmt>` as a non-interactive path over the #6 exporter.
+4. **Monitoring commands** (#15 Tier 2) — `:watch`, `:tail`, `:refs`, `:uses`.
 5. **Session restore** (#9) — persistence delight feature.
 
 Original historical order (all complete): keyring storage (#1),
