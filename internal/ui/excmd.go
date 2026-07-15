@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -157,7 +159,18 @@ func splitShellFields(s string) []string {
 func (m *Model) runExCommand(input string) tea.Cmd {
 	verb, args, force := parseExLine(input)
 	switch verb {
+	case "e", "edit":
+		if len(args) == 0 {
+			m.schemaMsg = ":e needs a file path"
+			return nil
+		}
+		return m.exEditFile(args[0])
 	case "w", "write":
+		// With a file argument, write the editor buffer to disk (vim :w file);
+		// without one, :w saves staged cell edits (the legacy meaning).
+		if len(args) > 0 {
+			return m.exWriteFile(args[0])
+		}
 		return m.exWrite(force)
 	case "q", "quit":
 		return m.exQuit(force)
@@ -352,4 +365,55 @@ func (m *Model) txnBlocksWrite() bool {
 		return true
 	}
 	return false
+}
+
+// exEditFile loads a .sql (or any text) file into the editor (:e <file>),
+// replacing the current buffer — vim's :edit. The contents are not executed;
+// run them from the editor as usual (statements are split at run time). ~ is
+// expanded; relative paths resolve against the working directory.
+func (m *Model) exEditFile(path string) tea.Cmd {
+	expanded, err := expandTilde(filepath.Clean(path))
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	content, err := os.ReadFile(expanded)
+	if err != nil {
+		m.schemaMsg = "read failed: " + err.Error()
+		return nil
+	}
+	m.editor.SetValue(string(content))
+	m.schemaMsg = fmt.Sprintf("loaded %s (%d lines)", expanded, lineCount(string(content)))
+	return nil
+}
+
+// exWriteFile writes the editor buffer to a file (:w <file>) — vim's :write.
+// It overwrites an existing file (use a versioned name if you need to keep the
+// old one). ~ is expanded; relative paths resolve against the working dir.
+func (m *Model) exWriteFile(path string) tea.Cmd {
+	expanded, err := expandTilde(filepath.Clean(path))
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	content := m.editor.Value()
+	if err := os.WriteFile(expanded, []byte(content), 0o644); err != nil {
+		m.schemaMsg = "write failed: " + err.Error()
+		return nil
+	}
+	m.schemaMsg = fmt.Sprintf("wrote %s (%d lines)", expanded, lineCount(content))
+	return nil
+}
+
+// lineCount returns the number of lines in s (a trailing newline does not add
+// an extra line), matching how editors report buffer size.
+func lineCount(s string) int {
+	if s == "" {
+		return 0
+	}
+	n := strings.Count(s, "\n")
+	if !strings.HasSuffix(s, "\n") {
+		n++
+	}
+	return n
 }

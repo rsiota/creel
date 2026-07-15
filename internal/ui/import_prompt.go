@@ -75,6 +75,13 @@ func (p ImportPrompt) ExpandPath() (string, error) {
 	if raw == "" {
 		return "", fmt.Errorf("no file path entered")
 	}
+	return expandTilde(raw)
+}
+
+// expandTilde resolves a leading ~ (~ or ~/rest) to the user's home directory.
+// Paths without a leading ~ are returned unchanged. The caller is expected to
+// have run filepath.Clean first (ExpandPath does; the ex :e/:w handlers do).
+func expandTilde(raw string) (string, error) {
 	if raw == "~" {
 		home, err := os.UserHomeDir()
 		if err != nil {

@@ -214,10 +214,25 @@ reloads.
 queries or a sparkline.
 - Files: `internal/history/`, `internal/ui/history_panel.go`.
 
-### 14. `.sql` file integration
-`gsql -f query.sql` and `:open file.sql` to load a script. Natural extension of
-the statement splitter (`statements.go`).
-- Files: `cmd/gsql/main.go`, `internal/ui/app.go`, `internal/db/statements.go`.
+### 14. `.sql` file integration — ex commands ✅ DONE (2026-07-15)
+The buffer-level commands ship first; the `-f` CLI flag remains open.
+
+**Done:** `:e <file>` / `:edit <file>` loads a file into the editor (vim's
+`:edit`, replacing the current buffer — run it from the editor as usual,
+statements split at run time), and `:w <file>` / `:write <file>` writes the
+editor buffer to disk. The argument presence disambiguates `:w`: no argument
+still saves staged cell edits (the legacy meaning); with an argument it writes
+the buffer. `~` is expanded (shared `expandTilde`, also used by the import
+prompt); relative paths resolve against the working directory. `:w <file>`
+overwrites — pass a versioned name to keep the old one.
+- Files: `internal/ui/excmd.go`, `internal/ui/import_prompt.go`
+  (`expandTilde` extracted from `ImportPrompt.ExpandPath`).
+  Tests: `internal/ui/file_io_test.go`.
+
+**Still open:** `gsql -f query.sql` — run a script at startup by feeding it
+through the statement splitter (`internal/db/statements.go`) and executing
+each statement. Entry-point wiring in `cmd/gsql/main.go`; no model changes
+needed since the splitter already exists.
 
 ### 15. `:` command-set roadmap
 A prioritized plan for growing the ex command line, distilled from a command
@@ -242,8 +257,8 @@ distinct; a command that just replays an existing key is low value.
 
 **Tier 1 — parameterized / stateful, high value (start here):**
 - `:begin` / `:commit` / `:rollback` (+ `TXN` indicator) — ✅ done, see #5.
-- `:w file.sql` / `:e file.sql` — save/load the editor buffer to/from disk —
-  see #14. Cheap; reuses the statement splitter.
+- `:w file.sql` / `:e file.sql` — ✅ done (see #14). The `gsql -f` startup
+  flag is still open.
 - `:write results.<fmt>` / `:format <fmt>` — non-interactive shortcut to the
   `g X` export picker (#6); a power-user path that skips the picker UI.
 
@@ -283,11 +298,12 @@ remaining work is framed by the `:` command-set roadmap (#15). Next up:
    `:begin` / `:commit` / `:rollback` + `TXN` indicator; editor statements route
    through the held tx (reads see uncommitted writes); cell edits blocked
    during the tx; auto-rollback on connection lifecycle changes.
-2. **`.sql` file integration** (#14, Tier 1 in #15) — `:e file.sql` load +
-   `:w file.sql` save; reuses the statement splitter, mostly entry-point
-   wiring. **← active next**
+2. **`.sql` file integration** (#14, Tier 1 in #15) — ✅ done (2026-07-15):
+   `:e <file>` load + `:w <file>` save, with `~` expansion. The `gsql -f`
+   startup flag remains open (entry-point wiring only).
 3. **`:`-line export shortcut** (#15 Tier 1) — `:write results.<fmt>` /
    `:format <fmt>` as a non-interactive path over the #6 exporter.
+   **← active next**
 4. **Monitoring commands** (#15 Tier 2) — `:watch`, `:tail`, `:refs`, `:uses`.
 5. **Session restore** (#9) — persistence delight feature.
 
