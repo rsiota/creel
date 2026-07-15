@@ -246,6 +246,31 @@ func (m Model) statusBar(connName string) string {
 	return left
 }
 
+// commandLine renders the bottom command/message line: the active ":" ex
+// prompt, the "/" in-table search, or the backend-search prompt. It occupies a
+// single full-width row directly below the status bar and returns "" when no
+// prompt is active, so it adds no height at rest. This mirrors vim/helix,
+// where the command line lives at the very bottom of the screen, rather than
+// being wedged at the top of the results panel.
+func (m Model) commandLine() string {
+	var content string
+	switch {
+	case m.ex.visible:
+		content = m.ex.View()
+	case m.searching:
+		content = lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+m.searchQuery) +
+			lipgloss.NewStyle().Foreground(colorAccent).Underline(true).Render(" ")
+	case m.backendSearching:
+		content = renderPalettePrompt(m.backendSearchInput, true)
+	default:
+		return ""
+	}
+	// No explicit background: paintBg fills the row with the theme bg (and
+	// stays transparent under transparent_background), matching the workspace
+	// panels rather than the status bar's distinct bg.
+	return lipgloss.NewStyle().Width(m.width).Height(1).Render(" " + content)
+}
+
 func (m Model) borderForFocus(f Focus) lipgloss.Color {
 	if m.focus == f || (f == FocusEditor && m.focus == FocusTabBar) {
 		return colorPrimary

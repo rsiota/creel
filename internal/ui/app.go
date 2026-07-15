@@ -3573,7 +3573,14 @@ func (m Model) viewWorkspace() string {
 		}
 	}
 
-	resultsHeight := m.height - tabBarHeight - editorHeight - statusHeight - borderOverhead
+	// The bottom command line (":", "/", backend search) takes one row when
+	// active; reserve it here so the results panel (and the sidebar/inspector,
+	// whose heights derive from it) shrink to make room.
+	cmdHeight := 0
+	if m.ex.visible || m.searching || m.backendSearching {
+		cmdHeight = 1
+	}
+	resultsHeight := m.height - tabBarHeight - editorHeight - statusHeight - cmdHeight - borderOverhead
 	if resultsHeight < 3 {
 		resultsHeight = 3
 	}
@@ -3652,24 +3659,11 @@ func (m Model) viewWorkspace() string {
 			}
 			resultsPanel = resultsStyle.Render(func() string {
 				m.results.SetSort(m.sortCol, m.sortDir)
-				// Shrink the table by one row when a prompt line is
-				// shown above it, so the total height stays the same.
-				if m.ex.visible || m.searching || m.backendSearching {
-					m.results.SetSize(rightWidth+borderOverhead, resultsHeight+borderOverhead-1)
-				}
-				view := m.results.View()
-				if prompt := m.ex.View(); prompt != "" {
-					view = prompt + "\n" + view
-				}
-				if m.searching {
-					prompt := lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+m.searchQuery) +
-						lipgloss.NewStyle().Foreground(colorAccent).Underline(true).Render(" ")
-					view = prompt + "\n" + view
-				}
-				if m.backendSearching {
-					view = " " + renderPalettePrompt(m.backendSearchInput, true) + "\n" + view
-				}
-				return view
+				// The prompt no longer lives inside this panel; the table fills
+				// it at full height. cmdHeight above already reserved the row
+				// the bottom command line occupies.
+				m.results.SetSize(rightWidth+borderOverhead, resultsHeight+borderOverhead)
+				return m.results.View()
 			}())
 		}
 
@@ -3818,7 +3812,14 @@ func (m Model) viewWorkspace() string {
 		workspace = dimBackground(workspace)
 	}
 
-	view := lipgloss.JoinVertical(lipgloss.Left, workspace, statusBar)
+	// Stack workspace, status bar, and the bottom command line. The command
+	// line is omitted entirely when no prompt is active, so it adds no height
+	// at rest (cmdHeight is 0 then, keeping the layout identical to before).
+	layers := []string{workspace, statusBar}
+	if cmd := m.commandLine(); cmd != "" {
+		layers = append(layers, cmd)
+	}
+	view := lipgloss.JoinVertical(lipgloss.Left, layers...)
 
 	// Overlay history panel if visible
 	if m.history.IsVisible() {
