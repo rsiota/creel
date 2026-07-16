@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -711,6 +712,53 @@ func (m *Model) bookmarkCurrentQuery() {
 	} else {
 		m.bookmarkMsg = "already bookmarked"
 	}
+}
+
+// exImport runs an async SQL import from a file (:import <file>) — the
+// non-interactive counterpart of the I key. It expands ~ (the shared
+// expandTilde, the same expansion the import prompt applies) and hands the
+// resolved path to execImportSQL, so progress and the final result flow
+// through the same import status messages as the interactive path.
+func (m *Model) exImport(path string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	expanded, err := expandTilde(filepath.Clean(path))
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	return m.execImportSQL(expanded)
+}
+
+// exRerun loads and runs a past query by history rank (:rerun <n>), where n=1
+// is the most recent — the same most-recent-first order the history panel shows
+// (and numbers). The history store lists entries oldest→newest, so the nth most
+// recent is entries[len-n]. It reuses the :goto pattern (set the editor, run
+// the statement).
+func (m *Model) exRerun(arg string) tea.Cmd {
+	if m.connection == nil || m.historyStore == nil {
+		m.schemaMsg = "no history available"
+		return nil
+	}
+	n, err := strconv.Atoi(arg)
+	if err != nil || n < 1 {
+		m.schemaMsg = ":rerun needs a positive number (1 = most recent)"
+		return nil
+	}
+	entries, err := m.historyStore.Get(m.connection.Config().Name)
+	if err != nil || len(entries) == 0 {
+		m.schemaMsg = "no history yet"
+		return nil
+	}
+	idx := len(entries) - n
+	if idx < 0 {
+		m.schemaMsg = fmt.Sprintf("history has only %d entries", len(entries))
+		return nil
+	}
+	m.editor.SetValue(entries[idx].Query)
+	return m.executeQuery()
 }
 
 // lineCount returns the number of lines in s (a trailing newline does not add

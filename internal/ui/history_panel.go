@@ -91,6 +91,7 @@ func (h HistoryPanel) SelectedQuery() string {
 type filteredEntry struct {
 	entry    history.Entry
 	matchIdx []int
+	origIdx  int // permanent position in h.entries (most-recent-first); +1 is the :rerun rank
 }
 
 // filteredEntries returns entries matching the fuzzy filter, best match first.
@@ -98,7 +99,7 @@ func (h HistoryPanel) filteredEntries() []filteredEntry {
 	if h.filter == "" {
 		out := make([]filteredEntry, len(h.entries))
 		for i, e := range h.entries {
-			out[i] = filteredEntry{entry: e}
+			out[i] = filteredEntry{entry: e, origIdx: i}
 		}
 		return out
 	}
@@ -107,7 +108,9 @@ func (h HistoryPanel) filteredEntries() []filteredEntry {
 		func(a, b fuzzyResult[history.Entry]) bool { return a.Item.RunAt.After(b.Item.RunAt) })
 	out := make([]filteredEntry, len(ranked))
 	for i, r := range ranked {
-		out[i] = filteredEntry{entry: r.Item, matchIdx: r.MatchIdx}
+		// r.Index is the entry's original position in h.entries; keep it so
+		// the displayed number (origIdx+1) stays stable under filtering.
+		out[i] = filteredEntry{entry: r.Item, matchIdx: r.MatchIdx, origIdx: r.Index}
 	}
 	return out
 }
@@ -162,20 +165,28 @@ func (h HistoryPanel) View() string {
 		end = len(entries)
 	}
 
+	// numW is the column width for the 1-based :rerun rank each row shows.
+	numW := len(fmt.Sprintf("%d", len(entries)))
+	if numW < 1 {
+		numW = 1
+	}
+
 	var rows []string
 	for i := h.scrollRow; i < end; i++ {
 		e := entries[i].entry
 		ts := history.FormatTime(e.RunAt)
-		queryStr := truncateForDisplay(e.Query, h.width-26)
+		queryStr := truncateForDisplay(e.Query, h.width-26-numW-2)
 		matched := highlightMatches(queryStr, entries[i].matchIdx)
+		numStr := fmt.Sprintf("%*d", numW, entries[i].origIdx+1)
 
 		isSelected := i == h.cursor
 		if isSelected {
-			line := fmt.Sprintf("❯ %s  %s", ts, queryStr)
+			line := fmt.Sprintf("❯ %s  %s  %s", numStr, ts, queryStr)
 			rows = append(rows, selectedStyle.Render(line))
 		} else {
+			styledNum := mutedStyle.Render(numStr)
 			styledTs := mutedStyle.Render(ts)
-			line := fmt.Sprintf("  %s  %s", styledTs, matched)
+			line := fmt.Sprintf("  %s  %s  %s", styledNum, styledTs, matched)
 			rows = append(rows, normalStyle.Render(line))
 		}
 	}

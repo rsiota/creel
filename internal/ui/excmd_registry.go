@@ -133,6 +133,19 @@ func exCommands() []exCmdSpec {
 			},
 		},
 		{
+			verbs:   []string{"import"},
+			desc:    "import a SQL dump file into the database",
+			usage:   ":import <file>",
+			argKind: exArgRequired,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				if len(args) == 0 {
+					m.schemaMsg = ":import needs a file path"
+					return nil
+				}
+				return m.exImport(args[0])
+			},
+		},
+		{
 			verbs:   []string{"refs", "references"},
 			desc:    "foreign keys referencing a table",
 			usage:   ":refs [table]",
@@ -206,6 +219,19 @@ func exCommands() []exCmdSpec {
 			usage:   ":history",
 			argKind: exArgNone,
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.toggleHistory(); return nil },
+		},
+		{
+			verbs:   []string{"rerun"},
+			desc:    "re-run a query from history by rank (1 = most recent)",
+			usage:   ":rerun <n>",
+			argKind: exArgRequired,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				if len(args) == 0 {
+					m.schemaMsg = ":rerun needs a number (1 = most recent)"
+					return nil
+				}
+				return m.exRerun(args[0])
+			},
 		},
 		{
 			verbs:   []string{"bookmark"},

@@ -259,6 +259,9 @@ distinct; a command that just replays an existing key is low value.
 - `:begin` / `:commit` / `:rollback` (+ `TXN` indicator) — ✅ done, see #5.
 - `:w file.sql` / `:e file.sql` — ✅ done (see #14). The `gsql -f` startup
   flag is still open.
+- `:import <file>` ✅ (2026-07-16) — non-interactive SQL-dump import (the `I`
+  key's action), expanding `~` and reusing `execImportSQL`, so progress/result
+  flow through the same import status messages.
 - `:export <fmt>` — ✅ done. A non-interactive shortcut over the `g X` export
   picker (#6): writes the current result set to ~/Downloads in the given
   format (csv, json, jsonl, md, tsv). Named `:export` rather than `:write`
@@ -282,7 +285,10 @@ distinct; a command that just replays an existing key is low value.
 - `:bookmark` ✅ (2026-07-16) — bookmarks the editor's current query; closes the
   asymmetry where `:bookmarks` only opened the panel and the `B` key was the sole
   way to add one (the `B` handler now shares `bookmarkCurrentQuery` with the verb).
-- `:rerun <n>` (history by index), `:timing`, `:limit <n>` / `:limit off` — open.
+- `:rerun <n>` ✅ (2026-07-16) — re-runs a query by history rank (1 = most
+  recent). The history panel now numbers rows 1..N most-recent-first, and the
+  number stays attached to its entry through fuzzy filtering, so `:rerun <n>`
+  always matches the number shown. `:timing`, `:limit <n>` / `:limit off` — open.
 
 **Tier 4 — DBA / niche (only if the audience wants it):**
 - `:who`, `:locks`, `:kill <pid>` — session / lock inspection; driver-specific,

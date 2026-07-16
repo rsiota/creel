@@ -111,4 +111,6 @@ With the registry in place, the `:` line is now the cheap, self-documenting
 home for new commands. Tier-3 data-inspection verbs shipped first (2026-07-16):
 `:count [table]`, `:sample [table]`/`:head`, and `:bookmark` (the latter shares
 `bookmarkCurrentQuery` with the `B` key, the same extract-a-helper pattern as
-`:refresh`/`refreshSchema`). Next up: `:import <file>`, `:rerun <n>`.
+`:refresh`/`refreshSchema`). Added since: `:import <file>` (the `I` key's
+action, reusing `execImportSQL`) and `:rerun <n>` (history rank; the panel now
+numbers rows to match). Next up: `:peek`, `:limit <n>`, `:watch`.
