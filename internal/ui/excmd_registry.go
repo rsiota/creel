@@ -254,6 +254,39 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exTail(args) },
 		},
 		{
+			verbs:   []string{"limit"},
+			desc:    "set the results page size",
+			usage:   ":limit <n>|off",
+			argKind: exArgOptional,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				arg := ""
+				if len(args) > 0 {
+					arg = args[0]
+				}
+				return m.exLimit(arg)
+			},
+		},
+		{
+			verbs:   []string{"timing"},
+			desc:    "toggle showing query elapsed time",
+			usage:   ":timing [on|off]",
+			argKind: exArgOptional,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				arg := ""
+				if len(args) > 0 {
+					arg = args[0]
+				}
+				return m.exTiming(arg)
+			},
+		},
+		{
+			verbs:   []string{"peek"},
+			desc:    "one-glance summary of a table",
+			usage:   ":peek [table]",
+			argKind: exArgTable,
+			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exPeek(args) },
+		},
+		{
 			verbs:   []string{"bookmark"},
 			desc:    "bookmark the editor's current query",
 			usage:   ":bookmark",

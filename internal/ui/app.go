@@ -430,6 +430,10 @@ type Model struct {
 	queryTimeout   time.Duration      // per-query deadline; 0 = wait indefinitely (esc still cancels)
 	settings       config.Settings    // effective app-level settings
 
+	// :timing — when on, the status bar shows the last query's elapsed time.
+	showTiming       bool
+	lastQueryElapsed time.Duration
+
 	// :watch — periodic re-execution of the last query (:watch [n] / :watch off).
 	// watchGen is a generation counter: restarting with a new interval or
 	// stopping bumps it so a stale tick chain dies instead of doubling the rate.
@@ -866,6 +870,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.cancelled && !m.queryCancelled {
 			return m, nil
 		}
+
+		// Capture elapsed for :timing (after the superseded-query discard, so a
+		// stale cancelled query doesn't overwrite the displayed duration).
+		m.lastQueryElapsed = time.Since(m.queryStart)
 
 		m.layoutWorkspace()
 

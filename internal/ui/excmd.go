@@ -954,6 +954,126 @@ func quoteIdentD(driver db.Driver, name string) string {
 	}
 }
 
+// exLimit changes the results page size (:limit <n> / :limit off). The new size
+// is applied immediately by re-running the current query at page 0 — the old
+// page position is meaningless under a different size. "off"/"default" restores
+// the configured default; bare ":limit" reports the current size. Minimum 1;
+// there's no upper cap (a huge limit just asks the DB for more rows).
+func (m *Model) exLimit(arg string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	a := strings.TrimSpace(arg)
+	switch strings.ToLower(a) {
+	case "off", "default":
+		m.pageSize = defaultPageSize
+		m.page = 0
+		m.schemaMsg = fmt.Sprintf("page size reset to %d (default)", m.pageSize)
+		return m.rerunForLimit()
+	case "":
+		dft := ""
+		if m.pageSize == defaultPageSize {
+			dft = " (default)"
+		}
+		m.schemaMsg = fmt.Sprintf("page size: %d%s", m.pageSize, dft)
+		return nil
+	}
+	n, err := strconv.Atoi(a)
+	if err != nil || n < 1 {
+		m.schemaMsg = ":limit needs a positive number (or off)"
+		return nil
+	}
+	m.pageSize = n
+	m.page = 0
+	m.schemaMsg = fmt.Sprintf("page size set to %d", n)
+	return m.rerunForLimit()
+}
+
+// rerunForLimit re-runs the current query at page 0 to apply a new page size,
+// or returns nil if no query has been run yet.
+func (m *Model) rerunForLimit() tea.Cmd {
+	if m.lastQuery == "" {
+		return nil
+	}
+	return m.runPageQuery()
+}
+
+// exTiming toggles showing the last query's elapsed time in the status bar
+// (:timing / :timing on / :timing off). The duration is captured on every
+// query completion regardless; this only controls whether it's displayed.
+func (m *Model) exTiming(arg string) tea.Cmd {
+	switch strings.ToLower(strings.TrimSpace(arg)) {
+	case "on":
+		m.showTiming = true
+	case "off":
+		m.showTiming = false
+	case "":
+		m.showTiming = !m.showTiming
+	default:
+		m.schemaMsg = ":timing takes on, off, or nothing"
+		return nil
+	}
+	if m.showTiming {
+		m.schemaMsg = "timing on"
+	} else {
+		m.schemaMsg = "timing off"
+	}
+	return nil
+}
+
+// exPeek shows a one-glance summary of a table (:peek [table]) — row count,
+// column count, primary key, and the column list — in the lookup overlay. It
+// defaults to the current table and runs async (a COUNT(*) plus schema/PK
+// introspection), complementing :describe (full structure) and :count (just the
+// number).
+func (m *Model) exPeek(args []string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	name := ""
+	if len(args) > 0 {
+		name = args[0]
+	}
+	table := m.resolveTableArg(name)
+	if table == "" {
+		return nil
+	}
+	conn := m.connection
+	qt := quoteIdentD(conn.Config().Driver, table)
+	return func() tea.Msg {
+		schema, err := conn.DB().TableSchema(table)
+		if err != nil {
+			return lookupResultMsg{err: err}
+		}
+		pks, _ := conn.DB().PrimaryKeys(table)
+		// Row count is best-effort: a failure just shows an em dash.
+		count := "—"
+		if res, err := conn.DB().Execute("SELECT count(*) FROM " + qt); err == nil && len(res.Rows) > 0 && len(res.Rows[0]) > 0 {
+			count = res.Rows[0][0]
+		}
+		names := make([]string, len(schema))
+		for i, c := range schema {
+			names[i] = c.Name
+		}
+		pk := "—"
+		if len(pks) > 0 {
+			pk = strings.Join(pks, ", ")
+		}
+		rows := [][]string{
+			{"rows", count},
+			{"columns", strconv.Itoa(len(schema))},
+			{"primary key", pk},
+			{"column names", strings.Join(names, ", ")},
+		}
+		return lookupResultMsg{
+			title:  fmt.Sprintf("Peek: %s", table),
+			result: db.Result{Columns: []db.Column{{Name: "Field"}, {Name: "Value"}}, Rows: rows},
+		}
+	}
+}
+
 // lineCount returns the number of lines in s (a trailing newline does not add
 // an extra line), matching how editors report buffer size.
 func lineCount(s string) int {

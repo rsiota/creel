@@ -121,4 +121,5 @@ is skipped while a query is in flight. `:tail <table>` ✅ followed — the
 append-only/event companion to :watch, reusing the same machinery (a
 `watchMode` flag swaps the indicator to `TAIL <n>s`) and building a newest-first
 query from the single-column PK. With both, Tier 2 monitoring is complete.
-Next up: `:peek`, `:limit <n>`, `:timing` (the Tier 3 small wins).
+Next up: the Tier 4 DBA commands (:who / :locks / :kill) are opt-in only; the
+#15 command set (Tiers 1–3) is otherwise complete.

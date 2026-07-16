@@ -172,6 +172,11 @@ func (m Model) statusBar(connName string) string {
 			fmt.Sprintf("%s %s", label, humanDuration(m.watchInterval))))
 	}
 
+	if m.showTiming && m.lastQueryElapsed > 0 {
+		parts = append(parts, sbAccent.Render(
+			fmt.Sprintf("%.3fs", m.lastQueryElapsed.Seconds())))
+	}
+
 	if t := m.currentTable(); t != "" {
 		parts = append(parts,
 			sbLabel.Render(t))

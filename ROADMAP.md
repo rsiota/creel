@@ -293,14 +293,22 @@ distinct; a command that just replays an existing key is low value.
 - `:count [table]` ✅, `:sample [table]` / `:head` ✅ (2026-07-16) — data-inspection
   verbs defaulting to the current table; `:count` runs `SELECT count(*)`, `:sample`
   peeks the first rows (`LIMIT 10`, distinct from `:goto`'s paged browse).
-- `:peek <table>` (composite summary) — still open.
+- `:peek [table]` ✅ (2026-07-17) — a one-glance table summary (row count,
+  column count, primary key, column list) in the lookup overlay. Defaults to
+  the current table; runs async (COUNT(*) + schema/PK introspection). Distinct
+  from :describe (full structure) and :count (just the number).
 - `:bookmark` ✅ (2026-07-16) — bookmarks the editor's current query; closes the
   asymmetry where `:bookmarks` only opened the panel and the `B` key was the sole
   way to add one (the `B` handler now shares `bookmarkCurrentQuery` with the verb).
 - `:rerun <n>` ✅ (2026-07-16) — re-runs a query by history rank (1 = most
   recent). The history panel now numbers rows 1..N most-recent-first, and the
   number stays attached to its entry through fuzzy filtering, so `:rerun <n>`
-  always matches the number shown. `:timing`, `:limit <n>` / `:limit off` — open.
+  always matches the number shown. `:timing` ✅, `:limit <n>` / `:limit off` ✅
+  (2026-07-17) — :limit changes the results page size on the fly (re-runs at
+  page 0; off/default restores the configured size; bare reports the current);
+  :timing toggles a last-query elapsed indicator in the status bar. With these,
+  Tier 3's small wins are complete and the #15 command set is done (Tier 4 DBA
+  commands remain opt-in).
 
 **Tier 4 — DBA / niche (only if the audience wants it):**
 - `:who`, `:locks`, `:kill <pid>` — session / lock inspection; driver-specific,
