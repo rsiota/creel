@@ -113,4 +113,8 @@ home for new commands. Tier-3 data-inspection verbs shipped first (2026-07-16):
 `bookmarkCurrentQuery` with the `B` key, the same extract-a-helper pattern as
 `:refresh`/`refreshSchema`). Added since: `:import <file>` (the `I` key's
 action, reusing `execImportSQL`) and `:rerun <n>` (history rank; the panel now
-numbers rows to match). Next up: `:peek`, `:limit <n>`, `:watch`.
+numbers rows to match). Shipped next: `:watch [n]` — the first *stateful*
+command (toggle + `tea.Tick` timer + persistent `WATCH <n>s` status indicator
+parallel to `TXN ●`). The watch follows `m.lastQuery` (a live refresh of the
+view in focus); a generation counter kills a superseded tick chain, and a tick
+is skipped while a query is in flight. Next up: `:peek`, `:limit <n>`, `:tail`.

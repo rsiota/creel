@@ -233,6 +233,12 @@ type importDoneMsg struct {
 // generation still matches).
 type flashTickMsg struct{ gen uint64 }
 
+// watchTickMsg is emitted by the :watch timer to trigger a periodic refresh of
+// the last query. gen ties it to the active watch generation so restarting
+// (:watch with a new interval) or stopping (:watch off) lets a stale chain die
+// instead of stacking a second one.
+type watchTickMsg struct{ gen uint64 }
+
 // backendSearchTickMsg fires after the debounce delay to execute the query.
 type backendSearchTickMsg struct{ input string }
 
@@ -423,6 +429,13 @@ type Model struct {
 	queryCancelled bool               // true if the user cancelled the running query
 	queryTimeout   time.Duration      // per-query deadline; 0 = wait indefinitely (esc still cancels)
 	settings       config.Settings    // effective app-level settings
+
+	// :watch — periodic re-execution of the last query (:watch [n] / :watch off).
+	// watchGen is a generation counter: restarting with a new interval or
+	// stopping bumps it so a stale tick chain dies instead of doubling the rate.
+	watchActive   bool
+	watchInterval time.Duration
+	watchGen      uint64
 }
 
 // defaultPageSize / defaultQueryTimeout mirror the config-package defaults so
@@ -1193,6 +1206,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.clearFlash()
 		}
 		return m, nil
+
+	case watchTickMsg:
+		return m.handleWatchTick(msg)
 
 	case explainResultMsg:
 		if msg.err != nil {

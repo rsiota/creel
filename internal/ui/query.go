@@ -130,6 +130,20 @@ func formatCount(n int) string {
 	return string(result)
 }
 
+// humanDuration formats a duration compactly for the status bar and messages:
+// whole minutes as "Nm", whole seconds as "Ns", otherwise Go's default. Used
+// by :watch's indicator and confirmation message.
+func humanDuration(d time.Duration) string {
+	switch {
+	case d >= time.Minute && d%time.Minute == 0:
+		return fmt.Sprintf("%dm", int(d/time.Minute))
+	case d%time.Second == 0:
+		return fmt.Sprintf("%ds", int(d/time.Second))
+	default:
+		return d.String()
+	}
+}
+
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 const spinnerInterval = 100 * time.Millisecond

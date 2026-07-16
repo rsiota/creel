@@ -268,7 +268,13 @@ distinct; a command that just replays an existing key is low value.
   since `:w <file>` now writes the editor buffer.
 
 **Tier 2 — monitoring & graph (bigger builds):**
-- `:watch [n]` — re-run the current query every n seconds; `:watch off`.
+- `:watch [n]` — ✅ done. Re-run the current query every n seconds; `:watch
+  off` (or `0`/`stop`) cancels. The watched query "follows" `m.lastQuery`, so
+  running a different query switches what's watched; a `WATCH <n>s` indicator
+  in the status bar (parallel to `TXN ●`) keeps the background refresh
+  visible. A generation counter lets a restarted/stopped tick chain die
+  instead of doubling the rate, and a tick is skipped (not piled up) while a
+  query is in flight.
 - `:tail <table>` — stream newly-appended rows (append-only / event tables).
 - `:refs <table>` — ✅ done. Reverse foreign keys (who points at me);
   complements `g d` (forward FK). Shown in a scrollable overlay panel.
@@ -321,7 +327,7 @@ remaining work is framed by the `:` command-set roadmap (#15). Next up:
    `:export <fmt>` reuses the #6 exporter (csv, json, jsonl, md, tsv),
    skipping the `g X` picker UI.
 4. **Monitoring commands** (#15 Tier 2) — `:refs` ✅ (2026-07-15) and `:uses`
-   ✅ done. `:watch`, `:tail` remain. **← active next**
+   ✅ done. `:tail` remains. **← active next**
 5. **Session restore** (#9) — persistence delight feature.
 
 Original historical order (all complete): keyring storage (#1),

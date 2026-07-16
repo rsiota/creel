@@ -234,6 +234,19 @@ func exCommands() []exCmdSpec {
 			},
 		},
 		{
+			verbs:   []string{"watch"},
+			desc:    "re-run the last query on a timer",
+			usage:   ":watch [n|off]",
+			argKind: exArgOptional,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				arg := ""
+				if len(args) > 0 {
+					arg = args[0]
+				}
+				return m.exWatch(arg)
+			},
+		},
+		{
 			verbs:   []string{"bookmark"},
 			desc:    "bookmark the editor's current query",
 			usage:   ":bookmark",

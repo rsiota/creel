@@ -163,6 +163,11 @@ func (m Model) statusBar(connName string) string {
 		parts = append(parts, sbAccent.Render("TXN ●"))
 	}
 
+	if m.watchActive {
+		parts = append(parts, sbAccent.Render(
+			fmt.Sprintf("WATCH %s", humanDuration(m.watchInterval))))
+	}
+
 	if t := m.currentTable(); t != "" {
 		parts = append(parts,
 			sbLabel.Render(t))

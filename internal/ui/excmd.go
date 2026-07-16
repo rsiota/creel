@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -759,6 +760,108 @@ func (m *Model) exRerun(arg string) tea.Cmd {
 	}
 	m.editor.SetValue(entries[idx].Query)
 	return m.executeQuery()
+}
+
+// defaultWatchInterval is the refresh period :watch uses when given no
+// argument. minWatchInterval guards against a refresh loop that would thrash
+// the database and starve the UI.
+const (
+	defaultWatchInterval = 5 * time.Second
+	minWatchInterval     = time.Second
+)
+
+// watchTick schedules the next :watch refresh, carrying the active generation
+// so the handler can ignore a tick from a superseded (restarted/stopped) watch.
+func watchTick(d time.Duration, gen uint64) tea.Cmd {
+	return tea.Tick(d, func(time.Time) tea.Msg {
+		return watchTickMsg{gen: gen}
+	})
+}
+
+// parseWatchInterval accepts either a bare integer (seconds, e.g. "3") or a Go
+// duration string ("3s", "1m", "500ms"). It rejects anything below the minimum
+// so a typo can't spin a sub-second refresh loop.
+func parseWatchInterval(s string) (time.Duration, bool) {
+	if n, err := strconv.Atoi(s); err == nil {
+		d := time.Duration(n) * time.Second
+		if d < minWatchInterval {
+			return 0, false
+		}
+		return d, true
+	}
+	if d, err := time.ParseDuration(s); err == nil {
+		if d < minWatchInterval {
+			return 0, false
+		}
+		return d, true
+	}
+	return 0, false
+}
+
+// exWatch toggles periodic re-execution of the last query (:watch [n] /
+// :watch off). With no argument it refreshes every defaultWatchInterval; a bare
+// integer is seconds and a Go duration ("3s", "1m") is accepted too.
+// "off"/"stop"/"0" stops an active watch. Each refresh re-runs m.lastQuery at
+// the current page/filters (a live refresh of the view in focus), so running a
+// different query makes the watch follow it — the status bar's WATCH indicator
+// keeps that visible. Starting a watch bumps watchGen so any prior tick chain
+// dies instead of doubling the rate.
+func (m *Model) exWatch(arg string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	a := strings.TrimSpace(arg)
+	switch strings.ToLower(a) {
+	case "off", "stop", "0":
+		if m.watchActive {
+			m.watchActive = false
+			m.schemaMsg = "watch stopped"
+		} else {
+			m.schemaMsg = "no active watch"
+		}
+		return nil
+	}
+	interval := defaultWatchInterval
+	if a != "" {
+		d, ok := parseWatchInterval(a)
+		if !ok {
+			m.schemaMsg = ":watch interval must be like 3 or 3s or 1m (min 1s)"
+			return nil
+		}
+		interval = d
+	}
+	if m.lastQuery == "" {
+		m.schemaMsg = "nothing to watch — run a query first"
+		return nil
+	}
+	m.watchGen++
+	m.watchActive = true
+	m.watchInterval = interval
+	m.schemaMsg = fmt.Sprintf("watching every %s — :watch off to stop", humanDuration(interval))
+	// Refresh immediately, then arm the next tick.
+	return tea.Batch(m.runPageQuery(), watchTick(interval, m.watchGen))
+}
+
+// handleWatchTick processes a watch refresh. It ignores stale ticks (from a
+// superseded/stopped watch), self-terminates when there's nothing left to
+// watch, and otherwise refreshes the current view — unless a query is already
+// in flight (to avoid cancel-thrashing when the interval is shorter than the
+// query) — before rescheduling. Extracted from Update so the logic is testable
+// without driving the whole Update dispatch.
+func (m Model) handleWatchTick(msg watchTickMsg) (Model, tea.Cmd) {
+	if !m.watchActive || msg.gen != m.watchGen {
+		return m, nil
+	}
+	if m.lastQuery == "" || m.connection == nil {
+		m.watchActive = false
+		return m, nil
+	}
+	cmds := []tea.Cmd{watchTick(m.watchInterval, m.watchGen)}
+	if !m.queryRunning {
+		cmds = append(cmds, m.runPageQuery())
+	}
+	return m, tea.Batch(cmds...)
 }
 
 // lineCount returns the number of lines in s (a trailing newline does not add
