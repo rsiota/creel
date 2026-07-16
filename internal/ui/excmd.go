@@ -466,6 +466,25 @@ func (m *Model) exEditFile(path string) tea.Cmd {
 	return nil
 }
 
+// loadStartupFile reads a .sql file into the editor for the `gsql -f` startup
+// flag — the non-interactive counterpart of :e. It expands ~ and resolves
+// relative paths against the working directory (same as :e), returning the
+// expanded path on success or the read error otherwise. Run fails fast on the
+// error (a missing/unreadable file is almost always a typo); the loaded script
+// is not executed — the user reviews it in the editor and runs it (ctrl+e).
+func (m *Model) loadStartupFile(path string) (string, error) {
+	expanded, err := expandTilde(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+	content, err := os.ReadFile(expanded)
+	if err != nil {
+		return expanded, err
+	}
+	m.editor.SetValue(string(content))
+	return expanded, nil
+}
+
 // exWriteFile writes the editor buffer to a file (:w <file>) — vim's :write.
 // It overwrites an existing file (use a versioned name if you need to keep the
 // old one). ~ is expanded; relative paths resolve against the working dir.

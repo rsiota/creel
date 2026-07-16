@@ -214,8 +214,8 @@ reloads.
 queries or a sparkline.
 - Files: `internal/history/`, `internal/ui/history_panel.go`.
 
-### 14. `.sql` file integration — ex commands ✅ DONE (2026-07-15)
-The buffer-level commands ship first; the `-f` CLI flag remains open.
+### 14. `.sql` file integration — ex commands ✅ DONE (2026-07-17)
+The buffer-level commands and the `-f` startup flag both ship.
 
 **Done:** `:e <file>` / `:edit <file>` loads a file into the editor (vim's
 `:edit`, replacing the current buffer — run it from the editor as usual,
@@ -229,10 +229,16 @@ overwrites — pass a versioned name to keep the old one.
   (`expandTilde` extracted from `ImportPrompt.ExpandPath`).
   Tests: `internal/ui/file_io_test.go`.
 
-**Still open:** `gsql -f query.sql` — run a script at startup by feeding it
-through the statement splitter (`internal/db/statements.go`) and executing
-each statement. Entry-point wiring in `cmd/gsql/main.go`; no model changes
-needed since the splitter already exists.
+**Also done (2026-07-17):** `gsql -f query.sql` loads a script into the editor
+at startup — the non-interactive counterpart of `:e`. It reuses the same
+`expandTilde` + `os.ReadFile` path (factored as `loadStartupFile`), resolves
+relative paths against the working directory, and fails fast (stderr + exit 1)
+on a missing/unreadable file. The script is loaded, not executed — the user
+reviews it in the editor and runs it with `ctrl+e`.
+- Files: `cmd/gsql/main.go` (`-f` flag, passed through `ui.Run`),
+  `internal/ui/statusbar.go` (`Run` loads the file before starting the program),
+  `internal/ui/excmd.go` (`loadStartupFile`).
+  Tests: `internal/ui/file_io_test.go` (`TestLoadStartupFile`).
 
 ### 15. `:` command-set roadmap
 A prioritized plan for growing the ex command line, distilled from a command

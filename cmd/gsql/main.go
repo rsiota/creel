@@ -13,6 +13,7 @@ import (
 func main() {
 	var (
 		queryFlag    string
+		fileFlag     string
 		driverFlag   string
 		databaseFlag string
 		hostFlag     string
@@ -24,6 +25,7 @@ func main() {
 	)
 
 	flag.StringVar(&queryFlag, "e", "", "Execute SQL query and exit (CLI mode)")
+	flag.StringVar(&fileFlag, "f", "", "Load a .sql file into the editor at startup")
 	flag.StringVar(&driverFlag, "driver", "sqlite", "Database driver: sqlite, mysql, or postgres")
 	flag.StringVar(&databaseFlag, "database", "", "Database name (SQLite path or MySQL database)")
 	flag.StringVar(&hostFlag, "host", "localhost", "Database host (MySQL only)")
@@ -50,7 +52,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := ui.Run(cfg, readOnlyFlag); err != nil {
+	if err := ui.Run(cfg, readOnlyFlag, fileFlag); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}

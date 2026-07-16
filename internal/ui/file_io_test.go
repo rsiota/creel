@@ -128,3 +128,32 @@ func TestLineCount(t *testing.T) {
 		}
 	}
 }
+
+// loadStartupFile is the `gsql -f` startup loader (the non-interactive
+// counterpart of :e). It shares :e's ~ expansion and relative-path handling;
+// unlike :e it returns the error rather than parking it in schemaMsg, so Run
+// can fail fast on a missing/unreadable file.
+func TestLoadStartupFile(t *testing.T) {
+	content := "SELECT 1;\nSELECT 2;\n"
+	path := filepath.Join(t.TempDir(), "script.sql")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := &Model{editor: NewQueryEditor()}
+	expanded, err := m.loadStartupFile(path)
+	if err != nil {
+		t.Fatalf("loadStartupFile: %v", err)
+	}
+	if m.editor.Value() != content {
+		t.Errorf("editor = %q, want %q", m.editor.Value(), content)
+	}
+	if expanded != path {
+		t.Errorf("expanded = %q, want %q", expanded, path)
+	}
+
+	// Missing file → error (Run fails fast on this).
+	m2 := &Model{editor: NewQueryEditor()}
+	if _, err := m2.loadStartupFile(filepath.Join(t.TempDir(), "nope.sql")); err == nil {
+		t.Error("loadStartupFile on a missing file should return an error")
+	}
+}

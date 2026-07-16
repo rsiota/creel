@@ -326,9 +326,19 @@ func truncateSidebarLine(line string, maxVisible int) string {
 }
 
 // Run starts the application.
-func Run(cfg *config.Config, forceReadOnly bool) error {
+// Run starts the interactive TUI. If startupFile is non-empty it is loaded
+// into the editor before the program starts (the `gsql -f` flag); a read
+// failure fails fast with a wrapped error before any UI is shown.
+func Run(cfg *config.Config, forceReadOnly bool, startupFile string) error {
 	m := NewModel(cfg)
 	m.forceReadOnly = forceReadOnly
+	if startupFile != "" {
+		expanded, err := m.loadStartupFile(startupFile)
+		if err != nil {
+			return fmt.Errorf("loading %s: %w", startupFile, err)
+		}
+		m.schemaMsg = fmt.Sprintf("loaded %s — press ctrl+e to run", expanded)
+	}
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("running application: %w", err)
