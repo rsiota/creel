@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -1091,6 +1092,105 @@ func (m *Model) exPeek(args []string) tea.Cmd {
 			result: db.Result{Columns: []db.Column{{Name: "Field"}, {Name: "Value"}}, Rows: rows},
 		}
 	}
+}
+
+// filterExprRE parses a :filter expression: a column, a comparison operator,
+// and a value. It tolerates spaces around the operator and accepts the compact
+// form ("col=val") as well as the spaced one ("col = val"); the value is the
+// remainder of the line, so it may contain spaces.
+var filterExprRE = regexp.MustCompile(`^(\w+)\s*(=|!=|>=|<=|>|<|~)\s*(.+)$`)
+
+// parseFilterExpr splits a :filter expression into column, operator, value.
+func parseFilterExpr(s string) (col, op, value string, ok bool) {
+	m := filterExprRE.FindStringSubmatch(s)
+	if m == nil {
+		return "", "", "", false
+	}
+	return m[1], m[2], strings.TrimSpace(m[3]), true
+}
+
+// buildFilterFragment renders a :filter expression as a WHERE fragment, type-
+// quoting the value via formatFilterValue (the same helper the */! cell filters
+// use) so strings are quoted and numbers left bare. Operators are literal SQL
+// semantics; ~ is a convenience for a substring LIKE.
+func buildFilterFragment(col, op, value, dbType string) string {
+	switch op {
+	case "~":
+		esc := strings.ReplaceAll(value, "'", "''")
+		return fmt.Sprintf("%s LIKE '%%%s%%'", col, esc)
+	case "=", "!=", ">", "<", ">=", "<=":
+		return fmt.Sprintf("%s %s %s", col, op, formatFilterValue(value, dbType))
+	}
+	return ""
+}
+
+// exFilter applies, clears, or lists quick filters from the : line
+// (:filter <col><op><value> | :filter off | :filter). It wires the : line into
+// the m.filters infra shared by the */! cell filters, the value picker, and
+// filterByMarks: the fragment is appended (replacing any existing filter on the
+// same column), applyFilteredQuery rebuilds lastQuery, and the query re-runs at
+// page 0. The expression is structured rather than raw so the value is type-
+// quoted; ops are = != > < >= <= and ~ (LIKE substring). Requires a simple
+// single-table SELECT (canFilter), since the filter layer rebuilds from the
+// base table. "off"/"clear" drops all filters; bare ":filter" lists them.
+func (m *Model) exFilter(args []string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	joined := strings.TrimSpace(strings.Join(args, " "))
+	switch strings.ToLower(joined) {
+	case "off", "clear":
+		if len(m.filters) == 0 {
+			m.schemaMsg = "no active filters"
+			return nil
+		}
+		m.schemaMsg = fmt.Sprintf("cleared %d filter%s", len(m.filters), pluralIf(len(m.filters) != 1, "s"))
+		return m.clearFilters()
+	case "":
+		if len(m.filters) == 0 {
+			m.schemaMsg = "no active filters"
+		} else {
+			short := make([]string, len(m.filters))
+			for i, f := range m.filters {
+				short[i] = compactFilter(f)
+			}
+			m.schemaMsg = "filters: " + strings.Join(short, "  ")
+		}
+		return nil
+	}
+	if !m.canFilter() {
+		m.schemaMsg = "filtering needs a simple table query (SELECT * FROM <table>)"
+		return nil
+	}
+	col, op, value, ok := parseFilterExpr(joined)
+	if !ok {
+		m.schemaMsg = "usage: :filter <col> <op> <value>  (ops: = != > < >= <= ~)"
+		return nil
+	}
+	idx := -1
+	for i := 0; i < m.results.NumCols(); i++ {
+		if strings.EqualFold(m.results.ColumnName(i), col) {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		m.schemaMsg = fmt.Sprintf("no such column: %s", col)
+		return nil
+	}
+	frag := buildFilterFragment(col, op, value, m.results.ColumnType(idx))
+	if frag == "" {
+		m.schemaMsg = "unsupported operator: " + op
+		return nil
+	}
+	m.filters = removeColumnFilters(m.filters, col)
+	m.filters = append(m.filters, frag)
+	m.applyFilteredQuery()
+	m.page = 0
+	m.preserveCursorCol()
+	m.schemaMsg = "filtered: " + compactFilter(frag)
+	return m.runPageQuery()
 }
 
 // lineCount returns the number of lines in s (a trailing newline does not add

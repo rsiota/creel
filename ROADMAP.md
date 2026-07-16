@@ -171,9 +171,13 @@ Feedback/errors surface via the transient status-bar message.
   Tests: `internal/ui/excmd_test.go` (parser, state, key handling, each command,
   fallback, unknown).
 
-**Follow-ups still open (v2):** argument commands needing more wiring
-(`:filter <expr>`, `:open`/`:save` — pairs with #14, `:theme <name>`,
-`:set <opt>`), and live command completion/suggestions as you type.
+**Follow-ups still open (v2):** live command completion/suggestions as you
+  type. The argument commands are now wired: `:filter <col><op><value>`
+  (2026-07-17; structured form reusing the m.filters infra — value type-quoted
+  via formatFilterValue, `~` = LIKE substring, `off`/`clear` and bare-list), and
+  `:open`/`:save` as non-vim aliases of `:e`/`:w`. `:theme <name>` already
+  shipped (v1). `:set <opt>` is deferred (the runtime toggles are covered by
+  :timing/:limit/:theme; :set would mainly add confirm_destructive/timeout).
 - Originally: `:w` save edits, `:q` close tab, `:sort name`, `:goto users`,
   `:filter status=active`. The palette's replay mechanism (`keymsg.go`) could
   execute some.

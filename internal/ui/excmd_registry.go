@@ -287,6 +287,39 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exPeek(args) },
 		},
 		{
+			verbs:   []string{"filter"},
+			desc:    "add a WHERE filter (col op value)",
+			usage:   ":filter <col><op><value>|off",
+			argKind: exArgRequired,
+			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exFilter(args) },
+		},
+		{
+			verbs:   []string{"open", "o"},
+			desc:    "load a file into the editor (alias of :e)",
+			usage:   ":open <file>",
+			argKind: exArgRequired,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				if len(args) == 0 {
+					m.schemaMsg = ":open needs a file path"
+					return nil
+				}
+				return m.exEditFile(args[0])
+			},
+		},
+		{
+			verbs:   []string{"save"},
+			desc:    "write the editor buffer to a file (alias of :w)",
+			usage:   ":save <file>",
+			argKind: exArgRequired,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				if len(args) == 0 {
+					m.schemaMsg = ":save needs a file path"
+					return nil
+				}
+				return m.exWriteFile(args[0])
+			},
+		},
+		{
 			verbs:   []string{"bookmark"},
 			desc:    "bookmark the editor's current query",
 			usage:   ":bookmark",
