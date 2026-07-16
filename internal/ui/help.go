@@ -101,7 +101,7 @@ func (h *HelpPanel) HandleKey(msg tea.KeyMsg) bool {
 		h.setCurOff(0)
 		return true
 	case "G":
-		h.setCurOff(1 << 30) // clamp to the bottom at render time
+		h.setCurOff(h.maxOff()) // jump to the bottom
 		return true
 	}
 	return false
@@ -121,11 +121,31 @@ func (h *HelpPanel) setCurOff(v int) {
 	if v < 0 {
 		v = 0
 	}
+	// Clamp the upper bound too, so the stored offset always tracks the
+	// rendered position. Without this, G parked a sentinel (1<<30) past the
+	// end and every later up-scroll / j was re-clamped to the same bottom line
+	// — scrolling looked frozen until the offset climbed back into range.
+	if max := h.maxOff(); v > max {
+		v = max
+	}
 	if h.page == helpPageCommands {
 		h.cmdsOff = v
 	} else {
 		h.keysOff = v
 	}
+}
+
+// maxOff is the largest valid scroll offset for the active page: the page's
+// line count minus the viewport height. pageLines depends on the (width-
+// derived) content width, so this mirrors View's clamping and lets the scroll
+// and jump handlers keep the stored offset in range rather than deferring it
+// to render time.
+func (h HelpPanel) maxOff() int {
+	off := len(h.pageLines(helpContentWidth(h.width))) - h.scrollPage()
+	if off < 0 {
+		return 0
+	}
+	return off
 }
 
 // scrollPage is the number of lines PgUp/PgDn jump — the viewport height.

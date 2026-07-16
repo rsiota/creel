@@ -180,3 +180,61 @@ func TestHelpTabClickSwitchesPage(t *testing.T) {
 		t.Error("click past the tabs should not switch pages")
 	}
 }
+
+// TestHelpScrollAfterG is a regression guard. G used to set the offset to a
+// huge sentinel (1<<30) that was only clamped at render time, so any
+// up-scroll / j / k afterward computed (sentinel ± 1) and was re-clamped to
+// the same bottom line — scrolling looked frozen until the offset climbed
+// back into range. The offset is now clamped on write, so G lands on the real
+// max and scrolling resumes immediately (and the reverse — scrolling to the
+// bottom, then up — works too).
+func TestHelpScrollAfterG(t *testing.T) {
+	h := NewHelpPanel()
+	h.Show()
+	h.SetSize(120, 40)
+
+	maxOff := h.maxOff()
+	if maxOff <= 0 {
+		t.Fatalf("Keys page should scroll at 120x40 (maxOff=%d)", maxOff)
+	}
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+
+	// G lands exactly on the bottom — not a sentinel past the end.
+	h.HandleKey(key("G"))
+	if off := h.curOff(); off != maxOff {
+		t.Errorf("after G: offset=%d, want maxOff=%d", off, maxOff)
+	}
+	// Up-scroll immediately after G must move (the bug: it was a no-op).
+	h.HandleKey(key("k"))
+	if off := h.curOff(); off >= maxOff {
+		t.Errorf("after G then k: offset=%d, want < maxOff=%d (up-scroll frozen after G)", off, maxOff)
+	}
+
+	// The reverse: scroll to the bottom with PgDn, then up must still move.
+	h.HandleKey(key("G")) // reset to bottom
+	for i := 0; i < 20; i++ {
+		h.HandleKey(tea.KeyMsg{Type: tea.KeyPgDown}) // hammered past the end
+	}
+	if off := h.curOff(); off != maxOff {
+		t.Errorf("after scrolling past bottom: offset=%d, want clamped to maxOff=%d", off, maxOff)
+	}
+	h.HandleKey(key("k"))
+	if off := h.curOff(); off >= maxOff {
+		t.Errorf("after bottom then k: offset=%d, want < maxOff=%d (up-scroll frozen at bottom)", off, maxOff)
+	}
+}
+
+// On a page short enough to fit without scrolling, G is a no-op at offset 0.
+func TestHelpGOnPageThatFits(t *testing.T) {
+	h := NewHelpPanel()
+	h.Show()
+	h.SetSize(120, 40)
+	h.page = helpPageCommands // the short page; fits at this size
+	if h.maxOff() != 0 {
+		t.Skipf("Commands page scrolls at this size (maxOff=%d)", h.maxOff())
+	}
+	h.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	if off := h.curOff(); off != 0 {
+		t.Errorf("G on a page that fits: offset=%d, want 0", off)
+	}
+}
