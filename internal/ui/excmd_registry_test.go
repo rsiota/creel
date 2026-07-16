@@ -52,7 +52,8 @@ func TestExLookupResolvesKnownVerbs(t *testing.T) {
 		"export", "refs", "references", "uses", "begin", "transaction",
 		"commit", "rollback", "help", "h",
 		"explain", "refresh", "reload", "history", "bookmarks", "bm",
-		"describe", "desc", "stats", "format", "theme",
+		"describe", "desc", "stats", "count", "sample", "head", "format",
+		"bookmark", "theme",
 	}
 	for _, v := range known {
 		if exLookup(v) == nil {

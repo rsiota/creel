@@ -275,8 +275,14 @@ distinct; a command that just replays an existing key is low value.
   same lookup overlay panel. Defaults to the current table with no argument.
 
 **Tier 3 — small wins:**
-- `:count <table>`, `:sample <table>`, `:peek <table>` (composite summary),
-  `:rerun <n>` (history by index), `:timing`, `:limit <n>` / `:limit off`.
+- `:count [table]` ✅, `:sample [table]` / `:head` ✅ (2026-07-16) — data-inspection
+  verbs defaulting to the current table; `:count` runs `SELECT count(*)`, `:sample`
+  peeks the first rows (`LIMIT 10`, distinct from `:goto`'s paged browse).
+- `:peek <table>` (composite summary) — still open.
+- `:bookmark` ✅ (2026-07-16) — bookmarks the editor's current query; closes the
+  asymmetry where `:bookmarks` only opened the panel and the `B` key was the sole
+  way to add one (the `B` handler now shares `bookmarkCurrentQuery` with the verb).
+- `:rerun <n>` (history by index), `:timing`, `:limit <n>` / `:limit off` — open.
 
 **Tier 4 — DBA / niche (only if the audience wants it):**
 - `:who`, `:locks`, `:kill <pid>` — session / lock inspection; driver-specific,

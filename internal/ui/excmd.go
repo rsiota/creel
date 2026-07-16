@@ -668,6 +668,51 @@ func (m *Model) exTheme(name string) tea.Cmd {
 	return nil
 }
 
+// exCount runs SELECT count(*) FROM <table> (:count [table]), defaulting to
+// the current table. It reuses the :goto pattern (set the editor, run the
+// statement) so the count lands in the results panel like any query.
+func (m *Model) exCount(name string) tea.Cmd {
+	table := m.resolveTableArg(name)
+	if table == "" {
+		return nil
+	}
+	m.editor.SetValue(fmt.Sprintf("SELECT count(*) FROM %s;", table))
+	return m.executeQuery()
+}
+
+// defaultSampleSize is the row cap :sample uses — a small, fast peek distinct
+// from :goto, which opens the table for paged browsing at the full page size.
+const defaultSampleSize = 10
+
+// exSample peeks at the first rows of a table (:sample [table] / :head),
+// defaulting to the current table. A small fixed limit keeps it a quick glance
+// rather than a full first page (:goto already does that).
+func (m *Model) exSample(name string) tea.Cmd {
+	table := m.resolveTableArg(name)
+	if table == "" {
+		return nil
+	}
+	m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s LIMIT %d;", table, defaultSampleSize))
+	return m.executeQuery()
+}
+
+// bookmarkCurrentQuery adds the editor's current query to the bookmarks for
+// the active connection. It is the shared action behind the B key and
+// :bookmark, reporting the outcome via the transient bookmark status message.
+// (The B key keeps its own insert-mode guard; this helper is the pure action,
+// safe to call from the modal ex line where the editor isn't receiving keys.)
+func (m *Model) bookmarkCurrentQuery() {
+	q := m.editor.FormatQuery()
+	if q == "" || m.connection == nil || m.bookmarkStore == nil {
+		return
+	}
+	if err := m.bookmarkStore.Add(m.connection.Config().Name, q); err == nil {
+		m.bookmarkMsg = "bookmarked"
+	} else {
+		m.bookmarkMsg = "already bookmarked"
+	}
+}
+
 // lineCount returns the number of lines in s (a trailing newline does not add
 // an extra line), matching how editors report buffer size.
 func lineCount(s string) int {

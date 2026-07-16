@@ -105,3 +105,10 @@ toggle). Tests: `excmd_aliases_test.go`; known-verb set extended.
 
 ### Step 6 (optional) — `:map` / keymap config
 Enabled once actions have stable IDs + executors.
+
+### Catalog expansion (ongoing)
+With the registry in place, the `:` line is now the cheap, self-documenting
+home for new commands. Tier-3 data-inspection verbs shipped first (2026-07-16):
+`:count [table]`, `:sample [table]`/`:head`, and `:bookmark` (the latter shares
+`bookmarkCurrentQuery` with the `B` key, the same extract-a-helper pattern as
+`:refresh`/`refreshSchema`). Next up: `:import <file>`, `:rerun <n>`.

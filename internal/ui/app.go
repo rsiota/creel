@@ -2223,18 +2223,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.toggleBookmarks()
 		return m, nil
 	case "B":
-		// Bookmark the current editor query.
+		// Bookmark the current editor query (shared with :bookmark). Don't
+		// intercept it while typing in the editor's insert mode.
 		if m.focus == FocusEditor && m.editor.VimMode() == VimInsert {
 			break
 		}
-		q := m.editor.FormatQuery()
-		if q != "" && m.connection != nil && m.bookmarkStore != nil {
-			if err := m.bookmarkStore.Add(m.connection.Config().Name, q); err == nil {
-				m.bookmarkMsg = "bookmarked"
-			} else {
-				m.bookmarkMsg = "already bookmarked"
-			}
-		}
+		m.bookmarkCurrentQuery()
 		return m, nil
 	case "ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l":
 		// Directional panel navigation — not while editing or in insert mode.

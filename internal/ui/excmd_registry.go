@@ -208,6 +208,13 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.toggleHistory(); return nil },
 		},
 		{
+			verbs:   []string{"bookmark"},
+			desc:    "bookmark the editor's current query",
+			usage:   ":bookmark",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.bookmarkCurrentQuery(); return nil },
+		},
+		{
 			verbs:   []string{"bookmarks", "bm"},
 			desc:    "toggle the bookmarks panel",
 			usage:   ":bookmarks",
@@ -238,6 +245,32 @@ func exCommands() []exCmdSpec {
 					arg = args[0]
 				}
 				return m.exStats(arg)
+			},
+		},
+		{
+			verbs:   []string{"count"},
+			desc:    "row count for a table (SELECT count(*))",
+			usage:   ":count [table]",
+			argKind: exArgTable,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				name := ""
+				if len(args) > 0 {
+					name = args[0]
+				}
+				return m.exCount(name)
+			},
+		},
+		{
+			verbs:   []string{"sample", "head"},
+			desc:    "peek at the first rows of a table",
+			usage:   ":sample [table]",
+			argKind: exArgTable,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				name := ""
+				if len(args) > 0 {
+					name = args[0]
+				}
+				return m.exSample(name)
 			},
 		},
 		{
