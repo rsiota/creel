@@ -514,6 +514,15 @@ func (m Model) handleHelpMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.help.ScrollBy(-helpWheelLines)
 	case tea.MouseWheelDown:
 		m.help.ScrollBy(helpWheelLines)
+	case tea.MouseLeft:
+		// Click a tab label to switch pages. The panel is centred (panelLeft
+		// from the width) and starts at the top row, so the tab bar sits at a
+		// fixed screen row.
+		if msg.Y == helpTabRow {
+			if p := helpTabAt(helpPanelLeft(m.width), msg.X); p >= 0 {
+				m.help.SetPage(p)
+			}
+		}
 	}
 	return m, nil
 }

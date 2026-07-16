@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // TestHelpListsExCommands pins that the Commands tab of the "?" overlay folds
@@ -108,5 +109,74 @@ func TestHelpCloseKeysDismisses(t *testing.T) {
 	// Nav keys are consumed.
 	if !h.HandleKey(tea.KeyMsg{Type: tea.KeyTab}) {
 		t.Error("tab should be consumed")
+	}
+}
+
+// TestHelpConstantHeightAcrossTabs guards against the panel resizing when the
+// page changes (which made the top border jump up/down on tab switch). Both
+// pages must render the same number of lines.
+func TestHelpConstantHeightAcrossTabs(t *testing.T) {
+	h := NewHelpPanel()
+	h.Show()
+	h.SetSize(120, 40)
+	h.page = helpPageKeys
+	keysH := lipgloss.Height(h.View())
+	h.page = helpPageCommands
+	cmdsH := lipgloss.Height(h.View())
+	if keysH != cmdsH {
+		t.Errorf("help panel height differs across tabs: keys=%d commands=%d (border would jump)",
+			keysH, cmdsH)
+	}
+}
+
+// TestHelpHintsWhenVisible confirms the status bar surfaces help-specific
+// keybindings while the overlay is open (instead of the workspace hints).
+func TestHelpHintsWhenVisible(t *testing.T) {
+	m := Model{help: NewHelpPanel()}
+	m.help.Show()
+	hints := m.hintList()
+	joined := strings.Join(hints, " ")
+	if !strings.Contains(joined, "tab") || !strings.Contains(joined, "?") {
+		t.Errorf("help-visible hints should mention tab and ?: got %v", hints)
+	}
+}
+
+// TestHelpTabClickSwitchesPage covers the mouse-click tab hit boxes: a click
+// on each tab switches to it, and clicks off the tab row (or off any tab) do
+// nothing.
+func TestHelpTabClickSwitchesPage(t *testing.T) {
+	m := Model{help: NewHelpPanel()}
+	m.help.Show()
+	m.width = 120
+	pl := helpPanelLeft(m.width)
+
+	for _, want := range []int{helpPageKeys, helpPageCommands} {
+		// Find an x coordinate that lands on tab `want`.
+		x := -1
+		for xx := pl; xx < pl+30; xx++ {
+			if helpTabAt(pl, xx) == want {
+				x = xx
+				break
+			}
+		}
+		if x < 0 {
+			t.Fatalf("no click x found for tab %d", want)
+		}
+		mm, _ := m.handleHelpMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: helpTabRow})
+		if got := mm.(Model).help.page; got != want {
+			t.Errorf("click on tab %d (x=%d) set page=%d", want, x, got)
+		}
+	}
+
+	// A click off the tab row leaves the page unchanged.
+	m.help.page = helpPageKeys
+	mm, _ := m.handleHelpMouse(tea.MouseMsg{Type: tea.MouseLeft, X: 5, Y: 0})
+	if mm.(Model).help.page != helpPageKeys {
+		t.Error("click off the tab row should not switch pages")
+	}
+	// A click on the tab row but past the tabs also does nothing.
+	mm, _ = m.handleHelpMouse(tea.MouseMsg{Type: tea.MouseLeft, X: 200, Y: helpTabRow})
+	if mm.(Model).help.page != helpPageKeys {
+		t.Error("click past the tabs should not switch pages")
 	}
 }

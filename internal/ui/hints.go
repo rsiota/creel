@@ -12,7 +12,11 @@ import "strings"
 // stack on top of other overlays (e.g. createDBActive on top of dbPicker).
 func (m Model) hintList() []string {
 	switch {
-	// Dialogs stacked on top of pickers — check first.
+	// Help overlay is the most modal surface — check first.
+	case m.help.IsVisible():
+		return []string{"tab", "j/k", "g/G", "?"}
+
+	// Dialogs stacked on top of pickers — check next.
 	case m.createDBActive:
 		return []string{"enter", "esc"}
 	case m.dropDBConfirm != "" || m.dropTableConfirm != "":

@@ -150,14 +150,11 @@ func (h HelpPanel) View() string {
 		return ""
 	}
 
-	// contentW/contentH account for border(2) + padding (2 horiz / 2 vert),
-	// plus a little slack to absorb lipgloss rounding. Conservative values
-	// mean a touch more margin, never overflow.
-	contentW := h.width - 8
-	if contentW < 40 {
-		contentW = 40
-	}
-	viewportH := h.height - 11 // minus header + tabbar + 2 blanks + footer + chrome
+	// helpContentWidth shares the panel's inner width with the mouse hit-test.
+	// viewportH leaves room for header + blank + tabbar + blank (above the
+	// body) and a blank + pos line (below), plus border + padding.
+	contentW := helpContentWidth(h.width)
+	viewportH := h.height - 11
 	if viewportH < 4 {
 		viewportH = 4
 	}
@@ -195,13 +192,9 @@ func (h HelpPanel) View() string {
 		pos = mutedStyle.Render("scroll " + itoa(off+1) + "–" + itoa(end) + "/" + itoa(len(bodyAll)) + "  " + itoa(pct) + "%")
 	}
 
-	// Title, a blank, then the tabs. The keybinding-hint footer is omitted by
-	// design (the tabs read as switchable, and j/k/g/G are vim-familiar); a
-	// scroll-position readout appears only when there's more to see.
-	layers := []string{header, "", tabbar, "", body, ""}
-	if pos != "" {
-		layers = append(layers, pos)
-	}
+	// Always seven layers (pos is "" when nothing scrolls) so the panel height
+	// is identical on both pages — the top border stays put when switching tabs.
+	layers := []string{header, "", tabbar, "", body, "", pos}
 	content := lipgloss.JoinVertical(lipgloss.Left, layers...)
 
 	panel := lipgloss.NewStyle().
@@ -218,11 +211,27 @@ func (h HelpPanel) View() string {
 	)
 }
 
+// helpTabRow is the screen row (0-indexed, from the top of the overlay area)
+// on which the tab bar renders: border(1) + padding-top(1) + header(1) +
+// blank(1). The panel is centred horizontally but always starts at the top
+// row, so this is constant.
+const helpTabRow = 4
+
+// helpTabLabel is the text of tab i (without the surrounding spaces the
+// renderer adds). Shared by renderTabBar and helpTabAt so mouse clicks track
+// the rendered layout exactly.
+func helpTabLabel(i int) string {
+	if i == helpPageCommands {
+		return "Commands"
+	}
+	return "Keys"
+}
+
 // renderTabBar renders the page tabs with the active one highlighted.
 func (h HelpPanel) renderTabBar() string {
-	labels := []string{"Keys", "Commands"}
 	var parts []string
-	for i, l := range labels {
+	for i := 0; i < helpPageCount; i++ {
+		l := helpTabLabel(i)
 		var s string
 		if i == h.page {
 			s = lipgloss.NewStyle().
@@ -236,6 +245,51 @@ func (h HelpPanel) renderTabBar() string {
 		parts = append(parts, s)
 	}
 	return strings.Join(parts, " ")
+}
+
+// helpContentWidth is the panel's inner content width, shared by View and the
+// mouse hit-test so they agree on the panel's on-screen size.
+func helpContentWidth(termW int) int {
+	w := termW - 8
+	if w < 40 {
+		w = 40
+	}
+	return w
+}
+
+// helpPanelLeft is the panel's left screen offset. The panel (content +
+// border + padding) is centred in the terminal width by lipgloss.Place; the
+// mouse hit-test uses this to locate the tabs.
+func helpPanelLeft(termW int) int {
+	left := (termW - (helpContentWidth(termW) + 6)) / 2 // +6 = border(2) + padding(4)
+	if left < 0 {
+		left = 0
+	}
+	return left
+}
+
+// helpTabAt returns the tab index at screen column x, or -1 if x isn't on a
+// tab. panelLeft is the panel's left offset; tabs start at panelLeft + border
+// + padding-left and are laid out as " <label> " separated by single spaces
+// (matching renderTabBar).
+func helpTabAt(panelLeft, x int) int {
+	cur := panelLeft + 1 /*border*/ + 2 /*pad-left*/
+	for i := 0; i < helpPageCount; i++ {
+		w := 1 + len(helpTabLabel(i)) + 1
+		if x >= cur && x < cur+w {
+			return i
+		}
+		cur += w + 1 // tab + separator space
+	}
+	return -1
+}
+
+// SetPage switches the help overlay to page p (no-op if out of range). Used
+// by the mouse-click handler.
+func (h *HelpPanel) SetPage(p int) {
+	if p >= 0 && p < helpPageCount {
+		h.page = p
+	}
 }
 
 // pageLines returns every line of the active page's body (before slicing to the
