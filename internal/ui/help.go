@@ -3,30 +3,59 @@ package ui
 import (
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// HelpPanel renders a full-screen overlay listing every keybinding,
-// grouped by context. Toggled with "?".
+// HelpPanel renders a full-screen, scrollable, tabbed help overlay:
 //
-// The binding data lives in registry() (registry.go) — the single source of
-// truth. This file only handles rendering.
+//   • Keys     — every keybinding (registry()), arranged in as few columns as
+//                fit the viewport so descriptions align, with more columns
+//                added only when the content would otherwise scroll forever.
+//   • Commands — every ":" command (exCommands()), one per line at full width
+//                with descriptions wrapped, so nothing is truncated.
+//
+// Both pages scroll vertically (↑/↓ or j/k, PgUp/PgDn, g/G). Tab / shift+tab
+// switch pages; ? or esc (or any unmapped key) closes it. Scrolling is the
+// overflow safety net: offsets are clamped at render time, so the panel never
+// overflows its borders regardless of terminal size.
 type HelpPanel struct {
 	visible bool
+	page    int // helpPageKeys | helpPageCommands
+	keysOff int // scroll offset (lines) for the Keys page
+	cmdsOff int // scroll offset (lines) for the Commands page
 	width   int
 	height  int
 }
+
+const (
+	helpPageKeys = iota
+	helpPageCommands
+	helpPageCount
+)
 
 // NewHelpPanel creates a hidden help panel.
 func NewHelpPanel() HelpPanel {
 	return HelpPanel{}
 }
 
-// Toggle shows or hides the help panel.
-func (h *HelpPanel) Toggle() { h.visible = !h.visible }
+// Toggle shows or hides the help panel. Opening always resets to the Keys page
+// at the top, so re-opening feels fresh rather than resuming a mid-scroll.
+func (h *HelpPanel) Toggle() {
+	if h.visible {
+		h.visible = false
+		return
+	}
+	h.Show()
+}
 
-// Show forces the panel visible.
-func (h *HelpPanel) Show() { h.visible = true }
+// Show forces the panel visible, on the Keys page, scrolled to the top.
+func (h *HelpPanel) Show() {
+	h.visible = true
+	h.page = helpPageKeys
+	h.keysOff = 0
+	h.cmdsOff = 0
+}
 
 // Hide forces the panel hidden.
 func (h *HelpPanel) Hide() { h.visible = false }
@@ -34,10 +63,78 @@ func (h *HelpPanel) Hide() { h.visible = false }
 // IsVisible reports whether the help panel is shown.
 func (h HelpPanel) IsVisible() bool { return h.visible }
 
-// SetSize stores the terminal dimensions for centering/scaling the overlay.
+// SetSize stores the terminal dimensions for sizing/scrolling the overlay,
+// clamping the current page's offset so a shrink can't leave it past the end.
 func (h *HelpPanel) SetSize(width, height int) {
 	h.width = width
 	h.height = height
+}
+
+// HandleKey routes a keypress to the open help overlay. It returns true for
+// navigation keys (scroll / page-switch), which the caller treats as consumed
+// (the overlay stays open). It returns false for close keys (esc, ?, q) AND for
+// any unmapped key — the caller then hides the overlay, preserving the old
+// "any key dismisses" feel while adding navigation.
+func (h *HelpPanel) HandleKey(msg tea.KeyMsg) bool {
+	switch msg.String() {
+	case "esc", "?", "q", "ctrl+c":
+		return false
+	case "tab":
+		h.page = (h.page + 1) % helpPageCount
+		return true
+	case "shift+tab":
+		h.page = (h.page - 1 + helpPageCount) % helpPageCount
+		return true
+	case "j", "down":
+		h.setCurOff(h.curOff() + 1)
+		return true
+	case "k", "up":
+		h.setCurOff(h.curOff() - 1)
+		return true
+	case "pgdown", "ctrl+d", " ", "f":
+		h.setCurOff(h.curOff() + h.scrollPage())
+		return true
+	case "pgup", "ctrl+u", "b":
+		h.setCurOff(h.curOff() - h.scrollPage())
+		return true
+	case "g":
+		h.setCurOff(0)
+		return true
+	case "G":
+		h.setCurOff(1 << 30) // clamp to the bottom at render time
+		return true
+	}
+	return false
+}
+
+// curOff / setCurOff read/write the offset for the active page. The lower bound
+// is clamped here; the upper bound is clamped in View (it depends on content
+// length, which is only known once the page is rendered).
+func (h HelpPanel) curOff() int {
+	if h.page == helpPageCommands {
+		return h.cmdsOff
+	}
+	return h.keysOff
+}
+
+func (h *HelpPanel) setCurOff(v int) {
+	if v < 0 {
+		v = 0
+	}
+	if h.page == helpPageCommands {
+		h.cmdsOff = v
+	} else {
+		h.keysOff = v
+	}
+}
+
+// scrollPage is the number of lines PgUp/PgDn jump — the viewport height.
+func (h HelpPanel) scrollPage() int {
+	v := h.height - 11
+	if v < 4 {
+		return 4
+	}
+	return v
 }
 
 // View renders the help overlay, sized to fit the terminal.
@@ -46,119 +143,57 @@ func (h HelpPanel) View() string {
 		return ""
 	}
 
-	sections := registry()
-
-	// Compute column width: longest key in each section, padded.
-	keyWidth := 0
-	for _, s := range sections {
-		for _, b := range s.Items {
-			if w := runeLen(b.Display); w > keyWidth {
-				keyWidth = w
-			}
-		}
+	// contentW/contentH account for border(2) + padding (2 horiz / 2 vert),
+	// plus a little slack to absorb lipgloss rounding. Conservative values
+	// mean a touch more margin, never overflow.
+	contentW := h.width - 8
+	if contentW < 40 {
+		contentW = 40
+	}
+	viewportH := h.height - 11 // minus header + tabbar + 2 blanks + footer + chrome
+	if viewportH < 4 {
+		viewportH = 4
 	}
 
-	// The Commands block (rendered from exCommands) sits below the keybinding
-	// columns; reserve its height plus a blank separator so the columns don't
-	// crowd it out.
-	cmdCount := len(exCommands())
-	cmdReserved := commandsBlockHeight(cmdCount) + 1
+	bodyAll := h.pageLines(contentW)
 
-	// sectionHeight returns the rendered line count of a single section
-	// (title + one line per binding).
-	sectionHeight := func(s Section) int { return 1 + len(s.Items) }
+	// Clamp the offset now that the content length is known, then slice.
+	maxOff := len(bodyAll) - viewportH
+	if maxOff < 0 {
+		maxOff = 0
+	}
+	off := h.curOff()
+	if off > maxOff {
+		off = maxOff
+	}
+	end := off + viewportH
+	if end > len(bodyAll) {
+		end = len(bodyAll)
+	}
+	bodyVisible := bodyAll[off:end]
+	for len(bodyVisible) < viewportH {
+		bodyVisible = append(bodyVisible, "")
+	}
+	body := strings.Join(bodyVisible, "\n")
 
-	// Available content height inside the panel (terminal minus border(2),
-	// padding(2), header(1), blank(1), footer(1), blank(1), and the reserved
-	// Commands block).
-	availH := h.height - 8 - cmdReserved
-	if availH < 16 {
-		availH = 16
+	title := "Keybindings"
+	if h.page == helpPageCommands {
+		title = "Commands"
+	}
+	header := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(title)
+	tabbar := h.renderTabBar()
+	footer := mutedStyle.Render("tab: switch page   ↑/↓ or j/k: scroll   g/G: top·bottom   ?: close")
+	pos := ""
+	if maxOff > 0 {
+		pct := off * 100 / maxOff
+		pos = mutedStyle.Render("scroll " + itoa(off+1) + "–" + itoa(end) + "/" + itoa(len(bodyAll)) + "  " + itoa(pct) + "%")
 	}
 
-	// Greedily distribute sections across columns so no column exceeds
-	// availH. This avoids the tall Results section dominating one column.
-	var columns [][]Section
-	colHeights := []int{0}
-	for _, s := range sections {
-		sh := sectionHeight(s) + 2 // section + blank separator
-		// Find the shortest column that can still fit this section.
-		bestCol := 0
-		for ci := range colHeights {
-			if colHeights[ci] < colHeights[bestCol] {
-				bestCol = ci
-			}
-		}
-		// If the shortest column is full and this section won't fit, start a
-		// new column (unless we're already on the last one).
-		if colHeights[bestCol]+sh > availH && colHeights[bestCol] > 0 {
-			columns = append(columns, nil)
-			colHeights = append(colHeights, 0)
-			bestCol = len(colHeights) - 1
-		}
-		if bestCol >= len(columns) {
-			columns = append(columns, nil)
-		}
-		columns[bestCol] = append(columns[bestCol], s)
-		colHeights[bestCol] += sh
-	}
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		header, tabbar, "", body, "", footer, pos)
 
-	renderCol := func(cols []Section) string {
-		var b strings.Builder
-		for i, s := range cols {
-			if i > 0 {
-				b.WriteString("\n\n")
-			}
-			b.WriteString(titleStyle.Render(s.Title))
-			b.WriteString("\n")
-			for _, bd := range s.Items {
-				key := lipgloss.NewStyle().Foreground(colorLabel).Render(bd.Display)
-				pad := strings.Repeat(" ", keyWidth-runeLen(bd.Display))
-				desc := lipgloss.NewStyle().Foreground(colorFg).Render(bd.Desc)
-				b.WriteString("  " + key + pad + "  " + desc + "\n")
-			}
-		}
-		return b.String()
-	}
-
-	// Join all columns horizontally.
-	colStrs := make([]string, len(columns))
-	for i, c := range columns {
-		colStrs[i] = renderCol(c)
-	}
-	seps := make([]string, len(colStrs)-1)
-	for i := range seps {
-		seps[i] = "    "
-	}
-	// Constrain to terminal size.
-	maxW := h.width - 4
-	if maxW < 40 {
-		maxW = 40
-	}
-	cmdBlock := renderCommandsBlock(maxW)
-
-	body := lipgloss.JoinHorizontal(lipgloss.Top, joinInterleaved(colStrs, seps)...)
-
-	header := lipgloss.NewStyle().
-		Foreground(colorPrimary).
-		Bold(true).
-		Render("Keybindings")
-	footer := mutedStyle.Render("press ? or esc to close")
-
-	layers := []string{header, "", body}
-	if cmdBlock != "" {
-		layers = append(layers, "", cmdBlock)
-	}
-	layers = append(layers, "", footer)
-	content := lipgloss.JoinVertical(lipgloss.Left, layers...)
-
-	maxH := h.height - 2
-	if maxH < 10 {
-		maxH = 10
-	}
 	panel := lipgloss.NewStyle().
-		Width(maxW).
-		Height(maxH).
+		Width(contentW).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
 		Padding(1, 2).
@@ -171,61 +206,136 @@ func (h HelpPanel) View() string {
 	)
 }
 
-// joinInterleaved interleaves items and separators into a single slice,
-// e.g. [a,b,c] + [s1,s2] → [a,s1,b,s2,c].
-func joinInterleaved(items, seps []string) []string {
-	if len(items) == 0 {
-		return nil
-	}
-	result := make([]string, 0, len(items)+len(seps))
-	for i, item := range items {
-		result = append(result, item)
-		if i < len(seps) {
-			result = append(result, seps[i])
+// renderTabBar renders the page tabs with the active one highlighted.
+func (h HelpPanel) renderTabBar() string {
+	labels := []string{"Keys", "Commands"}
+	var parts []string
+	for i, l := range labels {
+		var s string
+		if i == h.page {
+			s = lipgloss.NewStyle().
+				Bold(true).
+				Background(colorPrimary).
+				Foreground(colorBg).
+				Render(" " + l + " ")
+		} else {
+			s = lipgloss.NewStyle().Foreground(colorMuted).Render(" " + l + " ")
 		}
+		parts = append(parts, s)
 	}
-	return result
+	return strings.Join(parts, " ")
 }
 
-// renderCommandsBlock renders the ":" commands (from exCommands) as a titled
-// two-column block for the help overlay: "usage   description" per row. It is
-// independent of the keybinding column layout (sized to key displays, far
-// narrower than command usages) so neither widens the other. maxWidth bounds
-// the block; descs are truncated to fit. Returns "" when there is no room.
-func renderCommandsBlock(maxWidth int) string {
-	cmds := exCommands()
-	if len(cmds) == 0 || maxWidth < 40 {
-		return ""
+// pageLines returns every line of the active page's body (before slicing to the
+// viewport). Both pages are single full-width columns: the Keys page is a
+// cheat sheet (one line per binding, descriptions truncated only on very
+// narrow terminals), the Commands page wraps long descriptions.
+
+func (h HelpPanel) pageLines(contentW int) []string {
+	if h.page == helpPageCommands {
+		return renderCommandsLines(contentW)
 	}
-	const descW = 30
+	return renderKeysLines(contentW)
+}
+
+// renderKeysLines lays the keybinding sections out as a single full-width
+// column: title, one line per binding (key padded to the global key width,
+// description filling the rest), blank separator. Single-column keeps
+// descriptions readable (they're truncated only on very narrow terminals) and
+// lets scrolling — not cramped columns — absorb the length.
+func renderKeysLines(contentW int) []string {
+	sections := registry()
+	keyW := 0
+	for _, s := range sections {
+		for _, b := range s.Items {
+			if w := runeLen(b.Display); w > keyW {
+				keyW = w
+			}
+		}
+	}
+	const gap = 4
+	descW := contentW - keyW - gap - 2 // 2 leading spaces
+	if descW < 8 {
+		descW = 8
+	}
+	var out []string
+	for _, s := range sections {
+		out = append(out, titleStyle.Render(s.Title))
+		for _, bd := range s.Items {
+			key := bd.Display + strings.Repeat(" ", max(0, keyW-runeLen(bd.Display)))
+			keyStr := lipgloss.NewStyle().Foreground(colorLabel).Render(key)
+			descStr := lipgloss.NewStyle().Foreground(colorFg).Render(truncateRunes(bd.Desc, descW))
+			out = append(out, "  "+keyStr+strings.Repeat(" ", gap)+descStr)
+		}
+		out = append(out, "")
+	}
+	return out
+}
+
+// renderCommandsLines renders the ":" commands one per line at full width. The
+// usage column is sized to the longest usage; descriptions wrap to the remaining
+// width (rather than being hard-truncated), so long descriptions stay readable.
+func renderCommandsLines(contentW int) []string {
+	cmds := exCommands()
 	usageW := 0
 	for _, c := range cmds {
 		if w := runeLen(c.usage); w > usageW {
 			usageW = w
 		}
 	}
-	half := (len(cmds) + 1) / 2
-	groups := [][]exCmdSpec{cmds[:half], cmds[half:]}
-	renderCol := func(items []exCmdSpec) string {
-		var b strings.Builder
-		for _, c := range items {
-			usage := lipgloss.NewStyle().Foreground(colorLabel).Render(c.usage)
-			usage += strings.Repeat(" ", usageW-runeLen(c.usage))
-			desc := lipgloss.NewStyle().Foreground(colorFg).Render(truncateRunes(c.desc, descW))
-			b.WriteString("  " + usage + "  " + desc + "\n")
-		}
-		return b.String()
+	const gap = 4
+	descW := contentW - usageW - gap - 2 // 2 leading spaces
+	if descW < 8 {
+		descW = 8
 	}
-	left := renderCol(groups[0])
-	right := renderCol(groups[1])
-	body := lipgloss.JoinHorizontal(lipgloss.Top,
-		joinInterleaved([]string{left, right}, []string{"    "})...)
-	title := titleStyle.Render("Commands")
-	return lipgloss.JoinVertical(lipgloss.Left, title, body)
+	indent := strings.Repeat(" ", 2+usageW+gap)
+
+	var out []string
+	for _, c := range cmds {
+		usage := c.usage + strings.Repeat(" ", max(0, usageW-runeLen(c.usage)))
+		usageStr := lipgloss.NewStyle().Foreground(colorLabel).Render(usage)
+		wrapped := wrapRunes(c.desc, descW)
+		for i, w := range wrapped {
+			descStr := lipgloss.NewStyle().Foreground(colorFg).Render(w)
+			if i == 0 {
+				out = append(out, "  "+usageStr+strings.Repeat(" ", gap)+descStr)
+			} else {
+				out = append(out, indent+descStr)
+			}
+		}
+	}
+	return out
+}
+
+// wrapRunes word-wraps s into lines of at most width runes. A single word
+// longer than width is left intact on its own line (descriptions are short
+// prose, so this is rare). Returns [""] for empty input so callers always get
+// at least one line to render.
+func wrapRunes(s string, width int) []string {
+	if width <= 1 {
+		return []string{s}
+	}
+	words := strings.Fields(s)
+	if len(words) == 0 {
+		return []string{""}
+	}
+	var lines []string
+	cur := words[0]
+	for _, w := range words[1:] {
+		if runeLen(cur)+1+runeLen(w) <= width {
+			cur += " " + w
+		} else {
+			lines = append(lines, cur)
+			cur = w
+		}
+	}
+	lines = append(lines, cur)
+	return lines
 }
 
 // truncateRunes clips s to max visible runes with a trailing "…" when clipped.
-// exCmdSpec.desc values are plain (unstyled) strings, so rune slicing is safe.
+// Used on plain (unstyled) description strings before styling, so rune slicing
+// is safe.
 func truncateRunes(s string, max int) string {
 	if max <= 0 {
 		return ""
@@ -240,11 +350,27 @@ func truncateRunes(s string, max int) string {
 	return string(r) + "…"
 }
 
-// commandsBlockHeight returns the rendered height of renderCommandsBlock for n
-// commands (title + ceil(n/2) rows across two columns), used to reserve space.
-func commandsBlockHeight(n int) int {
+// itoa is a tiny strconv.Itoa-free int→string for the scroll-position readout
+// (help.go otherwise needs no strconv import).
+func itoa(n int) string {
 	if n == 0 {
-		return 0
+		return "0"
 	}
-	return 1 + (n+1)/2
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var b [20]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		b[i] = '-'
+	}
+	return string(b[i:])
 }
+

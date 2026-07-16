@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/ruben/gsql/internal/config"
 )
 
@@ -11,14 +13,22 @@ func TestHelpPanelRender(t *testing.T) {
 	h := NewHelpPanel()
 	h.Show()
 	h.SetSize(120, 40)
-	out := h.View()
+	out := stripAnsi(h.View())
 	if out == "" {
 		t.Fatal("help panel rendered empty")
 	}
-	for _, want := range []string{"Keybindings", "Global", "Sidebar", "Editor", "Results", "Inspector", "? or esc"} {
+	// First viewport shows the header, the footer hint, and the top section.
+	for _, want := range []string{"Keybindings", "Global", "switch page", "close"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help panel missing %q", want)
 		}
+	}
+	// Scrolling actually moves the viewport: the top section scrolls off.
+	for i := 0; i < 3; i++ {
+		h.HandleKey(tea.KeyMsg{Type: tea.KeyPgDown})
+	}
+	if strings.Contains(stripAnsi(h.View()), "Global") {
+		t.Error("Global should have scrolled off the top after paging down")
 	}
 }
 

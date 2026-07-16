@@ -1264,8 +1264,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Help overlay is modal — dismiss on any key.
+	// Help overlay is modal: scroll/tab keys navigate it, any other key
+	// (incl. esc/?) closes it.
 	if m.help.IsVisible() {
+		if m.help.HandleKey(msg) {
+			return m, nil
+		}
 		m.help.Hide()
 		return m, nil
 	}
@@ -1501,8 +1505,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Clear transient status-bar messages on any key press.
 	m.clearFlash()
 
-	// Help overlay is modal — dismiss on any key.
+	// Help overlay is modal: scroll/tab keys navigate it, any other key
+	// (incl. esc/?) closes it.
 	if m.help.IsVisible() {
+		if m.help.HandleKey(msg) {
+			return m, nil
+		}
 		m.help.Hide()
 		return m, nil
 	}
