@@ -263,8 +263,8 @@ distinct; a command that just replays an existing key is low value.
 
 **Tier 1 — parameterized / stateful, high value (start here):**
 - `:begin` / `:commit` / `:rollback` (+ `TXN` indicator) — ✅ done, see #5.
-- `:w file.sql` / `:e file.sql` — ✅ done (see #14). The `gsql -f` startup
-  flag is still open.
+- `:w file.sql` / `:e file.sql` — ✅ done (see #14), along with the `gsql -f`
+  startup flag (load a script into the editor).
 - `:import <file>` ✅ (2026-07-16) — non-interactive SQL-dump import (the `I`
   key's action), expanding `~` and reusing `execImportSQL`, so progress/result
   flow through the same import status messages.
@@ -340,9 +340,9 @@ remaining work is framed by the `:` command-set roadmap (#15). Next up:
    `:begin` / `:commit` / `:rollback` + `TXN` indicator; editor statements route
    through the held tx (reads see uncommitted writes); cell edits blocked
    during the tx; auto-rollback on connection lifecycle changes.
-2. **`.sql` file integration** (#14, Tier 1 in #15) — ✅ done (2026-07-15):
-   `:e <file>` load + `:w <file>` save, with `~` expansion. The `gsql -f`
-   startup flag remains open (entry-point wiring only).
+2. **`.sql` file integration** (#14, Tier 1 in #15) — ✅ done: `:e <file>`
+   load + `:w <file>` save (with `~` expansion), plus the `gsql -f` startup
+   flag (load a script into the editor, 2026-07-17).
 3. **`:`-line export shortcut** (#15 Tier 1) — ✅ done (2026-07-15):
    `:export <fmt>` reuses the #6 exporter (csv, json, jsonl, md, tsv),
    skipping the `g X` picker UI.
