@@ -501,3 +501,19 @@ func (m *Model) dismissOverlayOnOutsideClick(msg tea.MouseMsg) bool {
 
 	return false
 }
+
+// helpWheelLines is how many lines a mouse-wheel notch scrolls the help overlay.
+const helpWheelLines = 3
+
+// handleHelpMouse routes mouse events to the modal help overlay: the wheel
+// scrolls the active page; other events (clicks, motion) are ignored so they
+// neither dismiss nor navigate it.
+func (m Model) handleHelpMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.MouseWheelUp:
+		m.help.ScrollBy(-helpWheelLines)
+	case tea.MouseWheelDown:
+		m.help.ScrollBy(helpWheelLines)
+	}
+	return m, nil
+}

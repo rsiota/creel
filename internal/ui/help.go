@@ -137,6 +137,13 @@ func (h HelpPanel) scrollPage() int {
 	return v
 }
 
+// ScrollBy moves the active page's viewport by delta lines (negative = up).
+// The offset is clamped at render time, so callers (e.g. the mouse wheel) can
+// pass unbounded deltas. Used by mouse-wheel scrolling.
+func (h *HelpPanel) ScrollBy(delta int) {
+	h.setCurOff(h.curOff() + delta)
+}
+
 // View renders the help overlay, sized to fit the terminal.
 func (h HelpPanel) View() string {
 	if !h.visible {
@@ -182,15 +189,20 @@ func (h HelpPanel) View() string {
 	}
 	header := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(title)
 	tabbar := h.renderTabBar()
-	footer := mutedStyle.Render("tab: switch page   ↑/↓ or j/k: scroll   g/G: top·bottom   ?: close")
 	pos := ""
 	if maxOff > 0 {
 		pct := off * 100 / maxOff
 		pos = mutedStyle.Render("scroll " + itoa(off+1) + "–" + itoa(end) + "/" + itoa(len(bodyAll)) + "  " + itoa(pct) + "%")
 	}
 
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		header, tabbar, "", body, "", footer, pos)
+	// Title, a blank, then the tabs. The keybinding-hint footer is omitted by
+	// design (the tabs read as switchable, and j/k/g/G are vim-familiar); a
+	// scroll-position readout appears only when there's more to see.
+	layers := []string{header, "", tabbar, "", body, ""}
+	if pos != "" {
+		layers = append(layers, pos)
+	}
+	content := lipgloss.JoinVertical(lipgloss.Left, layers...)
 
 	panel := lipgloss.NewStyle().
 		Width(contentW).

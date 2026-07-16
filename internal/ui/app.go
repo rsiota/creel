@@ -830,6 +830,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateWorkspace(msg)
 
 	case tea.MouseMsg:
+		// Help overlay is modal: the mouse wheel scrolls it; other mouse
+		// events are ignored while it's open.
+		if m.help.IsVisible() {
+			return m.handleHelpMouse(msg)
+		}
 		if m.state == stateConnections {
 			return m.handleConnectionsMouse(msg)
 		}
@@ -3558,11 +3563,10 @@ func (m Model) viewConnections() string {
 	bg := strings.Repeat("\n", m.height-2)
 	view := placeOverlay(bg, connPanel, panelX, panelY)
 
-	// Overlay help panel if visible
+	// Overlay help panel if visible (sized to leave the status bar showing).
 	if m.help.IsVisible() {
-		m.help.SetSize(m.width, m.height)
+		m.help.SetSize(m.width, m.height-1)
 		view = m.help.View()
-		return view
 	}
 
 	// Append status bar.
@@ -4188,10 +4192,11 @@ func (m Model) viewWorkspace() string {
 		}
 	}
 
-	// Overlay help panel if visible
+	// Overlay help panel if visible, leaving the status bar visible below it
+	// (help fills the top height-1 rows; the status bar is the last row).
 	if m.help.IsVisible() {
 		m.help.SetSize(m.width, m.height-1)
-		view = m.help.View()
+		view = placeOverlay(view, m.help.View(), 0, 0)
 	}
 
 	return view

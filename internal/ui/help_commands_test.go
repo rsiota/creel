@@ -68,6 +68,25 @@ func TestHelpTabSwitchAndScroll(t *testing.T) {
 	}
 }
 
+// TestHelpMouseScroll confirms the mouse-wheel scroll path (ScrollBy) moves the
+// viewport in both directions and is clamped at the ends.
+func TestHelpMouseScroll(t *testing.T) {
+	h := NewHelpPanel()
+	h.Show()
+	h.SetSize(120, 40)
+	if !strings.Contains(stripAnsi(h.View()), "Global") {
+		t.Fatal("Global should be visible at the top initially")
+	}
+	h.ScrollBy(1000) // scroll far down
+	if strings.Contains(stripAnsi(h.View()), "Global") {
+		t.Error("Global should scroll off after scrolling down")
+	}
+	h.ScrollBy(-1000) // back to the top
+	if !strings.Contains(stripAnsi(h.View()), "Global") {
+		t.Error("Global should reappear after scrolling back to the top")
+	}
+}
+
 // TestHelpCloseKeysDismisses confirms that close keys (esc/?/q) are NOT consumed
 // by HandleKey (the caller hides the overlay), while nav keys are consumed.
 func TestHelpCloseKeysDismisses(t *testing.T) {

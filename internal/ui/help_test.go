@@ -17,8 +17,8 @@ func TestHelpPanelRender(t *testing.T) {
 	if out == "" {
 		t.Fatal("help panel rendered empty")
 	}
-	// First viewport shows the header, the footer hint, and the top section.
-	for _, want := range []string{"Keybindings", "Global", "switch page", "close"} {
+	// First viewport shows the header, the tab bar, and the top section.
+	for _, want := range []string{"Keybindings", "Global", "Keys", "Commands"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help panel missing %q", want)
 		}
