@@ -164,8 +164,12 @@ func (m Model) statusBar(connName string) string {
 	}
 
 	if m.watchActive {
+		label := "WATCH"
+		if m.watchMode == "tail" {
+			label = "TAIL"
+		}
 		parts = append(parts, sbAccent.Render(
-			fmt.Sprintf("WATCH %s", humanDuration(m.watchInterval))))
+			fmt.Sprintf("%s %s", label, humanDuration(m.watchInterval))))
 	}
 
 	if t := m.currentTable(); t != "" {

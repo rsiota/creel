@@ -247,6 +247,13 @@ func exCommands() []exCmdSpec {
 			},
 		},
 		{
+			verbs:   []string{"tail"},
+			desc:    "stream the newest rows of a table on a timer",
+			usage:   ":tail [table] [n]",
+			argKind: exArgTable,
+			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exTail(args) },
+		},
+		{
 			verbs:   []string{"bookmark"},
 			desc:    "bookmark the editor's current query",
 			usage:   ":bookmark",

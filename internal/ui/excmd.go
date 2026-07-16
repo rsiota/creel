@@ -764,9 +764,11 @@ func (m *Model) exRerun(arg string) tea.Cmd {
 
 // defaultWatchInterval is the refresh period :watch uses when given no
 // argument. minWatchInterval guards against a refresh loop that would thrash
-// the database and starve the UI.
+// the database and starve the UI. defaultTailInterval is faster — tailing is
+// meant to feel live.
 const (
 	defaultWatchInterval = 5 * time.Second
+	defaultTailInterval  = 2 * time.Second
 	minWatchInterval     = time.Second
 )
 
@@ -814,12 +816,7 @@ func (m *Model) exWatch(arg string) tea.Cmd {
 	a := strings.TrimSpace(arg)
 	switch strings.ToLower(a) {
 	case "off", "stop", "0":
-		if m.watchActive {
-			m.watchActive = false
-			m.schemaMsg = "watch stopped"
-		} else {
-			m.schemaMsg = "no active watch"
-		}
+		m.stopBackgroundRefresh()
 		return nil
 	}
 	interval := defaultWatchInterval
@@ -838,6 +835,7 @@ func (m *Model) exWatch(arg string) tea.Cmd {
 	m.watchGen++
 	m.watchActive = true
 	m.watchInterval = interval
+	m.watchMode = "watch"
 	m.schemaMsg = fmt.Sprintf("watching every %s — :watch off to stop", humanDuration(interval))
 	// Refresh immediately, then arm the next tick.
 	return tea.Batch(m.runPageQuery(), watchTick(interval, m.watchGen))
@@ -862,6 +860,98 @@ func (m Model) handleWatchTick(msg watchTickMsg) (Model, tea.Cmd) {
 		cmds = append(cmds, m.runPageQuery())
 	}
 	return m, tea.Batch(cmds...)
+}
+
+// stopBackgroundRefresh stops an active :watch or :tail, reporting which was
+// running. Shared by "off"/"stop"/"0" on both verbs so either cancels either.
+func (m *Model) stopBackgroundRefresh() {
+	if !m.watchActive {
+		m.schemaMsg = "no active watch or tail"
+		return
+	}
+	kind := "watch"
+	if m.watchMode == "tail" {
+		kind = "tail"
+	}
+	m.watchActive = false
+	m.schemaMsg = kind + " stopped"
+}
+
+// exTail streams the newest rows of a table (:tail [table] [n]) — the
+// append-only/event-table companion to :watch. It resolves the table
+// (defaulting to the current one), builds a newest-first query ordered by the
+// primary key when there's a single-column PK (the common case for event
+// tables; otherwise unordered), and re-runs it on a timer, reusing the :watch
+// machinery. Each refresh resets the cursor to the top (newest) row, so new
+// rows stream in at the head. "off"/"stop"/"0" cancels the refresh (same as
+// :watch off). An optional second argument is the interval in seconds or a Go
+// duration ("3", "3s", "1m").
+func (m *Model) exTail(args []string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if len(args) > 0 {
+		switch strings.ToLower(strings.TrimSpace(args[0])) {
+		case "off", "stop", "0":
+			m.stopBackgroundRefresh()
+			return nil
+		}
+	}
+	table := ""
+	interval := defaultTailInterval
+	if len(args) > 0 {
+		table = args[0]
+	}
+	if len(args) > 1 {
+		d, ok := parseWatchInterval(args[1])
+		if !ok {
+			m.schemaMsg = ":tail interval must be like 3 or 3s or 1m (min 1s)"
+			return nil
+		}
+		interval = d
+	}
+	table = m.resolveTableArg(table)
+	if table == "" {
+		return nil
+	}
+	driver := m.connection.Config().Driver
+	q := "SELECT * FROM " + quoteIdentD(driver, table)
+	// Order newest-first by the PK when there's a single-column one (the usual
+	// shape of an append-only table). Composite PKs are left unordered rather
+	// than guessing an ordering.
+	if pks, err := m.connection.DB().PrimaryKeys(table); err == nil && len(pks) == 1 {
+		q += " ORDER BY " + quoteIdentD(driver, pks[0]) + " DESC"
+	}
+	m.lastQuery = q
+	m.baseQuery = q
+	m.filters = nil
+	m.sortCol = ""
+	m.sortDir = ""
+	m.page = 0
+	m.queryStack = nil
+	m.totalRows = 0
+	m.totalRowsSet = false
+	m.watchMode = "tail"
+	m.watchGen++
+	m.watchActive = true
+	m.watchInterval = interval
+	m.schemaMsg = fmt.Sprintf("tailing %s every %s — :tail off to stop", table, humanDuration(interval))
+	return tea.Batch(m.runPageQuery(), watchTick(interval, m.watchGen))
+}
+
+// quoteIdentD quotes a SQL identifier for the given driver (double quotes for
+// SQLite/Postgres, backticks for MySQL), matching db.quoteIdent. The ui
+// package's other quoteIdent is double-quote-only; this driver-aware variant
+// matters for :tail's ORDER BY, where MySQL would otherwise treat "col" as a
+// string literal and silently ignore the ordering.
+func quoteIdentD(driver db.Driver, name string) string {
+	switch driver {
+	case db.DriverSQLite, db.DriverPostgres:
+		return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+	default:
+		return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+	}
 }
 
 // lineCount returns the number of lines in s (a trailing newline does not add

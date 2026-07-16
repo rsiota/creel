@@ -275,7 +275,13 @@ distinct; a command that just replays an existing key is low value.
   visible. A generation counter lets a restarted/stopped tick chain die
   instead of doubling the rate, and a tick is skipped (not piled up) while a
   query is in flight.
-- `:tail <table>` — stream newly-appended rows (append-only / event tables).
+- `:tail <table>` — ✅ done. Stream the newest rows of an append-only/event
+  table on a timer (default 2s, faster than :watch). Builds a newest-first
+  query ordered by the single-column PK (`ORDER BY <pk> DESC`; composite PKs
+  are left unordered rather than guessing), defaults to the current table, and
+  reuses the :watch machinery — a `watchMode` discriminator just swaps the
+  status indicator to `TAIL <n>s`. `:tail off`/`:watch off` are interchangeable
+  (either stops either), and the stop message names the right one.
 - `:refs <table>` — ✅ done. Reverse foreign keys (who points at me);
   complements `g d` (forward FK). Shown in a scrollable overlay panel.
   Defaults to the current table with no argument.
@@ -327,7 +333,8 @@ remaining work is framed by the `:` command-set roadmap (#15). Next up:
    `:export <fmt>` reuses the #6 exporter (csv, json, jsonl, md, tsv),
    skipping the `g X` picker UI.
 4. **Monitoring commands** (#15 Tier 2) — `:refs` ✅ (2026-07-15) and `:uses`
-   ✅ done. `:tail` remains. **← active next**
+   ✅ done. `:watch [n]` ✅ and `:tail <table>` ✅ done — Tier 2 complete. The
+   remaining command-set work is the Tier 3 small wins.
 5. **Session restore** (#9) — persistence delight feature.
 
 Original historical order (all complete): keyring storage (#1),

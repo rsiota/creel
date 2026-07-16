@@ -436,6 +436,7 @@ type Model struct {
 	watchActive   bool
 	watchInterval time.Duration
 	watchGen      uint64
+	watchMode     string // "tail" for :tail, otherwise "watch" — only affects the indicator/stop message
 }
 
 // defaultPageSize / defaultQueryTimeout mirror the config-package defaults so

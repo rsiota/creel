@@ -117,4 +117,8 @@ numbers rows to match). Shipped next: `:watch [n]` — the first *stateful*
 command (toggle + `tea.Tick` timer + persistent `WATCH <n>s` status indicator
 parallel to `TXN ●`). The watch follows `m.lastQuery` (a live refresh of the
 view in focus); a generation counter kills a superseded tick chain, and a tick
-is skipped while a query is in flight. Next up: `:peek`, `:limit <n>`, `:tail`.
+is skipped while a query is in flight. `:tail <table>` ✅ followed — the
+append-only/event companion to :watch, reusing the same machinery (a
+`watchMode` flag swaps the indicator to `TAIL <n>s`) and building a newest-first
+query from the single-column PK. With both, Tier 2 monitoring is complete.
+Next up: `:peek`, `:limit <n>`, `:timing` (the Tier 3 small wins).
