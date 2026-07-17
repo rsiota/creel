@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/ruben/gsql/internal/config"
 )
 
 // TestHelpListsExCommands pins that the Commands tab of the "?" overlay folds
@@ -236,5 +238,46 @@ func TestHelpGOnPageThatFits(t *testing.T) {
 	h.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	if off := h.curOff(); off != 0 {
 		t.Errorf("G on a page that fits: offset=%d, want 0", off)
+	}
+}
+
+// TestHelpScrollClampMatchesRender is an integration guard against the real
+// bug behind "G then j/k freezes": the help overlay's size must be set on the
+// PERSISTED model, not just on the throwaway copy a value-receiver view method
+// renders. updateLayout sizes the panel on resize; if it didn't, help's stored
+// width/height stayed 0, so maxOff() (used by the scroll handlers during
+// Update) clamped to a different offset than View. That let j climb past the
+// real bottom — the view froze, and k had to "burn" all the way back before
+// anything moved (and G looked frozen for the same reason).
+func TestHelpScrollClampMatchesRender(t *testing.T) {
+	m := NewModel(&config.Config{})
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = mm.(Model)
+
+	key := func(s string) tea.Msg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	step := func(msg tea.Msg) {
+		mm, _ = m.Update(msg)
+		m = mm.(Model)
+		_ = m.View() // full render, like the real loop
+	}
+
+	step(key("?")) // open help
+	if !m.help.IsVisible() {
+		t.Fatal("help not visible")
+	}
+	// The persisted panel must know its size, so Update's maxOff matches View's.
+	if m.help.height == 0 {
+		t.Error("help panel height not persisted after resize (SetSize only hit a view copy)")
+	}
+
+	// Hold j well past the bottom, then a single k must move the viewport.
+	for i := 0; i < 300; i++ {
+		step(key("j"))
+	}
+	viewAtBottom := stripAnsi(m.View())
+	step(key("k"))
+	viewAfterK := stripAnsi(m.View())
+	if viewAtBottom == viewAfterK {
+		t.Error("view did not change after holding j past the bottom then pressing k once (scroll burn-through)")
 	}
 }

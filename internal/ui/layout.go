@@ -89,6 +89,14 @@ func (m Model) updateLayout() Model {
 		return m
 	}
 
+	// Size the help overlay on the persisted model. The view methods
+	// (viewConnections/viewWorkspace) are value receivers, so their
+	// m.help.SetSize calls only sized a throwaway copy — leaving help's
+	// stored width/height at 0. That made maxOff() (used by the scroll
+	// handlers during Update) compute a different clamp than View, so j/k
+	// could drift past the real bottom and then have to "burn" back.
+	m.help.SetSize(m.width, m.height-1)
+
 	if m.state == stateConnections {
 		contentW, listH := m.connListContentDims()
 		m.connList.SetSize(contentW, listH)
