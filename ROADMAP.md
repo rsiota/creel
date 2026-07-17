@@ -350,6 +350,16 @@ Ship in roughly this order. Each item notes the shared helper / key to reuse.
     name re-opens. Cleared on connection switch. Session persistence deferred
     to #9.
 
+*Wave E — DDL (discoverability mirrors of sidebar actions):* ✅ done (2026-07-17)
+17. **`:truncate[!] [table]`** ✅ — shares `execTruncate` with sidebar `T`;
+    stages the enter/esc confirm unless `!` or `confirm_destructive: false`.
+18. **`:drop[!] [table]`** ✅ — shares `execDropTable` with sidebar `D`; typed
+    name confirm unless forced.
+19. **`:rename [old] [new]`** ✅ — zero/one arg opens the rename form (sidebar
+    `r`); two args renames via `BuildRenameTableSQL` + `execSchemaDDL`.
+20. **`:create`** ✅ — opens the table designer (sidebar `N` /
+    `openCreateTableForm`).
+
 **Explicitly rejected (wrong layer / scope creep):**
 - UI chrome: `:cursor-*`, `:focus-*`, `:scroll-*`, `:select-next-row`,
   `:toggle-*-pane` (unless the app becomes tmux-like).
@@ -370,16 +380,14 @@ features.
 ## Suggested starting order
 The original top three are all shipped (#1, #4, #3), and the two polish
 follow-ups are done (#7 `confirm_destructive`, #4 check constraints). Tiers
-1–3 of the `:` command set (#15) are complete. Tier 5 Waves A–D are done.
+1–3 of the `:` command set (#15) are complete. Tier 5 Waves A–E are done.
 Next up:
 1. **Session restore** (#9) — persistence; can deepen `:recent` across runs.
 2. **Tier 4** — opt-in DBA (`:who`/`:locks`/`:kill`) if users ask.
+3. Optional DDL follow-ups: `:createdb` / `:dropdb` (db-picker `N`/`D`).
 
 Original historical order (all complete): keyring storage (#1),
 indexes/triggers/views (#4), read-only mode (#3).
 Shipped earlier on this track: transactions (#5), export (#6 / `:export`),
 file integration (#14), monitoring (`:watch`/`:tail`/`:refs`/`:uses`),
-Wave A mirrors (`:run`/`:qa`/tab verbs/`:copy`),
-Wave B connect/nav (`:connect`/`:db`/`:schema`),
-Wave C schema exploration (`:indexes`/`:tables`/`:search`),
-Wave D QoL (`:new`/`:version`/`:plan`/`:recent`).
+Wave A–D ex-command expansion, Wave E DDL (`:truncate`/`:drop`/`:rename`/`:create`).

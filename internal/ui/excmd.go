@@ -466,6 +466,110 @@ func (m *Model) exRecent(args []string) tea.Cmd {
 	return m.openTable(name)
 }
 
+// exTruncate empties a table (:truncate [table]), defaulting to the current
+// table. Shares execTruncate with the sidebar T key. Stages the enter/esc
+// confirm dialog when confirm_destructive is on, unless forced (:truncate!).
+func (m *Model) exTruncate(name string, force bool) tea.Cmd {
+	table := m.resolveTableArg(name)
+	if table == "" {
+		return nil
+	}
+	if m.isReadOnly() {
+		m.schemaMsg = "read-only: truncate disabled"
+		return nil
+	}
+	if m.txnBlocksWrite() {
+		return nil
+	}
+	if !force && m.confirmDestructive() {
+		m.truncateConfirm = table
+		return nil
+	}
+	return m.execTruncate(table)
+}
+
+// exDrop drops a table (:drop [table]), defaulting to the current table.
+// Shares execDropTable with the sidebar D key. Stages the typed-name confirm
+// when confirm_destructive is on, unless forced (:drop!).
+func (m *Model) exDrop(name string, force bool) tea.Cmd {
+	table := m.resolveTableArg(name)
+	if table == "" {
+		return nil
+	}
+	if m.isReadOnly() {
+		m.schemaMsg = "read-only: drop disabled"
+		return nil
+	}
+	if m.txnBlocksWrite() {
+		return nil
+	}
+	if !force && m.confirmDestructive() {
+		m.dropTableConfirm = table
+		m.dropTableInput = ""
+		return nil
+	}
+	return m.execDropTable(table)
+}
+
+// exRename renames a table (:rename [old] [new]). With no args (or one), opens
+// the rename form for the current/named table (same as sidebar r). With two
+// args, renames non-interactively via BuildRenameTableSQL.
+func (m *Model) exRename(args []string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if m.isReadOnly() {
+		m.schemaMsg = "read-only: rename disabled"
+		return nil
+	}
+	if m.txnBlocksWrite() {
+		return nil
+	}
+	switch len(args) {
+	case 0:
+		table := m.currentTable()
+		if table == "" {
+			m.schemaMsg = ":rename needs a table — :rename <old> <new>"
+			return nil
+		}
+		return m.openTableRenameForm(table)
+	case 1:
+		table := m.resolveTableArg(args[0])
+		if table == "" {
+			return nil
+		}
+		return m.openTableRenameForm(table)
+	default:
+		old := m.resolveTableName(args[0])
+		if old == "" {
+			m.schemaMsg = fmt.Sprintf("no such table: %s", args[0])
+			return nil
+		}
+		newName := args[1]
+		sql, err := db.BuildRenameTableSQL(m.connection.Config().Driver, old, newName, m.tables)
+		if err != nil {
+			m.schemaMsg = err.Error()
+			return nil
+		}
+		return m.execSchemaDDL(old, sql, db.SchemaRenameTable, newName)
+	}
+}
+
+// exCreate opens the inline table designer (:create), sharing openCreateTableForm
+// with the sidebar N key.
+func (m *Model) exCreate() tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if m.isReadOnly() {
+		m.schemaMsg = "read-only: create table disabled"
+		return nil
+	}
+	return m.openCreateTableForm()
+}
+
 // resolveNameInList picks an entry by EqualFold exact match, then substring.
 // Returns "" if nothing matches.
 func resolveNameInList(query string, names []string) string {

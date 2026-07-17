@@ -312,6 +312,46 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exRecent(args) },
 		},
 		{
+			verbs:   []string{"truncate"},
+			desc:    "delete all rows from a table",
+			usage:   ":truncate[!] [table]",
+			argKind: exArgTable,
+			run: func(m *Model, args []string, force bool) tea.Cmd {
+				name := ""
+				if len(args) > 0 {
+					name = args[0]
+				}
+				return m.exTruncate(name, force)
+			},
+		},
+		{
+			verbs:   []string{"drop"},
+			desc:    "drop a table",
+			usage:   ":drop[!] [table]",
+			argKind: exArgTable,
+			run: func(m *Model, args []string, force bool) tea.Cmd {
+				name := ""
+				if len(args) > 0 {
+					name = args[0]
+				}
+				return m.exDrop(name, force)
+			},
+		},
+		{
+			verbs:   []string{"rename"},
+			desc:    "rename a table (form, or old→new)",
+			usage:   ":rename [old] [new]",
+			argKind: exArgOptional,
+			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exRename(args) },
+		},
+		{
+			verbs:   []string{"create"},
+			desc:    "open the create-table designer",
+			usage:   ":create",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exCreate() },
+		},
+		{
 			verbs:   []string{"refresh", "reload"},
 			desc:    "refresh schema and re-run the last query",
 			usage:   ":refresh",
