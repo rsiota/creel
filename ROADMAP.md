@@ -339,14 +339,16 @@ Ship in roughly this order. Each item notes the shared helper / key to reuse.
 12. **`:search`/`:find <name>`** ✅ — fuzzy-find tables/views/columns over
     `m.tables` + `columnCache` (not cross-search cell values, not results `g /`).
 
-*Wave D — quality-of-life:*
-13. **`:new`** — empty editor buffer / new scratch query (clear or new tab —
-    pick one behavior and document it).
-14. **`:version`** — print app version in the status bar / overlay.
-15. **`:plan`** — pretty/alias path onto `:explain` / `g e` if the explain
-    panel gains a richer rendering; otherwise keep as alias of `:explain`.
-16. **`:recent`** — recently touched tables (needs a small MRU list behind
-    `:goto` / sidebar opens; pairs with session restore #9).
+*Wave D — quality-of-life:* ✅ done (2026-07-17)
+13. **`:new`** ✅ — clears the editor to an empty scratch buffer (does not
+    open a tab; use `:tabnew` for that).
+14. **`:version`** ✅ — status-bar build label via `internal/version` /
+    `debug.ReadBuildInfo`.
+15. **`:plan`** ✅ — alias of `:explain` (same structure panel).
+16. **`:recent [n|name]`** ✅ — in-memory MRU filled by `openTable` (shared by
+    `:goto`, sidebar enter, mouse). Bare lists in the lookup overlay; a rank or
+    name re-opens. Cleared on connection switch. Session persistence deferred
+    to #9.
 
 **Explicitly rejected (wrong layer / scope creep):**
 - UI chrome: `:cursor-*`, `:focus-*`, `:scroll-*`, `:select-next-row`,
@@ -368,11 +370,10 @@ features.
 ## Suggested starting order
 The original top three are all shipped (#1, #4, #3), and the two polish
 follow-ups are done (#7 `confirm_destructive`, #4 check constraints). Tiers
-1–3 of the `:` command set (#15) are complete. Waves A–C of Tier 5 are done.
+1–3 of the `:` command set (#15) are complete. Tier 5 Waves A–D are done.
 Next up:
-1. **Tier 5 Wave D** (#15) — `:new`/`:version`/`:plan`/`:recent`.
-2. **Session restore** (#9) — persistence; unlocks a richer `:recent`.
-3. **Tier 4** — opt-in DBA (`:who`/`:locks`/`:kill`) if users ask.
+1. **Session restore** (#9) — persistence; can deepen `:recent` across runs.
+2. **Tier 4** — opt-in DBA (`:who`/`:locks`/`:kill`) if users ask.
 
 Original historical order (all complete): keyring storage (#1),
 indexes/triggers/views (#4), read-only mode (#3).
@@ -380,4 +381,5 @@ Shipped earlier on this track: transactions (#5), export (#6 / `:export`),
 file integration (#14), monitoring (`:watch`/`:tail`/`:refs`/`:uses`),
 Wave A mirrors (`:run`/`:qa`/tab verbs/`:copy`),
 Wave B connect/nav (`:connect`/`:db`/`:schema`),
-Wave C schema exploration (`:indexes`/`:tables`/`:search`).
+Wave C schema exploration (`:indexes`/`:tables`/`:search`),
+Wave D QoL (`:new`/`:version`/`:plan`/`:recent`).

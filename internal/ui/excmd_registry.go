@@ -284,11 +284,32 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exRun() },
 		},
 		{
-			verbs:   []string{"explain"},
+			verbs:   []string{"explain", "plan"},
 			desc:    "show the query plan for the editor's statement",
 			usage:   ":explain",
 			argKind: exArgNone,
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.explainQuery() },
+		},
+		{
+			verbs:   []string{"new"},
+			desc:    "clear the editor to an empty scratch buffer",
+			usage:   ":new",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exNew() },
+		},
+		{
+			verbs:   []string{"version"},
+			desc:    "show the gsql build version",
+			usage:   ":version",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exVersion() },
+		},
+		{
+			verbs:   []string{"recent"},
+			desc:    "list or re-open recently touched tables",
+			usage:   ":recent [n|name]",
+			argKind: exArgOptional,
+			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exRecent(args) },
 		},
 		{
 			verbs:   []string{"refresh", "reload"},

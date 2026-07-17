@@ -302,6 +302,7 @@ type Model struct {
 	tableRowCounts      map[string]int64 // approximate row counts for sidebar display
 	expanded            map[string][]db.Column
 	columnCache         map[string][]db.Column
+	recentTables        []string // MRU table names (most recent first); for :recent
 
 	// Fuzzy table search
 	sidebarFilter    string
@@ -3192,8 +3193,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter", "s":
 			item := m.currentSidebarItem()
 			if item != nil && !item.isColumn {
-				m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s;", item.text))
-				return m, m.executeQuery()
+				return m, m.openTable(item.text)
 			}
 		case "d":
 			m.sidebarPendingG = false

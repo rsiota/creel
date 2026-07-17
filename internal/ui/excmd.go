@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/gsql/internal/version"
 )
 
 // exCmd is the vim-style ":" command line: a modal prompt at the bottom of the
@@ -418,6 +419,53 @@ func (m *Model) exCopy() tea.Cmd {
 	return m.copyCursorCell()
 }
 
+// exNew clears the editor to an empty scratch buffer (:new). Does not open a
+// new tab — use :tabnew for that.
+func (m *Model) exNew() tea.Cmd {
+	m.editor.SetValue("")
+	m.schemaMsg = "new buffer"
+	return m.editor.Focus()
+}
+
+// exVersion prints the build version in the status bar (:version).
+func (m *Model) exVersion() tea.Cmd {
+	m.schemaMsg = version.String()
+	return nil
+}
+
+// exRecent lists or re-opens recently touched tables (:recent [n|name]).
+// Tables are recorded by openTable (:goto, sidebar enter, mouse). Bare lists
+// them in the lookup overlay; a number opens by MRU rank (1 = most recent);
+// a name opens if it appears in the recent list.
+func (m *Model) exRecent(args []string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	names := m.liveRecentTables()
+	if len(names) == 0 {
+		m.schemaMsg = "no recent tables"
+		return nil
+	}
+	if len(args) == 0 {
+		return m.exListNames("Recent", names)
+	}
+	arg := args[0]
+	if n, err := strconv.Atoi(arg); err == nil {
+		if n < 1 || n > len(names) {
+			m.schemaMsg = fmt.Sprintf("recent rank out of range (1-%d)", len(names))
+			return nil
+		}
+		return m.openTable(names[n-1])
+	}
+	name := resolveNameInList(arg, names)
+	if name == "" {
+		m.schemaMsg = fmt.Sprintf("not in recent: %s", arg)
+		return nil
+	}
+	return m.openTable(name)
+}
+
 // resolveNameInList picks an entry by EqualFold exact match, then substring.
 // Returns "" if nothing matches.
 func resolveNameInList(query string, names []string) string {
@@ -578,6 +626,54 @@ func (m *Model) exSchema(args []string) tea.Cmd {
 	}
 }
 
+// maxRecentTables caps the in-memory MRU list backing :recent.
+const maxRecentTables = 20
+
+// touchRecentTable records name at the front of the MRU list (deduped).
+func (m *Model) touchRecentTable(name string) {
+	if name == "" {
+		return
+	}
+	out := make([]string, 0, len(m.recentTables)+1)
+	out = append(out, name)
+	for _, t := range m.recentTables {
+		if !strings.EqualFold(t, name) {
+			out = append(out, t)
+		}
+	}
+	if len(out) > maxRecentTables {
+		out = out[:maxRecentTables]
+	}
+	m.recentTables = out
+}
+
+// openTable browses a table via SELECT * FROM — shared by :goto, sidebar
+// enter, mouse open, and :recent <n>. Records the table in the MRU list.
+func (m *Model) openTable(name string) tea.Cmd {
+	m.touchRecentTable(name)
+	m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s;", name))
+	return m.executeQuery()
+}
+
+// liveRecentTables returns recent table names that still exist in m.tables,
+// preserving MRU order.
+func (m Model) liveRecentTables() []string {
+	if len(m.recentTables) == 0 {
+		return nil
+	}
+	alive := make(map[string]string, len(m.tables)) // lower → canonical
+	for _, t := range m.tables {
+		alive[strings.ToLower(t)] = t
+	}
+	var out []string
+	for _, t := range m.recentTables {
+		if canon, ok := alive[strings.ToLower(t)]; ok {
+			out = append(out, canon)
+		}
+	}
+	return out
+}
+
 // exGoto opens a table by name (:goto users): exact (case-insensitive) match
 // first, then a substring fallback, then runs SELECT * FROM <table>.
 func (m *Model) exGoto(name string) tea.Cmd {
@@ -604,8 +700,7 @@ func (m *Model) exGoto(name string) tea.Cmd {
 	}
 	m.sidebarCursor = target
 	m.sidebarViewAnchored = false
-	m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s;", items[target].text))
-	return m.executeQuery()
+	return m.openTable(items[target].text)
 }
 
 // exBegin starts a manual transaction (:begin). While it is active, statements

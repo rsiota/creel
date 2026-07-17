@@ -122,5 +122,5 @@ exists (`:run` ↔ `ctrl+e`); skip pure UI chrome (`:cursor-down`). Always
 extract/share one helper. Full priority list: **Tier 5** in `ROADMAP.md` #15
 (Wave A mirrors → Wave B connect/nav → Wave C schema → Wave D QoL).
 
-Next implementation target: **Wave D** (`:new`, `:version`, `:plan`,
-`:recent`). Waves A–C ✅.
+Next implementation target: session restore (#9) or Tier 4 DBA verbs if
+requested. Tier 5 Waves A–D ✅.

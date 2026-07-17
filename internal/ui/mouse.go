@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -195,8 +194,7 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			if item.isColumn {
 				return m, nil
 			}
-			m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s;", item.text))
-			return m, m.executeQuery()
+			return m, m.openTable(item.text)
 		}
 		return m, nil
 	}

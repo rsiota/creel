@@ -128,6 +128,7 @@ func (m *Model) resetWorkspaceForNewConnection() {
 	m.queryStack = nil
 	m.expanded = make(map[string][]db.Column)
 	m.columnCache = nil
+	m.recentTables = nil
 	m.sidebarFiltering = false
 	m.sidebarFilter = ""
 	m.editor.CancelCompletion()
