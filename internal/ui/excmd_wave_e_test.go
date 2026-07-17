@@ -106,6 +106,9 @@ func TestExRename(t *testing.T) {
 	if _, err := conn.DB().Exec(`CREATE TABLE users (id INTEGER PRIMARY KEY)`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := conn.DB().Exec(`CREATE TABLE orders (id INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("opens form with one arg", func(t *testing.T) {
 		m := &Model{
@@ -121,6 +124,27 @@ func TestExRename(t *testing.T) {
 		}
 		if m.tableRenameForm.Table() != "users" {
 			t.Errorf("form table = %q", m.tableRenameForm.Table())
+		}
+	})
+	t.Run("bare prefers sidebar over results source", func(t *testing.T) {
+		// Regression: :rename used currentTable(), which preferred SourceTable
+		// ("users") over the sidebar cursor ("orders") — unlike sidebar r.
+		m := &Model{
+			connection: conn,
+			tables:     []string{"users", "orders"},
+			results:    NewResultsTable(),
+			focus:      FocusResults, // not the sidebar
+			width:      120,
+			height:     40,
+		}
+		m.results.SetEditable("users", []string{"id"})
+		m.sidebarCursor = 1 // orders
+		m.runExCommand("rename")
+		if !m.tableRenameForm.IsVisible() {
+			t.Fatalf("expected rename form (%q)", m.schemaMsg)
+		}
+		if m.tableRenameForm.Table() != "orders" {
+			t.Errorf("form table = %q, want orders (sidebar selection)", m.tableRenameForm.Table())
 		}
 	})
 	t.Run("two args renames directly", func(t *testing.T) {
@@ -144,7 +168,7 @@ func TestExRename(t *testing.T) {
 	t.Run("missing args", func(t *testing.T) {
 		m := &Model{connection: conn, results: NewResultsTable()}
 		m.runExCommand("rename")
-		if !strings.Contains(m.schemaMsg, "needs a table") {
+		if !strings.Contains(m.schemaMsg, "no current table") {
 			t.Errorf(":rename bare -> %q", m.schemaMsg)
 		}
 	})

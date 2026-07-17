@@ -470,7 +470,7 @@ func (m *Model) exRecent(args []string) tea.Cmd {
 // table. Shares execTruncate with the sidebar T key. Stages the enter/esc
 // confirm dialog when confirm_destructive is on, unless forced (:truncate!).
 func (m *Model) exTruncate(name string, force bool) tea.Cmd {
-	table := m.resolveTableArg(name)
+	table := m.resolveDDLTableArg(name)
 	if table == "" {
 		return nil
 	}
@@ -492,7 +492,7 @@ func (m *Model) exTruncate(name string, force bool) tea.Cmd {
 // Shares execDropTable with the sidebar D key. Stages the typed-name confirm
 // when confirm_destructive is on, unless forced (:drop!).
 func (m *Model) exDrop(name string, force bool) tea.Cmd {
-	table := m.resolveTableArg(name)
+	table := m.resolveDDLTableArg(name)
 	if table == "" {
 		return nil
 	}
@@ -528,14 +528,13 @@ func (m *Model) exRename(args []string) tea.Cmd {
 	}
 	switch len(args) {
 	case 0:
-		table := m.currentTable()
+		table := m.resolveDDLTableArg("")
 		if table == "" {
-			m.schemaMsg = ":rename needs a table — :rename <old> <new>"
 			return nil
 		}
 		return m.openTableRenameForm(table)
 	case 1:
-		table := m.resolveTableArg(args[0])
+		table := m.resolveDDLTableArg(args[0])
 		if table == "" {
 			return nil
 		}
@@ -1015,6 +1014,32 @@ func (m *Model) resolveTableArg(name string) string {
 		return resolved
 	}
 	m.schemaMsg = fmt.Sprintf("no such table: %s", name)
+	return ""
+}
+
+// resolveDDLTableArg resolves an optional table for sidebar-mirrored DDL
+// (:truncate / :drop / :rename). Unlike resolveTableArg, a bare command prefers
+// the sidebar cursor (sidebarSelectedTable) — matching the T/D/r keys — even
+// when results still show a different SourceTable or focus is not the sidebar.
+func (m *Model) resolveDDLTableArg(name string) string {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return ""
+	}
+	if name != "" {
+		if resolved := m.resolveTableName(name); resolved != "" {
+			return resolved
+		}
+		m.schemaMsg = fmt.Sprintf("no such table: %s", name)
+		return ""
+	}
+	if t := m.sidebarSelectedTable(); t != "" {
+		return t
+	}
+	if t := m.currentTable(); t != "" {
+		return t
+	}
+	m.schemaMsg = "no current table — name one"
 	return ""
 }
 
