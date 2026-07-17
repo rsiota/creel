@@ -394,6 +394,14 @@ Next up:
    the staged confirm); `:clone` delegates to cloneRows with feedback for the
    no-op cases the key swallows.
 
+   Tier 3 results verbs ✅ done (2026-07-17): `:follow`/`:back` (g d / g b FK
+   nav), `:keep`/`:hide` (* / ! filter by cell), `:undo`/`:unfilter` (u / c
+   filter stack), `:hidecolumn [col]`/`:showcolumns` (H / g H),
+   `:copyinsert` (Y — copyRowsAsInsert extracted), `:regex <pattern>` (g/ —
+   applySearch extracted, patterns may contain spaces). All delegate to the
+   shared helpers; `:copyinsert` and `:regex` required extracting the inlined
+   key logic (copyRowsAsInsert, applySearch) so the key and `:` stay in sync.
+
 Original historical order (all complete): keyring storage (#1),
 indexes/triggers/views (#4), read-only mode (#3).
 Shipped earlier on this track: transactions (#5), export (#6 / `:export`),

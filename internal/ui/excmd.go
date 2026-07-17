@@ -450,6 +450,131 @@ func (m *Model) exClone() tea.Cmd {
 	return m.cloneRows()
 }
 
+// exFollow follows the foreign key under the cursor (:follow), sharing
+// followForeignKey with the g d chord. Gives feedback when there is no FK on
+// the current column (the key silently no-ops).
+func (m *Model) exFollow() tea.Cmd {
+	if m.results.NumCols() == 0 {
+		m.schemaMsg = "no results to navigate"
+		return nil
+	}
+	if _, ok := m.results.ForeignKeyAtCursor(); !ok {
+		m.schemaMsg = "no foreign key on this column"
+		return nil
+	}
+	return m.followForeignKey()
+}
+
+// exBack returns to the previous query in the navigation stack (:back),
+// sharing goBackQuery with the g b chord.
+func (m *Model) exBack() tea.Cmd {
+	if len(m.queryStack) == 0 {
+		m.schemaMsg = "nowhere to go back to"
+		return nil
+	}
+	return m.goBackQuery()
+}
+
+// exKeep keeps only rows equal to the cursor cell (:keep); exHide is its
+// inverse. Both share quickFilterCell with the * / ! keys.
+func (m *Model) exKeep() tea.Cmd { return m.exQuickFilter(false) }
+func (m *Model) exHide() tea.Cmd { return m.exQuickFilter(true) }
+
+func (m *Model) exQuickFilter(negate bool) tea.Cmd {
+	if !m.canFilter() || m.results.NumRows() == 0 {
+		m.schemaMsg = "no rows to filter"
+		return nil
+	}
+	if m.results.CursorCellValue() == "" {
+		m.schemaMsg = "cursor cell is empty — move to a value first"
+		return nil
+	}
+	return m.quickFilterCell(negate)
+}
+
+// exUndo removes the last filter (:undo); exUnfilter clears all of them
+// (:unfilter). Both share undoFilter / clearFilters with the u / c keys.
+func (m *Model) exUndo() tea.Cmd {
+	if len(m.filters) == 0 {
+		m.schemaMsg = "no filters to undo"
+		return nil
+	}
+	return m.undoFilter()
+}
+
+func (m *Model) exUnfilter() tea.Cmd {
+	if len(m.filters) == 0 {
+		m.schemaMsg = "no filters to clear"
+		return nil
+	}
+	return m.clearFilters()
+}
+
+// exCopyInsert copies the current result rows as INSERT statements to the
+// clipboard (:copyinsert), sharing copyRowsAsInsert with the Y key.
+func (m *Model) exCopyInsert() tea.Cmd {
+	if m.results.NumRows() == 0 {
+		m.schemaMsg = "no rows to copy"
+		return nil
+	}
+	if cmd := m.copyRowsAsInsert(); cmd != nil {
+		return cmd
+	}
+	m.schemaMsg = "nothing to copy"
+	return nil
+}
+
+// exRegex applies a regex search to the current page (:regex <pattern>),
+// sharing applySearch with the g/ search mode. Patterns may contain spaces.
+func (m *Model) exRegex(args []string) tea.Cmd {
+	if m.results.NumRows() == 0 {
+		m.schemaMsg = "no rows to search"
+		return nil
+	}
+	pattern := strings.Join(args, " ")
+	if strings.TrimSpace(pattern) == "" {
+		m.schemaMsg = ":regex needs a pattern"
+		return nil
+	}
+	m.applySearch(pattern)
+	return nil
+}
+
+// exHideColumn hides a column (:hidecolumn [col]). Defaults to the column
+// under the cursor; with a name it hides that column. Mirrors the H key.
+func (m *Model) exHideColumn(args []string) tea.Cmd {
+	if m.results.NumCols() == 0 {
+		m.schemaMsg = "no columns to hide"
+		return nil
+	}
+	col := m.results.CursorCol()
+	if len(args) > 0 {
+		found := -1
+		for i := 0; i < m.results.NumCols(); i++ {
+			if strings.EqualFold(m.results.ColumnName(i), args[0]) {
+				found = i
+				break
+			}
+		}
+		if found < 0 {
+			m.schemaMsg = fmt.Sprintf("no such column: %s", args[0])
+			return nil
+		}
+		col = found
+	}
+	if !m.results.HideColumn(col) {
+		m.schemaMsg = "column already hidden or is the last visible column"
+		return nil
+	}
+	return nil
+}
+
+// exShowColumns reveals all hidden columns (:showcolumns), mirroring g H.
+func (m *Model) exShowColumns() tea.Cmd {
+	m.results.ShowAllColumns()
+	return nil
+}
+
 // exNew clears the editor to an empty scratch buffer (:new). Does not open a
 // new tab — use :tabnew for that.
 func (m *Model) exNew() tea.Cmd {

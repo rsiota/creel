@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -179,6 +180,27 @@ func countMatches(r ResultsTable, match func(string) bool) int {
 		}
 	}
 	return count
+}
+
+// applySearch applies a regex search pattern to the current results page: sets
+// the matcher, jumps the cursor to the first match, and reports the match count
+// via searchMsg. An empty pattern clears the matcher. Shared by the g/ search
+// mode's enter handler and :regex, so the two entry points stay in sync.
+func (m *Model) applySearch(pattern string) {
+	m.lastSearch = pattern
+	if pattern == "" {
+		m.results.SetSearchMatcher(nil)
+		return
+	}
+	match := compileSearchPattern(pattern)
+	m.results.SetSearchMatcher(match)
+	if row, col := findNextMatch(m.results, match, true); row >= 0 {
+		m.results.SetCursor(row, col)
+		n := countMatches(m.results, match)
+		m.searchMsg = fmt.Sprintf("%d match%s (this page)", n, pluralIf(n != 1, "es"))
+	} else {
+		m.searchMsg = "no matches on this page"
+	}
 }
 
 // highlightMatches renders text with matched characters in the accent color.

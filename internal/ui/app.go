@@ -2649,21 +2649,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.results.SetSearchMatcher(nil)
 				return m, nil
 			case "enter":
-				m.lastSearch = m.searchQuery
-				m.searching = false
 				query := m.searchQuery
+				m.searching = false
 				m.searchQuery = ""
-				if query != "" {
-					match := compileSearchPattern(query)
-					m.results.SetSearchMatcher(match)
-					if row, col := findNextMatch(m.results, match, true); row >= 0 {
-						m.results.SetCursor(row, col)
-						n := countMatches(m.results, match)
-						m.searchMsg = fmt.Sprintf("%d match%s (this page)", n, pluralIf(n != 1, "es"))
-					} else {
-						m.searchMsg = "no matches on this page"
-					}
-				}
+				m.applySearch(query)
 				return m, nil
 			case "backspace":
 				if len(m.searchQuery) > 0 {
@@ -3030,18 +3019,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case "Y":
 				m.resultsPendingG = false
 				m.resultsPendingY = false
-				if m.results.NumRows() > 0 {
-					sql, count := m.results.CopyAsInsert()
-					if count > 0 {
-						_ = clipboard.WriteAll(sql)
-						m.results.StartCopyFeedback()
-						if count >= copyAsInsertMaxRows {
-							m.exportMsg = fmt.Sprintf("copied %d rows as INSERT (cap %d)", count, copyAsInsertMaxRows)
-						} else {
-							m.exportMsg = fmt.Sprintf("copied %d rows as INSERT", count)
-						}
-						return m, copyFeedbackCmd()
-					}
+				if cmd := m.copyRowsAsInsert(); cmd != nil {
+					return m, cmd
 				}
 			case "P":
 				m.resultsPendingG = false

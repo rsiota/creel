@@ -468,6 +468,27 @@ func (m *Model) cloneRows() tea.Cmd {
 	}
 }
 
+// copyRowsAsInsert copies the current result rows as INSERT statements to the
+// clipboard, shared by the Y key and :copyinsert. Returns the copy-feedback
+// cmd when something was copied, nil otherwise (no rows, or nothing generated).
+func (m *Model) copyRowsAsInsert() tea.Cmd {
+	if m.results.NumRows() == 0 {
+		return nil
+	}
+	sql, count := m.results.CopyAsInsert()
+	if count == 0 {
+		return nil
+	}
+	_ = clipboard.WriteAll(sql)
+	m.results.StartCopyFeedback()
+	if count >= copyAsInsertMaxRows {
+		m.exportMsg = fmt.Sprintf("copied %d rows as INSERT (cap %d)", count, copyAsInsertMaxRows)
+	} else {
+		m.exportMsg = fmt.Sprintf("copied %d rows as INSERT", count)
+	}
+	return copyFeedbackCmd()
+}
+
 func plural(n int) string {
 	if n == 1 {
 		return ""
