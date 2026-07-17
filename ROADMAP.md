@@ -385,7 +385,10 @@ Next up:
 1. **Session restore** (#9) — persistence; can deepen `:recent` across runs.
 2. **Tier 4** — opt-in DBA (`:who`/`:locks`/`:kill`) if users ask.
 3. Optional DDL follow-ups: `:createdb` / `:dropdb` (db-picker `N`/`D`) ✅
-   done (2026-07-17).
+   done (2026-07-17). `:addcolumn` (sidebar `a`) ✅ done (2026-07-17) — fills the
+   column-DDL gap; 0–1 args open the form, `<table> <name> <type> [nullable]
+   [default]` runs ALTER TABLE ADD COLUMN directly via the shared
+   execSchemaDDL path.
 
 Original historical order (all complete): keyring storage (#1),
 indexes/triggers/views (#4), read-only mode (#3).

@@ -352,6 +352,13 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exCreate() },
 		},
 		{
+			verbs:   []string{"addcolumn"},
+			desc:    "add a column to a table (form, or direct)",
+			usage:   ":addcolumn [table] <name> <type> [\u2026]",
+			argKind: exArgOptional,
+			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exAddColumn(args) },
+		},
+		{
 			verbs:   []string{"createdb"},
 			desc:    "create a database (MySQL/Postgres)",
 			usage:   ":createdb <name>",

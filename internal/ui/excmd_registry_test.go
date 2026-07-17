@@ -54,7 +54,7 @@ func TestExLookupResolvesKnownVerbs(t *testing.T) {
 		"commit", "rollback", "help", "h", "run", "r",
 		"explain", "plan", "new", "version", "recent",
 		"truncate", "drop", "rename", "create",
-		"createdb", "dropdb",
+		"createdb", "dropdb", "addcolumn",
 		"refresh", "reload", "history", "bookmarks", "bm",
 		"describe", "desc", "d", "columns", "indexes", "constraints", "fk",
 		"tables", "dt", "views", "dv", "schemas", "search", "find",

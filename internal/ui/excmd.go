@@ -569,6 +569,81 @@ func (m *Model) exCreate() tea.Cmd {
 	return m.openCreateTableForm()
 }
 
+// exAddColumn adds a column to a table (:addcolumn ...), sharing
+// openAddColumnFormForTable + execSchemaDDL(SchemaAddColumn) with the sidebar a
+// key. With zero or one argument it opens the form for the current/named table
+// (like :rename); with three or more — <table> <name> <type> [nullable]
+// [default] — it runs ALTER TABLE ADD COLUMN directly. SQL types containing
+// spaces (e.g. Postgres "double precision") should use the form, since the
+// type is one shell field here.
+func (m *Model) exAddColumn(args []string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if m.isReadOnly() {
+		m.schemaMsg = "read-only: add column disabled"
+		return nil
+	}
+	if m.txnBlocksWrite() {
+		return nil
+	}
+	// 0-1 args: open the form for the current / named table (default-to-current,
+	// preferring the sidebar cursor like the a key).
+	if len(args) <= 1 {
+		name := ""
+		if len(args) == 1 {
+			name = args[0]
+		}
+		table := m.resolveDDLTableArg(name)
+		if table == "" {
+			return nil
+		}
+		return m.openAddColumnFormForTable(table)
+	}
+	// Two args is ambiguous (table + name, no type) — ask for the type.
+	if len(args) < 3 {
+		m.schemaMsg = "usage: :addcolumn <table> <name> <type> [nullable] [default]"
+		return nil
+	}
+	// Direct: <table> <name> <type> [nullable] [default].
+	table := m.resolveDDLTableArg(args[0])
+	if table == "" {
+		return nil
+	}
+	col := db.ColumnDef{
+		Name: args[1],
+		Type: args[2],
+	}
+	if len(args) >= 4 {
+		nullable, errMsg := parseNullable(args[3])
+		if errMsg != "" {
+			m.schemaMsg = errMsg
+			return nil
+		}
+		col.NotNull = !nullable
+	}
+	if len(args) >= 5 && strings.TrimSpace(args[4]) != "" {
+		col.HasDefault = true
+		col.Default = args[4]
+	}
+	cols, err := m.connection.DB().TableSchema(table)
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	existing := make([]string, len(cols))
+	for i, c := range cols {
+		existing[i] = c.Name
+	}
+	sql, err := db.BuildAddColumnSQL(m.connection.Config().Driver, table, col, existing)
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	return m.execSchemaDDL(table, sql, db.SchemaAddColumn, "")
+}
+
 // resolveNameInList picks an entry by EqualFold exact match, then substring.
 // Returns "" if nothing matches.
 func resolveNameInList(query string, names []string) string {
