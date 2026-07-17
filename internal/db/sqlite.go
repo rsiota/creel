@@ -85,6 +85,25 @@ func (s *SQLite) Tables() ([]string, error) {
 	return tables, rows.Err()
 }
 
+// Views returns SQLite views (type='view' in sqlite_master).
+func (s *SQLite) Views() ([]string, error) {
+	rows, err := s.db.Query(`SELECT name FROM sqlite_master WHERE type = 'view' ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var views []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		views = append(views, name)
+	}
+	return views, rows.Err()
+}
+
 func (s *SQLite) TableRowCounts() (map[string]int64, error) {
 	tables, err := s.Tables()
 	if err != nil {

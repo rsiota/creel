@@ -230,6 +230,29 @@ func (p *Postgres) Tables() ([]string, error) {
 	return tables, rows.Err()
 }
 
+// Views returns Postgres views in the current schema (excludes materialised views).
+func (p *Postgres) Views() ([]string, error) {
+	rows, err := p.db.Query(
+		`SELECT table_name FROM information_schema.tables
+		 WHERE table_schema = current_schema() AND table_type = 'VIEW'
+		 ORDER BY table_name`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var views []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		views = append(views, name)
+	}
+	return views, rows.Err()
+}
+
 func (p *Postgres) TableRowCounts() (map[string]int64, error) {
 	rows, err := p.db.Query(
 		`SELECT relname, n_live_tup

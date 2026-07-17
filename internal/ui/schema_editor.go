@@ -603,6 +603,19 @@ func (e SchemaEditor) columnNames() []string {
 // ActiveTab returns the index of the currently selected structure tab.
 func (e SchemaEditor) ActiveTab() int { return e.activeTab }
 
+// SetActiveTab selects a structure tab if it is available for the current
+// relation, resetting the read-only cursor/scroll. Used by :indexes / :columns
+// / :fk / :constraints to land on the right tab after openSchemaPanel.
+func (e *SchemaEditor) SetActiveTab(tab int) {
+	if !e.tabAvailable(tab) {
+		return
+	}
+	e.activeTab = tab
+	e.roCursor = 0
+	e.roScroll = 0
+	e.triggerExpanded = false
+}
+
 // LoadStructure populates the read-only metadata tabs from an async fetch.
 func (e *SchemaEditor) LoadStructure(data structureData) {
 	e.structure = data

@@ -94,6 +94,8 @@ type DB interface {
 	Close() error
 	// Tables returns the list of tables and views in the database.
 	Tables() ([]string, error)
+	// Views returns the list of views in the database (excluding base tables).
+	Views() ([]string, error)
 	// TableRowCounts returns approximate row counts for all tables.
 	// MySQL uses information_schema (fast, approximate); SQLite runs COUNT(*)
 	// per table. Tables with inaccessible rows are omitted from the map.

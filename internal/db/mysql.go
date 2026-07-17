@@ -143,6 +143,30 @@ func (m *MySQL) Tables() ([]string, error) {
 	return tables, rows.Err()
 }
 
+// Views returns MySQL views in the current database.
+func (m *MySQL) Views() ([]string, error) {
+	rows, err := m.db.Query(
+		`SELECT table_name FROM information_schema.tables
+		 WHERE table_schema = ? AND table_type = 'VIEW'
+		 ORDER BY table_name`,
+		m.config.Database,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var views []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		views = append(views, name)
+	}
+	return views, rows.Err()
+}
+
 func (m *MySQL) TableRowCounts() (map[string]int64, error) {
 	rows, err := m.db.Query(
 		`SELECT table_name, table_rows FROM information_schema.tables WHERE table_schema = ? AND table_type = 'BASE TABLE'`,

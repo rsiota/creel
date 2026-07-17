@@ -325,6 +325,20 @@ func TestSQLiteSchemas(t *testing.T) {
 	}
 }
 
+func TestSQLiteViews(t *testing.T) {
+	s := setupSQLiteTestDB(t)
+	if _, err := s.Exec(`CREATE VIEW active_users AS SELECT id, name FROM users`); err != nil {
+		t.Fatal(err)
+	}
+	views, err := s.Views()
+	if err != nil {
+		t.Fatalf("Views: %v", err)
+	}
+	if len(views) != 1 || views[0] != "active_users" {
+		t.Errorf("Views = %v, want [active_users]", views)
+	}
+}
+
 func TestSQLiteCloseTwice(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")

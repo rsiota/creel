@@ -431,6 +431,92 @@ func exCommands() []exCmdSpec {
 			},
 		},
 		{
+			verbs:   []string{"columns"},
+			desc:    "open the Columns structure tab",
+			usage:   ":columns [table]",
+			argKind: exArgTable,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				name := ""
+				if len(args) > 0 {
+					name = args[0]
+				}
+				return m.exOpenStructureTab(name, seTabColumns)
+			},
+		},
+		{
+			verbs:   []string{"indexes"},
+			desc:    "open the Indexes structure tab",
+			usage:   ":indexes [table]",
+			argKind: exArgTable,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				name := ""
+				if len(args) > 0 {
+					name = args[0]
+				}
+				return m.exOpenStructureTab(name, seTabIndexes)
+			},
+		},
+		{
+			verbs:   []string{"constraints"},
+			desc:    "open the Checks structure tab",
+			usage:   ":constraints [table]",
+			argKind: exArgTable,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				name := ""
+				if len(args) > 0 {
+					name = args[0]
+				}
+				return m.exOpenStructureTab(name, seTabChecks)
+			},
+		},
+		{
+			verbs:   []string{"fk"},
+			desc:    "open the Foreign Keys structure tab",
+			usage:   ":fk [table]",
+			argKind: exArgTable,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				name := ""
+				if len(args) > 0 {
+					name = args[0]
+				}
+				return m.exOpenStructureTab(name, seTabFK)
+			},
+		},
+		{
+			verbs:   []string{"tables", "dt"},
+			desc:    "list tables in the lookup overlay",
+			usage:   ":tables",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exTables() },
+		},
+		{
+			verbs:   []string{"views", "dv"},
+			desc:    "list views in the lookup overlay",
+			usage:   ":views",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exViews() },
+		},
+		{
+			verbs:   []string{"schemas"},
+			desc:    "list schemas in the lookup overlay",
+			usage:   ":schemas",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exSchemasList() },
+		},
+		{
+			verbs:   []string{"search", "find"},
+			desc:    "fuzzy-find tables, views, and columns by name",
+			usage:   ":search <name>",
+			argKind: exArgRequired,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				if len(args) == 0 {
+					m.schemaMsg = ":search needs a name"
+					return nil
+				}
+				return m.exSearch(args[0])
+			},
+		},
+		{
 			verbs:   []string{"stats"},
 			desc:    "summary stats for a column (min/max/avg/…)",
 			usage:   ":stats [column]",

@@ -122,5 +122,5 @@ exists (`:run` ↔ `ctrl+e`); skip pure UI chrome (`:cursor-down`). Always
 extract/share one helper. Full priority list: **Tier 5** in `ROADMAP.md` #15
 (Wave A mirrors → Wave B connect/nav → Wave C schema → Wave D QoL).
 
-Next implementation target: **Wave C** (`:indexes`/`:columns`/`:constraints`,
-`:tables`/`:views`/`:schemas`, `:search`). Waves A–B ✅.
+Next implementation target: **Wave D** (`:new`, `:version`, `:plan`,
+`:recent`). Waves A–C ✅.

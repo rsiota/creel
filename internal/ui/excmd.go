@@ -880,19 +880,169 @@ func (m *Model) exUses(name string) tea.Cmd {
 // targets it. The d key does the same for the sidebar cursor; this adds a
 // name-addressable path.
 func (m *Model) exDescribe(name string) tea.Cmd {
+	return m.exOpenStructureTab(name, seTabColumns)
+}
+
+// exOpenStructureTab opens the structure panel on a specific tab for a table
+// (:columns / :indexes / :fk / :constraints / :describe). Shares openSchemaPanel
+// with the d key and :describe.
+func (m *Model) exOpenStructureTab(name string, tab int) tea.Cmd {
 	table := m.resolveTableArg(name)
 	if table == "" {
 		return nil
 	}
-	items := m.sidebarItems()
-	for i, it := range items {
-		if !it.isColumn && it.text == table {
-			m.sidebarCursor = i
-			m.sidebarViewAnchored = false
-			break
+	m.syncSidebarCursorToTable(table)
+	cmd := m.openSchemaPanel()
+	if m.schemaEditor.IsVisible() {
+		m.schemaEditor.SetActiveTab(tab)
+	}
+	return cmd
+}
+
+// exListNames shows a single-column lookup overlay of names (tables, views,
+// schemas). Shared by :tables / :views / :schemas.
+func (m *Model) exListNames(title string, names []string) tea.Cmd {
+	cols := []db.Column{{Name: "Name"}}
+	rows := make([][]string, 0, len(names))
+	for _, n := range names {
+		rows = append(rows, []string{n})
+	}
+	return func() tea.Msg {
+		return lookupResultMsg{
+			title:  title,
+			result: db.Result{Columns: cols, Rows: rows},
 		}
 	}
-	return m.openSchemaPanel()
+}
+
+// exTables lists base tables in the lookup overlay (:tables / :dt). Views are
+// excluded when Views() succeeds so the two list verbs stay distinct.
+func (m *Model) exTables() tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	viewSet := map[string]bool{}
+	if views, err := m.connection.DB().Views(); err == nil {
+		for _, v := range views {
+			viewSet[v] = true
+		}
+	}
+	names := make([]string, 0, len(m.tables))
+	for _, t := range m.tables {
+		if !viewSet[t] {
+			names = append(names, t)
+		}
+	}
+	if len(names) == 0 {
+		m.schemaMsg = "no tables"
+		return nil
+	}
+	return m.exListNames("Tables", names)
+}
+
+// exViews lists views in the lookup overlay (:views / :dv).
+func (m *Model) exViews() tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	views, err := m.connection.DB().Views()
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	if len(views) == 0 {
+		m.schemaMsg = "no views"
+		return nil
+	}
+	return m.exListNames("Views", views)
+}
+
+// exSchemasList lists schemas/namespaces in the lookup overlay (:schemas).
+// Distinct from :schema [name], which switches (or status-lists) the active
+// schema. SQLite is unsupported.
+func (m *Model) exSchemasList() tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	schemas, err := m.connection.Schemas()
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	if len(schemas) == 0 {
+		m.schemaMsg = "no schemas"
+		return nil
+	}
+	return m.exListNames("Schemas", schemas)
+}
+
+// searchHit is one row in the :search / :find lookup overlay.
+type searchHit struct {
+	kind   string // "table", "view", "column"
+	name   string
+	parent string // table for columns; empty otherwise
+}
+
+// exSearch fuzzy-finds tables, views, and columns by name (:search / :find).
+// Uses cached sidebar metadata (m.tables + columnCache); distinct from the
+// results g / regex and from cross-search (cell values).
+func (m *Model) exSearch(needle string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if needle == "" {
+		m.schemaMsg = ":search needs a name"
+		return nil
+	}
+
+	var hits []searchHit
+	viewSet := map[string]bool{}
+	if views, err := m.connection.DB().Views(); err == nil {
+		for _, v := range views {
+			viewSet[v] = true
+		}
+	}
+
+	for _, t := range m.tables {
+		kind := "table"
+		if viewSet[t] {
+			kind = "view"
+		}
+		hits = append(hits, searchHit{kind: kind, name: t})
+	}
+	for table, cols := range m.columnCache {
+		for _, c := range cols {
+			hits = append(hits, searchHit{kind: "column", name: c.Name, parent: table})
+		}
+	}
+
+	ranked := fuzzyRank(needle, hits, func(h searchHit) string {
+		if h.parent != "" {
+			return h.parent + "." + h.name
+		}
+		return h.name
+	}, nil)
+	if len(ranked) == 0 {
+		m.schemaMsg = fmt.Sprintf("no matches for %q", needle)
+		return nil
+	}
+
+	cols := []db.Column{{Name: "Kind"}, {Name: "Name"}, {Name: "Parent"}}
+	rows := make([][]string, 0, len(ranked))
+	for _, r := range ranked {
+		rows = append(rows, []string{r.Item.kind, r.Item.name, r.Item.parent})
+	}
+	title := fmt.Sprintf("Search: %s", needle)
+	return func() tea.Msg {
+		return lookupResultMsg{
+			title:  title,
+			result: db.Result{Columns: cols, Rows: rows},
+		}
+	}
 }
 
 // exStats shows summary statistics for a column (:stats [column]), defaulting

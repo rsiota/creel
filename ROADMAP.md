@@ -327,17 +327,17 @@ Ship in roughly this order. Each item notes the shared helper / key to reuse.
    switches `search_path` pool-safely (`Schemas` / `UseSchema` + reconnect);
    SQLite unsupported.
 
-*Wave C — schema exploration (object-centric):*
-10. **`:indexes [table]`**, **`:columns [table]`**, **`:constraints [table]`**
-    (alias `:fk` only if it stays a thin view into FKs) — default to current
-    table; reuse Structure / schema introspection already behind `d` /
-    `:describe`. Prefer focused overlays or jumping into the right Structure
-    tab over new data sources.
-11. **`:tables`**, **`:views`**, **`:schemas`** — focus/filter the sidebar
-    category (or list in the lookup overlay). Once these exist, psql aliases
-    `:dt` / `:dv` become one-line verb aliases — not design drivers.
-12. **`:search <name>`** / **`:find <name>`** — fuzzy find tables/columns/
-    routines by name (schema-wide); distinct from results `g /` regex.
+*Wave C — schema exploration (object-centric):* ✅ done (2026-07-17)
+10. **`:indexes [table]`**, **`:columns [table]`**, **`:constraints [table]`**,
+    **`:fk [table]`** ✅ — open the Structure panel on the matching tab via
+    `exOpenStructureTab` / `SetActiveTab` (shares `openSchemaPanel` with `d` /
+    `:describe`). Defaults to the current table.
+11. **`:tables`/`:dt`**, **`:views`/`:dv`**, **`:schemas`** ✅ — list in the
+    lookup overlay. `:tables` excludes views (new `DB.Views()`). `:schemas`
+    (plural) is the list verb; `:schema` (singular) remains the switch/status
+    verb from Wave B.
+12. **`:search`/`:find <name>`** ✅ — fuzzy-find tables/views/columns over
+    `m.tables` + `columnCache` (not cross-search cell values, not results `g /`).
 
 *Wave D — quality-of-life:*
 13. **`:new`** — empty editor buffer / new scratch query (clear or new tab —
@@ -359,25 +359,25 @@ Ship in roughly this order. Each item notes the shared helper / key to reuse.
 - Schema-diff product: `:diff <a> <b>`.
 - Favorites as a second bookmarks system: `:favorite`.
 
-**psql aliases (`:dt` / `:dv` / `:df`, …):** add only after Wave C list verbs
-exist, via the registry alias list — don't let them drive design.
+**psql aliases (`:dt` / `:dv` / `:df`, …):** `:dt` / `:dv` ship with Wave C as
+aliases of `:tables` / `:views`. Remaining (`:df`, …) wait on underlying
+features.
 
 ---
 
 ## Suggested starting order
 The original top three are all shipped (#1, #4, #3), and the two polish
 follow-ups are done (#7 `confirm_destructive`, #4 check constraints). Tiers
-1–3 of the `:` command set (#15) are complete. Waves A–B of Tier 5 are done.
+1–3 of the `:` command set (#15) are complete. Waves A–C of Tier 5 are done.
 Next up:
-1. **Tier 5 Wave C** (#15) — `:indexes`/`:columns`/`:constraints`, then
-   `:tables`/`:views`/`:schemas`, then `:search`. Object-centric schema.
-2. **Session restore** (#9) — persistence; unlocks `:recent` / session ideas.
-3. **Tier 5 Wave D + Tier 4** — `:new`/`:version`/`:plan`/`:recent`, then
-   opt-in DBA (`:who`/`:locks`/`:kill`) if users ask.
+1. **Tier 5 Wave D** (#15) — `:new`/`:version`/`:plan`/`:recent`.
+2. **Session restore** (#9) — persistence; unlocks a richer `:recent`.
+3. **Tier 4** — opt-in DBA (`:who`/`:locks`/`:kill`) if users ask.
 
 Original historical order (all complete): keyring storage (#1),
 indexes/triggers/views (#4), read-only mode (#3).
 Shipped earlier on this track: transactions (#5), export (#6 / `:export`),
 file integration (#14), monitoring (`:watch`/`:tail`/`:refs`/`:uses`),
 Wave A mirrors (`:run`/`:qa`/tab verbs/`:copy`),
-Wave B connect/nav (`:connect`/`:db`/`:schema`).
+Wave B connect/nav (`:connect`/`:db`/`:schema`),
+Wave C schema exploration (`:indexes`/`:tables`/`:search`).
