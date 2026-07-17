@@ -388,7 +388,11 @@ Next up:
    done (2026-07-17). `:addcolumn` (sidebar `a`) ✅ done (2026-07-17) — fills the
    column-DDL gap; 0–1 args open the form, `<table> <name> <type> [nullable]
    [default]` runs ALTER TABLE ADD COLUMN directly via the shared
-   execSchemaDDL path.
+   execSchemaDDL path. `:discard[!]` (results `D`) and `:clone` (results `P`)
+   ✅ done (2026-07-17) — the discard confirm gating was extracted into
+   discardResultsEdits, now shared by the key and the `:` verb (force skips
+   the staged confirm); `:clone` delegates to cloneRows with feedback for the
+   no-op cases the key swallows.
 
 Original historical order (all complete): keyring storage (#1),
 indexes/triggers/views (#4), read-only mode (#3).

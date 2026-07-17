@@ -182,6 +182,20 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exCopy() },
 		},
 		{
+			verbs:   []string{"discard"},
+			desc:    "discard staged cell edits",
+			usage:   ":discard[!]",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, force bool) tea.Cmd { return m.exDiscard(force) },
+		},
+		{
+			verbs:   []string{"clone"},
+			desc:    "duplicate the marked or cursor row",
+			usage:   ":clone",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exClone() },
+		},
+		{
 			verbs:   []string{"connect", "c"},
 			desc:    "switch connection by name, or open the connection list",
 			usage:   ":connect [name]",

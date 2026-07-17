@@ -2951,13 +2951,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				m.resultsPendingG = false
 				m.resultsPendingY = false
-				if m.results.HasDirtyCells() {
-					if m.confirmDestructive() {
-						m.discardConfirm = true
-						return m, nil
-					}
-					m.results.DiscardEdits()
-				}
+				m.discardResultsEdits(false)
 				return m, nil
 			case "/":
 				if m.resultsPendingG {

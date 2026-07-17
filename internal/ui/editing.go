@@ -401,6 +401,23 @@ func (m *Model) saveInsert() tea.Cmd {
 	}
 }
 
+// discardResultsEdits discards staged cell edits in the results panel,
+// staging the y/enter confirmation when confirm_destructive is on (unless force
+// is set). Reports whether there was anything to discard (it discarded, or
+// staged a confirm). Shared by the results D key and :discard so the two
+// surfaces can't drift — the confirm gating lives here, not in each caller.
+func (m *Model) discardResultsEdits(force bool) bool {
+	if !m.results.IsEditable() || !m.results.HasDirtyCells() {
+		return false
+	}
+	if !force && m.confirmDestructive() {
+		m.discardConfirm = true
+		return true
+	}
+	m.results.DiscardEdits()
+	return true
+}
+
 // cloneRows duplicates marked rows (or the cursor row) by building and
 // executing INSERT statements. Auto-increment PK values are stripped so
 // the database assigns new IDs. All clones run in a single transaction;

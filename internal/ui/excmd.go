@@ -419,6 +419,37 @@ func (m *Model) exCopy() tea.Cmd {
 	return m.copyCursorCell()
 }
 
+// exDiscard discards staged cell edits (:discard), sharing discardResultsEdits
+// with the results D key. Stages the y/enter confirmation when
+// confirm_destructive is on. Gives feedback when there is nothing to discard
+// (the key stays silent).
+func (m *Model) exDiscard(force bool) tea.Cmd {
+	if m.discardResultsEdits(force) {
+		return nil
+	}
+	if !m.results.IsEditable() {
+		m.schemaMsg = "nothing to discard — results not editable"
+	} else {
+		m.schemaMsg = "no changes to discard"
+	}
+	return nil
+}
+
+// exClone duplicates the marked rows or the cursor row (:clone), sharing
+// cloneRows with the results P key. Gives feedback for the no-op cases the key
+// swallows silently (no connection / nothing editable).
+func (m *Model) exClone() tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if !m.results.IsEditable() || m.results.NumRows() == 0 {
+		m.schemaMsg = "no editable rows to clone"
+		return nil
+	}
+	return m.cloneRows()
+}
+
 // exNew clears the editor to an empty scratch buffer (:new). Does not open a
 // new tab — use :tabnew for that.
 func (m *Model) exNew() tea.Cmd {
