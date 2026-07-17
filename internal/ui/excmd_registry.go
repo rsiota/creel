@@ -352,6 +352,32 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exCreate() },
 		},
 		{
+			verbs:   []string{"createdb"},
+			desc:    "create a database (MySQL/Postgres)",
+			usage:   ":createdb <name>",
+			argKind: exArgRequired,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				name := ""
+				if len(args) > 0 {
+					name = args[0]
+				}
+				return m.exCreateDatabase(name)
+			},
+		},
+		{
+			verbs:   []string{"dropdb"},
+			desc:    "drop a database (defaults to current)",
+			usage:   ":dropdb[!] [name]",
+			argKind: exArgOptional,
+			run: func(m *Model, args []string, force bool) tea.Cmd {
+				name := ""
+				if len(args) > 0 {
+					name = args[0]
+				}
+				return m.exDropDatabase(name, force)
+			},
+		},
+		{
 			verbs:   []string{"refresh", "reload"},
 			desc:    "refresh schema and re-run the last query",
 			usage:   ":refresh",

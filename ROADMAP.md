@@ -384,7 +384,8 @@ follow-ups are done (#7 `confirm_destructive`, #4 check constraints). Tiers
 Next up:
 1. **Session restore** (#9) — persistence; can deepen `:recent` across runs.
 2. **Tier 4** — opt-in DBA (`:who`/`:locks`/`:kill`) if users ask.
-3. Optional DDL follow-ups: `:createdb` / `:dropdb` (db-picker `N`/`D`).
+3. Optional DDL follow-ups: `:createdb` / `:dropdb` (db-picker `N`/`D`) ✅
+   done (2026-07-17).
 
 Original historical order (all complete): keyring storage (#1),
 indexes/triggers/views (#4), read-only mode (#3).

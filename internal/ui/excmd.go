@@ -729,6 +729,73 @@ func (m *Model) exSchema(args []string) tea.Cmd {
 	}
 }
 
+// exCreateDatabase creates a database (:createdb <name>), sharing
+// execCreateDatabase with the db-picker N key. MySQL/Postgres only; SQLite is
+// unsupported (a single file is the database). DDL, so blocked in read-only
+// mode and while a transaction is open (it would implicitly commit on
+// MySQL/Postgres).
+func (m *Model) exCreateDatabase(name string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	driver := m.connection.Config().Driver
+	if driver != db.DriverMySQL && driver != db.DriverPostgres {
+		m.schemaMsg = "create database is not supported for " + string(driver)
+		return nil
+	}
+	if m.isReadOnly() {
+		m.schemaMsg = "read-only: create database disabled"
+		return nil
+	}
+	if m.txnBlocksWrite() {
+		return nil
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		m.schemaMsg = ":createdb needs a database name"
+		return nil
+	}
+	return m.execCreateDatabase(name)
+}
+
+// exDropDatabase drops a database (:dropdb[!] [name]), sharing execDropDatabase
+// with the db-picker D key. Defaults to the current database when no name is
+// given. Stages the typed-name confirmation when confirm_destructive is on,
+// unless forced (:dropdb!). MySQL/Postgres only.
+func (m *Model) exDropDatabase(name string, force bool) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	driver := m.connection.Config().Driver
+	if driver != db.DriverMySQL && driver != db.DriverPostgres {
+		m.schemaMsg = "drop database is not supported for " + string(driver)
+		return nil
+	}
+	if m.isReadOnly() {
+		m.schemaMsg = "read-only: drop database disabled"
+		return nil
+	}
+	if m.txnBlocksWrite() {
+		return nil
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = m.connection.Config().Database
+	}
+	if name == "" {
+		m.schemaMsg = ":dropdb needs a database name"
+		return nil
+	}
+	if !force && m.confirmDestructive() {
+		m.dropDBConfirm = name
+		m.dropDBInput = ""
+		return nil
+	}
+	return m.execDropDatabase(name)
+}
+
 // maxRecentTables caps the in-memory MRU list backing :recent.
 const maxRecentTables = 20
 
