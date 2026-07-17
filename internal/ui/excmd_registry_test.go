@@ -48,13 +48,14 @@ func TestExRegistryConsistency(t *testing.T) {
 // still drift, so this guards them explicitly.
 func TestExLookupResolvesKnownVerbs(t *testing.T) {
 	known := []string{
-		"e", "edit", "w", "write", "q", "quit", "wq", "x", "sort", "goto", "gt",
-		"export", "refs", "references", "uses", "begin", "transaction",
-		"commit", "rollback", "help", "h",
+		"e", "edit", "w", "write", "q", "quit", "qa", "wq", "x", "sort", "goto", "gt",
+		"export", "copy", "refs", "references", "uses", "begin", "transaction",
+		"commit", "rollback", "help", "h", "run", "r",
 		"explain", "refresh", "reload", "history", "bookmarks", "bm",
-		"describe", "desc", "stats", "count", "sample", "head", "format",
+		"describe", "desc", "d", "stats", "count", "sample", "head", "format",
 		"bookmark", "import", "rerun", "watch", "tail", "theme",
 		"limit", "timing", "peek", "filter", "open", "o", "save",
+		"tabnew", "tabclose", "tabnext", "tabn", "tabprev", "tabp", "tabs",
 	}
 	for _, v := range known {
 		if exLookup(v) == nil {

@@ -99,27 +99,29 @@ Each shares the SAME implementation as its keybinding, not a duplicate:
 - `:explain`→`explainQuery`, `:stats`→`fetchColumnStats`,
   `:describe`→`openSchemaPanel`, `:format`→`formatSQL` (the editor `==` path).
 
-Deferred: `:connect <name>` (async connect + keyring — not a quick alias) and
-`:readonly` (a connection/CLI flag opened at engine level, not a runtime
-toggle). Tests: `excmd_aliases_test.go`; known-verb set extended.
+Deferred from this step (now scheduled in `ROADMAP.md` #15 Tier 5):
+`:connect <name>` (Wave B — async + keyring), and `:readonly` (connection/CLI
+flag at engine level, not a runtime toggle). Tests: `excmd_aliases_test.go`;
+known-verb set extended.
 
 ### Step 6 (optional) — `:map` / keymap config
 Enabled once actions have stable IDs + executors.
 
 ### Catalog expansion (ongoing)
-With the registry in place, the `:` line is now the cheap, self-documenting
-home for new commands. Tier-3 data-inspection verbs shipped first (2026-07-16):
-`:count [table]`, `:sample [table]`/`:head`, and `:bookmark` (the latter shares
-`bookmarkCurrentQuery` with the `B` key, the same extract-a-helper pattern as
-`:refresh`/`refreshSchema`). Added since: `:import <file>` (the `I` key's
-action, reusing `execImportSQL`) and `:rerun <n>` (history rank; the panel now
-numbers rows to match). Shipped next: `:watch [n]` — the first *stateful*
-command (toggle + `tea.Tick` timer + persistent `WATCH <n>s` status indicator
-parallel to `TXN ●`). The watch follows `m.lastQuery` (a live refresh of the
-view in focus); a generation counter kills a superseded tick chain, and a tick
-is skipped while a query is in flight. `:tail <table>` ✅ followed — the
-append-only/event companion to :watch, reusing the same machinery (a
-`watchMode` flag swaps the indicator to `TAIL <n>s`) and building a newest-first
-query from the single-column PK. With both, Tier 2 monitoring is complete.
-Next up: live command completion/suggestions in the `:` line (the last open
-v2 item from #10); the argument commands (:filter/:open/:save) are wired.
+With the registry in place, the `:` line is the cheap, self-documenting home
+for new commands. Tiers 1–3 from `ROADMAP.md` #15 are complete (parameterized
+file/txn/export verbs, monitoring `:watch`/`:tail`/`:refs`/`:uses`, and small
+wins like `:count`/`:peek`/`:rerun`/`:limit`). High-level key mirrors already
+in the catalog (`:refresh`, `:explain`, `:history`, `:bookmarks`, `:import`,
+`:bookmark`) share helpers with their bindings — that pattern is now the
+**preferred** way to grow the set, not something to avoid.
+
+**Principle (2026-07-17):** overlap with shortcuts is intentional for
+discoverability. Add a `:` verb for high-level actions even when a key
+exists (`:run` ↔ `ctrl+e`); skip pure UI chrome (`:cursor-down`). Always
+extract/share one helper. Full priority list: **Tier 5** in `ROADMAP.md` #15
+(Wave A mirrors → Wave B connect/nav → Wave C schema → Wave D QoL).
+
+Next implementation target: **Wave B** (`:connect`/`:c`, `:connections`,
+`:db`/`:use`, `:schema`). Wave A ✅ (`:run`/`:r`, `:d`, `:qa`, tab verbs,
+`:copy`).

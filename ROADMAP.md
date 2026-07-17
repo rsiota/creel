@@ -246,114 +246,136 @@ reviews it in the editor and runs it with `ctrl+e`.
 
 ### 15. `:` command-set roadmap
 A prioritized plan for growing the ex command line, distilled from a command
-survey. Guiding principle: **the `:` line earns its place on parameterized
-actions (things that take a name / path / number) and stateful modes
-(transactions, watch) — not by duplicating single-key actions already in the
-`ctrl+p` palette.** The three input surfaces (keys, palette, `:`) should stay
-distinct; a command that just replays an existing key is low value.
+survey and refined toward Helix-style discoverability (2026-07-17).
+
+**Guiding principle (revised):** Shortcuts are for muscle memory; `:` commands
+are for discoverability, arguments, and (later) scripting. Overlap is
+*intentional* for high-level noun/verb actions — `:run` ↔ `ctrl+e`, `:refresh`
+↔ `ctrl+r` — as long as both call the **same helper**. Do **not** think of
+that as duplication of code paths; think of it as two interfaces to one
+action. The three surfaces (keys, palette, `:`) stay usefully distinct in
+*UX*, but should funnel through one implementation.
+
+Add an ex command when at least one is true:
+1. It takes an argument (`:goto users`, `:limit 100`, `:theme dark`)
+2. It is stateful / mode-like (`:watch`, `:begin`, `:timing`)
+3. It is a high-level verb users will search for (`:run`, `:describe`, `:connect`)
+4. Default-object form helps (`:peek`, `:refs`, `:indexes` with no args)
+
+Skip commands that are only interface chrome (no sensible noun/verb):
+`:cursor-down`, `:focus-results`, `:scroll-page`, `:toggle-bottom-pane`.
+
+**Architecture habit:** extract a helper first, then wire keybinding + `:`
+(+ palette). Never copy a key handler body into an ex executor. A full
+unified `Action` registry (IDs for `:map` / config) remains optional — shared
+helpers + `exCommands()` are enough until then. See `docs/command-registry.md`.
 
 **Conventions:**
 - **Default to the current object.** Commands with no argument operate on the
   focused table (`currentTable()`): `:count`, `:sample`, `:refs`, `:peek`,
-  `:indexes`. Nearly free to implement (the helper exists) and the single
-  biggest lever for making the set feel native rather than pasted in.
-- **Explicit verbs over cryptic prefixes.** `:goto` is the canonical verb;
-  `:gt` stays as a tolerated alias (it predates the convention and breaks
-  nothing). Do **not** grow a `:gv`/`:gf`/`:gp` family — `:goto <name>` already
-  matches any non-column sidebar object (table/view) via substring, so one
-  verb covers navigation. New verbs are spelled out (`:refs`, `:uses`,
-  `:watch`, `:tail`) and may gain a short alias only after the feature ships.
+  `:indexes`. Nearly free to implement and the biggest lever for feeling native.
+- **Explicit verbs over cryptic prefixes.** `:goto` is canonical; `:gt` is a
+  tolerated alias. Do **not** grow a `:gv`/`:gf`/`:gp` family — one `:goto`
+  covers sidebar objects. New verbs are spelled out; short aliases land only
+  after the feature ships (canonical + one short alias is the sweet spot).
 - **Stateful commands own a status-bar indicator** (`TXN ●`, `WATCH 5s`, …).
+- **Help stays scannable.** Prefer category grouping in `?` / `:help` over
+  refusing useful mirrors. Avoid three long names for the same action.
 
-**Tier 1 — parameterized / stateful, high value (start here):**
-- `:begin` / `:commit` / `:rollback` (+ `TXN` indicator) — ✅ done, see #5.
-- `:w file.sql` / `:e file.sql` — ✅ done (see #14), along with the `gsql -f`
-  startup flag (load a script into the editor).
-- `:import <file>` ✅ (2026-07-16) — non-interactive SQL-dump import (the `I`
-  key's action), expanding `~` and reusing `execImportSQL`, so progress/result
-  flow through the same import status messages.
-- `:export <fmt>` — ✅ done. A non-interactive shortcut over the `g X` export
-  picker (#6): writes the current result set to ~/Downloads in the given
-  format (csv, json, jsonl, md, tsv). Named `:export` rather than `:write`
-  since `:w <file>` now writes the editor buffer.
+**Tier 1 — parameterized / stateful, high value:** ✅ complete
+- `:begin` / `:commit` / `:rollback` (+ `TXN` indicator) — see #5.
+- `:w file.sql` / `:e file.sql` — see #14; `gsql -f` startup flag.
+- `:import <file>` — shares `execImportSQL` with the `I` key.
+- `:export <fmt>` — non-interactive shortcut over the `g X` picker.
 
-**Tier 2 — monitoring & graph (bigger builds):**
-- `:watch [n]` — ✅ done. Re-run the current query every n seconds; `:watch
-  off` (or `0`/`stop`) cancels. The watched query "follows" `m.lastQuery`, so
-  running a different query switches what's watched; a `WATCH <n>s` indicator
-  in the status bar (parallel to `TXN ●`) keeps the background refresh
-  visible. A generation counter lets a restarted/stopped tick chain die
-  instead of doubling the rate, and a tick is skipped (not piled up) while a
-  query is in flight.
-- `:tail <table>` — ✅ done. Stream the newest rows of an append-only/event
-  table on a timer (default 2s, faster than :watch). Builds a newest-first
-  query ordered by the single-column PK (`ORDER BY <pk> DESC`; composite PKs
-  are left unordered rather than guessing), defaults to the current table, and
-  reuses the :watch machinery — a `watchMode` discriminator just swaps the
-  status indicator to `TAIL <n>s`. `:tail off`/`:watch off` are interchangeable
-  (either stops either), and the stop message names the right one.
-- `:refs <table>` — ✅ done. Reverse foreign keys (who points at me);
-  complements `g d` (forward FK). Shown in a scrollable overlay panel.
-  Defaults to the current table with no argument.
-- `:uses <table>` — ✅ done. Views / functions / procedures / triggers
-  referencing a table (textual dependency scan). Complements :refs; shares the
-  same lookup overlay panel. Defaults to the current table with no argument.
+**Tier 2 — monitoring & graph:** ✅ complete
+- `:watch [n]`, `:tail [table]`, `:refs [table]`, `:uses [table]`.
 
-**Tier 3 — small wins:**
-- `:count [table]` ✅, `:sample [table]` / `:head` ✅ (2026-07-16) — data-inspection
-  verbs defaulting to the current table; `:count` runs `SELECT count(*)`, `:sample`
-  peeks the first rows (`LIMIT 10`, distinct from `:goto`'s paged browse).
-- `:peek [table]` ✅ (2026-07-17) — a one-glance table summary (row count,
-  column count, primary key, column list) in the lookup overlay. Defaults to
-  the current table; runs async (COUNT(*) + schema/PK introspection). Distinct
-  from :describe (full structure) and :count (just the number).
-- `:bookmark` ✅ (2026-07-16) — bookmarks the editor's current query; closes the
-  asymmetry where `:bookmarks` only opened the panel and the `B` key was the sole
-  way to add one (the `B` handler now shares `bookmarkCurrentQuery` with the verb).
-- `:rerun <n>` ✅ (2026-07-16) — re-runs a query by history rank (1 = most
-  recent). The history panel now numbers rows 1..N most-recent-first, and the
-  number stays attached to its entry through fuzzy filtering, so `:rerun <n>`
-  always matches the number shown. `:timing` ✅, `:limit <n>` / `:limit off` ✅
-  (2026-07-17) — :limit changes the results page size on the fly (re-runs at
-  page 0; off/default restores the configured size; bare reports the current);
-  :timing toggles a last-query elapsed indicator in the status bar. With these,
-  Tier 3's small wins are complete and the #15 command set is done (Tier 4 DBA
-  commands remain opt-in).
+**Tier 3 — small wins:** ✅ complete
+- `:count` / `:sample`/`:head` / `:peek` / `:bookmark` / `:rerun` /
+  `:timing` / `:limit` — plus earlier aliases (`:explain`, `:refresh`,
+  `:history`, `:bookmarks`, `:describe`/`:desc`, `:stats`, `:format`, `:theme`,
+  `:filter`, `:open`/`:save`).
 
-**Tier 4 — DBA / niche (only if the audience wants it):**
-- `:who`, `:locks`, `:kill <pid>` — session / lock inspection; driver-specific,
-  and `:kill` is dangerous.
+**Tier 4 — DBA / niche (opt-in, audience-driven):**
+- `:who`, `:locks`, `:kill <pid>` — session / lock inspection; driver-specific;
+  `:kill` is dangerous (confirm_destructive).
 
-**Explicitly rejected (wrong layer / scope creep):** `:shell` / `:cd` / `:ls`
-(shell escape in a TUI), `:tee` / `:pager` / `:nopager` (the TUI *is* the
-pager), `:record` / `:play` macros, `:replace` (use the editor's vim `:s`),
-`:session save/load` (a persistence project, not a command — see #9),
-`:diff <a> <b>` (a separate schema-diff product), `:favorite` (duplicate of
-`:bookmark`).
+**Tier 5 — next commands (discoverability + remaining verbs):**
 
-**psql aliases (`:dt` / `:dv` / `:df`, …):** defer until the underlying feature
-exists, then add via a tiny alias table — don't let them drive design.
+Ship in roughly this order. Each item notes the shared helper / key to reuse.
+
+*Wave A — cheap high-level mirrors (extract-or-reuse helpers):* ✅ done (2026-07-17)
+1. **`:run` / `:r`** ✅ — shares `executeQuery` with `ctrl+e` / `\`.
+2. **`:d`** ✅ — short alias of `:describe`/`:desc`.
+3. **`:qa` / `:qa!`** ✅ — quit all tabs; dirty check spans inactive tabs via
+   `saveTabState`.
+4. **`:tabnew`**, **`:tabclose[!]`**, **`:tabnext`/`:tabn`**, **`:tabprev`/`:tabp`**,
+   **`:tabs`** ✅ — share `addTab` / `closeTab` / `TabBar.NextTab`/`PrevTab` with
+   `t` / `g x` / `g t` / `g T`. `:tabclose` refuses the last tab (use `:q`).
+5. **`:copy`** ✅ — shares `copyCursorCell` with the `yy` chord.
+
+*Wave B — connections & navigation (parameterized):*
+6. **`:connect [name]` / `:c`** — switch connection by name (or open picker
+   with no arg). Was deferred for async/keyring; still the biggest missing
+   parameterized verb. Reuse connection-list / `connectToDB` paths.
+7. **`:connections`** — open/switch connection UI (mirror `ctrl+t`).
+8. **`:db` / `:use [database]`** — list or switch database (MySQL `ctrl+b`
+   browse path; no-op/message on drivers without multi-db).
+9. **`:schema [name]`** — switch/search schema where the driver supports it.
+
+*Wave C — schema exploration (object-centric):*
+10. **`:indexes [table]`**, **`:columns [table]`**, **`:constraints [table]`**
+    (alias `:fk` only if it stays a thin view into FKs) — default to current
+    table; reuse Structure / schema introspection already behind `d` /
+    `:describe`. Prefer focused overlays or jumping into the right Structure
+    tab over new data sources.
+11. **`:tables`**, **`:views`**, **`:schemas`** — focus/filter the sidebar
+    category (or list in the lookup overlay). Once these exist, psql aliases
+    `:dt` / `:dv` become one-line verb aliases — not design drivers.
+12. **`:search <name>`** / **`:find <name>`** — fuzzy find tables/columns/
+    routines by name (schema-wide); distinct from results `g /` regex.
+
+*Wave D — quality-of-life:*
+13. **`:new`** — empty editor buffer / new scratch query (clear or new tab —
+    pick one behavior and document it).
+14. **`:version`** — print app version in the status bar / overlay.
+15. **`:plan`** — pretty/alias path onto `:explain` / `g e` if the explain
+    panel gains a richer rendering; otherwise keep as alias of `:explain`.
+16. **`:recent`** — recently touched tables (needs a small MRU list behind
+    `:goto` / sidebar opens; pairs with session restore #9).
+
+**Explicitly rejected (wrong layer / scope creep):**
+- UI chrome: `:cursor-*`, `:focus-*`, `:scroll-*`, `:select-next-row`,
+  `:toggle-*-pane` (unless the app becomes tmux-like).
+- Shell escape: `:shell` / `:cd` / `:ls`.
+- Pager/tee: `:tee` / `:pager` / `:nopager` (the TUI *is* the pager).
+- Macros: `:record` / `:play` (revisit only with a real Action ID layer).
+- Editor substitute: `:replace` (use vim `:s` in the editor).
+- Persistence product: `:session save/load` (see #9 — not “just a command”).
+- Schema-diff product: `:diff <a> <b>`.
+- Favorites as a second bookmarks system: `:favorite`.
+
+**psql aliases (`:dt` / `:dv` / `:df`, …):** add only after Wave C list verbs
+exist, via the registry alias list — don't let them drive design.
 
 ---
 
 ## Suggested starting order
 The original top three are all shipped (#1, #4, #3), and the two polish
-follow-ups are done (#7 `confirm_destructive`, #4 check constraints). The
-remaining work is framed by the `:` command-set roadmap (#15). Next up:
-1. **User-facing transactions** (#5, Tier 1 in #15) — ✅ done (2026-07-15):
-   `:begin` / `:commit` / `:rollback` + `TXN` indicator; editor statements route
-   through the held tx (reads see uncommitted writes); cell edits blocked
-   during the tx; auto-rollback on connection lifecycle changes.
-2. **`.sql` file integration** (#14, Tier 1 in #15) — ✅ done: `:e <file>`
-   load + `:w <file>` save (with `~` expansion), plus the `gsql -f` startup
-   flag (load a script into the editor, 2026-07-17).
-3. **`:`-line export shortcut** (#15 Tier 1) — ✅ done (2026-07-15):
-   `:export <fmt>` reuses the #6 exporter (csv, json, jsonl, md, tsv),
-   skipping the `g X` picker UI.
-4. **Monitoring commands** (#15 Tier 2) — `:refs` ✅ (2026-07-15) and `:uses`
-   ✅ done. `:watch [n]` ✅ and `:tail <table>` ✅ done — Tier 2 complete. The
-   remaining command-set work is the Tier 3 small wins.
-5. **Session restore** (#9) — persistence delight feature.
+follow-ups are done (#7 `confirm_destructive`, #4 check constraints). Tiers
+1–3 of the `:` command set (#15) are complete. Wave A of Tier 5 is done.
+Next up:
+1. **Tier 5 Wave B** (#15) — `:connect`/`:c`, `:connections`, `:db`/`:use`,
+   `:schema`. Parameterized connection/nav verbs.
+2. **Tier 5 Wave C** (#15) — `:indexes`/`:columns`/`:constraints`, then
+   `:tables`/`:views`/`:schemas`, then `:search`. Object-centric schema.
+3. **Session restore** (#9) — persistence; unlocks `:recent` / session ideas.
+4. **Tier 5 Wave D + Tier 4** — `:new`/`:version`/`:plan`/`:recent`, then
+   opt-in DBA (`:who`/`:locks`/`:kill`) if users ask.
 
 Original historical order (all complete): keyring storage (#1),
 indexes/triggers/views (#4), read-only mode (#3).
+Shipped earlier on this track: transactions (#5), export (#6 / `:export`),
+file integration (#14), monitoring (`:watch`/`:tail`/`:refs`/`:uses`),
+Wave A mirrors (`:run`/`:qa`/tab verbs/`:copy`).

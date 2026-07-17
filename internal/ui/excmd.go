@@ -322,6 +322,102 @@ func (m *Model) exQuit(force bool) tea.Cmd {
 	return nil
 }
 
+// exQuitAll quits the app after closing every tab (:qa). Unsaved edits in any
+// tab block unless forced (:qa!). Dirty state is checked across all tabs via
+// saveTabState so inactive tabs are included.
+func (m *Model) exQuitAll(force bool) tea.Cmd {
+	m.saveTabState()
+	if !force {
+		for _, tab := range m.resultsTabs {
+			if tab.Results.HasDirtyCells() {
+				m.schemaMsg = "unsaved changes — use :qa! to discard"
+				return nil
+			}
+		}
+	}
+	m.quitting = true
+	return tea.Quit
+}
+
+// exRun executes the statement under the cursor (:run / :r). Shares
+// executeQuery with ctrl+e / \.
+func (m *Model) exRun() tea.Cmd {
+	if m.editor.StatementAtCursor() == "" {
+		m.schemaMsg = "nothing to run"
+		return nil
+	}
+	return m.executeQuery()
+}
+
+// exTabNew opens a new results tab with the current editor contents, matching
+// the bare `t` key in results/connections.
+func (m *Model) exTabNew() tea.Cmd {
+	query := m.editor.Value()
+	m.addTab(generateTabTitle(query), query)
+	return nil
+}
+
+// exTabClose closes the active tab (:tabclose). Unlike :q, the last tab is
+// refused (vim :tabclose) — use :q to quit. Unsaved edits block unless forced.
+func (m *Model) exTabClose(force bool) tea.Cmd {
+	if len(m.resultsTabs) <= 1 {
+		m.schemaMsg = "cannot close the last tab — use :q to quit"
+		return nil
+	}
+	if !force && m.results.HasDirtyCells() {
+		m.schemaMsg = "unsaved changes — use :tabclose! to discard"
+		return nil
+	}
+	m.closeTab(m.activeTabID)
+	return nil
+}
+
+// exTabNext activates the next tab (cyclic), sharing TabBar.NextTab with g t.
+func (m *Model) exTabNext() tea.Cmd {
+	m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
+	if nextID := m.tabBar.NextTab(); nextID >= 0 {
+		m.setActiveTab(nextID)
+	}
+	return nil
+}
+
+// exTabPrev activates the previous tab (cyclic), sharing TabBar.PrevTab with g T.
+func (m *Model) exTabPrev() tea.Cmd {
+	m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
+	if prevID := m.tabBar.PrevTab(); prevID >= 0 {
+		m.setActiveTab(prevID)
+	}
+	return nil
+}
+
+// exTabs lists open tabs in the status bar, marking the active one with [].
+func (m *Model) exTabs() tea.Cmd {
+	if len(m.resultsTabs) == 0 {
+		m.schemaMsg = "no tabs"
+		return nil
+	}
+	parts := make([]string, 0, len(m.resultsTabs))
+	for i, tab := range m.resultsTabs {
+		title := tab.Title
+		if title == "" {
+			title = "untitled"
+		}
+		label := fmt.Sprintf("%d:%s", i+1, title)
+		if tab.ID == m.activeTabID {
+			label = "[" + label + "]"
+		}
+		parts = append(parts, label)
+	}
+	m.schemaMsg = strings.Join(parts, "  ")
+	return nil
+}
+
+// exCopy copies the cell under the cursor to the clipboard (:copy). Shares
+// copyCursorCell with the yy chord.
+func (m *Model) exCopy() tea.Cmd {
+	return m.copyCursorCell()
+}
+
 // exGoto opens a table by name (:goto users): exact (case-insensitive) match
 // first, then a substring fallback, then runs SELECT * FROM <table>.
 func (m *Model) exGoto(name string) tea.Cmd {

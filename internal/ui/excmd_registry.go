@@ -74,6 +74,13 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, force bool) tea.Cmd { return m.exQuit(force) },
 		},
 		{
+			verbs:   []string{"qa"},
+			desc:    "quit the app, closing all tabs",
+			usage:   ":qa[!]",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, force bool) tea.Cmd { return m.exQuitAll(force) },
+		},
+		{
 			verbs:   []string{"wq", "x"},
 			desc:    "save edits and close the tab (quit if last)",
 			usage:   ":wq",
@@ -92,6 +99,41 @@ func exCommands() []exCmdSpec {
 				}
 				return tea.Sequence(save, tea.Quit)
 			},
+		},
+		{
+			verbs:   []string{"tabnew"},
+			desc:    "open a new results tab",
+			usage:   ":tabnew",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exTabNew() },
+		},
+		{
+			verbs:   []string{"tabclose"},
+			desc:    "close the active tab (not the last)",
+			usage:   ":tabclose[!]",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, force bool) tea.Cmd { return m.exTabClose(force) },
+		},
+		{
+			verbs:   []string{"tabnext", "tabn"},
+			desc:    "go to the next tab",
+			usage:   ":tabnext",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exTabNext() },
+		},
+		{
+			verbs:   []string{"tabprev", "tabp"},
+			desc:    "go to the previous tab",
+			usage:   ":tabprev",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exTabPrev() },
+		},
+		{
+			verbs:   []string{"tabs"},
+			desc:    "list open tabs",
+			usage:   ":tabs",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exTabs() },
 		},
 		{
 			verbs:   []string{"sort"},
@@ -131,6 +173,13 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exExport(arg)
 			},
+		},
+		{
+			verbs:   []string{"copy"},
+			desc:    "copy the cell under the cursor to the clipboard",
+			usage:   ":copy",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exCopy() },
 		},
 		{
 			verbs:   []string{"import"},
@@ -198,6 +247,13 @@ func exCommands() []exCmdSpec {
 			usage:   ":help",
 			argKind: exArgNone,
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.help.Show(); return nil },
+		},
+		{
+			verbs:   []string{"run", "r"},
+			desc:    "run the statement under the cursor",
+			usage:   ":run",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exRun() },
 		},
 		{
 			verbs:   []string{"explain"},
@@ -334,7 +390,7 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.toggleBookmarks(); return nil },
 		},
 		{
-			verbs:   []string{"describe", "desc"},
+			verbs:   []string{"describe", "desc", "d"},
 			desc:    "open the structure view for a table",
 			usage:   ":describe [table]",
 			argKind: exArgTable,

@@ -2917,9 +2917,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingG = false
 				if m.resultsPendingY {
 					m.resultsPendingY = false
-					_ = clipboard.WriteAll(m.results.CursorCellValue())
-					m.results.StartCopyFeedback()
-					return m, copyFeedbackCmd()
+					return m, m.copyCursorCell()
 				}
 				m.resultsPendingY = true
 				return m, nil

@@ -4,9 +4,25 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/ruben/gsql/internal/db"
 )
+
+// copyCursorCell writes the cell under the cursor to the clipboard and starts
+// the flash/confirmation feedback. Shared by the yy chord and :copy.
+func (m *Model) copyCursorCell() tea.Cmd {
+	if !m.results.HasResult() || m.results.NumRows() == 0 {
+		m.schemaMsg = "nothing to copy"
+		return nil
+	}
+	if err := clipboard.WriteAll(m.results.CursorCellValue()); err != nil {
+		m.schemaMsg = "clipboard: " + err.Error()
+		return nil
+	}
+	m.results.StartCopyFeedback()
+	return copyFeedbackCmd()
+}
 
 func (m *Model) pushQueryStack() {
 	m.queryStack = append(m.queryStack, queryStackEntry{
