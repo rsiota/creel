@@ -22,7 +22,14 @@ func (m *Model) rollbackTxn() {
 
 // connectToDB establishes a connection to the selected database.
 func (m *Model) connectToDB() tea.Cmd {
-	name := m.connList.SelectedName()
+	return m.connectByName(m.connList.SelectedName())
+}
+
+// connectByName opens the named connection from config. On success it replaces
+// any existing connection (closing it only after the new one is live), resets
+// workspace query state, and for MySQL/Postgres opens the database picker.
+// Failures set connError and leave the previous connection untouched.
+func (m *Model) connectByName(name string) tea.Cmd {
 	connCfg := m.config.GetConnection(name)
 	if connCfg == nil {
 		m.connError = fmt.Sprintf("connection '%s' not found", name)
@@ -51,8 +58,14 @@ func (m *Model) connectToDB() tea.Cmd {
 		return nil
 	}
 
-	// Replacing the connection ends any manual transaction on the old one.
+	// Swap only after the new connection is live so a failed :connect leaves
+	// the previous session intact.
 	m.rollbackTxn()
+	if m.connection != nil {
+		m.connection.Close()
+		m.connection = nil
+	}
+	m.resetWorkspaceForNewConnection()
 	m.connection = conn
 	m.state = stateWorkspace
 	m.focus = FocusConnections
@@ -75,6 +88,105 @@ func (m *Model) connectToDB() tea.Cmd {
 	m.layoutWorkspace()
 	m.applyFocus()
 
+	return tea.Batch(cmd, m.prefetchSchemas(), m.fetchTableRowCounts())
+}
+
+// resetWorkspaceForNewConnection clears query/results/tab state after a
+// successful connection switch so stale data from the previous session cannot
+// linger. Shared by connectByName and showConnectionList.
+func (m *Model) resetWorkspaceForNewConnection() {
+	m.results.Clear()
+	m.results.ClearEditable()
+	m.results.SetSearchMatcher(nil)
+	m.resultsTabs = []*ResultsTab{NewResultsTab(0, "New Query")}
+	m.activeTabID = 0
+	m.nextTabID = 1
+	m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
+	m.inspector.Hide()
+	m.dbPicker.Hide()
+	m.columnPicker.Hide()
+	m.discardConfirm = false
+	m.truncateConfirm = ""
+	m.deleteRowsConfirmTable = ""
+	m.deleteRowsConfirmQuery = ""
+	m.deleteRowsConfirmCount = 0
+	m.addColumnForm.Hide()
+	m.tableRenameForm.Hide()
+	m.schemaEditor.Hide()
+	m.clearSchemaConfirm()
+	m.schemaMsg = ""
+	m.lastQuery = ""
+	m.baseQuery = ""
+	m.filters = nil
+	m.sortCol = ""
+	m.sortDir = ""
+	m.page = 0
+	m.pageMsg = ""
+	m.statsMsg = ""
+	m.exportMsg = ""
+	m.searchMsg = ""
+	m.queryStack = nil
+	m.expanded = make(map[string][]db.Column)
+	m.columnCache = nil
+	m.sidebarFiltering = false
+	m.sidebarFilter = ""
+	m.editor.CancelCompletion()
+}
+
+// showConnectionList disconnects (if needed) and returns to the connection
+// picker. Shared by ctrl+t, :connections, and bare :connect.
+func (m *Model) showConnectionList() tea.Cmd {
+	if m.connection != nil {
+		m.rollbackTxn()
+		m.connection.Close()
+		m.connection = nil
+	}
+	m.resetWorkspaceForNewConnection()
+	m.state = stateConnections
+	m.focus = FocusConnections
+	m.connError = ""
+	m.loadConnections()
+	if len(m.config.Connections) > 0 {
+		m.connList.StartFilter()
+	}
+	return nil
+}
+
+// selectSchema switches the active Postgres schema (search_path), reloading
+// tables like selectDatabase. No-op helpers for other drivers live on the
+// driver UseSchema implementations.
+func (m *Model) selectSchema(name string) tea.Cmd {
+	if m.connection == nil || name == "" {
+		return nil
+	}
+	m.rollbackTxn()
+	if err := m.connection.UseSchema(name); err != nil {
+		m.connError = err.Error()
+		return nil
+	}
+	m.connError = ""
+	m.dbPicker.Hide()
+
+	m.expanded = make(map[string][]db.Column)
+	m.columnCache = make(map[string][]db.Column)
+	m.results.Clear()
+	m.results.ClearEditable()
+	m.inspector.Hide()
+	m.tables = nil
+	m.lastQuery = ""
+	m.page = 0
+	m.pageMsg = ""
+	m.statsMsg = ""
+	m.exportMsg = ""
+	m.searchMsg = ""
+	m.results.SetSearchMatcher(nil)
+	m.queryStack = nil
+	m.sidebarCursor = 0
+
+	cmd := m.editor.Focus()
+	m.loadTables()
+	m.layoutWorkspace()
+	m.applyFocus()
 	return tea.Batch(cmd, m.prefetchSchemas(), m.fetchTableRowCounts())
 }
 

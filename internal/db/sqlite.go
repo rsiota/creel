@@ -57,6 +57,16 @@ func (s *SQLite) UseDatabase(name string) error {
 	return fmt.Errorf("switching databases is not supported for SQLite")
 }
 
+// Schemas is not supported for SQLite.
+func (s *SQLite) Schemas() ([]string, error) {
+	return nil, fmt.Errorf("schemas are not supported for SQLite")
+}
+
+// UseSchema is not supported for SQLite.
+func (s *SQLite) UseSchema(name string) error {
+	return fmt.Errorf("schemas are not supported for SQLite")
+}
+
 func (s *SQLite) Tables() ([]string, error) {
 	rows, err := s.db.Query(`SELECT name FROM sqlite_master WHERE type IN ('table','view') ORDER BY name`)
 	if err != nil {

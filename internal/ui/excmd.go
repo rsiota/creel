@@ -418,6 +418,166 @@ func (m *Model) exCopy() tea.Cmd {
 	return m.copyCursorCell()
 }
 
+// resolveNameInList picks an entry by EqualFold exact match, then substring.
+// Returns "" if nothing matches.
+func resolveNameInList(query string, names []string) string {
+	if query == "" {
+		return ""
+	}
+	for _, n := range names {
+		if strings.EqualFold(n, query) {
+			return n
+		}
+	}
+	needle := strings.ToLower(query)
+	for _, n := range names {
+		if strings.Contains(strings.ToLower(n), needle) {
+			return n
+		}
+	}
+	return ""
+}
+
+// resolveConnectionName resolves a user-typed connection name against config.
+func (m *Model) resolveConnectionName(query string) string {
+	if m.config == nil {
+		return ""
+	}
+	names := make([]string, 0, len(m.config.Connections))
+	for _, c := range m.config.Connections {
+		names = append(names, c.Name)
+	}
+	return resolveNameInList(query, names)
+}
+
+// exConnections opens the connection list (:connections), sharing
+// showConnectionList with ctrl+t.
+func (m *Model) exConnections() tea.Cmd {
+	return m.showConnectionList()
+}
+
+// exConnect switches to a named connection (:connect [name] / :c). With no
+// argument it opens the connection list like :connections.
+func (m *Model) exConnect(args []string) tea.Cmd {
+	if len(args) == 0 {
+		return m.showConnectionList()
+	}
+	if m.config == nil || len(m.config.Connections) == 0 {
+		m.schemaMsg = "no connections configured"
+		return nil
+	}
+	resolved := m.resolveConnectionName(args[0])
+	if resolved == "" {
+		m.schemaMsg = fmt.Sprintf("no such connection: %s", args[0])
+		return nil
+	}
+	m.connError = ""
+	cmd := m.connectByName(resolved)
+	if m.connError != "" {
+		m.schemaMsg = m.connError
+		m.connError = ""
+		return nil
+	}
+	if !m.dbPicker.IsVisible() {
+		m.schemaMsg = "connected: " + resolved
+	}
+	return cmd
+}
+
+// exDB lists or switches databases (:db / :use [database]). Bare opens the
+// picker (ctrl+b); with an argument switches directly. SQLite gets an explicit
+// message rather than a silent no-op.
+func (m *Model) exDB(args []string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	driver := m.connection.Config().Driver
+	if driver != db.DriverMySQL && driver != db.DriverPostgres {
+		m.schemaMsg = "switching databases is not supported for " + string(driver)
+		return nil
+	}
+	if len(args) == 0 {
+		return m.openDatabasePicker(false)
+	}
+	dbs, err := m.connection.DB().Databases()
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	name := resolveNameInList(args[0], dbs)
+	if name == "" {
+		m.schemaMsg = fmt.Sprintf("no such database: %s", args[0])
+		return nil
+	}
+	m.connError = ""
+	cmd := m.selectDatabase(name)
+	if m.connError != "" {
+		m.schemaMsg = m.connError
+		m.connError = ""
+		return nil
+	}
+	m.schemaMsg = "database: " + name
+	return cmd
+}
+
+// exSchema lists or switches schemas (:schema [name]). MySQL equates schema
+// with database and delegates to :db. Postgres lists/switches search_path.
+// SQLite is unsupported.
+func (m *Model) exSchema(args []string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	switch m.connection.Config().Driver {
+	case db.DriverMySQL:
+		return m.exDB(args)
+	case db.DriverSQLite:
+		m.schemaMsg = "schemas are not supported for sqlite"
+		return nil
+	case db.DriverPostgres:
+		schemas, err := m.connection.Schemas()
+		if err != nil {
+			m.schemaMsg = err.Error()
+			return nil
+		}
+		if len(args) == 0 {
+			if len(schemas) == 0 {
+				m.schemaMsg = "no schemas"
+				return nil
+			}
+			cur := m.connection.Config().Schema
+			parts := make([]string, 0, len(schemas))
+			for _, s := range schemas {
+				if cur != "" && strings.EqualFold(s, cur) {
+					parts = append(parts, "["+s+"]")
+				} else {
+					parts = append(parts, s)
+				}
+			}
+			m.schemaMsg = strings.Join(parts, "  ")
+			return nil
+		}
+		name := resolveNameInList(args[0], schemas)
+		if name == "" {
+			m.schemaMsg = fmt.Sprintf("no such schema: %s", args[0])
+			return nil
+		}
+		m.connError = ""
+		cmd := m.selectSchema(name)
+		if m.connError != "" {
+			m.schemaMsg = m.connError
+			m.connError = ""
+			return nil
+		}
+		m.schemaMsg = "schema: " + name
+		return cmd
+	default:
+		m.schemaMsg = "schemas are not supported for " + string(m.connection.Config().Driver)
+		return nil
+	}
+}
+
 // exGoto opens a table by name (:goto users): exact (case-insensitive) match
 // first, then a substring fallback, then runs SELECT * FROM <table>.
 func (m *Model) exGoto(name string) tea.Cmd {

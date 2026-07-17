@@ -2307,55 +2307,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m = m.cycleFocusBack()
 		return m, nil
 	case "ctrl+t":
-		// Return to connection screen
-		if m.connection != nil {
-			m.rollbackTxn()
-			m.connection.Close()
-			m.connection = nil
-		}
-		m.state = stateConnections
-		m.focus = FocusConnections
-		m.results.Clear()
-		m.results.ClearEditable()
-		m.results.SetSearchMatcher(nil)
-		m.resultsTabs = []*ResultsTab{NewResultsTab(0, "New Query")}
-		m.activeTabID = 0
-		m.nextTabID = 1
-		m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
-		m.inspector.Hide()
-		m.dbPicker.Hide()
-		m.columnPicker.Hide()
-		m.discardConfirm = false
-		m.truncateConfirm = ""
-		m.deleteRowsConfirmTable = ""
-		m.deleteRowsConfirmQuery = ""
-		m.deleteRowsConfirmCount = 0
-		m.addColumnForm.Hide()
-		m.tableRenameForm.Hide()
-		m.schemaEditor.Hide()
-		m.clearSchemaConfirm()
-		m.schemaMsg = ""
-		m.lastQuery = ""
-		m.baseQuery = ""
-		m.filters = nil
-		m.sortCol = ""
-		m.sortDir = ""
-		m.page = 0
-		m.pageMsg = ""
-		m.statsMsg = ""
-		m.exportMsg = ""
-		m.searchMsg = ""
-		m.queryStack = nil
-		m.expanded = make(map[string][]db.Column)
-		m.columnCache = nil
-		m.sidebarFiltering = false
-		m.sidebarFilter = ""
-		m.editor.CancelCompletion()
-		m.loadConnections()
-		if len(m.config.Connections) > 0 {
-			m.connList.StartFilter()
-		}
-		return m, nil
+		return m, m.showConnectionList()
 	case "esc":
 		// Close cross-search panel if visible.
 		if m.crossSearch.IsVisible() {

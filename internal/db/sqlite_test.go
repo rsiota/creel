@@ -315,6 +315,16 @@ func TestSQLiteUseDatabase(t *testing.T) {
 	}
 }
 
+func TestSQLiteSchemas(t *testing.T) {
+	s := setupSQLiteTestDB(t)
+	if _, err := s.Schemas(); err == nil {
+		t.Error("Schemas should error for SQLite")
+	}
+	if err := s.UseSchema("main"); err == nil {
+		t.Error("UseSchema should error for SQLite")
+	}
+}
+
 func TestSQLiteCloseTwice(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")

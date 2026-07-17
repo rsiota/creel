@@ -315,14 +315,17 @@ Ship in roughly this order. Each item notes the shared helper / key to reuse.
    `t` / `g x` / `g t` / `g T`. `:tabclose` refuses the last tab (use `:q`).
 5. **`:copy`** ✅ — shares `copyCursorCell` with the `yy` chord.
 
-*Wave B — connections & navigation (parameterized):*
-6. **`:connect [name]` / `:c`** — switch connection by name (or open picker
-   with no arg). Was deferred for async/keyring; still the biggest missing
-   parameterized verb. Reuse connection-list / `connectToDB` paths.
-7. **`:connections`** — open/switch connection UI (mirror `ctrl+t`).
-8. **`:db` / `:use [database]`** — list or switch database (MySQL `ctrl+b`
-   browse path; no-op/message on drivers without multi-db).
-9. **`:schema [name]`** — switch/search schema where the driver supports it.
+*Wave B — connections & navigation (parameterized):* ✅ done (2026-07-17)
+6. **`:connect [name]` / `:c`** ✅ — bare opens the connection list; with a name
+   resolves (EqualFold → substring) and connects via `connectByName` (new
+   connection opens before the old one closes). Shares teardown/reset with
+   `ctrl+t` via `showConnectionList` / `resetWorkspaceForNewConnection`.
+7. **`:connections`** ✅ — mirror of `ctrl+t` (`showConnectionList`).
+8. **`:db` / `:use [database]`** ✅ — bare opens the database picker (`ctrl+b`);
+   with a name switches via `selectDatabase`. SQLite gets an explicit message.
+9. **`:schema [name]`** ✅ — MySQL delegates to `:db`; Postgres lists schemas or
+   switches `search_path` pool-safely (`Schemas` / `UseSchema` + reconnect);
+   SQLite unsupported.
 
 *Wave C — schema exploration (object-centric):*
 10. **`:indexes [table]`**, **`:columns [table]`**, **`:constraints [table]`**
@@ -364,18 +367,17 @@ exist, via the registry alias list — don't let them drive design.
 ## Suggested starting order
 The original top three are all shipped (#1, #4, #3), and the two polish
 follow-ups are done (#7 `confirm_destructive`, #4 check constraints). Tiers
-1–3 of the `:` command set (#15) are complete. Wave A of Tier 5 is done.
+1–3 of the `:` command set (#15) are complete. Waves A–B of Tier 5 are done.
 Next up:
-1. **Tier 5 Wave B** (#15) — `:connect`/`:c`, `:connections`, `:db`/`:use`,
-   `:schema`. Parameterized connection/nav verbs.
-2. **Tier 5 Wave C** (#15) — `:indexes`/`:columns`/`:constraints`, then
+1. **Tier 5 Wave C** (#15) — `:indexes`/`:columns`/`:constraints`, then
    `:tables`/`:views`/`:schemas`, then `:search`. Object-centric schema.
-3. **Session restore** (#9) — persistence; unlocks `:recent` / session ideas.
-4. **Tier 5 Wave D + Tier 4** — `:new`/`:version`/`:plan`/`:recent`, then
+2. **Session restore** (#9) — persistence; unlocks `:recent` / session ideas.
+3. **Tier 5 Wave D + Tier 4** — `:new`/`:version`/`:plan`/`:recent`, then
    opt-in DBA (`:who`/`:locks`/`:kill`) if users ask.
 
 Original historical order (all complete): keyring storage (#1),
 indexes/triggers/views (#4), read-only mode (#3).
 Shipped earlier on this track: transactions (#5), export (#6 / `:export`),
 file integration (#14), monitoring (`:watch`/`:tail`/`:refs`/`:uses`),
-Wave A mirrors (`:run`/`:qa`/tab verbs/`:copy`).
+Wave A mirrors (`:run`/`:qa`/tab verbs/`:copy`),
+Wave B connect/nav (`:connect`/`:db`/`:schema`).

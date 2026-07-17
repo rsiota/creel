@@ -86,6 +86,11 @@ func (p *Postgres) connConfig() (*pgx.ConnConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse postgres config: %w", err)
 	}
+	// search_path must be set in RuntimeParams so every pooled connection
+	// inherits it (a one-shot SET would only affect one connection).
+	if p.config.Schema != "" {
+		config.RuntimeParams["search_path"] = pgx.Identifier{p.config.Schema}.Sanitize()
+	}
 	return config, nil
 }
 
@@ -140,6 +145,48 @@ func (p *Postgres) Databases() ([]string, error) {
 // pool. The SSH tunnel (if any) is preserved.
 func (p *Postgres) UseDatabase(name string) error {
 	p.config.Database = name
+	p.config.Schema = "" // schema is per-database
+	return p.reopen()
+}
+
+// Schemas returns user schemas in the current database (excludes pg_* and
+// information_schema).
+func (p *Postgres) Schemas() ([]string, error) {
+	rows, err := p.db.Query(
+		`SELECT nspname FROM pg_namespace
+		 WHERE nspname NOT LIKE 'pg\_%' ESCAPE '\'
+		   AND nspname <> 'information_schema'
+		 ORDER BY nspname`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schemas []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		schemas = append(schemas, name)
+	}
+	return schemas, rows.Err()
+}
+
+// UseSchema switches the active schema by setting search_path and re-opening
+// the pool so every connection inherits it.
+func (p *Postgres) UseSchema(name string) error {
+	if name == "" {
+		return fmt.Errorf("schema name is required")
+	}
+	p.config.Schema = name
+	return p.reopen()
+}
+
+// reopen rebuilds the sql.DB pool from the current config, preserving the SSH
+// tunnel when present. Shared by UseDatabase and UseSchema.
+func (p *Postgres) reopen() error {
 	if p.db != nil {
 		p.db.Close()
 	}

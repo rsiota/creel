@@ -57,6 +57,9 @@ type ConnectionConfig struct {
 	Name     string `yaml:"name" json:"name"`
 	Driver   Driver `yaml:"driver" json:"driver"`
 	Database string `yaml:"database" json:"database"`
+	// Schema is the active Postgres schema (search_path). Empty means the
+	// server default. Not persisted in YAML; set at runtime via UseSchema.
+	Schema   string `yaml:"-" json:"-"`
 	Host     string `yaml:"host,omitempty" json:"host,omitempty"`
 	Port     int    `yaml:"port,omitempty" json:"port,omitempty"`
 	Username string `yaml:"username,omitempty" json:"username,omitempty"`
@@ -125,6 +128,12 @@ type DB interface {
 	Databases() ([]string, error)
 	// UseDatabase switches the active database, re-opening the connection if needed.
 	UseDatabase(name string) error
+	// Schemas returns the list of schemas (namespaces) in the current database.
+	// MySQL treats schemas as databases (same as Databases). SQLite returns an error.
+	Schemas() ([]string, error)
+	// UseSchema switches the active schema. Postgres sets search_path (pool-safe
+	// via reconnect). MySQL delegates to UseDatabase. SQLite returns an error.
+	UseSchema(name string) error
 	// Session returns a runner that executes statements on a single pinned
 	// connection so session-scoped settings persist across calls. This matters
 	// for imports: a MySQL dump sets FOREIGN_KEY_CHECKS=0, SQL_MODE, etc., which
@@ -401,6 +410,21 @@ func (c *Connection) UseDatabase(name string) error {
 		return err
 	}
 	c.config.Database = name
+	c.config.Schema = "" // schema is per-database; reset on switch
+	return nil
+}
+
+// Schemas returns schemas in the current database via the underlying driver.
+func (c *Connection) Schemas() ([]string, error) {
+	return c.db.Schemas()
+}
+
+// UseSchema switches the active schema and keeps Config().Schema in sync.
+func (c *Connection) UseSchema(name string) error {
+	if err := c.db.UseSchema(name); err != nil {
+		return err
+	}
+	c.config.Schema = name
 	return nil
 }
 

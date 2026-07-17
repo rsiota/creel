@@ -105,6 +105,16 @@ func (m *MySQL) UseDatabase(name string) error {
 	return db.Ping()
 }
 
+// Schemas returns MySQL schemas (identical to Databases — MySQL equates the two).
+func (m *MySQL) Schemas() ([]string, error) {
+	return m.Databases()
+}
+
+// UseSchema switches schema by delegating to UseDatabase.
+func (m *MySQL) UseSchema(name string) error {
+	return m.UseDatabase(name)
+}
+
 func (m *MySQL) Close() error {
 	if m.db != nil {
 		m.db.Close()
