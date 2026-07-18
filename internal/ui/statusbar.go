@@ -55,24 +55,25 @@ func (m Model) currentTable() string {
 
 // flashSnapshot captures all transient status-bar fields as an opaque value
 // so the Update wrapper can detect whether a message changed them.
-func (m Model) flashSnapshot() [7]string {
-	return [7]string{
+func (m Model) flashSnapshot() [8]string {
+	return [8]string{
 		m.statsMsg, m.exportMsg, m.searchMsg,
 		m.truncateMsg, m.deleteRowsMsg, m.schemaMsg,
-		m.bookmarkMsg,
+		m.bookmarkMsg, m.aiMsg,
 	}
 }
 
 // flashChanged reports whether any transient field differs from a prior
 // snapshot taken by flashSnapshot.
-func (m Model) flashChanged(prev [7]string) bool {
+func (m Model) flashChanged(prev [8]string) bool {
 	return m.statsMsg != prev[0] ||
 		m.exportMsg != prev[1] ||
 		m.searchMsg != prev[2] ||
 		m.truncateMsg != prev[3] ||
 		m.deleteRowsMsg != prev[4] ||
 		m.schemaMsg != prev[5] ||
-		m.bookmarkMsg != prev[6]
+		m.bookmarkMsg != prev[6] ||
+		m.aiMsg != prev[7]
 }
 
 // anyFlashActive reports whether any transient status-bar field is non-empty.
@@ -83,7 +84,8 @@ func (m Model) anyFlashActive() bool {
 		m.truncateMsg != "" ||
 		m.deleteRowsMsg != "" ||
 		m.schemaMsg != "" ||
-		m.bookmarkMsg != ""
+		m.bookmarkMsg != "" ||
+		m.aiMsg != ""
 }
 
 // clearFlash empties every transient status-bar field.
@@ -95,11 +97,22 @@ func (m *Model) clearFlash() {
 	m.deleteRowsMsg = ""
 	m.schemaMsg = ""
 	m.bookmarkMsg = ""
+	m.aiMsg = ""
 }
 
 // statusMessage returns the most relevant transient message for the status bar
 // (copy confirmation, save state, errors, pagination), or "" if none.
 func (m Model) statusMessage() string {
+	// The AI pending hint takes priority — it is the most actionable status
+	// while a model request is in flight. The spinner + live elapsed timer
+	// make it clear the request is in progress (not frozen) and that esc
+	// cancels; reasoning models can take 10-20s.
+	if m.aiRunning {
+		frame := spinnerFrames[m.querySpinner%len(spinnerFrames)]
+		elapsed := time.Since(m.aiStart).Round(time.Second)
+		return sbPrimary.Render(frame) +
+			sbMuted.Render(fmt.Sprintf(" asking model… %s (esc to cancel)", elapsed))
+	}
 	switch {
 	case m.results.SaveError() != "":
 		return sbError.Render(m.results.SaveError())
@@ -134,6 +147,11 @@ func (m Model) statusMessage() string {
 		return sbPrimary.Render(m.statsMsg)
 	case m.searchMsg != "":
 		return sbPrimary.Render(m.searchMsg)
+	case m.aiMsg != "":
+		if strings.HasPrefix(m.aiMsg, "ai failed:") {
+			return sbError.Render(m.aiMsg)
+		}
+		return sbSuccess.Render(m.aiMsg)
 	case m.results.HasDirtyCells():
 		return sbMuted.Render(fmt.Sprintf("%d unsaved", m.results.DirtyCellCount()))
 	case m.totalRowsSet && m.pageMsg != "":

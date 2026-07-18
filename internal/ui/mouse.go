@@ -115,10 +115,13 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Right edge of the editor/results area; the inspector sits beyond it.
+	// Right edge of the editor/results area; the right-hand slot panel
+	// (inspector or assistant) sits beyond it.
 	editorRight := m.width
 	if m.inspector.IsVisible() {
 		editorRight = m.width - InspectorWidth
+	} else if m.assistant.IsVisible() {
+		editorRight = m.width - AssistantWidth
 	}
 
 	resultsTop := editorHeight
@@ -161,6 +164,28 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		m.lastInspectorClickTime = time.Now()
 		m.lastInspectorClickCol = col
+		return m, nil
+	}
+
+	// ── Assistant (right column) ──────────────────────────────
+	// Shares the inspector's slot; a click anywhere in it focuses the panel
+	// and enters compose mode. The wheel scrolls the transcript.
+	if m.assistant.IsVisible() && msg.X >= editorRight && msg.Y < resultsBottom {
+		switch msg.Type {
+		case tea.MouseWheelUp:
+			m.focus = FocusAssistant
+			m.assistant.scrollUp(3)
+			return m, nil
+		case tea.MouseWheelDown:
+			m.focus = FocusAssistant
+			m.assistant.scrollDown(3)
+			return m, nil
+		case tea.MouseLeft:
+			m.focus = FocusAssistant
+			m.assistant.StartCompose()
+			m.applyFocus()
+			return m, nil
+		}
 		return m, nil
 	}
 

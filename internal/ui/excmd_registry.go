@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -29,6 +31,7 @@ const (
 	exArgOptional                  // zero or one argument
 	exArgRequired                  // exactly one argument required
 	exArgTable                     // optional table name; defaults to current
+	exArgText                      // free-form text: the whole rest of the line
 )
 
 // exCommands returns every ":" command, in display order. To add a command,
@@ -754,6 +757,15 @@ func exCommands() []exCmdSpec {
 					return nil
 				}
 				return m.exTheme(args[0])
+			},
+		},
+		{
+			verbs:   []string{"ai"},
+			desc:    "ask the AI to write SQL from a natural-language request",
+			usage:   ":ai <request>",
+			argKind: exArgText,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				return m.exAI(strings.Join(args, " "))
 			},
 		},
 	}

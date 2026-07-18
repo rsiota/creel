@@ -1,27 +1,46 @@
 package ui
 
+// isFocusable reports whether a panel is present and can receive focus.
+// The sidebar, tab bar, editor, and results are always present; the inspector
+// and assistant are only focusable when open (they share the right-hand slot).
+func (m Model) isFocusable(f Focus) bool {
+	switch f {
+	case FocusInspector:
+		return m.inspector.IsVisible()
+	case FocusAssistant:
+		return m.assistant.IsVisible()
+	}
+	return true
+}
+
 func (m Model) cycleFocus() Model {
-	m.focus++
-	if m.focus > FocusInspector {
-		m.focus = FocusConnections
+	next := m.focus
+	for i := 0; i <= int(FocusAssistant); i++ {
+		next++
+		if next > FocusAssistant {
+			next = FocusConnections
+		}
+		if m.isFocusable(next) {
+			break
+		}
 	}
-	// Skip invisible panels
-	if m.focus == FocusInspector && !m.inspector.IsVisible() {
-		m.focus = FocusConnections
-	}
+	m.focus = next
 	m.applyFocus()
 	return m
 }
 
 func (m Model) cycleFocusBack() Model {
-	m.focus--
-	if m.focus < FocusConnections {
-		m.focus = FocusInspector
+	next := m.focus
+	for i := 0; i <= int(FocusAssistant); i++ {
+		next--
+		if next < FocusConnections {
+			next = FocusAssistant
+		}
+		if m.isFocusable(next) {
+			break
+		}
 	}
-	// Skip invisible panels
-	if m.focus == FocusInspector && !m.inspector.IsVisible() {
-		m.focus = FocusResults
-	}
+	m.focus = next
 	m.applyFocus()
 	return m
 }
@@ -34,6 +53,9 @@ func (m *Model) applyFocus() {
 		m.editor.Focus()
 	case FocusTabBar:
 		m.tabBar.Focus()
+	case FocusAssistant:
+		// Landing on the chat panel enters compose mode so typing works at once.
+		m.assistant.StartCompose()
 	}
 }
 
@@ -60,7 +82,10 @@ func (m Model) moveFocus(direction string) Model {
 		case "ctrl+j":
 			m.focus = FocusResults
 		case "ctrl+l":
-			if m.inspector.IsVisible() {
+			// The right-hand slot holds at most one of inspector / assistant.
+			if m.assistant.IsVisible() {
+				m.focus = FocusAssistant
+			} else if m.inspector.IsVisible() {
 				m.focus = FocusInspector
 			}
 		}
@@ -71,11 +96,17 @@ func (m Model) moveFocus(direction string) Model {
 		case "ctrl+k":
 			m.focus = FocusEditor
 		case "ctrl+l":
-			if m.inspector.IsVisible() {
+			if m.assistant.IsVisible() {
+				m.focus = FocusAssistant
+			} else if m.inspector.IsVisible() {
 				m.focus = FocusInspector
 			}
 		}
 	case FocusInspector:
+		if direction == "ctrl+h" {
+			m.focus = FocusResults
+		}
+	case FocusAssistant:
 		if direction == "ctrl+h" {
 			m.focus = FocusResults
 		}
@@ -132,10 +163,19 @@ func (m *Model) layoutWorkspace() {
 	}
 
 	inspectorVisible := m.inspector.IsVisible()
+	assistantVisible := m.assistant.IsVisible()
 
 	rightWidth := m.width - sidebarWidth - borderOverhead
+	// The inspector and assistant share the right-hand slot (mutually
+	// exclusive), so subtract whichever (if any) is open.
+	rightSlotWidth := 0
 	if inspectorVisible {
-		rightWidth -= inspectorWidth
+		rightSlotWidth = InspectorWidth
+	} else if assistantVisible {
+		rightSlotWidth = AssistantWidth
+	}
+	if rightSlotWidth > 0 {
+		rightWidth -= rightSlotWidth
 	}
 
 	resultsHeight := m.height - tabBarHeight - editorHeight - statusHeight - borderOverhead
@@ -164,5 +204,9 @@ func (m *Model) layoutWorkspace() {
 	if inspectorVisible {
 		viewHeight := tabBarHeight + editorHeight + resultsHeight
 		m.inspector.SetSize(inspectorWidth-borderOverhead, viewHeight)
+	}
+	if assistantVisible {
+		viewHeight := tabBarHeight + editorHeight + resultsHeight
+		m.assistant.SetSize(AssistantWidth-borderOverhead, viewHeight)
 	}
 }

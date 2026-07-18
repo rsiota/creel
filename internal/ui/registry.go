@@ -52,6 +52,7 @@ func registry() []Section {
 				{"ctrl+g", []string{"ctrl+g"}, "bookmarks", ""},
 				{"B", []string{"B"}, "bookmark current query", ""},
 				{"ctrl+o", []string{"ctrl+o"}, "toggle inspector", ""},
+				{"ctrl+f", []string{"ctrl+f"}, "toggle AI assistant", ""},
 				{"ctrl+h/j/k/l", []string{"ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"}, "move focus", ""},
 				{"tab / shift+tab", []string{"tab", "shift+tab"}, "cycle focus", ""},
 				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "next / prev page", ""},

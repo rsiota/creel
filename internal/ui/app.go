@@ -28,6 +28,7 @@ const (
 	FocusEditor
 	FocusResults
 	FocusInspector
+	FocusAssistant
 )
 
 // state represents the current screen the app is showing.
@@ -270,6 +271,7 @@ type Model struct {
 	editor    QueryEditor
 	results   ResultsTable // active tab's results (synced on tab switch)
 	inspector Inspector
+	assistant Assistant
 
 	// Tab management
 	resultsTabs         []*ResultsTab // All result tabs
@@ -431,6 +433,19 @@ type Model struct {
 	queryTimeout   time.Duration      // per-query deadline; 0 = wait indefinitely (esc still cancels)
 	settings       config.Settings    // effective app-level settings
 
+	// AI (:ai) state. aiRunning gates esc/ctrl+c cancellation; aiCancel aborts
+	// the in-flight model request; aiQuestion is shown in the pending hint so
+	// the user remembers what they asked; aiStart drives the elapsed timer so a
+	// slow model never looks frozen; aiToPanel routes the result to the
+	// assistant panel (true) vs the editor (false); aiMsg is the transient
+	// result/error.
+	aiRunning  bool
+	aiToPanel  bool
+	aiCancel   context.CancelFunc
+	aiQuestion string
+	aiStart    time.Time
+	aiMsg      string
+
 	// :timing — when on, the status bar shows the last query's elapsed time.
 	showTiming       bool
 	lastQueryElapsed time.Duration
@@ -471,6 +486,7 @@ func NewModel(cfg *config.Config) Model {
 		editor:          NewQueryEditor(),
 		results:         firstTab.Results,
 		inspector:       NewInspector(),
+		assistant:       NewAssistant(),
 		connList:        NewConnectionList(),
 		history:         NewHistoryPanel(),
 		bookmarks:       NewBookmarkPanel(),
@@ -822,6 +838,23 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// While an AI request is in flight (:ai), esc and ctrl+c cancel it.
+		// Other keys are swallowed, matching the query model, so a slow model
+		// can't race a second request.
+		if m.aiRunning {
+			if key.Matches(msg, key.NewBinding(key.WithKeys("esc", "ctrl+c"))) {
+				if m.aiCancel != nil {
+					m.aiCancel()
+					m.aiCancel = nil
+				}
+				m.aiRunning = false
+				m.aiQuestion = ""
+				m.aiMsg = "ai: cancelled"
+				return m, nil
+			}
+			return m, nil
+		}
+
 		switch {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+c"))):
 			m.quitting = true
@@ -943,7 +976,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case spinnerTickMsg:
-		if !m.queryRunning {
+		if !m.queryRunning && !m.aiRunning {
 			return m, nil
 		}
 		m.querySpinner = (m.querySpinner + 1) % len(spinnerFrames)
@@ -1237,6 +1270,70 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.lookupPanel.Show(msg.title, msg.result)
+		return m, nil
+	case aiResultMsg:
+		// An AI request finished. Clear the in-flight state first so the
+		// pending hint and esc-cancel gating are gone even if we error.
+		m.aiRunning = false
+		m.aiCancel = nil
+		q := m.aiQuestion
+		m.aiQuestion = ""
+		if msg.err != nil {
+			switch {
+			case msg.toPanel:
+				m.assistant.SetPending(false)
+				m.assistant.AppendError(errString(msg.err) + aiAuthHint(msg.err))
+			default:
+				m.aiMsg = fmt.Sprintf("ai failed: %v%s", msg.err, aiAuthHint(msg.err))
+			}
+			return m, nil
+		}
+		switch {
+		case msg.toPanel:
+			m.assistant.SetPending(false)
+			m.assistant.AppendAssistant(summaryFor(msg), msg.sql)
+			return m, nil
+		default:
+			// Drop the generated SQL into the editor for review. The user runs
+			// it explicitly (ctrl+e) — neither :ai nor the panel auto-executes,
+			// so a misunderstood request can't mutate data behind the user's back.
+			m.editor.SetValue(msg.sql)
+			m.focus = FocusEditor
+			m.applyFocus()
+			m.aiMsg = fmt.Sprintf("AI generated query for %q — review then ctrl+e to run", q)
+			return m, nil
+		}
+
+	case submitAssistantMsg:
+		// The panel submitted a question. Record it in the transcript
+		// immediately (so the user sees it), mark pending, and dispatch.
+		if m.aiRunning {
+			return m, nil // one request at a time
+		}
+		m.assistant.AppendUser(msg.question)
+		m.assistant.SetPending(true)
+		return m, m.sendAssistant(msg.question)
+
+	case applyAssistantSQLMsg:
+		// Apply the latest assistant SQL to the editor for review/run.
+		sql := m.assistant.LatestSQL()
+		if sql == "" {
+			m.aiMsg = "no SQL to apply yet"
+			return m, nil
+		}
+		m.editor.SetValue(sql)
+		m.focus = FocusEditor
+		m.applyFocus()
+		m.aiMsg = "applied AI query — ctrl+e to run"
+		return m, nil
+
+	case closeAssistantMsg:
+		m.assistant.Hide()
+		if m.focus == FocusAssistant {
+			m.focus = FocusResults
+			m.applyFocus()
+		}
+		m.layoutWorkspace()
 		return m, nil
 
 	case backendSearchTickMsg:
@@ -2213,6 +2310,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.history.IsVisible() ||
 			m.bookmarks.IsVisible() ||
 			m.backendSearching ||
+			m.focus == FocusAssistant ||
 			(m.focus == FocusEditor && m.editor.VimMode() == VimInsert) {
 			break
 		}
@@ -2282,8 +2380,22 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+o":
 		m.inspector.Toggle()
 		if m.inspector.IsVisible() {
+			// Assistant shares the inspector's right slot — close it.
+			m.assistant.Hide()
 			m.focus = FocusInspector
 		} else if m.focus == FocusInspector {
+			m.focus = FocusResults
+		}
+		m.layoutWorkspace()
+		m.applyFocus()
+		return m, nil
+	case "ctrl+f":
+		m.assistant.Toggle()
+		if m.assistant.IsVisible() {
+			// Inspector shares the assistant's right slot — close it.
+			m.inspector.Hide()
+			m.focus = FocusAssistant
+		} else if m.focus == FocusAssistant {
 			m.focus = FocusResults
 		}
 		m.layoutWorkspace()
@@ -3333,6 +3445,13 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, nil
+	case FocusAssistant:
+		// Route all keys to the panel. Global focus movement (ctrl+h/j/k/l)
+		// is handled before this switch, so it still works; esc in compose
+		// mode just leaves compose, and esc in browse mode closes the panel.
+		a, acmd := m.assistant.HandleKey(msg)
+		m.assistant = a
+		return m, acmd
 	}
 	return m, cmd
 }
@@ -3593,6 +3712,8 @@ func (m Model) viewWorkspace() string {
 	rightWidth := m.width - sidebarWidth - borderOverhead
 	if m.inspector.IsVisible() {
 		rightWidth -= inspectorWidth
+	} else if m.assistant.IsVisible() {
+		rightWidth -= AssistantWidth
 	}
 
 	// Build the content area (tabs are inside the editor panel).
@@ -3680,20 +3801,34 @@ func (m Model) viewWorkspace() string {
 
 	rightPanel := contentPanel
 
-	// Build inspector panel if visible.
-	var inspectorPanel string
+	// Build the right-hand slot panel: the inspector and assistant are mutually
+	// exclusive, so at most one is rendered here.
+	var slotPanel string
 	if m.inspector.IsVisible() {
-		inspectorContentHeight := lipgloss.Height(rightPanel) - borderOverhead
-		if inspectorContentHeight < 3 {
-			inspectorContentHeight = 3
+		slotContentHeight := lipgloss.Height(rightPanel) - borderOverhead
+		if slotContentHeight < 3 {
+			slotContentHeight = 3
 		}
-		m.inspector.SetSize(inspectorWidth-borderOverhead, inspectorContentHeight)
-		inspectorPanel = lipgloss.NewStyle().
+		m.inspector.SetSize(inspectorWidth-borderOverhead, slotContentHeight)
+		slotPanel = lipgloss.NewStyle().
 			Width(inspectorWidth - borderOverhead).
-			Height(inspectorContentHeight).
+			Height(slotContentHeight).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(m.borderForFocus(FocusInspector)).
 			Render(m.inspector.View(m.results))
+	} else if m.assistant.IsVisible() {
+		slotContentHeight := lipgloss.Height(rightPanel) - borderOverhead
+		if slotContentHeight < 3 {
+			slotContentHeight = 3
+		}
+		m.assistant.SetSize(AssistantWidth-borderOverhead, slotContentHeight)
+		m.assistant.spinner = m.querySpinner // keep the pending spinner in sync
+		slotPanel = lipgloss.NewStyle().
+			Width(AssistantWidth - borderOverhead).
+			Height(slotContentHeight).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(m.borderForFocus(FocusAssistant)).
+			Render(m.assistant.View())
 	}
 
 	// Sidebar content height = right panel height minus sidebar's own borders.
@@ -3805,8 +3940,8 @@ func (m Model) viewWorkspace() string {
 		Render(" " + m.statusBar(connName))
 
 	var workspace string
-	if m.inspector.IsVisible() {
-		workspace = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel, inspectorPanel)
+	if m.inspector.IsVisible() || m.assistant.IsVisible() {
+		workspace = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel, slotPanel)
 	} else {
 		workspace = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel)
 	}
