@@ -443,7 +443,14 @@ func (a Assistant) renderTranscriptLines() []string {
 		if wrapW < 4 {
 			wrapW = 4
 		}
+		// Highlight SQL the same way the query editor does (keywords, strings,
+		// numbers, …) so AI answers read like code. Reuses the shared
+		// highlightSegment helper; styles re-theme automatically.
+		isSQL := m.role == assistantAI && m.sql != ""
 		for i, wl := range wrapRunes(body, wrapW) {
+			if isSQL {
+				wl = highlightSegment(wl)
+			}
 			if i == 0 {
 				lines = append(lines, marker+" "+wl)
 			} else {

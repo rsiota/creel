@@ -147,8 +147,9 @@ func TestAssistantViewRendersTranscript(t *testing.T) {
 	a.AppendUser("list users")
 	a.AppendAssistant("", "SELECT * FROM users")
 	out := a.View()
+	plain := stripANSI(out)
 	for _, want := range []string{"list users", "SELECT * FROM users"} {
-		if !strings.Contains(out, want) {
+		if !strings.Contains(plain, want) {
 			t.Errorf("View missing %q", want)
 		}
 	}
@@ -175,6 +176,26 @@ func TestAssistantLongPromptWraps(t *testing.T) {
 
 // runeWidth is a rough visible-width measure for the wrap test.
 func runeWidth(s string) int { return len([]rune(s)) }
+
+// TestAssistantHighlightsSQL verifies AI responses are syntax-highlighted
+// like the query editor (keywords, numbers, …), not rendered as plain text.
+func TestAssistantHighlightsSQL(t *testing.T) {
+	a := NewAssistant()
+	a.SetSize(60, 20)
+	a.Show()
+	a.AppendUser("list users")
+	a.AppendAssistant("", "SELECT 42 FROM users")
+
+	view := a.View()
+	// The number and keyword tokens must carry the shared SQL highlight
+	// styles; plain text would have no such wrapping.
+	if want := sqlNumberStyle.Render("42"); !strings.Contains(view, want) {
+		t.Errorf("highlighted number %q not in view", want)
+	}
+	if want := sqlKeywordStyle.Render("SELECT"); !strings.Contains(view, want) {
+		t.Errorf("highlighted keyword %q not in view", want)
+	}
+}
 
 // TestAssistantPanelHeightStable verifies the panel never grows or shrinks as
 // the transcript fills — the rendered height stays at the interior height so
