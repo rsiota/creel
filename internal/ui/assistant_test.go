@@ -165,7 +165,7 @@ func TestAssistantLongPromptWraps(t *testing.T) {
 	a.input.SetValue("give me the ten most recent users that signed up since last week with a verified email address")
 
 	out := a.View()
-	contentW := w - 2 // panel interior width
+	contentW := w // panel interior width (border added by viewWorkspace)
 	for i, line := range strings.Split(stripANSI(out), "\n") {
 		if rw := runeWidth(line); rw > contentW {
 			t.Errorf("line %d width %d exceeds interior width %d: %q", i, rw, contentW, line)
@@ -186,7 +186,7 @@ func TestAssistantPanelHeightStable(t *testing.T) {
 	a.Show()
 	a.AppendUser("q1")
 	a.AppendAssistant("", "SELECT 1")
-	want := h - 2 // panel interior (the panel style reserves 2 for its border)
+	want := h // panel renders at the full content height (border added outside)
 	if got := lipgloss.Height(a.View()); got != want {
 		t.Errorf("panel height after 1 turn = %d, want %d", got, want)
 	}

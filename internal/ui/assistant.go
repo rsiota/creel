@@ -62,6 +62,10 @@ func NewAssistant() Assistant {
 	ta.CharLimit = 0
 	ta.SetHeight(composeHeight - 1) // leave one line for the separator
 	ta.Placeholder = ""
+	// No line highlight on the active row (vim-style: only the cursor marks
+	// the position). The cursor itself is swapped to an underline in View.
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	ta.BlurredStyle.CursorLine = lipgloss.NewStyle()
 	return Assistant{input: ta}
 }
 
@@ -300,9 +304,9 @@ func (a *Assistant) scrollToBottom() {
 
 // viewportLines is the number of transcript lines visible at once.
 func (a Assistant) viewportLines() int {
-	// Interior content height (a.height already excludes the panel border)
-	// minus the compose area. At least 1.
-	v := a.height - 2 - composeHeight
+	// Content height (a.height already excludes the panel border, which
+	// viewWorkspace adds) minus the compose area. At least 1.
+	v := a.height - composeHeight
 	if v < 1 {
 		v = 1
 	}
@@ -322,7 +326,7 @@ func (a Assistant) View() string {
 	if !a.visible {
 		return ""
 	}
-	contentW := a.width - 2 // interior width inside the border
+	contentW := a.width // full interior width; the border is added by viewWorkspace
 	if contentW < 4 {
 		contentW = 4
 	}
@@ -362,7 +366,12 @@ func (a Assistant) View() string {
 	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", contentW))
 	var inputArea string
 	if a.composing {
-		inputArea = a.input.View()
+		// The bubbles textarea cursor is a hardcoded reverse-video block
+		// (cursor.Model.View() appends .Reverse(true), with no public
+		// override). Swap its "\x1b[7m" marker for the insert-mode underline
+		// used elsewhere in the app (cell-edit popup / editor insert).
+		under := sgrPrefix(lipgloss.NewStyle().Foreground(colorFg).Underline(true))
+		inputArea = strings.ReplaceAll(a.input.View(), "\x1b[7m", under)
 	} else {
 		inputArea = mutedStyle.Render(" i ask · enter apply SQL · c clear · j/k scroll · esc close")
 	}
@@ -373,9 +382,12 @@ func (a Assistant) View() string {
 		composeBox,
 	)
 
+	// Render at the full content area (a.width × a.height); viewWorkspace adds
+	// the border around this block. Sizing to a.width lets the separator reach
+	// the right-hand border with no gap.
 	panel := lipgloss.NewStyle().
-		Width(a.width - 2).
-		Height(a.height - 2).
+		Width(a.width).
+		Height(a.height).
 		Render(content)
 	return panel
 }
@@ -396,7 +408,7 @@ func padLines(s string, n int) string {
 // renderTranscriptLines turns the message history into display lines, wrapping
 // each to the interior width. Returns the FULL list (the view slices it).
 func (a Assistant) renderTranscriptLines() []string {
-	contentW := a.width - 2
+	contentW := a.width // full interior width; the border is added by viewWorkspace
 	if contentW < 8 {
 		contentW = 8
 	}
