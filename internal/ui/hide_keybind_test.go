@@ -65,7 +65,7 @@ func TestColumnVisibilityOverlayCancelDiscards(t *testing.T) {
 	m := newResultsWorkspaceModel()
 
 	m = press(m, keyRunes('v'))
-	m = press(m, keyRunes(' '))             // toggle (local only)
+	m = press(m, keyRunes(' '))                // toggle (local only)
 	m = press(m, tea.KeyMsg{Type: tea.KeyEsc}) // cancel
 
 	if m.results.HiddenCount() != 0 {

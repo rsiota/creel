@@ -46,6 +46,8 @@ func (m Model) hintList() []string {
 		return []string{"j/k", "esc"}
 	case m.lookupPanel.IsVisible():
 		return []string{"j/k", "esc"}
+	case m.modelPicker.IsVisible():
+		return hintsForSection("Model Picker")
 	case m.tableDesigner.IsVisible():
 		return hintsForSection("Table Designer")
 	case m.schemaEditor.IsVisible():
@@ -84,6 +86,13 @@ func (m Model) hintList() []string {
 			return hintsForSection("Sidebar (Tables)")
 		case m.focus == FocusInspector:
 			return hintsForSection("Inspector")
+		case m.focus == FocusAssistant:
+			// Compose (insert) mode has a small, distinct key set; browse mode
+			// uses the full assistant hint set (i/a/o, M, c, j/k, esc…).
+			if m.assistant.IsComposing() {
+				return []string{"enter", "esc"}
+			}
+			return hintsForSection("Assistant")
 		case m.focus == FocusTabBar:
 			return []string{"h/l", "t", "enter"}
 		}

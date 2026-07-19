@@ -496,10 +496,10 @@ func TestCompactFilter_Negate(t *testing.T) {
 
 func TestCompactFilter_Plain(t *testing.T) {
 	cases := map[string]string{
-		"country = 'UK'":      "country = 'UK'",
-		"age = 30":            "age = 30",
-		"email IS NULL":       "email IS NULL",
-		"email IS NOT NULL":   "email IS NOT NULL",
+		"country = 'UK'":    "country = 'UK'",
+		"age = 30":          "age = 30",
+		"email IS NULL":     "email IS NULL",
+		"email IS NOT NULL": "email IS NOT NULL",
 	}
 	for in, want := range cases {
 		if got := compactFilter(in); got != want {
@@ -567,11 +567,11 @@ func TestRowMarks_MoveCursorAndMarkMultiple(t *testing.T) {
 	r.SetResult([]string{"id", "name"}, [][]string{{"1", "a"}, {"2", "b"}, {"3", "c"}}, "")
 	r.SetEditable("users", []string{"id"})
 
-	r.ToggleMark()       // cursor on row 0 (id=1)
+	r.ToggleMark() // cursor on row 0 (id=1)
 	r.CursorDown()
-	r.ToggleMark()       // cursor on row 1 (id=2)
+	r.ToggleMark() // cursor on row 1 (id=2)
 	r.CursorDown()
-	r.ToggleMark()       // cursor on row 2 (id=3)
+	r.ToggleMark() // cursor on row 2 (id=3)
 
 	if r.MarkCount() != 3 {
 		t.Fatalf("expected 3 marks, got %d", r.MarkCount())

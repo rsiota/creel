@@ -17,8 +17,8 @@ type HistoryPanel struct {
 	height    int
 	visible   bool
 
-	filter     string
-	filtering  bool
+	filter    string
+	filtering bool
 }
 
 // NewHistoryPanel creates a new history panel.

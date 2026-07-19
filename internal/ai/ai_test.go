@@ -167,6 +167,60 @@ func TestComplete_HTTPError(t *testing.T) {
 	}
 }
 
+func TestCompleteStream_DeltasAndFull(t *testing.T) {
+	var seenBody chatRequest
+	// SSE frames: a reasoning delta, then two content deltas, then [DONE].
+	sse := "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"need top 10\"}}]}\n" +
+		"data: {\"choices\":[{\"delta\":{\"content\":\"SELECT\"}}]}\n" +
+		"data: {\"choices\":[{\"delta\":{\"content\":\" 1\"}}]}\n" +
+		"data: [DONE]\n"
+	stub := &httpStub{
+		status: 200,
+		body:   sse,
+		onBody: func(b []byte) { _ = json.Unmarshal(b, &seenBody) },
+	}
+	c := New(Config{APIKey: "k", BaseURL: "http://stub", Model: "stub-model"})
+	c.http = stub
+
+	var contentDeltas, reasoningDeltas []string
+	full, err := c.CompleteStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, func(d StreamDelta) {
+		if d.Content != "" {
+			contentDeltas = append(contentDeltas, d.Content)
+		}
+		if d.Reasoning != "" {
+			reasoningDeltas = append(reasoningDeltas, d.Reasoning)
+		}
+	})
+	if err != nil {
+		t.Fatalf("CompleteStream error: %v", err)
+	}
+	// Only content is accumulated into the reply; reasoning is transient.
+	if full != "SELECT 1" {
+		t.Errorf("full = %q, want %q", full, "SELECT 1")
+	}
+	if len(contentDeltas) != 2 || contentDeltas[0] != "SELECT" || contentDeltas[1] != " 1" {
+		t.Errorf("content deltas = %v, want [SELECT ' 1']", contentDeltas)
+	}
+	if len(reasoningDeltas) != 1 || reasoningDeltas[0] != "need top 10" {
+		t.Errorf("reasoning deltas = %v, want [need top 10]", reasoningDeltas)
+	}
+	if !seenBody.Stream {
+		t.Errorf("streaming request did not set stream:true")
+	}
+	if stub.gotAuth != "Bearer k" {
+		t.Errorf("auth header = %q, want Bearer k", stub.gotAuth)
+	}
+}
+
+func TestCompleteStream_HTTPError(t *testing.T) {
+	c := New(Config{APIKey: "k", BaseURL: "http://stub"})
+	c.http = &httpStub{status: 429, body: `rate limited`}
+	_, err := c.CompleteStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, nil)
+	if err == nil || !strings.Contains(err.Error(), http.StatusText(429)) {
+		t.Fatalf("expected a 429 error, got %v", err)
+	}
+}
+
 // --- fakes ---
 
 var errSentinel = &sentinelErr{"lookup failed"}

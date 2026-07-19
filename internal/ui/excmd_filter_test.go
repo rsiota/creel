@@ -14,16 +14,16 @@ import (
 
 func TestParseFilterExpr(t *testing.T) {
 	cases := []struct {
-		in            string
-		col, op, val  string
-		ok            bool
+		in           string
+		col, op, val string
+		ok           bool
 	}{
 		{"status=active", "status", "=", "active", true},   // compact form
-		{"status = active", "status", "=", "active", true},  // spaced form
+		{"status = active", "status", "=", "active", true}, // spaced form
 		{"amount > 100", "amount", ">", "100", true},
-		{"x >= 5", "x", ">=", "5", true},                     // >= before > in the regex
+		{"x >= 5", "x", ">=", "5", true}, // >= before > in the regex
 		{"x <= 5", "x", "<=", "5", true},
-		{"name = John Doe", "name", "=", "John Doe", true},  // value keeps spaces
+		{"name = John Doe", "name", "=", "John Doe", true}, // value keeps spaces
 		{"nocol", "", "", "", false},
 		{"", "", "", "", false},
 	}
@@ -40,8 +40,8 @@ func TestBuildFilterFragment(t *testing.T) {
 	cases := []struct {
 		col, op, val, typ, want string
 	}{
-		{"msg", "=", "hi", "TEXT", "msg = 'hi'"},          // text quoted
-		{"level", ">", "3", "INTEGER", "level > 3"},        // numeric bare
+		{"msg", "=", "hi", "TEXT", "msg = 'hi'"},    // text quoted
+		{"level", ">", "3", "INTEGER", "level > 3"}, // numeric bare
 		{"level", "!=", "0", "INTEGER", "level != 0"},
 		{"msg", "~", "alert", "TEXT", "msg LIKE '%alert%'"},
 		{"name", "=", "O'Brien", "TEXT", "name = 'O''Brien'"}, // embedded quote escaped

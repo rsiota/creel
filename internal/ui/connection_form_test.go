@@ -146,12 +146,12 @@ func TestSecretsModeNormalization(t *testing.T) {
 	cases := []struct {
 		in, want string
 	}{
-		{"", "keychain"},          // blank defaults to keychain
+		{"", "keychain"}, // blank defaults to keychain
 		{"keychain", "keychain"},
 		{"Keychain", "keychain"}, // case-insensitive
 		{"plain", "plain"},
-		{"plain text", "plain"},  // leading substring still plain
-		{"typo", "plain"},        // unknown falls back to plain (safe)
+		{"plain text", "plain"}, // leading substring still plain
+		{"typo", "plain"},       // unknown falls back to plain (safe)
 		{"  keychain  ", "keychain"},
 	}
 	for _, c := range cases {

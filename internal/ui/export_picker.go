@@ -10,8 +10,8 @@ import (
 
 // exportItem represents a table in the export picker.
 type exportItem struct {
-	name    string
-	marked  bool
+	name   string
+	marked bool
 }
 
 // ExportPicker is a multi-select overlay for choosing tables to export.
@@ -205,8 +205,8 @@ func (p ExportPicker) View() string {
 	)
 
 	panel := lipgloss.NewStyle().
-		Width(p.width - 2).
-		Height(p.height - 2).
+		Width(p.width-2).
+		Height(p.height-2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).

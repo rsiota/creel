@@ -91,7 +91,7 @@ func TestSchemaEditorClickMovesColumnsCursor(t *testing.T) {
 
 	// Grid: top border (y=4), header (5), sep (6), first data row at y=7.
 	// Column 0 (Name) is at the leading edge; column 1 (Type) follows it.
-	row := top + 2 // third visible row ("age")
+	row := top + 2  // third visible row ("age")
 	e.Click(1, 7+2) // col 0 (Name) of that row
 	if e.cursorRow != row {
 		t.Errorf("cursorRow=%d, want %d", e.cursorRow, row)

@@ -18,19 +18,19 @@ const InspectorWidth = 45
 // column name as a label above a bordered value box. When the underlying
 // results are editable, individual fields can be modified inline.
 type Inspector struct {
-	width       int
-	height      int
-	visible     bool
-	cursorField int
-	editing     bool
-	editInput   textinput.Model
-	scrollRow   int
-	pendingG    bool
-	filtering   bool
-	filter      string
-	inserting   bool
+	width        int
+	height       int
+	visible      bool
+	cursorField  int
+	editing      bool
+	editInput    textinput.Model
+	scrollRow    int
+	pendingG     bool
+	filtering    bool
+	filter       string
+	inserting    bool
 	insertValues map[int]string
-	editingCol  int
+	editingCol   int
 }
 
 // NewInspector creates a new inspector component.

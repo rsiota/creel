@@ -201,11 +201,11 @@ func TestExDDLReadOnly(t *testing.T) {
 	}
 	yes := true
 	m := &Model{
-		connection:     conn,
-		tables:         []string{"users"},
-		results:        NewResultsTable(),
-		forceReadOnly:  true,
-		settings:       config.Settings{ConfirmDestructive: &yes},
+		connection:    conn,
+		tables:        []string{"users"},
+		results:       NewResultsTable(),
+		forceReadOnly: true,
+		settings:      config.Settings{ConfirmDestructive: &yes},
 	}
 	m.runExCommand("truncate! users")
 	if !strings.Contains(m.schemaMsg, "read-only") {

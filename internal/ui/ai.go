@@ -32,6 +32,15 @@ type aiResultMsg struct {
 	err     error
 }
 
+// aiStreamChunkMsg carries one coalesced batch of streamed tokens for the
+// in-flight panel request (content = the answer, reasoning = the model's
+// chain-of-thought), so the reply renders forming in real time instead of
+// all at once when the whole response lands.
+type aiStreamChunkMsg struct {
+	content   string
+	reasoning string
+}
+
 // dbAdapter exposes db.DB to the ai package via its own small types, keeping
 // internal/ai free of an internal/db import (and so independently testable).
 type dbAdapter struct{ d db.DB }
@@ -189,12 +198,32 @@ func (m *Model) sendAssistant(question string) tea.Cmd {
 	return m.dispatchAI(messages, true, question)
 }
 
+// aiConfig builds the AI client config from the environment, then applies
+// the model chosen via the picker (if any) over GSQL_AI_MODEL. This is the
+// single place that resolves which model a request actually uses.
+func (m Model) aiConfig() ai.Config {
+	cfg := aiConfigFromEnv()
+	if m.aiModel != "" {
+		cfg.Model = m.aiModel
+	}
+	return cfg
+}
+
+// effectiveAIModel is the model id shown in the UI / used to place the picker
+// cursor: the picker choice if set, else the env/default.
+func (m Model) effectiveAIModel() string {
+	if m.aiModel != "" {
+		return m.aiModel
+	}
+	return aiConfigFromEnv().Model
+}
+
 // dispatchAI is the shared core for both routes: it validates config, marks the
 // request in-flight (driving the status-bar spinner / esc-cancel gating), and
 // returns a batched command whose result arrives as aiResultMsg. toPanel
 // records the destination so the result handler knows where to deliver it.
 func (m *Model) dispatchAI(messages []ai.Message, toPanel bool, question string) tea.Cmd {
-	cfg := aiConfigFromEnv()
+	cfg := m.aiConfig()
 	if cfg.APIKey == "" {
 		m.aiMsg = "set $GSQL_AI_API_KEY / $OPENAI_API_KEY / $ZAI_API_KEY to use :ai"
 		return nil
@@ -209,6 +238,48 @@ func (m *Model) dispatchAI(messages []ai.Message, toPanel bool, question string)
 	m.aiMsg = ""
 
 	c := ai.New(cfg)
+
+	if toPanel {
+		// Streamed: a goroutine parses the SSE response and pushes chunk msgs
+		// onto a channel; waitAIStream drains one msg per cycle, re-issuing
+		// itself until the terminal aiResultMsg arrives. Deltas are coalesced
+		// (~40ms) so a fast model can't flood the render loop.
+		ch := make(chan tea.Msg, 16)
+		m.aiStream = ch
+		go func() {
+			defer close(ch)
+			var content, reasoning strings.Builder
+			last := time.Now()
+			flush := func() {
+				if content.Len() == 0 && reasoning.Len() == 0 {
+					return
+				}
+				ch <- aiStreamChunkMsg{content: content.String(), reasoning: reasoning.String()}
+				content.Reset()
+				reasoning.Reset()
+				last = time.Now()
+			}
+			full, err := c.CompleteStream(ctx, messages, func(d ai.StreamDelta) {
+				if d.Content != "" {
+					content.WriteString(d.Content)
+				}
+				if d.Reasoning != "" {
+					reasoning.WriteString(d.Reasoning)
+				}
+				if time.Since(last) >= streamChunkInterval {
+					flush()
+				}
+			})
+			flush() // flush the tail before the terminal result
+			if err != nil {
+				ch <- aiResultMsg{err: err, toPanel: true}
+			} else {
+				ch <- aiResultMsg{reply: full, sql: ai.ExtractSQL(full), toPanel: true}
+			}
+		}()
+		return tea.Batch(waitAIStream(ch), spinnerTick())
+	}
+
 	ask := func() tea.Msg {
 		defer cancel()
 		reply, err := c.Complete(ctx, messages)
@@ -220,4 +291,17 @@ func (m *Model) dispatchAI(messages []ai.Message, toPanel bool, question string)
 	// Batch the request with a spinner tick so the pending hint animates the
 	// elapsed timer; without it a slow model looks frozen.
 	return tea.Batch(ask, spinnerTick())
+}
+
+// streamChunkInterval caps how often a streamed reply flushes to the panel,
+// bounding re-renders for a fast model.
+const streamChunkInterval = 40 * time.Millisecond
+
+// waitAIStream returns a command that waits for the next streamed message.
+// Paired with re-issuing itself in the chunk handler, it drains the channel
+// until the terminal aiResultMsg (which does not re-issue).
+func waitAIStream(ch <-chan tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		return <-ch
+	}
 }

@@ -22,17 +22,17 @@ const (
 type vimPending int
 
 const (
-	vimPendingNone   vimPending = iota
-	vimPendingD     // 'd' pressed, waiting for motion or 'd'
-	vimPendingG     // 'g' pressed, waiting for 'g'
-	vimPendingEqual // '=' pressed, waiting for '='
+	vimPendingNone  vimPending = iota
+	vimPendingD                // 'd' pressed, waiting for motion or 'd'
+	vimPendingG                // 'g' pressed, waiting for 'g'
+	vimPendingEqual            // '=' pressed, waiting for '='
 )
 
 // QueryEditor wraps a textarea with vim-style modal editing.
 type QueryEditor struct {
-	textarea textarea.Model
-	width    int
-	height   int
+	textarea    textarea.Model
+	width       int
+	height      int
 	viewYOffset int
 
 	vimMode VimMode

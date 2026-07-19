@@ -25,9 +25,10 @@ func formKey(r rune) tea.KeyMsg {
 }
 
 // The visible field set depends on the driver and the SSH tunnel toggle:
-//   sqlite           → 6  (Name, Driver, Database, Secrets, Read-only, Group)
-//   mysql/pg, no SSH → 11  (+ Host, Port, User, Pass, SSH Tunnel)
-//   mysql/pg + SSH   → 16  (+ 5 SSH fields)
+//
+//	sqlite           → 6  (Name, Driver, Database, Secrets, Read-only, Group)
+//	mysql/pg, no SSH → 11  (+ Host, Port, User, Pass, SSH Tunnel)
+//	mysql/pg + SSH   → 16  (+ 5 SSH fields)
 func TestConnectionFormConditionalFields(t *testing.T) {
 	f := NewConnectionForm()
 	f.SetSize(67, f.contentHeight()) // tall enough to fit every visible field
@@ -242,7 +243,7 @@ func TestConnectionFormTabScrollsActiveFieldIntoView(t *testing.T) {
 func TestConnectionFormShiftTabWrapsAndScrolls(t *testing.T) {
 	f := NewConnectionForm()
 	f.fields[fieldDriver].SetValue("mysql") // 10 visible
-	f.SetSize(67, 13)                        // maxFields = 3
+	f.SetSize(67, 13)                       // maxFields = 3
 
 	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	last := len(f.visibleFields()) - 1

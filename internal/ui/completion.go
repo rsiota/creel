@@ -40,12 +40,12 @@ type completionItem struct {
 
 // completion holds the popup state for editor autocompletion.
 type completion struct {
-	visible        bool
-	candidates     []completionItem
-	allCandidates  []completionItem
-	selected       int
-	partial        string
-	wordStart      int
+	visible       bool
+	candidates    []completionItem
+	allCandidates []completionItem
+	selected      int
+	partial       string
+	wordStart     int
 }
 
 // minAutoTriggerChars is the minimum word length to auto-trigger the popup.
@@ -98,6 +98,7 @@ func overlayLine(bgLine, fgLine string, x int) string {
 func dimBackground(view string) string {
 	return lipgloss.NewStyle().Foreground(colorMuted).Render(ansi.Strip(view))
 }
+
 // filterCandidates returns candidates whose text fuzzy-matches partial
 // (case-insensitive subsequence), sorted by match score (lower = better).
 // When partial is empty, all candidates are returned sorted by kind then text.

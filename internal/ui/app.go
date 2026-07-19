@@ -288,6 +288,7 @@ type Model struct {
 	exportPicker        ExportPicker
 	formatPicker        FormatPicker
 	themePicker         ThemePicker
+	modelPicker         ModelPicker
 	importPrompt        ImportPrompt
 	addColumnForm       AddColumnForm
 	tableRenameForm     TableRenameForm
@@ -442,6 +443,8 @@ type Model struct {
 	aiRunning  bool
 	aiToPanel  bool
 	aiCancel   context.CancelFunc
+	aiStream   <-chan tea.Msg // streamed chunks arrive here while a panel request is in flight
+	aiModel    string         // model chosen via the picker; overrides GSQL_AI_MODEL when set
 	aiQuestion string
 	aiStart    time.Time
 	aiMsg      string
@@ -497,6 +500,7 @@ func NewModel(cfg *config.Config) Model {
 		exportPicker:    NewExportPicker(),
 		formatPicker:    NewFormatPicker(),
 		themePicker:     NewThemePicker(),
+		modelPicker:     NewModelPicker(),
 		importPrompt:    NewImportPrompt(),
 		addColumnForm:   NewAddColumnForm(),
 		tableRenameForm: NewTableRenameForm(),
@@ -1271,11 +1275,21 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.lookupPanel.Show(msg.title, msg.result)
 		return m, nil
+	case aiStreamChunkMsg:
+		// A token batch from the streamed reply: grow the live preview in the
+		// panel (content + any reasoning), then keep draining.
+		m.assistant.AppendStreamDelta(msg.content, msg.reasoning)
+		if m.aiStream != nil {
+			return m, waitAIStream(m.aiStream)
+		}
+		return m, nil
+
 	case aiResultMsg:
 		// An AI request finished. Clear the in-flight state first so the
 		// pending hint and esc-cancel gating are gone even if we error.
 		m.aiRunning = false
 		m.aiCancel = nil
+		m.aiStream = nil
 		q := m.aiQuestion
 		m.aiQuestion = ""
 		if msg.err != nil {
@@ -1312,6 +1326,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.assistant.AppendUser(msg.question)
 		m.assistant.SetPending(true)
+		m.assistant.CancelCompose() // back to browse: watch the stream / apply SQL / ask a follow-up with `i`
 		return m, m.sendAssistant(msg.question)
 
 	case applyAssistantSQLMsg:
@@ -1334,6 +1349,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyFocus()
 		}
 		m.layoutWorkspace()
+		return m, nil
+
+	case openModelPickerMsg:
+		m.modelPicker.Show(m.effectiveAIModel())
 		return m, nil
 
 	case backendSearchTickMsg:
@@ -1931,6 +1950,28 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Theme picker (g c) is modal — intercept all keys. Moving the cursor
 	// live-previews the theme (the picker applies the palette itself); enter
 	// persists the choice to the config, esc reverts to the open-time theme.
+	// Model picker (M from the assistant panel) is modal — intercept all keys.
+	// j/k or up/down moves the cursor, enter commits the choice, esc cancels.
+	if m.modelPicker.IsVisible() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.modelPicker.Hide()
+			return m, nil
+		case "enter":
+			m.aiModel = m.modelPicker.Selected()
+			m.modelPicker.Hide()
+			m.aiMsg = "model: " + m.aiModel
+			return m, nil
+		case "up", "k":
+			m.modelPicker.Up()
+			return m, nil
+		case "down", "j":
+			m.modelPicker.Down()
+			return m, nil
+		}
+		return m, nil // swallow other keys while open
+	}
+
 	// Theme picker (g c) is modal — intercept all keys. Arrow keys move the
 	// cursor (live-previewing the theme); every other key filters the list by
 	// display name. enter persists the choice to the config (a no-op if the
@@ -2484,6 +2525,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focus == FocusEditor && m.editor.VimMode() == VimInsert {
 			m.editor, cmd = m.editor.Update(msg)
 			return m, cmd
+		}
+		// The assistant handles esc itself: leave compose (insert) mode, or
+		// close the panel in browse mode. Break out of this global switch so
+		// it reaches the focus routing (the panel's HandleKey).
+		if m.focus == FocusAssistant {
+			break
 		}
 		return m, nil
 	}
@@ -3823,6 +3870,7 @@ func (m Model) viewWorkspace() string {
 		}
 		m.assistant.SetSize(AssistantWidth-borderOverhead, slotContentHeight)
 		m.assistant.spinner = m.querySpinner // keep the pending spinner in sync
+		m.assistant.SetModel(m.effectiveAIModel())
 		slotPanel = lipgloss.NewStyle().
 			Width(AssistantWidth - borderOverhead).
 			Height(slotContentHeight).
@@ -4237,6 +4285,16 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, themePanel, panelX, panelY)
+	}
+
+	// Overlay model picker (M) if visible
+	if m.modelPicker.IsVisible() {
+		modelPanel := m.modelPicker.View()
+		panelW := lipgloss.Width(modelPanel)
+		panelH := lipgloss.Height(modelPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, modelPanel, panelX, panelY)
 	}
 
 	// Overlay import prompt if visible

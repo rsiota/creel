@@ -28,7 +28,7 @@ type SchemaEditor struct {
 	driver    db.Driver
 	columns   []db.TableColumnInfo
 	rows      [][]string // [col][prop] mirrors columns: name, type, null, default
-	rowOrigin []int     // maps grid row → index into columns, or -1 for a new (pending) row
+	rowOrigin []int      // maps grid row → index into columns, or -1 for a new (pending) row
 	cursorRow int
 	cursorCol int
 	editing   bool
@@ -45,8 +45,8 @@ type SchemaEditor struct {
 	activeTab       int // one of seTab*
 	structure       structureData
 	structLoaded    bool
-	roCursor        int // row cursor for the active read-only tab
-	roScroll        int // scroll offset for read-only tabs / definition
+	roCursor        int  // row cursor for the active read-only tab
+	roScroll        int  // scroll offset for read-only tabs / definition
 	triggerExpanded bool // triggers tab: show the selected trigger's statement
 
 	// Mouse: last left-click, for double-click-to-edit detection on the

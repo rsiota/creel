@@ -21,17 +21,17 @@ func TestParseWatchInterval(t *testing.T) {
 		want time.Duration
 		ok   bool
 	}{
-		{"3", 3 * time.Second, true},      // bare integer = seconds
+		{"3", 3 * time.Second, true}, // bare integer = seconds
 		{"10", 10 * time.Second, true},
-		{"3s", 3 * time.Second, true},     // Go duration
+		{"3s", 3 * time.Second, true}, // Go duration
 		{"1m", time.Minute, true},
 		{"90s", 90 * time.Second, true},
-		{"0", 0, false},                   // below minimum
-		{"0.5", 0, false},                 // sub-second rejected
-		{"500ms", 0, false},               // sub-second rejected
-		{"abc", 0, false},                 // garbage
+		{"0", 0, false},     // below minimum
+		{"0.5", 0, false},   // sub-second rejected
+		{"500ms", 0, false}, // sub-second rejected
+		{"abc", 0, false},   // garbage
 		{"", 0, false},
-		{"-5", 0, false},                  // negative
+		{"-5", 0, false}, // negative
 	}
 	for _, c := range cases {
 		got, ok := parseWatchInterval(c.in)

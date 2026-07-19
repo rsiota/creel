@@ -8,6 +8,7 @@
 package ai
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -122,6 +123,98 @@ func (c *Client) Complete(ctx context.Context, messages []Message) (string, erro
 	return strings.TrimSpace(cr.Choices[0].Message.Content), nil
 }
 
+// StreamDelta is one piece of a streamed reply: either a content token (the
+// visible answer) or a reasoning token (chain-of-thought, from reasoning
+// models). At most one field is non-empty per call.
+type StreamDelta struct {
+	Content   string
+	Reasoning string
+}
+
+// CompleteStream is the streaming variant of Complete: it posts with
+// stream:true and invokes onDelta for each token as it arrives (Server-Sent
+// Events) — content in StreamDelta.Content, chain-of-thought (reasoning
+// models) in StreamDelta.Reasoning — returning the full accumulated reply.
+// This lets the UI render the answer (and the model's thinking) forming in
+// real time instead of blocking on the whole response. onDelta may be nil.
+// The same context bounds the call.
+func (c *Client) CompleteStream(ctx context.Context, messages []Message, onDelta func(StreamDelta)) (string, error) {
+	if c.http == nil {
+		return "", fmt.Errorf("ai: client not initialized")
+	}
+	key := c.cfg.APIKey
+	if key == "" {
+		return "", ErrNoAPIKey
+	}
+
+	body, err := json.Marshal(chatRequest{
+		Model:    c.cfg.Model,
+		Messages: messages,
+		Stream:   true,
+	})
+	if err != nil {
+		return "", fmt.Errorf("ai: encoding request: %w", err)
+	}
+
+	endpoint := strings.TrimRight(c.cfg.BaseURL, "/") + "/chat/completions"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("ai: building request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Accept", "text/event-stream")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("ai: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("ai: provider returned %s: %s", resp.Status, truncateErr(raw))
+	}
+
+	// SSE frames are "data: <json>\\n" lines terminated by "data: [DONE]".
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20) // allow long frames
+	var full strings.Builder
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue // keep-alive comments / empty lines
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "" || data == "[DONE]" {
+			if data == "[DONE]" {
+				break
+			}
+			continue
+		}
+		var ch chatStreamChunk
+		if err := json.Unmarshal([]byte(data), &ch); err != nil {
+			continue // skip a malformed frame rather than aborting mid-stream
+		}
+		if len(ch.Choices) == 0 {
+			continue
+		}
+		d := ch.Choices[0].Delta
+		if d.Content != "" {
+			full.WriteString(d.Content)
+		}
+		if onDelta != nil && (d.Content != "" || d.Reasoning != "") {
+			onDelta(StreamDelta{Content: d.Content, Reasoning: d.Reasoning})
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		// A cancelled context surfaces here as a read error; surface it so the
+		// caller can mark the request cancelled rather than successful-but-empty.
+		return strings.TrimSpace(full.String()), fmt.Errorf("ai: reading stream: %w", err)
+	}
+	return strings.TrimSpace(full.String()), nil
+}
+
 // AskSQL is the high-level natural-language-to-SQL helper. It builds a system
 // prompt from the database schema, appends the user's question, and returns
 // just the SQL extracted from the model's reply.
@@ -175,7 +268,7 @@ func systemPrompt(schema string) string {
 type chatRequest struct {
 	Model    string    `json:"model"`
 	Messages []Message `json:"messages"`
-	// Stream omitted for Phase 0; a follow-up can flip this on for token-by-token output.
+	Stream   bool      `json:"stream,omitempty"`
 }
 
 // chatResponse is the subset of the response we read.
@@ -183,6 +276,20 @@ type chatResponse struct {
 	Choices []struct {
 		Message      Message `json:"message"`
 		FinishReason string  `json:"finish_reason"`
+	} `json:"choices"`
+}
+
+// chatStreamChunk is one SSE frame from a streaming completion. Content is
+// the visible reply; reasoning is the model's chain-of-thought, emitted by
+// reasoning models (e.g. GLM) in a separate field before/around the content.
+// finish_reason is ignored (the [DONE] sentinel ends the stream).
+type chatStreamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content   string `json:"content"`
+			Reasoning string `json:"reasoning_content"`
+		} `json:"delta"`
+		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
 }
 

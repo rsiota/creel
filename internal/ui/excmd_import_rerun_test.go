@@ -40,8 +40,8 @@ func TestExRerunNotConnected(t *testing.T) {
 
 func TestExRerunBadNumber(t *testing.T) {
 	m := &Model{
-		connection:    &db.Connection{},
-		historyStore:  history.NewStore(t.TempDir()),
+		connection:   &db.Connection{},
+		historyStore: history.NewStore(t.TempDir()),
 	}
 	for _, in := range []string{"rerun abc", "rerun 0", "rerun -1", "rerun"} {
 		m.schemaMsg = ""

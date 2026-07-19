@@ -37,16 +37,19 @@ type assistantMessage struct {
 // follow-ups like "now filter to active users" work) and never auto-executes:
 // generated SQL is applied to the query editor for the user to review and run.
 type Assistant struct {
-	width     int
-	height    int
-	visible   bool
-	messages  []assistantMessage
-	input     textarea.Model // multiline compose box (soft-wraps long prompts)
-	composing bool           // true while the compose box accepts typing
-	scrollRow int            // transcript scroll offset (lines from the top)
-	pending   bool           // a model request for this panel is in flight
-	dirty     bool           // transcript changed since last layout/view (forces scroll-to-bottom)
-	spinner   int            // current spinner animation frame (set by the app each render)
+	width        int
+	height       int
+	visible      bool
+	messages     []assistantMessage
+	input        textarea.Model // multiline compose box (soft-wraps long prompts)
+	composing    bool           // true while the compose box accepts typing
+	scrollRow    int            // transcript scroll offset (lines from the top)
+	pending      bool           // a model request for this panel is in flight
+	streamText   string         // accumulated streamed reply (live preview while pending)
+	streamReason string         // accumulated reasoning (chain-of-thought) shown dimmed while pending
+	dirty        bool           // transcript changed since last layout/view (forces scroll-to-bottom)
+	spinner      int            // current spinner animation frame (set by the app each render)
+	model        string         // active model id, shown in the separator (set by the app each render)
 }
 
 // composeHeight is the number of lines reserved for the compose box at the
@@ -69,23 +72,21 @@ func NewAssistant() Assistant {
 	return Assistant{input: ta}
 }
 
-// Toggle shows or hides the panel, entering compose mode when shown.
+// Toggle shows or hides the panel, in browse mode when shown (press `i`/`a`
+// to compose a question, `M` to switch model).
 func (a *Assistant) Toggle() {
 	a.visible = !a.visible
-	a.composing = a.visible
+	a.composing = false // browse by default whenever visible
+	a.input.Blur()
 	a.scrollRow = 0
-	if a.visible {
-		a.input.Focus()
-	} else {
-		a.input.Blur()
-	}
 }
 
-// Show opens the panel in compose mode.
+// Show opens the panel in browse mode.
 func (a *Assistant) Show() {
 	a.visible = true
-	a.composing = true
-	a.input.Focus()
+	a.composing = false
+	a.input.Blur()
+	a.scrollRow = 0
 }
 
 // Hide closes the panel.
@@ -137,8 +138,25 @@ func (a Assistant) InputValue() string { return a.input.Value() }
 // SetPending marks a request in flight (shows a "thinking…" line).
 func (a *Assistant) SetPending(v bool) {
 	a.pending = v
+	if !v {
+		a.streamText = ""   // finalize: drop the live preview
+		a.streamReason = "" // and the reasoning trace
+	}
 	a.dirty = true
 }
+
+// AppendStreamDelta grows the live preview of a streamed reply: content is the
+// answer (rendered highlighted), reasoning is the model's chain-of-thought
+// (rendered dimmed above the answer). Both render in place of the bare
+// spinner while a request is pending.
+func (a *Assistant) AppendStreamDelta(content, reasoning string) {
+	a.streamText += content
+	a.streamReason += reasoning
+	a.dirty = true
+}
+
+// SetModel records the active model id for display in the separator.
+func (a *Assistant) SetModel(id string) { a.model = id }
 
 // IsPending reports whether a request for this panel is in flight.
 func (a Assistant) IsPending() bool { return a.pending }
@@ -151,12 +169,16 @@ func (a *Assistant) AppendUser(q string) {
 
 // AppendAssistant records a completed assistant turn with its extracted SQL.
 func (a *Assistant) AppendAssistant(summary, sql string) {
+	a.streamText = ""
+	a.streamReason = ""
 	a.messages = append(a.messages, assistantMessage{role: assistantAI, text: summary, sql: sql})
 	a.dirty = true
 }
 
 // AppendError records a failed turn so the user sees what went wrong in place.
 func (a *Assistant) AppendError(text string) {
+	a.streamText = ""
+	a.streamReason = ""
 	a.messages = append(a.messages, assistantMessage{role: assistantErr, text: text})
 	a.dirty = true
 }
@@ -177,6 +199,8 @@ func (a Assistant) HasTurns() bool { return len(a.messages) > 0 }
 // Clear empties the transcript.
 func (a *Assistant) Clear() {
 	a.messages = nil
+	a.streamText = ""
+	a.streamReason = ""
 	a.scrollRow = 0
 	a.dirty = true
 }
@@ -255,6 +279,8 @@ func (a *Assistant) handleBrowseKey(msg tea.KeyMsg) (Assistant, tea.Cmd) {
 	case "i", "o", "a", "I":
 		a.StartCompose()
 		return *a, nil
+	case "M":
+		return *a, func() tea.Msg { return openModelPickerMsg{} }
 	case "enter":
 		return *a, func() tea.Msg { return applyAssistantSQLMsg{} }
 	case "j", "down":
@@ -360,10 +386,11 @@ func (a Assistant) View() string {
 
 	body := strings.Join(visible, "\n")
 
-	// Compose area: a separator rule, then the multiline input (soft-wrapped)
-	// or a browse-mode hint, padded to a fixed height so it stays pinned to
-	// the bottom and long prompts wrap instead of scrolling the panel.
-	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", contentW))
+	// Compose area: a separator rule (carrying the active model), then the
+	// multiline input (soft-wrapped) or a browse-mode placeholder, padded to a
+	// fixed height so it stays pinned to the bottom and long prompts wrap
+	// instead of scrolling the panel. Keybindings live on the status bar.
+	sep := renderModelSeparator(a.model, contentW)
 	var inputArea string
 	if a.composing {
 		// The bubbles textarea cursor is a hardcoded reverse-video block
@@ -373,7 +400,10 @@ func (a Assistant) View() string {
 		under := sgrPrefix(lipgloss.NewStyle().Foreground(colorFg).Underline(true))
 		inputArea = strings.ReplaceAll(a.input.View(), "\x1b[7m", under)
 	} else {
-		inputArea = mutedStyle.Render(" i ask · enter apply SQL · c clear · j/k scroll · esc close")
+		// Browse (normal) mode: no placeholder text — just a block cursor
+		// (reverse-video cell) marking the compose position, matching the
+		// editor's vim normal-mode cursor. Keybindings live on the status bar.
+		inputArea = lipgloss.NewStyle().Reverse(true).Render(" ")
 	}
 	composeBox := sep + "\n" + padLines(inputArea, composeHeight-1)
 
@@ -460,15 +490,71 @@ func (a Assistant) renderTranscriptLines() []string {
 		lines = append(lines, "") // blank line between turns
 	}
 	if a.pending {
-		frame := spinnerFrames[a.spinner%len(spinnerFrames)]
-		spin := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(frame)
-		thinking := lipgloss.NewStyle().Foreground(colorAccent).Render("thinking…")
-		lines = append(lines, "  "+spin+" "+thinking)
+		indent := 4 // len("AI:") + space
+		wrapW := contentW - indent
+		if wrapW < 4 {
+			wrapW = 4
+		}
+		// Reasoning (chain-of-thought from reasoning models) renders dimmed
+		// above the answer so it's clearly distinct from the SQL.
+		if strings.TrimSpace(a.streamReason) != "" {
+			rstyle := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
+			for i, wl := range wrapRunes(a.streamReason, wrapW) {
+				if i == 0 {
+					lines = append(lines, "  "+rstyle.Render("⋯ "+wl))
+				} else {
+					lines = append(lines, strings.Repeat(" ", indent)+rstyle.Render(wl))
+				}
+			}
+		}
+		if strings.TrimSpace(a.streamText) != "" {
+			// Live preview of the streamed reply: render it like a finished AI
+			// turn (SQL highlighted) with a trailing animated spinner to signal
+			// it is still forming.
+			marker := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("AI:")
+			frame := spinnerFrames[a.spinner%len(spinnerFrames)]
+			tail := " " + lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(frame)
+			wrapped := wrapRunes(a.streamText, wrapW)
+			for i, wl := range wrapped {
+				s := highlightSegment(wl)
+				if i == len(wrapped)-1 {
+					s += tail
+				}
+				if i == 0 {
+					lines = append(lines, marker+" "+s)
+				} else {
+					lines = append(lines, strings.Repeat(" ", indent)+s)
+				}
+			}
+		} else {
+			frame := spinnerFrames[a.spinner%len(spinnerFrames)]
+			spin := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(frame)
+			thinking := lipgloss.NewStyle().Foreground(colorAccent).Render("thinking…")
+			lines = append(lines, "  "+spin+" "+thinking)
+		}
 	}
 	return lines
+}
+
+// renderModelSeparator draws the divider above the compose box, embedding the
+// active model id at the left when set, so the current model is always
+// visible (and the rule still spans the full interior width).
+func renderModelSeparator(model string, width int) string {
+	if model == "" {
+		return lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", width))
+	}
+	label := lipgloss.NewStyle().Foreground(colorLabel).Render(model)
+	visW := len([]rune(model))
+	rest := width - visW - 1 // one leading dash gap
+	if rest < 1 {
+		rest = 1
+	}
+	dashes := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", rest))
+	return label + " " + dashes
 }
 
 // Internal messages produced by the panel, handled by the app.
 type submitAssistantMsg struct{ question string }
 type applyAssistantSQLMsg struct{}
 type closeAssistantMsg struct{}
+type openModelPickerMsg struct{}

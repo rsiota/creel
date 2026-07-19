@@ -171,7 +171,7 @@ func (p *FilterPicker) adjustScroll() {
 	if p.cursor < p.scrollRow {
 		p.scrollRow = p.cursor
 	}
-	if p.cursor >= p.scrollRow + maxVisible {
+	if p.cursor >= p.scrollRow+maxVisible {
 		p.scrollRow = p.cursor - maxVisible + 1
 	}
 }
@@ -292,8 +292,8 @@ func (p FilterPicker) View() string {
 	body := prompt + "\n" + strings.Join(rows, "\n")
 
 	panel := lipgloss.NewStyle().
-		Width(p.width - 2).
-		Height(p.height - 2).
+		Width(p.width-2).
+		Height(p.height-2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).

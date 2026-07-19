@@ -88,27 +88,19 @@ func TestAssistantEndToEnd(t *testing.T) {
 		t.Fatal("no request dispatched for the question")
 	}
 
-	// Run the real request (it returns a tea.BatchMsg of [ask, spinnerTick];
-	// run each and collect the aiResultMsg) and feed it back through Update.
-	batch := dispatch()
-	cmds, ok := batch.(tea.BatchMsg)
-	if !ok {
-		t.Fatalf("dispatch returned %T, want tea.BatchMsg", batch)
-	}
+	// The panel path streams: a goroutine pushes chunk msgs then a terminal
+	// aiResultMsg onto m.aiStream. Drain it until the result arrives.
 	var resMsg aiResultMsg
 	found := false
-	for _, c := range cmds {
-		r := c()
-		if r == nil {
-			continue
-		}
-		if am, ok := r.(aiResultMsg); ok {
-			resMsg = am
+	for msg := range m.aiStream {
+		if r, ok := msg.(aiResultMsg); ok {
+			resMsg = r
 			found = true
+			break
 		}
 	}
 	if !found {
-		t.Fatal("batch contained no aiResultMsg")
+		t.Fatal("stream produced no aiResultMsg")
 	}
 	if resMsg.err != nil {
 		t.Fatalf("live request failed: %v", resMsg.err)

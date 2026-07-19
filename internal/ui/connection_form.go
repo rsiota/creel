@@ -46,10 +46,10 @@ var formLabels = [...]string{
 // cycling selectors (e.g. < sqlite >) and changed with h/l in normal mode.
 // Fields absent from the map are free-text and edited with e/i/a.
 var formChoices = map[int][]string{
-	fieldDriver:   {"sqlite", "mysql", "postgres"},
+	fieldDriver:    {"sqlite", "mysql", "postgres"},
 	fieldSSHTunnel: {"no", "yes"},
-	fieldSecrets:  {"keychain", "plain"},
-	fieldReadOnly: {"no", "yes"},
+	fieldSecrets:   {"keychain", "plain"},
+	fieldReadOnly:  {"no", "yes"},
 }
 
 // isChoiceField reports whether fi is a cycling-selector field.
@@ -71,7 +71,7 @@ const (
 // presents a short list while a tunneled mysql connection shows everything.
 type ConnectionForm struct {
 	fields    []textinput.Model
-	active    int    // cursor position within the visible field list
+	active    int // cursor position within the visible field list
 	mode      formMode
 	errMsg    string
 	width     int

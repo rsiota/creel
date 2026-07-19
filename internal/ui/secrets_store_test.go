@@ -10,8 +10,8 @@ import (
 
 func TestStoreConnSecretsPlainModeIsPassthrough(t *testing.T) {
 	cfg := config.ConnectionConfig{
-		Name:     "prod",
-		Password: "hunter2",
+		Name:        "prod",
+		Password:    "hunter2",
 		SSHPassword: "sshsecret",
 	}
 	out, err := storeConnSecrets(cfg, "plain")

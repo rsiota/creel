@@ -78,6 +78,7 @@ func TestAssistantClear(t *testing.T) {
 func TestAssistantHandleKeySubmit(t *testing.T) {
 	a := NewAssistant()
 	a.Show()
+	a.StartCompose()
 	a.input.SetValue("10 recent users")
 	_, cmd := a.HandleKey(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
@@ -96,6 +97,7 @@ func TestAssistantHandleKeySubmit(t *testing.T) {
 func TestAssistantHandleKeySubmitIgnoresEmpty(t *testing.T) {
 	a := NewAssistant()
 	a.Show()
+	a.StartCompose()
 	a.input.SetValue("   ")
 	_, cmd := a.HandleKey(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd != nil {
@@ -106,6 +108,7 @@ func TestAssistantHandleKeySubmitIgnoresEmpty(t *testing.T) {
 func TestAssistantHandleKeySubmitBlocksWhilePending(t *testing.T) {
 	a := NewAssistant()
 	a.Show()
+	a.StartCompose()
 	a.SetPending(true)
 	a.input.SetValue("hello")
 	_, cmd := a.HandleKey(tea.KeyMsg{Type: tea.KeyEnter})
@@ -177,6 +180,132 @@ func TestAssistantLongPromptWraps(t *testing.T) {
 // runeWidth is a rough visible-width measure for the wrap test.
 func runeWidth(s string) int { return len([]rune(s)) }
 
+// TestAssistantHintsOnStatusBar locks in that the AI panel surfaces its
+// keybindings on the status bar (via hintList) rather than an in-panel footer:
+//
+//   - browse mode lists the full set (compose, model, scroll, clear, close),
+//   - compose (insert) mode collapses to the send/leave keys,
+//   - the model picker overlay lists its own move/select/cancel keys.
+func TestAssistantHintsOnStatusBar(t *testing.T) {
+	m := Model{assistant: NewAssistant()}
+	m.state = stateWorkspace
+	m.assistant.Show()
+	m.focus = FocusAssistant
+
+	browse := strings.Join(m.hintList(), " ")
+	for _, want := range []string{"i/a/o", "M", "esc"} {
+		if !strings.Contains(browse, want) {
+			t.Errorf("browse hints missing %q: got %v", want, m.hintList())
+		}
+	}
+
+	m.assistant.StartCompose()
+	compose := m.hintList()
+	if len(compose) != 2 || compose[0] != "enter" || compose[1] != "esc" {
+		t.Errorf("compose hints = %v, want [enter esc]", compose)
+	}
+
+	m.assistant.CancelCompose()
+	m.modelPicker = NewModelPicker()
+	m.modelPicker.Show("glm-4.6")
+	picker := strings.Join(m.hintList(), " ")
+	for _, want := range []string{"j/k", "enter", "esc"} {
+		if !strings.Contains(picker, want) {
+			t.Errorf("model picker hints missing %q: got %v", want, m.hintList())
+		}
+	}
+}
+
+// TestModelPickerNoFooterAndPrimaryBorder verifies the model picker dropped
+// its in-popup keybinding footer, suppresses the per-model descriptions, and
+// uses the primary ("blue") border so it reads as a focused modal like the
+// other popups.
+func TestModelPickerNoFooterAndPrimaryBorder(t *testing.T) {
+	p := NewModelPicker()
+	p.Show("glm-4.6")
+	view := p.View()
+	plain := stripANSI(view)
+
+	// The old footer listed these literally; it must be gone.
+	if strings.Contains(plain, "enter select") || strings.Contains(plain, "esc cancel") {
+		t.Errorf("model picker still shows an in-popup keybinding footer: %q", plain)
+	}
+	// The per-model descriptions (e.g. "fast · non-reasoning") are suppressed;
+	// only the ids render.
+	for _, bad := range []string{"non-reasoning", "reasoning", "default"} {
+		if strings.Contains(plain, bad) {
+			t.Errorf("model picker shows a suppressed description %q: %q", bad, plain)
+		}
+	}
+	for _, o := range aiModelOptions {
+		if !strings.Contains(plain, o.id) {
+			t.Errorf("model id %q not rendered in picker: %q", o.id, plain)
+		}
+	}
+
+	// The primary border color renders as an ANSI 38;5 escape — assert the
+	// popup carries color styling at all (not a bare unstyled border).
+	if !strings.Contains(view, "\x1b[") {
+		t.Error("model picker view has no ANSI styling (border color not applied)")
+	}
+}
+
+// TestAssistantStreamReasoning verifies reasoning (chain-of-thought) renders
+// dimmed above the SQL preview while streaming, and is cleared on finalize.
+func TestAssistantStreamReasoning(t *testing.T) {
+	a := NewAssistant()
+	a.SetSize(60, 24)
+	a.Show()
+	a.SetPending(true)
+	a.AppendStreamDelta("", "I need the top 10 users by signup")
+	a.AppendStreamDelta("SELECT 1", "")
+
+	plain := stripANSI(a.View())
+	reason := "I need the top 10 users by signup"
+	if !strings.Contains(plain, reason) {
+		t.Errorf("reasoning not shown in view")
+	}
+	// Reasoning must appear above the SQL preview.
+	if ri, si := strings.Index(plain, reason), strings.Index(plain, "SELECT"); ri < 0 || si < 0 || ri > si {
+		t.Errorf("reasoning should precede the SQL (reason@%d, sql@%d)", ri, si)
+	}
+
+	a.AppendAssistant("", "SELECT 1")
+	if a.streamReason != "" {
+		t.Errorf("streamReason not cleared after finalize = %q", a.streamReason)
+	}
+	if a.streamText != "" {
+		t.Errorf("streamText not cleared after finalize = %q", a.streamText)
+	}
+}
+
+// TestAssistantStreamPreview verifies the streamed reply renders live (as a
+// highlighted SQL preview with a trailing spinner) and is replaced by the
+// committed turn on finalize.
+func TestAssistantStreamPreview(t *testing.T) {
+	a := NewAssistant()
+	a.SetSize(60, 20)
+	a.Show()
+	a.SetPending(true)
+	a.AppendStreamDelta("SELECT 1", "")
+
+	view := a.View()
+	// The partial SQL is highlighted like a finished AI turn.
+	if want := sqlKeywordStyle.Render("SELECT"); !strings.Contains(view, want) {
+		t.Errorf("stream preview missing highlighted SELECT: %q", view)
+	}
+	// A trailing animated spinner marks it as still in progress.
+	if want := spinnerFrames[a.spinner%len(spinnerFrames)]; !strings.Contains(stripANSI(view), want) {
+		t.Errorf("stream preview missing trailing spinner %q", want)
+	}
+
+	// Finalize: preview is dropped for the committed turn; no live tail left.
+	a.AppendAssistant("", "SELECT 1")
+	if a.streamText != "" {
+		t.Errorf("streamText not cleared after finalize = %q", a.streamText)
+	}
+}
+
 // TestAssistantHighlightsSQL verifies AI responses are syntax-highlighted
 // like the query editor (keywords, numbers, …), not rendered as plain text.
 func TestAssistantHighlightsSQL(t *testing.T) {
@@ -205,6 +334,7 @@ func TestAssistantPanelHeightStable(t *testing.T) {
 	a := NewAssistant()
 	a.SetSize(w, h)
 	a.Show()
+	a.StartCompose()
 	a.AppendUser("q1")
 	a.AppendAssistant("", "SELECT 1")
 	want := h // panel renders at the full content height (border added outside)

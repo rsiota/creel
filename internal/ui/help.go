@@ -9,11 +9,11 @@ import (
 
 // HelpPanel renders a full-screen, scrollable, tabbed help overlay:
 //
-//   • Keys     — every keybinding (registry()), arranged in as few columns as
-//                fit the viewport so descriptions align, with more columns
-//                added only when the content would otherwise scroll forever.
-//   • Commands — every ":" command (exCommands()), one per line at full width
-//                with descriptions wrapped, so nothing is truncated.
+//   - Keys     — every keybinding (registry()), arranged in as few columns as
+//     fit the viewport so descriptions align, with more columns
+//     added only when the content would otherwise scroll forever.
+//   - Commands — every ":" command (exCommands()), one per line at full width
+//     with descriptions wrapped, so nothing is truncated.
 //
 // Both pages scroll vertically (↑/↓ or j/k, PgUp/PgDn, g/G). Tab / shift+tab
 // switch pages; ? or esc (or any unmapped key) closes it. Scrolling is the
@@ -459,4 +459,3 @@ func itoa(n int) string {
 	}
 	return string(b[i:])
 }
-

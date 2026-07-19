@@ -291,5 +291,27 @@ func registry() []Section {
 				{"esc", []string{"esc"}, "cancel", "esc"},
 			},
 		},
+		{
+			Title:  "Assistant",
+			Source: "assistant.go app.go",
+			Items: []Binding{
+				{"i / a / o", []string{"i", "a", "o"}, "compose a question (insert mode)", "i/a/o"},
+				{"enter", []string{"enter"}, "send / apply latest SQL to editor", "enter"},
+				{"M", []string{"M"}, "switch model", "M"},
+				{"j/k", []string{"j", "k", "up", "down"}, "scroll transcript", "j/k"},
+				{"G", []string{"G"}, "bottom", "G"},
+				{"c", []string{"c"}, "clear transcript", "c"},
+				{"esc / q", []string{"esc", "q"}, "leave compose / close panel", "esc"},
+			},
+		},
+		{
+			Title:  "Model Picker",
+			Source: "app.go",
+			Items: []Binding{
+				{"j/k, \u2191/\u2193", []string{"j", "k", "up", "down"}, "move", "j/k"},
+				{"enter", []string{"enter"}, "select model", "enter"},
+				{"esc", []string{"esc"}, "cancel", "esc"},
+			},
+		},
 	}
 }

@@ -54,8 +54,9 @@ func (m *Model) applyFocus() {
 	case FocusTabBar:
 		m.tabBar.Focus()
 	case FocusAssistant:
-		// Landing on the chat panel enters compose mode so typing works at once.
-		m.assistant.StartCompose()
+		// Browse mode by default: `i`/`a` enters compose to type a question,
+		// `M` opens the model picker, `j`/`k` scrolls. Compose is a transient
+		// mode (exited on submit/esc), so browse commands are always reachable.
 	}
 }
 

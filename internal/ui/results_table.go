@@ -14,9 +14,9 @@ import (
 const maxCellWidth = 40
 
 const (
-	copyFlashInterval    = 150 // milliseconds between flash toggles
-	copyFlashTickCount   = 6   // three on/off cycles
-	copyMessageDuration  = 2   // seconds to show "copied to clipboard"
+	copyFlashInterval   = 150 // milliseconds between flash toggles
+	copyFlashTickCount  = 6   // three on/off cycles
+	copyMessageDuration = 2   // seconds to show "copied to clipboard"
 )
 
 // cellRef identifies a single cell by row and column index.
@@ -40,27 +40,27 @@ type ResultsTable struct {
 	hasResult bool
 
 	// Inline editing
-	editable   bool              // can these results be edited?
-	sourceTable string            // table backing these results
-	pkColumns  []string          // primary key column names
-	cursorRow  int               // highlighted cell cursor row
-	cursorCol  int               // highlighted cell cursor col
-	editing    bool              // inline edit mode active
-	editInput  textinput.Model   // input buffer for the cell being edited
-	dirtyCells map[cellRef]string // pending unsaved edits (new values)
-	saved      bool              // all dirty cells were saved (show confirmation)
-	saveError  string            // last save error
-	copied     bool              // show clipboard copy confirmation
+	editable        bool               // can these results be edited?
+	sourceTable     string             // table backing these results
+	pkColumns       []string           // primary key column names
+	cursorRow       int                // highlighted cell cursor row
+	cursorCol       int                // highlighted cell cursor col
+	editing         bool               // inline edit mode active
+	editInput       textinput.Model    // input buffer for the cell being edited
+	dirtyCells      map[cellRef]string // pending unsaved edits (new values)
+	saved           bool               // all dirty cells were saved (show confirmation)
+	saveError       string             // last save error
+	copied          bool               // show clipboard copy confirmation
 	copyFlash       cellRef
 	copyFlashActive bool
 	copyFlashOn     bool
 	copyFlashTicks  int
 	resultTable     string
 	foreignKeys     map[string]db.ForeignKey // keyed by lowercase column name
-	columnTypes map[string]string // column name -> database type (for inspector)
-	tableColumns []db.TableColumnInfo
-	sortCol      string // column currently sorted by ("" = none)
-	sortDir      string // "ASC" or "DESC"
+	columnTypes     map[string]string        // column name -> database type (for inspector)
+	tableColumns    []db.TableColumnInfo
+	sortCol         string // column currently sorted by ("" = none)
+	sortDir         string // "ASC" or "DESC"
 
 	// Row marks (staging area for building WHERE pk IN (...) filters).
 	// keyed by joined PK values; markedTable guards staleness so marks
@@ -257,8 +257,8 @@ func (r ResultsTable) DirtyCells() []CellEdit {
 	var edits []CellEdit
 	for ref, val := range r.dirtyCells {
 		edits = append(edits, CellEdit{
-			Row:     ref.row,
-			Col:     ref.col,
+			Row:      ref.row,
+			Col:      ref.col,
 			NewValue: val,
 		})
 	}
