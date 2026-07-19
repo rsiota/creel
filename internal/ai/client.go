@@ -123,6 +123,55 @@ func (c *Client) Complete(ctx context.Context, messages []Message) (string, erro
 	return strings.TrimSpace(cr.Choices[0].Message.Content), nil
 }
 
+// ListModels queries the provider's OpenAI-compatible GET /models endpoint and
+// returns the available model ids. The assistant-panel model browser uses it
+// so users can pick a model that is live for their key rather than guessing.
+func (c *Client) ListModels(ctx context.Context) ([]string, error) {
+	if c.http == nil {
+		return nil, fmt.Errorf("ai: client not initialized")
+	}
+	key := c.cfg.APIKey
+	if key == "" {
+		return nil, ErrNoAPIKey
+	}
+	endpoint := strings.TrimRight(c.cfg.BaseURL, "/") + "/models"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("ai: building request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ai: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("ai: reading response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("ai: provider returned %s: %s", resp.Status, truncateErr(raw))
+	}
+
+	var lr struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &lr); err != nil {
+		return nil, fmt.Errorf("ai: decoding response: %w", err)
+	}
+	ids := make([]string, 0, len(lr.Data))
+	for _, m := range lr.Data {
+		if m.ID != "" {
+			ids = append(ids, m.ID)
+		}
+	}
+	return ids, nil
+}
+
 // StreamDelta is one piece of a streamed reply: either a content token (the
 // visible answer) or a reasoning token (chain-of-thought, from reasoning
 // models). At most one field is non-empty per call.

@@ -242,6 +242,43 @@ func (f *fakeConn) TableSchema(t string) ([]Column, error)     { return f.schema
 func (f *fakeConn) PrimaryKeys(t string) ([]string, error)     { return f.pks[t], nil }
 func (f *fakeConn) ForeignKeys(t string) ([]ForeignKey, error) { return f.fks[t], nil }
 
+func TestListModels(t *testing.T) {
+	body := `{"data":[{"id":"gpt-4o-mini"},{"id":"gpt-4o"},{"id":""}]}`
+	stub := &httpStub{status: 200, body: body}
+	c := New(Config{APIKey: "k", BaseURL: "http://stub"})
+	c.http = stub
+
+	models, err := c.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels error: %v", err)
+	}
+	want := []string{"gpt-4o-mini", "gpt-4o"}
+	if len(models) != len(want) || models[0] != want[0] || models[1] != want[1] {
+		t.Errorf("models = %v, want %v", models, want)
+	}
+	if !strings.HasSuffix(stub.gotURL, "/models") {
+		t.Errorf("URL = %q, want to end with /models", stub.gotURL)
+	}
+	if stub.gotAuth != "Bearer k" {
+		t.Errorf("auth = %q, want Bearer k", stub.gotAuth)
+	}
+}
+
+func TestListModels_HTTPError(t *testing.T) {
+	c := New(Config{APIKey: "k", BaseURL: "http://stub"})
+	c.http = &httpStub{status: 404, body: `no such model`}
+	if _, err := c.ListModels(context.Background()); err == nil {
+		t.Error("expected error for 404")
+	}
+}
+
+func TestListModels_NoAPIKey(t *testing.T) {
+	c := New(Config{BaseURL: "http://stub"})
+	if _, err := c.ListModels(context.Background()); err != ErrNoAPIKey {
+		t.Errorf("want ErrNoAPIKey, got %v", err)
+	}
+}
+
 type httpStub struct {
 	status  int
 	body    string

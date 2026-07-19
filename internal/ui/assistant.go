@@ -281,6 +281,8 @@ func (a *Assistant) handleBrowseKey(msg tea.KeyMsg) (Assistant, tea.Cmd) {
 		return *a, nil
 	case "M":
 		return *a, func() tea.Msg { return openProviderPickerMsg{} }
+	case "m":
+		return *a, func() tea.Msg { return openModelBrowserMsg{} }
 	case "enter":
 		return *a, func() tea.Msg { return applyAssistantSQLMsg{} }
 	case "j", "down":
@@ -558,3 +560,8 @@ type submitAssistantMsg struct{ question string }
 type applyAssistantSQLMsg struct{}
 type closeAssistantMsg struct{}
 type openProviderPickerMsg struct{}
+
+// openModelBrowserMsg opens the model browser for the active provider (`m` in
+// the assistant's browse mode). The handler fetches the provider's /models
+// list and lets the user pick one, persisting it to config.
+type openModelBrowserMsg struct{}

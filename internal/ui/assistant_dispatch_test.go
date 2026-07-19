@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -367,6 +368,74 @@ func TestAssistantDefaultsToBrowse(t *testing.T) {
 	}
 	if v := m.assistant.InputValue(); v != "" {
 		t.Errorf("M leaked into compose input: %q", v)
+	}
+}
+
+// TestModelBrowserFlow drives the model browser offline: openModelBrowserMsg
+// opens it for the active provider, a fetchModelsMsg populates the list, and
+// enter persists the chosen model to that provider's config (the real /models
+// fetch is covered by the ai-package ListModels test).
+func TestModelBrowserFlow(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // redirect config write
+	provs := []config.AIProvider{
+		{Name: "groq", APIKey: "k", BaseURL: "http://stub", Model: "old-model"},
+	}
+	m0 := NewModel(&config.Config{AI: config.AIConfig{Default: "groq", Providers: provs}})
+	mm, _ := m0.Update(tea.WindowSizeMsg{Width: 140, Height: 44})
+	m := mm.(Model)
+	m.state = stateWorkspace
+	upd := func(msg tea.Msg) {
+		if n, c := m.Update(msg); n != nil {
+			m = n.(Model)
+			_ = c
+		}
+	}
+
+	// openModelBrowserMsg opens the browser in the loading state and kicks off
+	// a fetch (the cmd is discarded here; it hits the network).
+	upd(openModelBrowserMsg{})
+	if !m.modelBrowser.IsVisible() || !m.modelBrowser.loading {
+		t.Fatal("browser not opened in the loading state")
+	}
+	if m.modelBrowser.Provider() != "groq" {
+		t.Errorf("Provider = %q, want groq", m.modelBrowser.Provider())
+	}
+
+	// fetchModelsMsg populates the list, cursor on the provider's current model.
+	upd(fetchModelsMsg{models: []string{"a", "new-model", "old-model"}})
+	if m.modelBrowser.loading {
+		t.Error("still loading after fetchModelsMsg")
+	}
+	if got := m.modelBrowser.Selected(); got != "old-model" {
+		t.Errorf("cursor = %q, want old-model", got)
+	}
+
+	// A fetch error surfaces inline and blocks selection (enter is a no-op).
+	m.modelBrowser.Show("groq", "old-model")
+	upd(fetchModelsMsg{err: fmt.Errorf("provider returned 401")})
+	if m.modelBrowser.Selected() != "" {
+		t.Errorf("Selected during error should be empty, got %q", m.modelBrowser.Selected())
+	}
+	before := m.config.AI.Providers[0].Model
+	upd(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.config.AI.Providers[0].Model != before {
+		t.Error("enter during error should not persist a model")
+	}
+
+	// Reload the list, move to a different model, and commit → persisted.
+	m.modelBrowser.Show("groq", "old-model")
+	upd(fetchModelsMsg{models: []string{"a", "new-model", "old-model"}})
+	m.modelBrowser.Down() // old-model (2) → a (0)
+	m.modelBrowser.Down() // a (0) → new-model (1)
+	if m.modelBrowser.Selected() != "new-model" {
+		t.Fatalf("cursor = %q, want new-model", m.modelBrowser.Selected())
+	}
+	upd(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.modelBrowser.IsVisible() {
+		t.Error("browser still visible after enter")
+	}
+	if m.config.AI.Providers[0].Model != "new-model" {
+		t.Errorf("model not persisted: %q, want new-model", m.config.AI.Providers[0].Model)
 	}
 }
 

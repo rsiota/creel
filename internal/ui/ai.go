@@ -328,6 +328,33 @@ func (m Model) effectiveAIModel() string {
 // switcher has something to show). When false the panel runs in env-only mode.
 func (m Model) hasAIProviders() bool { return len(m.config.AI.Providers) > 0 }
 
+// fetchModelsMsg carries the model ids returned by the active provider's
+// /models endpoint (the standard OpenAI-compatible listing), or the failure.
+// The model browser consumes it to populate its list.
+type fetchModelsMsg struct {
+	models []string
+	err    error
+}
+
+// fetchModelsCmd queries the active provider for its available models. The
+// resolved config is captured on the main loop so the returned goroutine never
+// touches the Model (no data race).
+func (m Model) fetchModelsCmd() tea.Cmd {
+	client := ai.New(m.aiConfig())
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		models, err := client.ListModels(ctx)
+		// Gemini's OpenAI-compatible /models returns "models/<id>"; normalise to
+		// the bare form so the list matches the config convention and the
+		// browser can land the cursor on the provider's current model.
+		for i, id := range models {
+			models[i] = strings.TrimPrefix(id, "models/")
+		}
+		return fetchModelsMsg{models: models, err: err}
+	}
+}
+
 // dispatchAI is the shared core for both routes: it validates config, marks the
 // request in-flight (driving the status-bar spinner / esc-cancel gating), and
 // returns a batched command whose result arrives as aiResultMsg. toPanel

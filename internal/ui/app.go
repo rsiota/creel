@@ -294,6 +294,7 @@ type Model struct {
 	formatPicker        FormatPicker
 	themePicker         ThemePicker
 	providerPicker      ProviderPicker
+	modelBrowser        ModelBrowser
 	importPrompt        ImportPrompt
 	addColumnForm       AddColumnForm
 	tableRenameForm     TableRenameForm
@@ -508,6 +509,7 @@ func NewModel(cfg *config.Config) Model {
 		formatPicker:    NewFormatPicker(),
 		themePicker:     NewThemePicker(),
 		providerPicker:  NewProviderPicker(),
+		modelBrowser:    NewModelBrowser(),
 		importPrompt:    NewImportPrompt(),
 		addColumnForm:   NewAddColumnForm(),
 		tableRenameForm: NewTableRenameForm(),
@@ -1371,6 +1373,38 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.providerPicker.Show(m.config.AI.Providers, m.effectiveProviderName())
 		return m, nil
 
+	case openModelBrowserMsg:
+		// `m` browses the models for the active provider. With no provider
+		// configured (env-only mode) there is no /models endpoint to query.
+		p, ok := m.activeProvider()
+		if !ok {
+			m.aiMsg = "configure an ai: provider in ~/.config/gsql/config.yaml to browse models"
+			return m, nil
+		}
+		m.modelBrowser.Show(p.Name, p.Model)
+		return m, m.fetchModelsCmd()
+
+	case fetchModelsMsg:
+		// Populate the browser, or surface the fetch failure inline. The
+		// browser is only open if `m` was just pressed (esc / a successful
+		// pick closes it), so a stray msg with no visible browser is ignored.
+		if !m.modelBrowser.IsVisible() {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.modelBrowser.SetError(errString(msg.err))
+			return m, nil
+		}
+		if p, ok := m.activeProvider(); ok {
+			m.modelBrowser.SetModels(msg.models, p.Model)
+		} else {
+			m.modelBrowser.SetModels(msg.models, "")
+		}
+		if len(msg.models) == 0 {
+			m.modelBrowser.SetError("provider returned no models")
+		}
+		return m, nil
+
 	case backendSearchTickMsg:
 		// Only execute if the input still matches (user may have typed more).
 		if m.backendSearching && msg.input == m.backendSearchInput {
@@ -1994,6 +2028,43 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "down", "j":
 			m.providerPicker.Down()
+			return m, nil
+		}
+		return m, nil // swallow other keys while open
+	}
+
+	// Model browser (m from the assistant panel) is modal — intercept all keys.
+	// j/k or up/down moves the cursor, enter commits the chosen model to the
+	// active provider's config (and persists it), esc cancels. While the list
+	// is still loading, navigation and enter are no-ops (Selected returns "").
+	if m.modelBrowser.IsVisible() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.modelBrowser.Hide()
+			return m, nil
+		case "enter":
+			sel := m.modelBrowser.Selected()
+			if sel == "" {
+				return m, nil // still loading or errored
+			}
+			m.modelBrowser.Hide()
+			// Persist the chosen model to the active provider's `model:`.
+			if name := m.modelBrowser.Provider(); name != "" {
+				for i := range m.config.AI.Providers {
+					if m.config.AI.Providers[i].Name == name {
+						m.config.AI.Providers[i].Model = sel
+						break
+					}
+				}
+				_ = m.config.Save()
+			}
+			m.aiMsg = "model: " + sel
+			return m, nil
+		case "up", "k":
+			m.modelBrowser.Up()
+			return m, nil
+		case "down", "j":
+			m.modelBrowser.Down()
 			return m, nil
 		}
 		return m, nil // swallow other keys while open
@@ -4322,6 +4393,16 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, providerPanel, panelX, panelY)
+	}
+
+	// Overlay model browser (m) if visible
+	if m.modelBrowser.IsVisible() {
+		modelPanel := m.modelBrowser.View()
+		panelW := lipgloss.Width(modelPanel)
+		panelH := lipgloss.Height(modelPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, modelPanel, panelX, panelY)
 	}
 
 	// Overlay import prompt if visible

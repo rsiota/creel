@@ -1,9 +1,6 @@
 package ui
 
 import (
-	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 	"github.com/ruben/gsql/internal/config"
 )
 
@@ -65,39 +62,13 @@ func (p ProviderPicker) Selected() string {
 	return p.providers[p.cursor].Name
 }
 
-// providerPickerWidth is the exterior cell width of the picker popup. It
-// matches the small confirm pickers (truncate/drop table), so the provider
-// picker lines up with them.
-const providerPickerWidth = 46
-
-// View renders the picker as a bordered panel: provider names, with the cursor
-// row highlighted like the ctrl+p command palette (full-width primary
-// background, inverted text, "❯" chevron). No title/footer — the status bar
-// surfaces the keybindings (j/k move · enter select · esc cancel).
+// View renders the picker via the shared modal-list frame: provider names with
+// the cursor row highlighted like the ctrl+p palette. No title/footer — the
+// status bar surfaces the keybindings (j/k move · enter select · esc cancel).
 func (p ProviderPicker) View() string {
-	// Text-area width = panel width minus the horizontal padding (Padding(0,1)).
-	rowW := providerPickerWidth - 2
-	var rows []string
+	names := make([]string, len(p.providers))
 	for i, prov := range p.providers {
-		if i == p.cursor {
-			// Pad to the full row width so the primary background fills the row
-			// (a short name would otherwise leave a partial highlight).
-			label := "❯ " + prov.Name + strings.Repeat(" ", rowW-2-runeLen(prov.Name))
-			rows = append(rows, lipgloss.NewStyle().
-				Background(colorPrimary).
-				Foreground(colorBg).
-				Render(label))
-		} else {
-			name := lipgloss.NewStyle().Foreground(colorFg).Render(prov.Name)
-			rows = append(rows, "  "+name)
-		}
+		names[i] = prov.Name
 	}
-	body := strings.Join(rows, "\n")
-
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorPrimary).
-		Padding(0, 1).
-		Width(providerPickerWidth).
-		Render(body)
+	return renderModalList(names, p.cursor, modalListWidth, len(names))
 }

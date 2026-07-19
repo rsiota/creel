@@ -217,6 +217,56 @@ func TestAssistantHintsOnStatusBar(t *testing.T) {
 	}
 }
 
+// TestModelBrowserStates exercises the three display states (loading, list,
+// error) and the cursor behaviour of the model browser modal.
+func TestModelBrowserStates(t *testing.T) {
+	var b ModelBrowser
+	b.Show("groq", "old-model")
+	if !b.IsVisible() || !b.loading {
+		t.Fatal("Show should open in the loading state")
+	}
+	if b.Provider() != "groq" {
+		t.Errorf("Provider = %q, want groq", b.Provider())
+	}
+	// While loading, navigation and selection are no-ops.
+	b.Down()
+	if b.Selected() != "" {
+		t.Errorf("Selected during loading = %q, want empty", b.Selected())
+	}
+
+	// Populating centres the cursor on the current model.
+	b.SetModels([]string{"a", "new-model", "old-model"}, "old-model")
+	if b.loading {
+		t.Error("still loading after SetModels")
+	}
+	if got := b.Selected(); got != "old-model" {
+		t.Errorf("cursor = %q, want old-model", got)
+	}
+	b.Up()
+	if got := b.Selected(); got != "new-model" {
+		t.Errorf("after Up = %q, want new-model", got)
+	}
+	b.Up()
+	if got := b.Selected(); got != "a" {
+		t.Errorf("after Up = %q, want a", got)
+	}
+	b.Down()
+	if got := b.Selected(); got != "new-model" {
+		t.Errorf("after Down = %q, want new-model", got)
+	}
+
+	// Error state renders the message inline.
+	b.SetError("provider returned 401")
+	if !strings.Contains(stripANSI(b.View()), "provider returned 401") {
+		t.Errorf("error view missing message: %q", stripANSI(b.View()))
+	}
+
+	b.Hide()
+	if b.IsVisible() {
+		t.Error("Hide should close the browser")
+	}
+}
+
 // TestProviderPickerStyling verifies the provider picker has no in-popup
 // footer, uses the primary ("blue") border, matches the width of the small
 // confirm pickers (truncate/drop table), and uses the palette-style "❯"
