@@ -323,19 +323,29 @@ func (m *Model) loadTables() {
 	m.refreshCompletionCandidates()
 }
 
-// prefetchSchemas asynchronously fetches column schemas for all tables.
+// prefetchSchemas asynchronously fetches column schemas for all tables,
+// along with each table's primary keys and foreign keys. All three feed the
+// AI schema context (so an AI turn builds its prompt from memory instead of
+// re-running metadata queries) and the autocomplete candidate list.
 func (m Model) prefetchSchemas() tea.Cmd {
 	d := m.connection.DB()
 	tables := m.tables
 	return func() tea.Msg {
-		schemas := make(map[string][]db.Column)
+		schemas := make(map[string][]db.Column, len(tables))
+		pks := make(map[string][]string, len(tables))
+		fks := make(map[string][]db.ForeignKey, len(tables))
 		for _, t := range tables {
-			cols, err := d.TableSchema(t)
-			if err == nil {
+			if cols, err := d.TableSchema(t); err == nil {
 				schemas[t] = cols
 			}
+			if pk, err := d.PrimaryKeys(t); err == nil {
+				pks[t] = pk
+			}
+			if fk, err := d.ForeignKeys(t); err == nil {
+				fks[t] = fk
+			}
 		}
-		return schemasLoadedMsg{schemas: schemas}
+		return schemasLoadedMsg{schemas: schemas, pks: pks, fks: fks}
 	}
 }
 

@@ -111,9 +111,14 @@ type queryExecutedMsg struct {
 	timedOut  bool // query exceeded the per-query deadline
 }
 
-// schemasLoadedMsg carries prefetched table schemas for autocomplete.
+// schemasLoadedMsg carries prefetched table schemas for autocomplete and
+// for the AI schema context (columns + primary keys + foreign keys), so an
+// AI request can build its prompt from memory instead of re-running
+// 1+3N metadata queries every turn.
 type schemasLoadedMsg struct {
 	schemas map[string][]db.Column
+	pks     map[string][]string
+	fks     map[string][]db.ForeignKey
 }
 
 // tableRowCountsMsg carries approximate row counts for sidebar display.
@@ -305,7 +310,9 @@ type Model struct {
 	tableRowCounts      map[string]int64 // approximate row counts for sidebar display
 	expanded            map[string][]db.Column
 	columnCache         map[string][]db.Column
-	recentTables        []string // MRU table names (most recent first); for :recent
+	pkCache             map[string][]string        // table -> PK columns (AI schema context)
+	fkCache             map[string][]db.ForeignKey // table -> FKs (AI schema context)
+	recentTables        []string                   // MRU table names (most recent first); for :recent
 
 	// Fuzzy table search
 	sidebarFilter    string
@@ -1076,6 +1083,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.schemaMsg = fmt.Sprintf("dropped table %s", msg.table)
 				delete(m.expanded, msg.table)
 				delete(m.columnCache, msg.table)
+				delete(m.pkCache, msg.table)
+				delete(m.fkCache, msg.table)
 				m.loadTables()
 				// Clamp the sidebar cursor into the (now shorter) list.
 				items := m.sidebarItems()
@@ -1117,6 +1126,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case schemasLoadedMsg:
 		m.columnCache = msg.schemas
+		m.pkCache = msg.pks
+		m.fkCache = msg.fks
 		m.refreshCompletionCandidates()
 		return m, nil
 

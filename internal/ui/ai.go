@@ -41,6 +41,24 @@ type aiStreamChunkMsg struct {
 	reasoning string
 }
 
+// aiColumns / aiForeignKeys convert the db package's structs into the ai
+// package's mirror types, keeping internal/ai free of an internal/db import.
+func aiColumns(cols []db.Column) []ai.Column {
+	out := make([]ai.Column, len(cols))
+	for i, c := range cols {
+		out[i] = ai.Column{Name: c.Name, Type: c.Type}
+	}
+	return out
+}
+
+func aiForeignKeys(fks []db.ForeignKey) []ai.ForeignKey {
+	out := make([]ai.ForeignKey, len(fks))
+	for i, f := range fks {
+		out[i] = ai.ForeignKey{Column: f.Column, RefTable: f.RefTable, RefColumn: f.RefColumn}
+	}
+	return out
+}
+
 // dbAdapter exposes db.DB to the ai package via its own small types, keeping
 // internal/ai free of an internal/db import (and so independently testable).
 type dbAdapter struct{ d db.DB }
@@ -56,11 +74,7 @@ func (a dbAdapter) TableSchema(table string) ([]ai.Column, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]ai.Column, len(cols))
-	for i, c := range cols {
-		out[i] = ai.Column{Name: c.Name, Type: c.Type}
-	}
-	return out, nil
+	return aiColumns(cols), nil
 }
 
 func (a dbAdapter) PrimaryKeys(table string) ([]string, error) {
@@ -72,11 +86,67 @@ func (a dbAdapter) ForeignKeys(table string) ([]ai.ForeignKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]ai.ForeignKey, len(fks))
-	for i, f := range fks {
-		out[i] = ai.ForeignKey{Column: f.Column, RefTable: f.RefTable, RefColumn: f.RefColumn}
+	return aiForeignKeys(fks), nil
+}
+
+// cachedAIIntrospector serves the AI schema context from the app's in-memory
+// caches (populated by prefetchSchemas), so an AI turn no longer re-runs
+// 1+3N metadata queries against the connection every time — a real cost on
+// remote MySQL/Postgres. Any table missing from a cache (cold start, or a
+// table the background prefetch skipped on error) falls back to the live
+// connection so the model still sees a complete schema.
+type cachedAIIntrospector struct {
+	tables  []string
+	columns map[string][]db.Column
+	pks     map[string][]string
+	fks     map[string][]db.ForeignKey
+	live    dbAdapter
+}
+
+// Compile-time proof that cachedAIIntrospector satisfies the interface.
+var _ ai.SchemaIntrospector = cachedAIIntrospector{}
+
+func (c cachedAIIntrospector) Tables() ([]string, error) {
+	if len(c.tables) > 0 {
+		return c.tables, nil
 	}
-	return out, nil
+	return c.live.Tables()
+}
+
+func (c cachedAIIntrospector) TableSchema(table string) ([]ai.Column, error) {
+	if cols, ok := c.columns[table]; ok {
+		return aiColumns(cols), nil
+	}
+	return c.live.TableSchema(table)
+}
+
+func (c cachedAIIntrospector) PrimaryKeys(table string) ([]string, error) {
+	if pk, ok := c.pks[table]; ok {
+		return pk, nil
+	}
+	return c.live.PrimaryKeys(table)
+}
+
+func (c cachedAIIntrospector) ForeignKeys(table string) ([]ai.ForeignKey, error) {
+	if fks, ok := c.fks[table]; ok {
+		return aiForeignKeys(fks), nil
+	}
+	return c.live.ForeignKeys(table)
+}
+
+// aiIntrospector builds a schema introspector for an AI request: cache-backed
+// (the prefetched tables/columns/PKs/FKs), with the live connection as a
+// cold-cache fallback. Built on the main loop from m's caches, so the
+// resulting schema string can be passed to the request goroutine with no data
+// race.
+func (m Model) aiIntrospector() ai.SchemaIntrospector {
+	return cachedAIIntrospector{
+		tables:  m.tables,
+		columns: m.columnCache,
+		pks:     m.pkCache,
+		fks:     m.fkCache,
+		live:    dbAdapter{m.connection.DB()},
+	}
 }
 
 // aiConfigFromEnv reads the provider configuration from the environment.
@@ -174,7 +244,7 @@ func (m *Model) exAI(question string) tea.Cmd {
 		m.aiMsg = ":ai needs a question — try :ai 10 most recent users"
 		return nil
 	}
-	schema, _ := ai.SchemaContext(dbAdapter{m.connection.DB()})
+	schema, _ := ai.SchemaContext(m.aiIntrospector())
 	messages := []ai.Message{
 		{Role: "system", Content: ai.SystemPrompt(schema)},
 		{Role: "user", Content: q},
@@ -189,7 +259,7 @@ func (m *Model) sendAssistant(question string) tea.Cmd {
 	if m.connection == nil {
 		return nil
 	}
-	schema, _ := ai.SchemaContext(dbAdapter{m.connection.DB()})
+	schema, _ := ai.SchemaContext(m.aiIntrospector())
 	messages := []ai.Message{{Role: "system", Content: ai.SystemPrompt(schema)}}
 	for _, t := range m.assistant.ConversationMessages() {
 		messages = append(messages, ai.Message{Role: t.role, Content: t.content})
