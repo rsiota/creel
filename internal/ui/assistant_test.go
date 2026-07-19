@@ -254,10 +254,45 @@ func TestModelPickerNoFooterAndPrimaryBorder(t *testing.T) {
 		t.Error("model picker view has no ANSI styling (border color not applied)")
 	}
 
+	// The selected row is highlighted like the ctrl+p palette: a full-width
+	// primary background with inverted text (not just a coloured marker).
+	foundHighlight := false
+	for _, line := range strings.Split(view, "\n") {
+		if !strings.Contains(stripANSI(line), "❯") {
+			continue
+		}
+		foundHighlight = true
+		if !hasBackgroundSGR(line) {
+			t.Error("selected model row has no background highlight (expected primary bg)")
+		}
+	}
+	if !foundHighlight {
+		t.Error("no highlighted (❯) row found in the picker")
+	}
+
 	// Exterior width matches the small confirm pickers (truncate/drop table).
 	if got, want := lipgloss.Width(view), lipgloss.Width(renderConfirmDialog("Truncate table users?")); got != want {
 		t.Errorf("model picker width = %d, want %d (confirm dialog)", got, want)
 	}
+}
+
+// hasBackgroundSGR reports whether s contains an ANSI SGR sequence that sets
+// a background colour (basic 40-47, bright 100-107, or 256/true-colour 48;…).
+// Used to assert a row carries a fill background regardless of palette.
+func hasBackgroundSGR(s string) bool {
+	for _, m := range ansiRe.FindAllString(s, -1) {
+		body := strings.TrimSuffix(strings.TrimPrefix(m, "\x1b["), "m")
+		for _, field := range strings.Split(body, ";") {
+			if field == "" {
+				continue
+			}
+			if field == "48" || (len(field) == 2 && field[0] == '4' && field >= "40" && field <= "47") ||
+				(len(field) == 3 && strings.HasPrefix(field, "10") && field >= "100" && field <= "107") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // TestAssistantStreamReasoning verifies reasoning (chain-of-thought) renders

@@ -79,29 +79,39 @@ func (p ModelPicker) Selected() string {
 	return p.options[p.cursor].id
 }
 
-// View renders the picker as a bordered panel: just the model ids under a
-// selection marker (no per-model description, which cluttered the list).
+// modelPickerWidth is the exterior cell width of the picker popup. It
+// matches the small confirm pickers (truncate/drop table), so the model
+// picker lines up with them.
+const modelPickerWidth = 46
+
+// View renders the picker as a bordered panel: just the model ids, with the
+// cursor row highlighted like the ctrl+p command palette (full-width primary
+// background, inverted text, "❯" chevron). No title/footer — the status bar
+// surfaces the keybindings (j/k move · enter select · esc cancel).
 func (p ModelPicker) View() string {
+	// Text-area width = panel width minus the horizontal padding (Padding(0,1)).
+	rowW := modelPickerWidth - 2
 	var rows []string
 	for i, o := range p.options {
-		marker := " "
-		markerStyle := lipgloss.NewStyle().Foreground(colorBorder)
 		if i == p.cursor {
-			marker = "❯"
-			markerStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+			// Pad to the full row width so the primary background fills the row
+			// (a short id would otherwise leave a partial highlight).
+			label := "❯ " + o.id + strings.Repeat(" ", rowW-2-runeLen(o.id))
+			rows = append(rows, lipgloss.NewStyle().
+				Background(colorPrimary).
+				Foreground(colorBg).
+				Render(label))
+		} else {
+			id := lipgloss.NewStyle().Foreground(colorFg).Render(o.id)
+			rows = append(rows, "  "+id)
 		}
-		row := markerStyle.Render(marker) + " " +
-			lipgloss.NewStyle().Foreground(colorFg).Render(o.id)
-		rows = append(rows, row)
 	}
 	body := strings.Join(rows, "\n")
 
-	// No title/footer in the popup: the status bar surfaces the picker's
-	// keybindings (j/k move · enter select · esc cancel) like every other panel.
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).
-		Width(46). // matches the small confirm pickers (truncate/drop table)
+		Width(modelPickerWidth).
 		Render(body)
 }
