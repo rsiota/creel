@@ -280,7 +280,7 @@ func (a *Assistant) handleBrowseKey(msg tea.KeyMsg) (Assistant, tea.Cmd) {
 		a.StartCompose()
 		return *a, nil
 	case "M":
-		return *a, func() tea.Msg { return openModelPickerMsg{} }
+		return *a, func() tea.Msg { return openProviderPickerMsg{} }
 	case "enter":
 		return *a, func() tea.Msg { return applyAssistantSQLMsg{} }
 	case "j", "down":
@@ -557,4 +557,4 @@ func renderModelSeparator(model string, width int) string {
 type submitAssistantMsg struct{ question string }
 type applyAssistantSQLMsg struct{}
 type closeAssistantMsg struct{}
-type openModelPickerMsg struct{}
+type openProviderPickerMsg struct{}

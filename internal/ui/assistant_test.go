@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ruben/gsql/internal/config"
 )
 
 func TestAssistantLatestSQL(t *testing.T) {
@@ -206,56 +207,49 @@ func TestAssistantHintsOnStatusBar(t *testing.T) {
 	}
 
 	m.assistant.CancelCompose()
-	m.modelPicker = NewModelPicker()
-	m.modelPicker.Show("glm-4.6")
+	m.providerPicker = NewProviderPicker()
+	m.providerPicker.Show([]config.AIProvider{{Name: "zai", APIKey: "k", Model: "glm-4.6"}}, "")
 	picker := strings.Join(m.hintList(), " ")
 	for _, want := range []string{"j/k", "enter", "esc"} {
 		if !strings.Contains(picker, want) {
-			t.Errorf("model picker hints missing %q: got %v", want, m.hintList())
+			t.Errorf("provider picker hints missing %q: got %v", want, m.hintList())
 		}
 	}
 }
 
-// TestModelPickerNoFooterAndPrimaryBorder verifies the model picker dropped
-// its in-popup keybinding footer, suppresses the per-model descriptions, uses
-// the primary ("blue") border so it reads as a focused modal, matches the
-// width of the small confirm pickers (truncate/drop table), and uses the
-// palette-style "❯" selection marker.
-func TestModelPickerNoFooterAndPrimaryBorder(t *testing.T) {
-	p := NewModelPicker()
-	p.Show("glm-4.6")
+// TestProviderPickerStyling verifies the provider picker has no in-popup
+// footer, uses the primary ("blue") border, matches the width of the small
+// confirm pickers (truncate/drop table), and uses the palette-style "❯"
+// selection marker with a full-width primary background.
+func TestProviderPickerStyling(t *testing.T) {
+	provs := []config.AIProvider{
+		{Name: "zai", APIKey: "k", Model: "glm-4.6"},
+		{Name: "openai", APIKey: "k", Model: "gpt-4o-mini"},
+	}
+	p := NewProviderPicker()
+	p.Show(provs, "zai")
 	view := p.View()
 	plain := stripANSI(view)
 
-	// The old footer listed these literally; it must be gone.
+	// No in-popup keybinding footer.
 	if strings.Contains(plain, "enter select") || strings.Contains(plain, "esc cancel") {
-		t.Errorf("model picker still shows an in-popup keybinding footer: %q", plain)
+		t.Errorf("provider picker shows an in-popup footer: %q", plain)
 	}
-	// The per-model descriptions (e.g. "fast · non-reasoning") are suppressed;
-	// only the ids render.
-	for _, bad := range []string{"non-reasoning", "reasoning", "default"} {
-		if strings.Contains(plain, bad) {
-			t.Errorf("model picker shows a suppressed description %q: %q", bad, plain)
+	// Provider names render.
+	for _, prov := range provs {
+		if !strings.Contains(plain, prov.Name) {
+			t.Errorf("provider %q not rendered: %q", prov.Name, plain)
 		}
 	}
-	for _, o := range aiModelOptions {
-		if !strings.Contains(plain, o.id) {
-			t.Errorf("model id %q not rendered in picker: %q", o.id, plain)
-		}
-	}
-	// Selection marker matches the ctrl+p command palette's chevron.
+	// Palette-style chevron marker.
 	if !strings.Contains(plain, "❯") {
-		t.Errorf("model picker missing the ❯ selected marker (got %q)", plain)
+		t.Errorf("provider picker missing the ❯ selected marker (got %q)", plain)
 	}
-
-	// The primary border color renders as an ANSI 38;5 escape — assert the
-	// popup carries color styling at all (not a bare unstyled border).
+	// Primary border styling present.
 	if !strings.Contains(view, "\x1b[") {
-		t.Error("model picker view has no ANSI styling (border color not applied)")
+		t.Error("provider picker view has no ANSI styling (border color not applied)")
 	}
-
-	// The selected row is highlighted like the ctrl+p palette: a full-width
-	// primary background with inverted text (not just a coloured marker).
+	// Selected row carries a full-width primary background.
 	foundHighlight := false
 	for _, line := range strings.Split(view, "\n") {
 		if !strings.Contains(stripANSI(line), "❯") {
@@ -263,16 +257,15 @@ func TestModelPickerNoFooterAndPrimaryBorder(t *testing.T) {
 		}
 		foundHighlight = true
 		if !hasBackgroundSGR(line) {
-			t.Error("selected model row has no background highlight (expected primary bg)")
+			t.Error("selected provider row has no background highlight (expected primary bg)")
 		}
 	}
 	if !foundHighlight {
 		t.Error("no highlighted (❯) row found in the picker")
 	}
-
 	// Exterior width matches the small confirm pickers (truncate/drop table).
 	if got, want := lipgloss.Width(view), lipgloss.Width(renderConfirmDialog("Truncate table users?")); got != want {
-		t.Errorf("model picker width = %d, want %d (confirm dialog)", got, want)
+		t.Errorf("provider picker width = %d, want %d (confirm dialog)", got, want)
 	}
 }
 

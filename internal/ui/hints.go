@@ -46,8 +46,8 @@ func (m Model) hintList() []string {
 		return []string{"j/k", "esc"}
 	case m.lookupPanel.IsVisible():
 		return []string{"j/k", "esc"}
-	case m.modelPicker.IsVisible():
-		return hintsForSection("Model Picker")
+	case m.providerPicker.IsVisible():
+		return hintsForSection("AI Provider")
 	case m.tableDesigner.IsVisible():
 		return hintsForSection("Table Designer")
 	case m.schemaEditor.IsVisible():

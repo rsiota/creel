@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/gsql/internal/ai"
 	"github.com/ruben/gsql/internal/config"
 	"github.com/ruben/gsql/internal/db"
 )
@@ -228,77 +227,101 @@ func stripANSI(s string) string {
 	return b.String()
 }
 
-// TestModelPicker covers cursor placement, wrap-around navigation, unknown
-// models, and that enter at the app level commits the selection to m.aiModel.
-func TestModelPicker(t *testing.T) {
-	p := NewModelPicker()
-	p.Show("glm-4.5-air") // cursor on the reasoning model (index 1)
-	if p.Selected() != "glm-4.5-air" {
-		t.Fatalf("cursor not on shown model: %q", p.Selected())
+// TestProviderPicker covers cursor placement, wrap-around navigation, an
+// unknown active name, and that enter at the app level commits the selection
+// to m.aiProvider and persists it as the config default.
+func TestProviderPicker(t *testing.T) {
+	provs := []config.AIProvider{
+		{Name: "fast", APIKey: "k1", Model: "glm-4.6"},
+		{Name: "smart", APIKey: "k2", Model: "glm-4.5-air"},
+		{Name: "openai", APIKey: "k3", Model: "gpt-4o-mini"},
+	}
+
+	p := NewProviderPicker()
+	p.Show(provs, "smart") // cursor index 1
+	if got := p.Selected(); got != "smart" {
+		t.Fatalf("cursor not on shown provider: %q", got)
 	}
 	p.Down()
-	if p.Selected() != "glm-4.5" { // index 2
-		t.Errorf("after Down: %q, want glm-4.5", p.Selected())
+	if got := p.Selected(); got != "openai" { // index 2
+		t.Errorf("after Down: %q, want openai", got)
 	}
 	p.Up() // → 1
 	p.Up() // → 0
 	p.Up() // wrap → last
-	if p.Selected() != aiModelOptions[len(aiModelOptions)-1].id {
-		t.Errorf("wrap Up: %q, want %q", p.Selected(), aiModelOptions[len(aiModelOptions)-1].id)
+	if got := p.Selected(); got != provs[len(provs)-1].Name {
+		t.Errorf("wrap Up: %q, want %q", got, provs[len(provs)-1].Name)
 	}
 	p.Down() // wrap → first
-	if p.Selected() != aiModelOptions[0].id {
-		t.Errorf("wrap Down: %q, want %q", p.Selected(), aiModelOptions[0].id)
+	if got := p.Selected(); got != provs[0].Name {
+		t.Errorf("wrap Down: %q, want %q", got, provs[0].Name)
 	}
 
-	// Unknown model falls through to the first option.
-	p2 := NewModelPicker()
-	p2.Show("does-not-exist")
-	if p2.Selected() != aiModelOptions[0].id {
-		t.Errorf("unknown model cursor: %q", p2.Selected())
+	// Unknown active name falls through to the first provider.
+	p2 := NewProviderPicker()
+	p2.Show(provs, "does-not-exist")
+	if got := p2.Selected(); got != provs[0].Name {
+		t.Errorf("unknown name cursor: %q", got)
 	}
 
-	// App-level: enter commits the picker's selection to m.aiModel.
-	conn, err := db.New(db.ConnectionConfig{Driver: db.DriverSQLite, Database: filepath.Join(t.TempDir(), "x.db")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := conn.Connect(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { conn.Close() })
-	m := NewModel(&config.Config{})
+	// App-level: enter commits the picker's selection to m.aiProvider and
+	// persists it as the config default.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // redirect config write
+	m := NewModel(&config.Config{AI: config.AIConfig{Providers: provs}})
 	mm, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 44})
 	m = mm.(Model)
-	m.connection = conn
 	m.state = stateWorkspace
-	m.modelPicker.Show("")
-	m.modelPicker.Down() // glm-4.5-air
+	m.providerPicker.Show(provs, "fast")
+	m.providerPicker.Down() // → smart
 	if m3, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter}); m3 != nil {
 		m = m3.(Model)
 	}
-	if m.aiModel != "glm-4.5-air" {
-		t.Errorf("after enter: aiModel = %q, want glm-4.5-air", m.aiModel)
+	if m.aiProvider != "smart" {
+		t.Errorf("after enter: aiProvider = %q, want smart", m.aiProvider)
 	}
-	if m.modelPicker.IsVisible() {
+	if m.config.AI.Default != "smart" {
+		t.Errorf("after enter: config.AI.Default = %q, want smart", m.config.AI.Default)
+	}
+	if m.providerPicker.IsVisible() {
 		t.Errorf("picker still visible after enter")
 	}
 }
 
-// TestAIConfigModelOverride verifies the picker choice (m.aiModel) is preferred
-// over the env-derived model, and that with no choice the env/default is used.
-func TestAIConfigModelOverride(t *testing.T) {
-	t.Setenv("GSQL_AI_API_KEY", "k")
-	m := NewModel(&config.Config{})
-	if got := m.aiConfig().Model; got != ai.DefaultModel {
-		t.Errorf("default model = %q, want %q", got, ai.DefaultModel)
+// TestAIConfigProviderResolution verifies that a configured provider supplies
+// the API key / base URL / model (the picker choice overriding the config
+// default), and that with no usable provider it falls back to the env vars.
+func TestAIConfigProviderResolution(t *testing.T) {
+	provs := []config.AIProvider{
+		{Name: "fast", APIKey: "k1", BaseURL: "http://fast/v1", Model: "glm-4.6"},
+		{Name: "smart", APIKey: "k2", BaseURL: "http://smart/v1", Model: "glm-4.5-air"},
 	}
-	m.aiModel = "glm-4.5-air"
-	if got := m.aiConfig().Model; got != "glm-4.5-air" {
-		t.Errorf("overridden model = %q, want glm-4.5-air", got)
+
+	// Config default provider is used when the picker hasn't chosen.
+	m := NewModel(&config.Config{AI: config.AIConfig{Default: "fast", Providers: provs}})
+	cfg := m.aiConfig()
+	if cfg.APIKey != "k1" || cfg.BaseURL != "http://fast/v1" || cfg.Model != "glm-4.6" {
+		t.Errorf("default provider cfg = %+v", cfg)
 	}
-	if m.effectiveAIModel() != "glm-4.5-air" {
-		t.Errorf("effectiveAIModel = %q, want glm-4.5-air", m.effectiveAIModel())
+	if m.effectiveAIModel() != "glm-4.6" {
+		t.Errorf("effectiveAIModel = %q, want glm-4.6", m.effectiveAIModel())
+	}
+
+	// Picker choice overrides the config default.
+	m.aiProvider = "smart"
+	cfg = m.aiConfig()
+	if cfg.APIKey != "k2" || cfg.Model != "glm-4.5-air" {
+		t.Errorf("overridden provider cfg = %+v", cfg)
+	}
+
+	// Unknown provider name, and no providers at all, both fall back to env.
+	t.Setenv("GSQL_AI_API_KEY", "envkey")
+	m2 := NewModel(&config.Config{AI: config.AIConfig{Default: "missing", Providers: provs}})
+	if got := m2.aiConfig().APIKey; got != "envkey" {
+		t.Errorf("unknown provider should fall back to env: got APIKey %q", got)
+	}
+	m3 := NewModel(&config.Config{})
+	if got := m3.aiConfig().APIKey; got != "envkey" {
+		t.Errorf("no providers should fall back to env: got APIKey %q", got)
 	}
 }
 
@@ -315,7 +338,9 @@ func TestAssistantDefaultsToBrowse(t *testing.T) {
 	}
 	t.Cleanup(func() { conn.Close() })
 
-	m := NewModel(&config.Config{})
+	m := NewModel(&config.Config{AI: config.AIConfig{
+		Providers: []config.AIProvider{{Name: "zai", APIKey: "k", Model: "glm-4.6"}},
+	}})
 	mm, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 44})
 	m = mm.(Model)
 	m.connection = conn
@@ -328,17 +353,17 @@ func TestAssistantDefaultsToBrowse(t *testing.T) {
 		t.Fatalf("assistant should be in browse mode after focus, not compose")
 	}
 
-	// `M` from browse opens the model picker (returns an openModelPickerMsg).
+	// `M` from browse opens the provider picker (returns an openProviderPickerMsg).
 	m2, cmd := m.updateWorkspace(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
 	m = m2.(Model)
 	if cmd == nil {
 		t.Fatal("M in browse returned no command (should open the picker)")
 	}
-	if m3, _ := m.Update(cmd()); m3 != nil { // run openModelPickerMsg
+	if m3, _ := m.Update(cmd()); m3 != nil { // run openProviderPickerMsg
 		m = m3.(Model)
 	}
-	if !m.modelPicker.IsVisible() {
-		t.Errorf("model picker not visible after M")
+	if !m.providerPicker.IsVisible() {
+		t.Errorf("provider picker not visible after M")
 	}
 	if v := m.assistant.InputValue(); v != "" {
 		t.Errorf("M leaked into compose input: %q", v)

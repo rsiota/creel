@@ -11,7 +11,29 @@ import (
 // Config is the top-level application configuration.
 type Config struct {
 	Connections []ConnectionConfig `yaml:"connections"`
+	AI          AIConfig           `yaml:"ai,omitempty"`
 	Settings    Settings           `yaml:"settings,omitempty"`
+}
+
+// AIConfig holds the AI provider configuration for the :ai / assistant
+// panel. Providers is a named list (each bundles an API key, base URL, and
+// default model); Default names the active one. With no providers configured
+// the app falls back to the GSQL_AI_* environment variables, so this block is
+// entirely optional.
+type AIConfig struct {
+	Default   string       `yaml:"default,omitempty"`
+	Providers []AIProvider `yaml:"providers,omitempty"`
+}
+
+// AIProvider is one OpenAI-compatible endpoint. APIKey is either plaintext or
+// a "secret://<key>" keychain reference (resolved at request time via
+// internal/secrets), so the key can live in the OS keychain instead of the
+// config file. BaseURL/Model fall back to the ai package defaults when empty.
+type AIProvider struct {
+	Name    string `yaml:"name"`
+	APIKey  string `yaml:"api_key,omitempty"`
+	BaseURL string `yaml:"base_url,omitempty"`
+	Model   string `yaml:"model,omitempty"`
 }
 
 // ConnectionConfig mirrors db.ConnectionConfig but lives in config package

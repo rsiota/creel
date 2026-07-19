@@ -305,11 +305,11 @@ func registry() []Section {
 			},
 		},
 		{
-			Title:  "Model Picker",
+			Title:  "AI Provider",
 			Source: "app.go",
 			Items: []Binding{
 				{"j/k, \u2191/\u2193", []string{"j", "k", "up", "down"}, "move", "j/k"},
-				{"enter", []string{"enter"}, "select model", "enter"},
+				{"enter", []string{"enter"}, "select provider", "enter"},
 				{"esc", []string{"esc"}, "cancel", "esc"},
 			},
 		},

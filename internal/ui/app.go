@@ -293,7 +293,7 @@ type Model struct {
 	exportPicker        ExportPicker
 	formatPicker        FormatPicker
 	themePicker         ThemePicker
-	modelPicker         ModelPicker
+	providerPicker      ProviderPicker
 	importPrompt        ImportPrompt
 	addColumnForm       AddColumnForm
 	tableRenameForm     TableRenameForm
@@ -451,7 +451,7 @@ type Model struct {
 	aiToPanel  bool
 	aiCancel   context.CancelFunc
 	aiStream   <-chan tea.Msg // streamed chunks arrive here while a panel request is in flight
-	aiModel    string         // model chosen via the picker; overrides GSQL_AI_MODEL when set
+	aiProvider string         // active AI provider name (set via the picker); overrides config default
 	aiQuestion string
 	aiStart    time.Time
 	aiMsg      string
@@ -507,7 +507,7 @@ func NewModel(cfg *config.Config) Model {
 		exportPicker:    NewExportPicker(),
 		formatPicker:    NewFormatPicker(),
 		themePicker:     NewThemePicker(),
-		modelPicker:     NewModelPicker(),
+		providerPicker:  NewProviderPicker(),
 		importPrompt:    NewImportPrompt(),
 		addColumnForm:   NewAddColumnForm(),
 		tableRenameForm: NewTableRenameForm(),
@@ -1362,8 +1362,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.layoutWorkspace()
 		return m, nil
 
-	case openModelPickerMsg:
-		m.modelPicker.Show(m.effectiveAIModel())
+	case openProviderPickerMsg:
+		if !m.hasAIProviders() {
+			// Env-only mode: nothing to switch. Point the user at the config.
+			m.aiMsg = "configure AI providers in ~/.config/gsql/config.yaml to switch"
+			return m, nil
+		}
+		m.providerPicker.Show(m.config.AI.Providers, m.effectiveProviderName())
 		return m, nil
 
 	case backendSearchTickMsg:
@@ -1961,23 +1966,34 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Theme picker (g c) is modal — intercept all keys. Moving the cursor
 	// live-previews the theme (the picker applies the palette itself); enter
 	// persists the choice to the config, esc reverts to the open-time theme.
-	// Model picker (M from the assistant panel) is modal — intercept all keys.
-	// j/k or up/down moves the cursor, enter commits the choice, esc cancels.
-	if m.modelPicker.IsVisible() {
+	// Provider picker (M from the assistant panel) is modal — intercept all
+	// keys. j/k or up/down moves the cursor, enter commits the choice (and
+	// persists it as the config's active provider), esc cancels.
+	if m.providerPicker.IsVisible() {
 		switch msg.String() {
 		case "esc", "ctrl+c":
-			m.modelPicker.Hide()
+			m.providerPicker.Hide()
 			return m, nil
 		case "enter":
-			m.aiModel = m.modelPicker.Selected()
-			m.modelPicker.Hide()
-			m.aiMsg = "model: " + m.aiModel
+			name := m.providerPicker.Selected()
+			m.providerPicker.Hide()
+			if name == "" {
+				return m, nil
+			}
+			m.aiProvider = name
+			m.config.AI.Default = name
+			_ = m.config.Save()
+			if p, ok := m.activeProvider(); ok && p.Model != "" {
+				m.aiMsg = "provider: " + name + " (" + p.Model + ")"
+			} else {
+				m.aiMsg = "provider: " + name
+			}
 			return m, nil
 		case "up", "k":
-			m.modelPicker.Up()
+			m.providerPicker.Up()
 			return m, nil
 		case "down", "j":
-			m.modelPicker.Down()
+			m.providerPicker.Down()
 			return m, nil
 		}
 		return m, nil // swallow other keys while open
@@ -4298,14 +4314,14 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, themePanel, panelX, panelY)
 	}
 
-	// Overlay model picker (M) if visible
-	if m.modelPicker.IsVisible() {
-		modelPanel := m.modelPicker.View()
-		panelW := lipgloss.Width(modelPanel)
-		panelH := lipgloss.Height(modelPanel)
+	// Overlay provider picker (M) if visible
+	if m.providerPicker.IsVisible() {
+		providerPanel := m.providerPicker.View()
+		panelW := lipgloss.Width(providerPanel)
+		panelH := lipgloss.Height(providerPanel)
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
-		view = placeOverlay(view, modelPanel, panelX, panelY)
+		view = placeOverlay(view, providerPanel, panelX, panelY)
 	}
 
 	// Overlay import prompt if visible

@@ -8,7 +8,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/ruben/gsql/internal/ai"
+	"github.com/ruben/gsql/internal/config"
 	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/gsql/internal/secrets"
 )
 
 // Phase 0 AI integration. The :ai <question> ex-command builds a schema
@@ -268,25 +270,63 @@ func (m *Model) sendAssistant(question string) tea.Cmd {
 	return m.dispatchAI(messages, true, question)
 }
 
-// aiConfig builds the AI client config from the environment, then applies
-// the model chosen via the picker (if any) over GSQL_AI_MODEL. This is the
-// single place that resolves which model a request actually uses.
-func (m Model) aiConfig() ai.Config {
-	cfg := aiConfigFromEnv()
-	if m.aiModel != "" {
-		cfg.Model = m.aiModel
+// activeProvider resolves the provider a request should use: the in-memory
+// choice (m.aiProvider, set by the picker) if set, else the config's default.
+// Returns the provider and true when one is configured; otherwise false and
+// the caller falls back to the environment.
+func (m Model) activeProvider() (config.AIProvider, bool) {
+	name := m.effectiveProviderName()
+	for _, p := range m.config.AI.Providers {
+		if p.Name == name {
+			return p, true
+		}
 	}
-	return cfg
+	return config.AIProvider{}, false
+}
+
+// effectiveProviderName is the active provider name shown in the UI / used to
+// place the picker cursor: the picker choice if set, else the config default.
+func (m Model) effectiveProviderName() string {
+	if m.aiProvider != "" {
+		return m.aiProvider
+	}
+	return m.config.AI.Default
+}
+
+// aiConfig builds the AI client config. A configured provider wins (its API
+// key is resolved — plaintext or keychain secret:// ref — and its base URL /
+// model fall back to the ai defaults when empty); with no provider configured
+// it falls through to the GSQL_AI_* environment variables. This is the single
+// place that resolves which key/endpoint/model a request actually uses.
+func (m Model) aiConfig() ai.Config {
+	if p, ok := m.activeProvider(); ok {
+		key, err := secrets.Resolve(p.APIKey)
+		if err != nil {
+			key = "" // an unreadable key ref surfaces as an auth error downstream
+		}
+		return ai.Config{
+			APIKey:  key,
+			BaseURL: firstNonEmpty(p.BaseURL, ai.DefaultBaseURL),
+			Model:   firstNonEmpty(p.Model, ai.DefaultModel),
+			Timeout: 60 * time.Second,
+		}
+	}
+	return aiConfigFromEnv()
 }
 
 // effectiveAIModel is the model id shown in the UI / used to place the picker
-// cursor: the picker choice if set, else the env/default.
+// cursor: the active provider's model if one is configured, else the env
+// default.
 func (m Model) effectiveAIModel() string {
-	if m.aiModel != "" {
-		return m.aiModel
+	if p, ok := m.activeProvider(); ok {
+		return firstNonEmpty(p.Model, ai.DefaultModel)
 	}
 	return aiConfigFromEnv().Model
 }
+
+// hasAIProviders reports whether any provider is configured (and so the `M`
+// switcher has something to show). When false the panel runs in env-only mode.
+func (m Model) hasAIProviders() bool { return len(m.config.AI.Providers) > 0 }
 
 // dispatchAI is the shared core for both routes: it validates config, marks the
 // request in-flight (driving the status-bar spinner / esc-cancel gating), and
@@ -295,7 +335,11 @@ func (m Model) effectiveAIModel() string {
 func (m *Model) dispatchAI(messages []ai.Message, toPanel bool, question string) tea.Cmd {
 	cfg := m.aiConfig()
 	if cfg.APIKey == "" {
-		m.aiMsg = "set $GSQL_AI_API_KEY / $OPENAI_API_KEY / $ZAI_API_KEY to use :ai"
+		if _, ok := m.activeProvider(); ok {
+			m.aiMsg = "active AI provider has no api_key — set it in ~/.config/gsql/config.yaml"
+		} else {
+			m.aiMsg = "set $GSQL_AI_API_KEY / $OPENAI_API_KEY / $ZAI_API_KEY, or configure an ai: provider in config.yaml"
+		}
 		return nil
 	}
 
