@@ -217,9 +217,10 @@ func TestAssistantHintsOnStatusBar(t *testing.T) {
 }
 
 // TestModelPickerNoFooterAndPrimaryBorder verifies the model picker dropped
-// its in-popup keybinding footer, suppresses the per-model descriptions, and
-// uses the primary ("blue") border so it reads as a focused modal like the
-// other popups.
+// its in-popup keybinding footer, suppresses the per-model descriptions, uses
+// the primary ("blue") border so it reads as a focused modal, matches the
+// width of the small confirm pickers (truncate/drop table), and uses the
+// palette-style "❯" selection marker.
 func TestModelPickerNoFooterAndPrimaryBorder(t *testing.T) {
 	p := NewModelPicker()
 	p.Show("glm-4.6")
@@ -242,11 +243,20 @@ func TestModelPickerNoFooterAndPrimaryBorder(t *testing.T) {
 			t.Errorf("model id %q not rendered in picker: %q", o.id, plain)
 		}
 	}
+	// Selection marker matches the ctrl+p command palette's chevron.
+	if !strings.Contains(plain, "❯") {
+		t.Errorf("model picker missing the ❯ selected marker (got %q)", plain)
+	}
 
 	// The primary border color renders as an ANSI 38;5 escape — assert the
 	// popup carries color styling at all (not a bare unstyled border).
 	if !strings.Contains(view, "\x1b[") {
 		t.Error("model picker view has no ANSI styling (border color not applied)")
+	}
+
+	// Exterior width matches the small confirm pickers (truncate/drop table).
+	if got, want := lipgloss.Width(view), lipgloss.Width(renderConfirmDialog("Truncate table users?")); got != want {
+		t.Errorf("model picker width = %d, want %d (confirm dialog)", got, want)
 	}
 }
 

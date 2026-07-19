@@ -87,7 +87,7 @@ func (p ModelPicker) View() string {
 		marker := " "
 		markerStyle := lipgloss.NewStyle().Foreground(colorBorder)
 		if i == p.cursor {
-			marker = "▸"
+			marker = "❯"
 			markerStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 		}
 		row := markerStyle.Render(marker) + " " +
@@ -105,5 +105,6 @@ func (p ModelPicker) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).
+		Width(46). // matches the small confirm pickers (truncate/drop table)
 		Render(content)
 }
