@@ -96,15 +96,12 @@ func (p ModelPicker) View() string {
 	}
 	body := strings.Join(rows, "\n")
 
-	title := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("Model")
-
-	// No in-popup footer: the status bar surfaces the picker's keybindings
-	// (j/k move · enter select · esc cancel) like every other panel.
-	content := lipgloss.JoinVertical(lipgloss.Left, title, body)
+	// No title/footer in the popup: the status bar surfaces the picker's
+	// keybindings (j/k move · enter select · esc cancel) like every other panel.
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).
 		Width(46). // matches the small confirm pickers (truncate/drop table)
-		Render(content)
+		Render(body)
 }
