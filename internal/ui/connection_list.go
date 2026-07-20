@@ -399,7 +399,33 @@ func (c *ConnectionList) ToggleGroupAtCursor() {
 	c.ensureVisible(rows)
 }
 
-// ensureVisible adjusts the line-based scroll so the cursor row is fully
+// SelectFirstConnectionInGroup moves the cursor from a group header onto that
+// group's first connection, expanding the group first if it was collapsed so
+// the target row is visible. It is a no-op (returns false) when the cursor is
+// not on a header. Used so the d/e command keys act on a connection instead
+// of silently doing nothing when invoked from a header.
+func (c *ConnectionList) SelectFirstConnectionInGroup() bool {
+	rows := c.rows()
+	if c.cursor < 0 || c.cursor >= len(rows) || rows[c.cursor].kind != rowGroup {
+		return false
+	}
+	g := rows[c.cursor].group
+	if c.collapsed[g] {
+		if c.collapsed == nil {
+			c.collapsed = map[string]bool{}
+		}
+		c.collapsed[g] = false
+		rows = c.rows() // expanding grows the row list
+	}
+	hdr := groupHeaderIndex(rows, g)
+	for i := hdr + 1; i < len(rows); i++ {
+		if rows[i].kind == rowConn && rows[i].group == g {
+			c.SetCursor(i) // clamps + ensureVisible
+			return true
+		}
+	}
+	return false
+}
 // visible, keeping the scroll snapped to a row boundary. Among the valid
 // boundaries it picks the smallest (most content above the cursor), so the
 // cursor sits near the bottom of the viewport rather than jumping to the top.

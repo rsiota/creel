@@ -1,5 +1,5 @@
 // Package secrets provides an OS keychain-backed secret store for connection
-// credentials, with a transparent plaintext fallback.
+// credentials and AI provider API keys, with a transparent plaintext fallback.
 //
 // Secret values passed to Store are written to the OS keychain (via
 // github.com/zalando/go-keyring) and represented in configuration files as
@@ -40,6 +40,36 @@ const (
 // Callers iterate this to resolve or store every secret field uniformly.
 var Fields = []string{FieldPassword, FieldSSHPassword, FieldSSHPassphrase}
 
+// --- AI provider secrets ----------------------------------------------------
+//
+// Provider API keys are namespaced under "ai/" so a provider named, say,
+// "prod" can never collide with a connection also named "prod" (whose
+// password key would be "prod/password"). Only the API key is stored this
+// way; a provider has no other secret fields.
+
+// FieldAPIKey is the per-provider secret field: its API key.
+const FieldAPIKey = "api_key"
+
+// AIKey builds the keychain key for an AI provider's API key. The key is
+// stable across runs as long as the provider name is unchanged; renaming a
+// provider therefore orphans its old key (callers purge it on rename).
+func AIKey(name string) string {
+	return "ai/" + name + "/" + FieldAPIKey
+}
+
+// StoreAI writes a provider's API key to the keychain and returns its
+// "secret://" reference for config storage. Empty values and existing
+// references follow the same rules as Store.
+func StoreAI(name, value string) (string, error) {
+	return storeKey(AIKey(name), value)
+}
+
+// DeleteAI removes a provider's API key from the keychain. A missing key is
+// not an error (the provider may never have used the keychain).
+func DeleteAI(name string) error {
+	return deleteKey(AIKey(name))
+}
+
 // availabilityProbeKey is a sentinel used by Available to detect a functional
 // keychain backend without reading or writing real data.
 const availabilityProbeKey = "__gsql_availability_probe__"
@@ -71,22 +101,30 @@ func Available() bool {
 	return err == nil || errors.Is(err, keyring.ErrNotFound)
 }
 
-// Store writes value to the OS keychain and returns a reference string for
-// config storage. Empty values return "" without touching the keychain. Values
-// that are already references are returned unchanged. If the keychain is
-// unavailable, Store returns an error so the caller can fall back to plaintext.
+// Store writes value to the OS keychain under the connection's field key and
+// returns a reference string for config storage. Empty values return ""
+// without touching the keychain. Values that are already references are
+// returned unchanged. If the keychain is unavailable, Store returns an error
+// so the caller can fall back to plaintext.
 func Store(connName, field, value string) (string, error) {
+	return storeKey(MakeKey(connName, field), value)
+}
+
+// storeKey writes value under the given keychain key and returns its
+// "secret://<key>" reference. Empty values are a no-op (return ""); values
+// already holding a reference are returned unchanged. Shared by the
+// connection- and provider-scoped Store helpers so the two never drift.
+func storeKey(key, value string) (string, error) {
 	if value == "" {
 		return "", nil
 	}
 	if IsReference(value) {
 		return value, nil
 	}
-	key := MakeKey(connName, field)
 	if err := keyring.Set(Service, key, value); err != nil {
 		return "", fmt.Errorf("storing %q in keychain: %w", key, err)
 	}
-	return MakeRef(connName, field), nil
+	return RefPrefix + key, nil
 }
 
 // Resolve returns the plaintext form of value. Values that are not references
@@ -108,7 +146,13 @@ func Resolve(value string) (string, error) {
 // not an error (the connection may never have used the keychain). Other
 // failures are returned.
 func Delete(connName, field string) error {
-	key := MakeKey(connName, field)
+	return deleteKey(MakeKey(connName, field))
+}
+
+// deleteKey removes a single key from the keychain. A missing key is not an
+// error (best-effort purge). Shared by the connection- and provider-scoped
+// Delete helpers.
+func deleteKey(key string) error {
 	err := keyring.Delete(Service, key)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return nil

@@ -149,3 +149,33 @@ func (c *Config) GetConnection(name string) *ConnectionConfig {
 	}
 	return nil
 }
+
+// AddAIProvider appends an AI provider to the config.
+func (c *Config) AddAIProvider(p AIProvider) {
+	c.AI.Providers = append(c.AI.Providers, p)
+}
+
+// RemoveAIProvider removes an AI provider by name. Removing the provider that
+// is the configured default clears the default (the caller is expected to set
+// a new one if any providers remain).
+func (c *Config) RemoveAIProvider(name string) {
+	for i, p := range c.AI.Providers {
+		if p.Name == name {
+			c.AI.Providers = append(c.AI.Providers[:i], c.AI.Providers[i+1:]...)
+			if c.AI.Default == name {
+				c.AI.Default = ""
+			}
+			return
+		}
+	}
+}
+
+// GetAIProvider returns an AI provider by name, or nil if not found.
+func (c *Config) GetAIProvider(name string) *AIProvider {
+	for i := range c.AI.Providers {
+		if c.AI.Providers[i].Name == name {
+			return &c.AI.Providers[i]
+		}
+	}
+	return nil
+}

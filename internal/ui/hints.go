@@ -21,6 +21,8 @@ func (m Model) hintList() []string {
 		return []string{"enter", "esc"}
 	case m.dropDBConfirm != "" || m.dropTableConfirm != "":
 		return []string{"enter", "esc"}
+	case m.deleteConnConfirm != "" || m.deleteProviderConfirm != "":
+		return []string{"y", "n", "esc"}
 
 	// Full-screen overlays.
 	case m.importPrompt.IsVisible():
@@ -48,6 +50,14 @@ func (m Model) hintList() []string {
 		return []string{"j/k", "esc"}
 	case m.providerPicker.IsVisible():
 		return hintsForSection("AI Provider")
+	case m.providerForm.IsVisible():
+		if m.providerForm.IsEditing() {
+			return []string{"enter", "esc"}
+		}
+		if m.providerForm.ActiveIsChoice() {
+			return []string{"j/k", "h/l", "enter", "ctrl+t", "esc"}
+		}
+		return []string{"j/k", "e", "enter", "ctrl+t", "esc"}
 	case m.modelBrowser.IsVisible():
 		return hintsForSection("Model Browser")
 	case m.tableDesigner.IsVisible():

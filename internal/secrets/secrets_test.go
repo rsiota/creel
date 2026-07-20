@@ -143,3 +143,76 @@ func TestDeleteAllReportsFirstErrorButAttemptsAll(t *testing.T) {
 		t.Errorf("DeleteAll on clean connection = %v, want nil", err)
 	}
 }
+
+// --- AI provider secrets ----------------------------------------------------
+
+func TestAIKeyNamespaced(t *testing.T) {
+	// The "ai/" prefix keeps provider keys separate from same-named
+	// connection passwords.
+	if got := AIKey("prod"); got != "ai/prod/"+FieldAPIKey {
+		t.Errorf("AIKey = %q", got)
+	}
+	if got := AIKey("prod"); got == MakeKey("prod", FieldPassword) {
+		t.Error("AI key collides with a connection password key")
+	}
+}
+
+func TestStoreAIEmpyIsNoop(t *testing.T) {
+	ref, err := StoreAI("openai", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ref != "" {
+		t.Errorf("StoreAI empty = %q, want empty", ref)
+	}
+}
+
+func TestStoreAIPassesReferenceThrough(t *testing.T) {
+	in := RefPrefix + AIKey("openai")
+	out, err := StoreAI("openai", in)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != in {
+		t.Errorf("StoreAI(ref) = %q, want %q", out, in)
+	}
+}
+
+func TestAIKeychainRoundTrip(t *testing.T) {
+	if !Available() {
+		t.Skip("OS keychain not available")
+	}
+	name := "gsql-test-ai-provider"
+	t.Cleanup(func() { _ = DeleteAI(name) })
+
+	ref, err := StoreAI(name, "sk-test-123")
+	if err != nil {
+		t.Fatalf("StoreAI: %v", err)
+	}
+	if !IsReference(ref) {
+		t.Fatalf("expected a reference, got %q", ref)
+	}
+	got, err := Resolve(ref)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got != "sk-test-123" {
+		t.Errorf("Resolve = %q, want sk-test-123", got)
+	}
+
+	if err := DeleteAI(name); err != nil {
+		t.Fatalf("DeleteAI: %v", err)
+	}
+	if _, err := Resolve(ref); err == nil {
+		t.Error("Resolve after delete: expected error, got nil")
+	}
+}
+
+func TestDeleteAIMissingIsNotAnError(t *testing.T) {
+	if !Available() {
+		t.Skip("OS keychain not available")
+	}
+	if err := DeleteAI("gsql-test-ai-missing"); err != nil {
+		t.Errorf("DeleteAI of missing key = %v, want nil", err)
+	}
+}

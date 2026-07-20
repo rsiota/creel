@@ -311,6 +311,9 @@ func registry() []Section {
 			Items: []Binding{
 				{"j/k, \u2191/\u2193", []string{"j", "k", "up", "down"}, "move", "j/k"},
 				{"enter", []string{"enter"}, "select provider", "enter"},
+				{"n", []string{"n"}, "new provider", "n"},
+				{"e", []string{"e"}, "edit provider", "e"},
+				{"d", []string{"d"}, "delete provider", "d"},
 				{"esc", []string{"esc"}, "cancel", "esc"},
 			},
 		},

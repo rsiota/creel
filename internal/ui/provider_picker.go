@@ -63,9 +63,13 @@ func (p ProviderPicker) Selected() string {
 }
 
 // View renders the picker via the shared modal-list frame: provider names with
-// the cursor row highlighted like the ctrl+p palette. No title/footer — the
-// status bar surfaces the keybindings (j/k move · enter select · esc cancel).
+// the cursor row highlighted like the ctrl+p command palette. An empty list
+// (no providers configured yet) renders a single placeholder row pointing at
+// `n`, so the add-provider form is always reachable from `M`.
 func (p ProviderPicker) View() string {
+	if len(p.providers) == 0 {
+		return renderModalList([]string{"No providers — press n to add one"}, -1, modalListWidth, 1)
+	}
 	names := make([]string, len(p.providers))
 	for i, prov := range p.providers {
 		names[i] = prov.Name

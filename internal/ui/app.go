@@ -295,6 +295,7 @@ type Model struct {
 	themePicker         ThemePicker
 	providerPicker      ProviderPicker
 	modelBrowser        ModelBrowser
+	providerForm        ProviderForm
 	importPrompt        ImportPrompt
 	addColumnForm       AddColumnForm
 	tableRenameForm     TableRenameForm
@@ -371,6 +372,14 @@ type Model struct {
 
 	// Clear-bookmarks confirmation dialog.
 	clearBookmarksConfirm bool
+
+	// Connection-deletion confirmation dialog (non-empty name while pending),
+	// gated by confirm_destructive.
+	deleteConnConfirm string
+
+	// AI-provider-deletion confirmation dialog (non-empty name while pending),
+	// gated by confirm_destructive. Stacked over the `M` provider picker.
+	deleteProviderConfirm string
 
 	config            *config.Config
 	connection        *db.Connection
@@ -510,6 +519,7 @@ func NewModel(cfg *config.Config) Model {
 		themePicker:     NewThemePicker(),
 		providerPicker:  NewProviderPicker(),
 		modelBrowser:    NewModelBrowser(),
+		providerForm:    NewProviderForm(),
 		importPrompt:    NewImportPrompt(),
 		addColumnForm:   NewAddColumnForm(),
 		tableRenameForm: NewTableRenameForm(),
@@ -1365,11 +1375,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case openProviderPickerMsg:
-		if !m.hasAIProviders() {
-			// Env-only mode: nothing to switch. Point the user at the config.
-			m.aiMsg = "configure AI providers in ~/.config/gsql/config.yaml to switch"
-			return m, nil
-		}
+		// Always open the picker, even with no providers configured: that is
+		// exactly the state where the user wants to add one (n), and bailing
+		// out here would make the form unreachable. The empty picker renders a
+		// "press n to add" placeholder.
 		m.providerPicker.Show(m.config.AI.Providers, m.effectiveProviderName())
 		return m, nil
 
@@ -1402,6 +1411,45 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if len(msg.models) == 0 {
 			m.modelBrowser.SetError("provider returned no models")
+		}
+		return m, nil
+
+	case openProviderFormAddMsg:
+		// `n` from the `M` picker: open the provider form in add mode. The
+		// picker is hidden (the form returns to it on esc/save).
+		m.providerPicker.Hide()
+		m.providerForm.Show()
+		iw, _ := popupContentSize(m.height)
+		m.providerForm.SetSize(iw)
+		return m, nil
+
+	case openProviderFormEditMsg:
+		// `e` from the `M` picker: open the form pre-filled from the selected
+		// provider. A missing name (empty picker) is a no-op.
+		if msg.name == "" {
+			return m, nil
+		}
+		p := m.config.GetAIProvider(msg.name)
+		if p == nil {
+			return m, nil
+		}
+		m.providerPicker.Hide()
+		m.providerForm.ShowEdit(*p)
+		iw, _ := popupContentSize(m.height)
+		m.providerForm.SetSize(iw)
+		return m, nil
+
+	case providerTestResultMsg:
+		// ctrl+t from the provider form: route the /models probe result back to
+		// the form (field tinting + message). A stray msg with no visible form
+		// is ignored.
+		if !m.providerForm.IsVisible() {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.providerForm.SetTestResult("✗ "+msg.err.Error()+aiAuthHint(msg.err), msg.err)
+		} else {
+			m.providerForm.SetTestResult("✓ reachable — key and endpoint valid", nil)
 		}
 		return m, nil
 
@@ -1471,6 +1519,22 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Connection-deletion confirmation is modal — intercept all keys while the
+	// y/n prompt is up. y/enter runs the delete (and its keychain purge); n/esc
+	// cancels, leaving the selection untouched.
+	if m.deleteConnConfirm != "" {
+		switch msg.String() {
+		case "y", "Y", "enter":
+			name := m.deleteConnConfirm
+			m.deleteConnConfirm = ""
+			return m.execDeleteConnection(name)
+		case "n", "N", "esc", "ctrl+c":
+			m.deleteConnConfirm = ""
+			return m, nil
+		}
+		return m, nil
+	}
+
 	// Filter mode intercepts all keys.
 	if m.connList.IsFiltering() {
 		switch msg.String() {
@@ -1524,8 +1588,14 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cmd := m.connForm.Focus()
 		return m, cmd
 	case "e":
+		// If the cursor is on a group header, step onto that group's first
+		// connection so the edit acts on a connection (a header itself is not
+		// editable and would otherwise be a silent no-op).
+		m.connList.SelectFirstConnectionInGroup()
 		return m.openEditForm()
 	case "d":
+		// Same header→connection step as `e` so delete targets a connection.
+		m.connList.SelectFirstConnectionInGroup()
 		return m.deleteSelectedConnection()
 	case "/", "i":
 		m.connList.StartFilter()
@@ -1575,6 +1645,20 @@ func (m Model) openEditForm() (tea.Model, tea.Cmd) {
 
 func (m Model) deleteSelectedConnection() (tea.Model, tea.Cmd) {
 	name := m.connList.SelectedName()
+	if name == "" {
+		return m, nil
+	}
+	if m.confirmDestructive() {
+		m.deleteConnConfirm = name
+		return m, nil
+	}
+	return m.execDeleteConnection(name)
+}
+
+// execDeleteConnection removes the named connection and its keychain secrets.
+// Shared by the gated (y-confirmed) and ungated (confirm_destructive: false)
+// paths so the confirmed action is identical either way.
+func (m Model) execDeleteConnection(name string) (tea.Model, tea.Cmd) {
 	if name == "" {
 		return m, nil
 	}
@@ -2003,6 +2087,21 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Provider picker (M from the assistant panel) is modal — intercept all
 	// keys. j/k or up/down moves the cursor, enter commits the choice (and
 	// persists it as the config's active provider), esc cancels.
+	// Provider-deletion confirmation is stacked over the picker — it must be
+	// checked first so y/enter run the delete and n/esc cancel while the prompt
+	// is up (the picker swallows keys below this).
+	if m.deleteProviderConfirm != "" {
+		switch msg.String() {
+		case "y", "Y", "enter":
+			name := m.deleteProviderConfirm
+			m.deleteProviderConfirm = ""
+			return m, m.deleteProvider(name)
+		case "n", "N", "esc", "ctrl+c":
+			m.deleteProviderConfirm = ""
+			return m, nil
+		}
+		return m, nil
+	}
 	if m.providerPicker.IsVisible() {
 		switch msg.String() {
 		case "esc", "ctrl+c":
@@ -2029,6 +2128,13 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			m.providerPicker.Down()
 			return m, nil
+		case "n":
+			// New provider: open the add/edit form over the workspace.
+			return m, func() tea.Msg { return openProviderFormAddMsg{} }
+		case "e":
+			return m, func() tea.Msg { return openProviderFormEditMsg{name: m.providerPicker.Selected()} }
+		case "d":
+			return m, m.deleteSelectedProvider()
 		}
 		return m, nil // swallow other keys while open
 	}
@@ -2068,6 +2174,34 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, nil // swallow other keys while open
+	}
+
+	// Provider form (n/e from the `M` picker) is modal — intercept all keys.
+	// It shares the connection form's vim model: ctrl+t probes /models, enter
+	// saves (persisting the key to the keychain when requested), esc returns to
+	// the provider picker. Insert-mode keys (esc/enter to commit, then back to
+	// normal) are handled inside the form.
+	if m.providerForm.IsVisible() {
+		// ctrl+t tests from any mode (disabled while a probe is in flight).
+		if msg.String() == "ctrl+t" {
+			if m.providerForm.testing {
+				return m, nil
+			}
+			return m, m.testProvider()
+		}
+		if !m.providerForm.editing {
+			switch msg.String() {
+			case "esc":
+				m.providerForm.Hide()
+				m.providerPicker.Show(m.config.AI.Providers, m.effectiveProviderName())
+				return m, nil
+			case "enter":
+				return m, m.saveProviderForm()
+			}
+		}
+		var cmd tea.Cmd
+		m.providerForm, cmd = m.providerForm.Update(msg)
+		return m, cmd
 	}
 
 	// Theme picker (g c) is modal — intercept all keys. Arrow keys move the
@@ -3781,6 +3915,17 @@ func (m Model) viewConnections() string {
 		view = m.help.View()
 	}
 
+	// Overlay connection-deletion confirmation if pending.
+	if m.deleteConnConfirm != "" {
+		prompt := fmt.Sprintf("Delete connection %s?\nIts keychain secrets are also removed.", m.deleteConnConfirm)
+		dialog := renderConfirmDialogBare(prompt)
+		dlgW := lipgloss.Width(dialog)
+		dlgH := lipgloss.Height(dialog)
+		dlgX := (m.width - dlgW) / 2
+		dlgY := (m.height - 1 - dlgH) / 2
+		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
 	// Append status bar.
 	statusBar := lipgloss.NewStyle().
 		Width(m.width).
@@ -4395,6 +4540,17 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, providerPanel, panelX, panelY)
 	}
 
+	// Overlay provider-deletion confirmation (stacked over the picker) if pending.
+	if m.deleteProviderConfirm != "" {
+		prompt := fmt.Sprintf("Delete provider %s?\nIts keychain API key is also removed.", m.deleteProviderConfirm)
+		dialog := renderConfirmDialogBare(prompt)
+		dlgW := lipgloss.Width(dialog)
+		dlgH := lipgloss.Height(dialog)
+		dlgX := (m.width - dlgW) / 2
+		dlgY := (m.height - 1 - dlgH) / 2
+		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
 	// Overlay model browser (m) if visible
 	if m.modelBrowser.IsVisible() {
 		modelPanel := m.modelBrowser.View()
@@ -4403,6 +4559,28 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, modelPanel, panelX, panelY)
+	}
+
+	// Overlay provider form (n/e from the `M` picker) if visible. Sized like
+	// the connection form popup (fixed popupDim width, content-tall height)
+	// so it renders identically to the other bordered-field form.
+	if m.providerForm.IsVisible() {
+		popupW, _ := popupDim()
+		borderOverhead := 2
+		innerW, _ := popupContentSize(m.height)
+		m.providerForm.SetSize(innerW)
+		formPanel := lipgloss.NewStyle().
+			Width(popupW - borderOverhead).
+			Height(m.providerForm.effectiveHeight()).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorPrimary).
+			Padding(0, 1).
+			Render(m.providerForm.View())
+		panelW := lipgloss.Width(formPanel)
+		panelH := lipgloss.Height(formPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, formPanel, panelX, panelY)
 	}
 
 	// Overlay import prompt if visible

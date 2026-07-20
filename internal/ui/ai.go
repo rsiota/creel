@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -13,16 +14,17 @@ import (
 	"github.com/ruben/gsql/internal/secrets"
 )
 
-// Phase 0 AI integration. The :ai <question> ex-command builds a schema
-// context from the active connection, asks the model to turn the question
-// into SQL asynchronously, and — on success — drops the SQL into the editor
-// for review (the user runs it with ctrl+e). Errors and short feedback are
-// shown via the transient status bar (m.aiMsg), exactly like the other
+// AI integration. The :ai <question> ex-command and the assistant panel build
+// a schema context from the active connection, ask the model to turn the
+// question into SQL asynchronously, and — on success — drop the SQL into the
+// editor for review (the user runs it with ctrl+e). Errors and short feedback
+// are shown via the transient status bar (m.aiMsg), exactly like the other
 // result-message fields.
 //
-// Configuration is environment-based for now (GSQL_AI_API_KEY /
-// GSQL_AI_BASE_URL / GSQL_AI_MODEL); Phase 1 will move it into
-// config.Settings and the OS keychain so the key is not visible in the shell.
+// Providers are configured in the `ai:` config block (edited in-app via the
+// `M` picker → n/e provider form, which stores the API key in the OS keychain
+// as a secret:// ref). With no providers configured, the env vars
+// GSQL_AI_API_KEY / GSQL_AI_BASE_URL / GSQL_AI_MODEL are used as a fallback.
 
 // aiResultMsg carries the model's reply (raw + extracted SQL), or the
 // failure. toPanel routes the result: true appends to the assistant panel's
@@ -328,6 +330,210 @@ func (m Model) effectiveAIModel() string {
 // switcher has something to show). When false the panel runs in env-only mode.
 func (m Model) hasAIProviders() bool { return len(m.config.AI.Providers) > 0 }
 
+// --- provider form plumbing ------------------------------------------------
+//
+// Messages and helpers for the add/edit provider form (opened from the `M`
+// picker via n / e). The form lives in ai_provider_form.go; these wire it into
+// the Update loop and the config + keychain.
+
+// openProviderFormAddMsg opens the provider form in add mode.
+type openProviderFormAddMsg struct{}
+
+// openProviderFormEditMsg opens the provider form pre-filled from the named
+// provider (selected in the `M` picker when `e` was pressed).
+type openProviderFormEditMsg struct {
+	name string
+}
+
+// providerTestResultMsg carries the outcome of a /models probe issued from
+// the form's ctrl+t test.
+type providerTestResultMsg struct {
+	err error
+}
+
+// storeProviderSecret migrates a provider's API key to the OS keychain when
+// mode is "keychain", replacing it in the config with an opaque "secret://"
+// reference. editName is the provider's pre-edit name ("" in add mode): when
+// set and the provider is being renamed (or switched to plaintext), the old
+// keychain entry is purged so a stale secret does not linger. Returns the
+// (possibly modified) provider and an error describing why the keychain could
+// not be used; in that case the provider is returned unchanged so the caller
+// falls back to plaintext.
+func storeProviderSecret(p config.AIProvider, mode, editName string) (config.AIProvider, error) {
+	if mode != "keychain" {
+		// Plain mode: ensure no keychain entry lingers for this provider. A
+		// missing key (it never used the keychain) is not an error.
+		if editName != "" {
+			_ = secrets.DeleteAI(editName)
+		}
+		return p, nil
+	}
+	if !secrets.Available() {
+		return p, fmt.Errorf("keychain unavailable on this system; api key stored in config file")
+	}
+	if p.APIKey != "" && !secrets.IsReference(p.APIKey) {
+		ref, err := secrets.StoreAI(p.Name, p.APIKey)
+		if err != nil {
+			return p, fmt.Errorf("storing api key: %w", err)
+		}
+		p.APIKey = ref
+	}
+	// Purge the pre-edit keychain entry when the provider was renamed, so the
+	// old "ai/<editName>/api_key" key does not orphan.
+	if editName != "" && editName != p.Name {
+		_ = secrets.DeleteAI(editName)
+	}
+	return p, nil
+}
+
+// testProvider probes the provider the form is editing by hitting its /models
+// endpoint — the same call the `m` browser makes. The form's current field
+// values (not the saved config) are used so an unsaved key can be validated
+// before committing. The key is resolved (plaintext or ref) so an edit-mode
+// form holding an unreadable ref still tests the saved value's intent.
+func (m *Model) testProvider() tea.Cmd {
+	f := &m.providerForm
+	key := strings.TrimSpace(f.fields[pfKey].Value())
+	baseURL := strings.TrimSpace(f.fields[pfBaseURL].Value())
+	if key == "" {
+		f.errMsg = "api key is required"
+		return nil
+	}
+	resolved, _ := secrets.Resolve(key)
+	cfg := ai.Config{
+		APIKey:  resolved,
+		BaseURL: firstNonEmpty(baseURL, ai.DefaultBaseURL),
+		Model:   ai.DefaultModel,
+		Timeout: 20 * time.Second,
+	}
+	f.SetTesting(true)
+	client := ai.New(cfg)
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
+		defer cancel()
+		_, err := client.ListModels(ctx)
+		return providerTestResultMsg{err: err}
+	}
+}
+
+// saveProviderForm commits the provider form: validates, checks the name is
+// unique, migrates the API key to the keychain when requested, persists the
+// provider to the config (auto-defaulting if it is the first), then reopens
+// the `M` picker over the saved list. edit-mode renames are handled by
+// dropping the old entry and (in keychain mode) purging its old key.
+func (m *Model) saveProviderForm() tea.Cmd {
+	p, errMsg := m.providerForm.EnterPressed()
+	if errMsg != "" {
+		m.providerForm.SetError(errMsg)
+		return nil
+	}
+	editName := m.providerForm.editName
+
+	// Name uniqueness. Editing in place (no rename) is always fine; any other
+	// collision (a rename onto an existing name, or a duplicate in add mode) is
+	// rejected before any mutation.
+	self := editName != "" && editName == p.Name
+	if !self && m.config.GetAIProvider(p.Name) != nil {
+		m.providerForm.SetError("a provider named '" + p.Name + "' already exists")
+		return nil
+	}
+
+	// Edit mode: drop the old entry (its keychain key is reconciled below).
+	if editName != "" {
+		m.config.RemoveAIProvider(editName)
+	}
+
+	// Migrate the API key to the keychain when requested. A keychain failure is
+	// non-fatal: the key stays plaintext in the config and the message is
+	// surfaced — mirroring the connection form.
+	p, secErr := storeProviderSecret(p, m.providerForm.secretsMode(), editName)
+	m.aiMsg = ""
+	if secErr != nil {
+		m.aiMsg = secErr.Error()
+	}
+
+	m.config.AddAIProvider(p)
+
+	// First provider configured: make it the default so it is active right
+	// away. Otherwise keep the existing default (the `M` picker sets it on
+	// enter).
+	if m.config.AI.Default == "" {
+		m.config.AI.Default = p.Name
+	}
+
+	// Keep the in-memory active choice in step with a rename.
+	if editName != "" && m.aiProvider == editName {
+		m.aiProvider = p.Name
+	}
+
+	if err := m.config.Save(); err != nil {
+		m.providerForm.SetError(err.Error())
+		return nil
+	}
+
+	if m.aiMsg == "" {
+		m.aiMsg = "saved provider: " + p.Name
+	}
+	m.providerForm.Hide()
+	m.providerPicker.Show(m.config.AI.Providers, p.Name)
+	return nil
+}
+
+// deleteSelectedProvider removes the provider under the `M` picker cursor,
+// purging its keychain key and reconciling the default / in-memory active
+// choice. Mirrors deleteSelectedConnection (no confirmation, matching the
+// connection list's convention).
+// deleteSelectedProvider is the `d` entry point from the `M` picker: it
+// honours the confirm_destructive gate, staging a y/n prompt when on and
+// deleting immediately when off. The cursor selection is captured into the
+// confirm flag so the prompt names the right provider even though keys are
+// swallowed while it is up.
+func (m *Model) deleteSelectedProvider() tea.Cmd {
+	name := m.providerPicker.Selected()
+	if name == "" {
+		return nil
+	}
+	if m.confirmDestructive() {
+		m.deleteProviderConfirm = name
+		return nil
+	}
+	return m.deleteProvider(name)
+}
+
+// deleteProvider removes the named provider, purging its keychain key and
+// reconciling the default / in-memory active choice. Shared by the gated
+// (y-confirmed) and ungated paths so the confirmed action is identical. No
+// confirmation here — the gate is decided by the caller.
+func (m *Model) deleteProvider(name string) tea.Cmd {
+	if name == "" {
+		return nil
+	}
+	_ = secrets.DeleteAI(name) // best-effort keychain purge; missing key is fine
+	m.config.RemoveAIProvider(name)
+	if m.aiProvider == name {
+		m.aiProvider = ""
+	}
+	// RemoveAIProvider clears Default when it matched; if providers remain,
+	// keep a sensible default (the first) so the panel does not silently drop
+	// to env-only mode.
+	if m.hasAIProviders() && m.config.AI.Default == "" {
+		m.config.AI.Default = m.config.AI.Providers[0].Name
+	}
+	if err := m.config.Save(); err != nil {
+		m.aiMsg = err.Error()
+		return nil
+	}
+	m.aiMsg = "removed provider: " + name
+	// Reopen the picker over the remaining providers, or hide it if that was
+	// the last one (the panel drops to env-only mode).
+	if m.hasAIProviders() {
+		m.providerPicker.Show(m.config.AI.Providers, m.effectiveProviderName())
+	} else {
+		m.providerPicker.Hide()
+	}
+	return nil
+}
+
 // fetchModelsMsg carries the model ids returned by the active provider's
 // /models endpoint (the standard OpenAI-compatible listing), or the failure.
 // The model browser consumes it to populate its list.
@@ -363,9 +569,9 @@ func (m *Model) dispatchAI(messages []ai.Message, toPanel bool, question string)
 	cfg := m.aiConfig()
 	if cfg.APIKey == "" {
 		if _, ok := m.activeProvider(); ok {
-			m.aiMsg = "active AI provider has no api_key — set it in ~/.config/gsql/config.yaml"
+			m.aiMsg = "active AI provider has no api key — press M then e to set it"
 		} else {
-			m.aiMsg = "set $GSQL_AI_API_KEY / $OPENAI_API_KEY / $ZAI_API_KEY, or configure an ai: provider in config.yaml"
+			m.aiMsg = "no AI provider configured — press M then n to add one (or set $GSQL_AI_API_KEY)"
 		}
 		return nil
 	}

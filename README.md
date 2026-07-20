@@ -157,6 +157,41 @@ under the cursor, or `enter` on a header to toggle it. Filtering (`/`) flattens
 the list to ranked matches regardless of groups. Connections with no `group`
 render exactly as before when none of your connections use groups.
 
+### AI assistant
+
+The assistant panel (and the `:ai` command) turn a natural-language question
+into SQL using any OpenAI-compatible endpoint (OpenAI, z.ai, OpenRouter,
+Ollama, LM Studio, …). Configure it **in-app** from the assistant panel:
+
+- `M` opens the provider picker. From there `n` adds a provider, `e` edits the
+  one under the cursor, `d` deletes it (a `y/n` prompt confirms first, like
+  deleting a connection), and `enter` makes one the active default.
+- The add/edit form collects a **Name**, **API Key**, **Base URL**, and a
+  **Secrets** toggle (`keychain` / `plain`). In `keychain` mode (the default)
+  the API key is stored in the OS keychain as a `secret://` reference — never
+  written to the config file in plaintext — exactly like a connection password.
+- `ctrl+t` in the form probes the provider's `/models` endpoint and reports
+  `✓ reachable` or the real error (a valid key pointed at the wrong endpoint
+  is the usual cause of a confusing "unauthorized").
+- `m` (from the panel) browses the models the active provider exposes and
+  pins one as that provider's `model:`.
+
+The same data lives under an `ai:` block if you prefer to hand-edit:
+
+```yaml
+ai:
+  default: openai
+  providers:
+    - name: openai
+      api_key: secret://ai/openai/api_key   # keychain ref (set by the form)
+      base_url: https://api.openai.com/v1   # optional; defaults to OpenAI
+      model: gpt-4o-mini                     # optional; set via `m`
+```
+
+With no providers configured, gsql falls back to environment variables
+(`GSQL_AI_API_KEY` / `OPENAI_API_KEY` / `ZAI_API_KEY`, and optionally
+`GSQL_AI_BASE_URL` / `GSQL_AI_MODEL`), so the panel works with zero config.
+
 ### Settings
 
 Top-level app preferences live under a `settings:` block. All fields are
@@ -169,7 +204,7 @@ optional and fall back to defaults when omitted:
 | `default_driver` | sqlite       | Driver pre-filled in the add-connection form                             |
 | `theme`          | tokyo-night  | Palette: `tokyo-night`, `gruvbox`, `nord`, `catppuccin`, `light` + ~565 auto-derived from iTerm2-Color-Schemes (dracula, solarized, …). Unknown → default |
 | `transparent_background` | false | By default gsql fills the app background with the theme's bg colour (required for light themes to be readable). Set `true` to leave it unpainted so the terminal's own background / transparency shows through — at the cost of light themes looking wrong. |
-| `confirm_destructive` | true | Destructive actions (drop table/database, truncate, delete rows, discard edits, drop column, clear history/bookmarks) prompt for confirmation. Set `false` to skip the prompts and run each action immediately. |
+| `confirm_destructive` | true | Destructive actions (drop table/database, truncate, delete rows, discard edits, drop column, delete provider/connection, clear history/bookmarks) prompt for confirmation. Set `false` to skip the prompts and run each action immediately. |
 
 ```yaml
 settings:
