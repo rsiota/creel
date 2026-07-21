@@ -97,8 +97,9 @@ type RelExplorer struct {
 	err      string
 	emptyMsg string // why there is no root (no source table, etc.)
 
-	docked bool   // panel mode: rendered in the right slot, cursor-driven (vs. modal popup)
-	anchor string // the results row (table + PK tuple) the current tree is rooted at
+	docked  bool   // panel mode: rendered in the right slot, cursor-driven (vs. modal popup)
+	anchor  string // the results row (table + PK tuple) the current tree is rooted at
+	focused bool   // mirror of Model.focus == FocusExplorer, for the border color
 }
 
 // NewRelExplorer returns a hidden explorer panel.
@@ -381,9 +382,18 @@ func (e RelExplorer) View() string {
 		Width(e.width - borderOverhead).
 		Height(vh).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorPrimary).
+		BorderForeground(e.borderColor()).
 		Padding(0, 1).
 		Render(strings.Join(body, "\n"))
+}
+
+// borderColor mirrors the inspector/assistant: the accent color when this
+// panel holds focus, the dim unfocused color otherwise.
+func (e RelExplorer) borderColor() lipgloss.Color {
+	if e.focused {
+		return colorPrimary
+	}
+	return colorBorderUnfocused
 }
 
 // bodyLines returns the windowed, rendered tree (or a status line).

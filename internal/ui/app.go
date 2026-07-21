@@ -4257,8 +4257,10 @@ func (m Model) viewWorkspace() string {
 			Render(m.assistant.View())
 	} else if m.explorer.IsVisible() && m.explorer.docked {
 		// The explorer's View() already draws its own border, so place it
-		// directly (no second border) sized to the full slot.
+		// directly (no second border) sized to the full slot. Its border color
+		// mirrors focus, like the inspector/assistant.
 		slotH := lipgloss.Height(rightPanel)
+		m.explorer.focused = m.focus == FocusExplorer
 		m.explorer.SetSize(inspectorWidth, slotH)
 		slotPanel = m.explorer.View()
 	}
@@ -4451,6 +4453,7 @@ func (m Model) viewWorkspace() string {
 	// Overlay relationship explorer popup if visible (the docked variant is
 	// rendered in the right slot above, not as an overlay).
 	if m.explorer.IsVisible() && !m.explorer.docked {
+		m.explorer.focused = true // modal popup is always focused while open
 		m.explorer.SetSize(m.width*70/100, (m.height-1)*70/100)
 		explorerView := m.explorer.View()
 		panelW := lipgloss.Width(explorerView)

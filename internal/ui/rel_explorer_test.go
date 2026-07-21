@@ -737,3 +737,20 @@ func TestRelExplorerViewExactBoxModel(t *testing.T) {
 		}
 	}
 }
+
+// TestRelExplorerBorderColor mirrors the inspector/assistant focus convention:
+// the explorer border uses the accent color when it holds focus and the dim
+// unfocused color otherwise. The modal popup is always focused while open.
+func TestRelExplorerBorderColor(t *testing.T) {
+	e := NewRelExplorer()
+	if e.borderColor() != colorBorderUnfocused {
+		t.Errorf("unfocused border = %v, want %v", e.borderColor(), colorBorderUnfocused)
+	}
+	e.focused = true
+	if e.borderColor() != colorPrimary {
+		t.Errorf("focused border = %v, want %v", e.borderColor(), colorPrimary)
+	}
+	if colorPrimary == colorBorderUnfocused {
+		t.Fatalf("sanity: accent and unfocused colors are identical; test is meaningless")
+	}
+}
