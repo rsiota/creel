@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // TestLoadExplorerRootAndEdges verifies the explorer builds a root row node and
@@ -704,5 +705,35 @@ func TestRelExplorerViewRendersTree(t *testing.T) {
 	// 2-space), proving depth-based indentation in the rendered tree.
 	if !strings.Contains(out, "    ▸ #1001") {
 		t.Errorf("child row should be indented 4 spaces under its edge\n%s", out)
+	}
+}
+
+// TestRelExplorerViewExactBoxModel is a regression test for the docked panel:
+// View() must render an exact e.width × e.height box. lipgloss's Width INCLUDES
+// horizontal padding, so the text area is e.width-4 (= inner); a selected line
+// padded to `inner` must NOT wrap to a second line, and the total must be
+// exactly e.height lines (else the panel overflows its slot and the top border
+// gets clipped).
+func TestRelExplorerViewExactBoxModel(t *testing.T) {
+	for _, h := range []int{12, 20, 30} {
+		e := NewRelExplorer()
+		e.SetSize(45, h) // InspectorWidth
+		root := &expNode{kind: nodeRow, table: "users", label: " · #1"}
+		long := &expNode{kind: nodeEdge, edge: relNode{dir: relInbound, targetTable: "very_long_table_name_here", targetColumn: "uid", sourceColumn: "id"}, depth: 1, parent: root}
+		long.edge.count = "999"
+		root.children = []*expNode{long}
+		e.applyRoot(root, 2)
+		e.cursor = 0 // select the root row (full-width inverted line)
+
+		out := e.View()
+		lines := strings.Split(out, "\n")
+		if len(lines) != h {
+			t.Errorf("height %d: View rendered %d lines, want exactly %d (box-model overflow)", h, len(lines), h)
+		}
+		for i, ln := range lines {
+			if w := lipgloss.Width(ln); w != 45 {
+				t.Errorf("height %d line %d: width=%d, want 45", h, i, w)
+			}
+		}
 	}
 }

@@ -371,12 +371,14 @@ func (e RelExplorer) View() string {
 	for len(body) < vh {
 		body = append(body, "")
 	}
-	// Render an exact e.width × e.height panel. The box model is border(2) +
-	// horizontal padding(2) + content, so the content width is e.width-4 and the
-	// content height is e.height-2 (= nodeViewport). This lets the docked slot
-	// place View() directly (no second border) and the popup center it precisely.
+	// Render an exact e.width × e.height panel. lipgloss Width INCLUDES
+	// horizontal padding (but not border): Width(e.width-borderOverhead) with
+	// Padding(0,1) leaves (e.width-2)-2 = e.width-4 = inner for text, and the
+	// border brings the total to e.width. Height excludes border+padding, so
+	// Height(nodeViewport) + border = e.height. This lets the docked slot place
+	// View() directly (no second border) and the popup center it precisely.
 	return lipgloss.NewStyle().
-		Width(e.width - borderOverhead - 2).
+		Width(e.width - borderOverhead).
 		Height(vh).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
