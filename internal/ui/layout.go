@@ -210,4 +210,16 @@ func (m *Model) layoutWorkspace() {
 		viewHeight := tabBarHeight + editorHeight + resultsHeight
 		m.assistant.SetSize(AssistantWidth-borderOverhead, viewHeight)
 	}
+
+	// Modal overlay panels (explorer / explain / lookup) share a centered 70%
+	// size. They MUST be sized here rather than only in View: View has a value
+	// receiver, so a SetSize there mutates a throwaway copy and the panel's
+	// height stays 0 — yielding a 1-line viewport that scrolls on every cursor
+	// move. layoutWorkspace mutates the model via its pointer receiver and runs
+	// on every keypress and resize, so the size persists into Update.
+	overlayW := m.width * 70 / 100
+	overlayH := (m.height - 1) * 70 / 100
+	m.explorer.SetSize(overlayW, overlayH)
+	m.explainPanel.SetSize(overlayW, overlayH)
+	m.lookupPanel.SetSize(overlayW, overlayH)
 }

@@ -48,6 +48,8 @@ func (m Model) hintList() []string {
 		return []string{"j/k", "esc"}
 	case m.lookupPanel.IsVisible():
 		return []string{"j/k", "esc"}
+	case m.explorer.IsVisible():
+		return []string{"j/k", "enter", "r", "esc"}
 	case m.providerPicker.IsVisible():
 		return hintsForSection("AI Provider")
 	case m.providerForm.IsVisible():

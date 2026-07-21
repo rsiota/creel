@@ -187,6 +187,31 @@ FK data already exists (`ForeignKeys`). A `g R` overlay rendering
 boxes + arrows (Lipgloss) or exporting Mermaid would be distinctive.
 - Files: new `internal/ui/erd.go`, `internal/ui/app.go`.
 
+**Related, ✅ DONE (2026-07-20): interactive relationship explorer (`g r` /
+`:explore`) — expand-in-place tree.** Rather than a static diagram, this ships
+the navigation half of the idea as a modal overlay
+(`internal/ui/rel_explorer.go`) that turns the focused results row into a
+browsable folder: the row is the root; its inbound + outbound FK edges are the
+first level (each with a **live count**, fanned out concurrently); expand an
+edge (`→`) to load the related rows inline, expand a child row to load *its*
+edges, and so on (depth-capped at `maxExplorerDepth`, child loads capped at
+`explorerChildLimit` with a "+N more" escape hatch). The indentation is the
+breadcrumb — you never lose context, which was the flaw in the earlier
+drill-in/back model. `Enter` opens a node in the grid (a specific row via its
+PK, or an edge's full set) and re-roots the tree there via `queryStack`.
+
+It reuses existing machinery: `:refs`' count helper (`countRelated`), the
+`queryStack` back-navigation that `g d`/`g b` already use, and the overlay /
+modal-key-dispatch pattern from the lookup & explain panels. Both directions
+are covered — outbound and inbound edges render uniformly as `table (count)`
+(the gap `:refs` only half-filled), and only edges with a positive count are
+shown so a row surfaces just the relationships it actually participates in.
+Lazy loads (`loadExplorerChildren`) issue one query per expand; row nodes
+derive PK-based labels and drill queries via `PrimaryKeys`.
+
+**Still open (the static diagram):** the `g R` boxes-and-arrows / Mermaid
+export ERD remains the visual complement to this navigator.
+
 ### 12. Connection groups / folders ✅ DONE (2026-07-12)
 Connections carry an optional `group` field; the connection list renders
 collapsible folder headers (▾/▸) when any connection is grouped, and stays flat

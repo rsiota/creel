@@ -184,6 +184,28 @@ type lookupResultMsg struct {
 	err    error
 }
 
+// explorerLoadedMsg carries the explorer tree root (the focused row + its
+// first-level edges) produced by loadExplorer. root is nil on the empty/error
+// paths, in which case emptyMsg/err explains why. depth is the queryStack depth
+// at load time, shown as a breadcrumb hint.
+type explorerLoadedMsg struct {
+	root     *expNode
+	depth    int
+	emptyMsg string
+	err      error
+}
+
+// explorerChildrenMsg carries lazily-loaded children for one tree node,
+// produced by loadExplorerChildren when a node is expanded. parent is matched
+// by pointer identity; if the panel was closed or the node removed in the
+// meantime the message is ignored.
+type explorerChildrenMsg struct {
+	parent   *expNode
+	children []*expNode
+	fold     bool // nothing to show — fold the node back up
+	err      error
+}
+
 // countMsg carries the total row count for the current table.
 type countMsg struct {
 	total int
@@ -304,6 +326,7 @@ type Model struct {
 	cellEdit            CellEditPopup
 	explainPanel        ExplainPanel
 	lookupPanel         LookupPanel
+	explorer            RelExplorer
 	palette             palette
 	ex                  exCmd
 	sidebarCursor       int
@@ -506,6 +529,7 @@ func NewModel(cfg *config.Config) Model {
 		editor:          NewQueryEditor(),
 		results:         firstTab.Results,
 		inspector:       NewInspector(),
+		explorer:        NewRelExplorer(),
 		assistant:       NewAssistant(),
 		connList:        NewConnectionList(),
 		history:         NewHistoryPanel(),
@@ -995,6 +1019,16 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.results.SetCursor(m.restoreCursorRow, m.restoreCursorCol)
 				m.restoreCursor = false
 			}
+			// If the relationship explorer is open, refresh it for the new
+			// focused row. This covers drill-in (Enter), back (←), and any
+			// manual query — the panel always reflects the current location.
+			if m.explorer.IsVisible() {
+				if cmd == nil {
+					cmd = m.loadExplorer()
+				} else {
+					cmd = tea.Batch(cmd, m.loadExplorer())
+				}
+			}
 		}
 		return m, cmd
 
@@ -1297,6 +1331,34 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.lookupPanel.Show(msg.title, msg.result)
+		return m, nil
+	case explorerLoadedMsg:
+		// Only apply if the panel is still open (the user may have closed it
+		// while a load was in flight).
+		if !m.explorer.IsVisible() {
+			return m, nil
+		}
+		switch {
+		case msg.err != nil:
+			m.explorer.applyRootError(msg.depth, msg.err)
+		case msg.root == nil:
+			m.explorer.applyEmpty(msg.depth, msg.emptyMsg)
+		default:
+			m.explorer.applyRoot(msg.root, msg.depth)
+		}
+		return m, nil
+	case explorerChildrenMsg:
+		if !m.explorer.IsVisible() || msg.parent == nil {
+			return m, nil
+		}
+		switch {
+		case msg.err != nil:
+			m.explorer.applyChildrenError(msg.parent, msg.err)
+		case msg.fold:
+			m.explorer.applyFold(msg.parent)
+		default:
+			m.explorer.applyChildren(msg.parent, msg.children)
+		}
 		return m, nil
 	case aiStreamChunkMsg:
 		// A token batch from the streamed reply: grow the live preview in the
@@ -2535,6 +2597,30 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Relationship explorer is modal. j/k move through the tree; → expands the
+	// selected node (loading children lazily); ← collapses (or jumps to parent);
+	// Enter opens a node's data in the grid and re-roots the tree there; r
+	// retargets to the focused row; esc/q close.
+	if m.explorer.IsVisible() {
+		switch msg.String() {
+		case "esc", "q", "ctrl+c":
+			m.explorer.Hide()
+			return m, nil
+		case "enter":
+			return m, m.explorerActivate()
+		case "right", "l":
+			return m, m.explorerExpand()
+		case "left", "h":
+			m.explorerCollapse()
+			return m, nil
+		case "r":
+			m.explorer.markLoading()
+			return m, m.loadExplorer()
+		}
+		m.explorer = m.explorer.Update(msg)
+		return m, nil
+	}
+
 	// Command palette is modal — intercept all keys when visible.
 	if m.palette.visible {
 		var cmd tea.Cmd
@@ -3158,6 +3244,14 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.formatPicker.Show()
 			}
 			return m, nil
+		}
+
+		// g r — relationship explorer: a navigable object-graph view of the
+		// focused row's inbound + outbound FK edges with live counts.
+		if msg.String() == "r" && m.resultsPendingG {
+			m.resultsPendingG = false
+			m.resultsPendingY = false
+			return m, m.openExplorer()
 		}
 
 		// g/G navigation works on empty tables too.
@@ -4307,6 +4401,17 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, lookupPanelView, panelX, panelY)
 	}
 
+	// Overlay relationship explorer if visible
+	if m.explorer.IsVisible() {
+		m.explorer.SetSize(m.width*70/100, (m.height-1)*70/100)
+		explorerView := m.explorer.View()
+		panelW := lipgloss.Width(explorerView)
+		panelH := lipgloss.Height(explorerView)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, explorerView, panelX, panelY)
+	}
+
 	// Overlay filter picker if visible
 	if m.filterPicker.IsVisible() {
 		pw, ph := popupDim()
@@ -4570,7 +4675,7 @@ func (m Model) viewWorkspace() string {
 		innerW, _ := popupContentSize(m.height)
 		m.providerForm.SetSize(innerW)
 		formPanel := lipgloss.NewStyle().
-			Width(popupW - borderOverhead).
+			Width(popupW-borderOverhead).
 			Height(m.providerForm.effectiveHeight()).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorPrimary).

@@ -57,6 +57,71 @@ func (m *Model) followForeignKey() tea.Cmd {
 	return m.runPageQuery()
 }
 
+// explorerExpand (→) opens the selected node: if collapsed, expand it (loading
+// children lazily if needed); if already expanded, move the cursor to its first
+// child. Synthetic nodes are inert.
+func (m *Model) explorerExpand() tea.Cmd {
+	node := m.explorer.selectedNode()
+	if node == nil || node.synthetic {
+		return nil
+	}
+	if node.expanded {
+		m.explorer.cursorToFirstChild(node)
+		return nil
+	}
+	if node.depth >= maxExplorerDepth {
+		node.err = "max depth reached"
+		return nil
+	}
+	node.expanded = true
+	if node.children == nil {
+		node.loading = true
+		return m.loadExplorerChildren(node)
+	}
+	return nil
+}
+
+// explorerCollapse (←) folds the selected node; if already collapsed, moves the
+// cursor to its parent so ← doubles as "go up a level".
+func (m *Model) explorerCollapse() {
+	node := m.explorer.selectedNode()
+	if node == nil {
+		return
+	}
+	if node.expanded {
+		node.expanded = false
+		return
+	}
+	if node.parent != nil {
+		m.explorer.cursorToNode(node.parent)
+	}
+}
+
+// explorerActivate (Enter) opens the selected node's data in the grid: a row
+// node navigates to that exact row; an edge node opens its full related set.
+// The current query is pushed onto the stack so ←/g b returns, and the tree
+// re-roots to the new focused row once the grid query completes
+// (queryExecutedMsg → loadExplorer). Inert for synthetic nodes and rows with
+// no drillable identity.
+func (m *Model) explorerActivate() tea.Cmd {
+	node := m.explorer.selectedNode()
+	if node == nil || node.synthetic || node.drillQuery == "" {
+		return nil
+	}
+	m.pushQueryStack()
+	m.editor.SetValue(node.drillQuery)
+	m.lastQuery = node.drillQuery
+	m.baseQuery = ""
+	m.filters = nil
+	m.sortCol = ""
+	m.sortDir = ""
+	m.page = 0
+	m.results.SetSearchMatcher(nil)
+	m.lastSearch = ""
+	m.explorer.markLoading()
+	return m.runPageQuery()
+}
+
 func (m *Model) goBackQuery() tea.Cmd {
 	if len(m.queryStack) == 0 {
 		return nil

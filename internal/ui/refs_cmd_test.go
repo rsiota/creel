@@ -93,6 +93,108 @@ func TestExRefsLive(t *testing.T) {
 	}
 }
 
+func TestExRefsScopedCounts(t *testing.T) {
+	conn := newSQLiteTestConn(t)
+	defer conn.Close()
+	for _, q := range []string{
+		`CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT)`,
+		`CREATE TABLE employees (id INTEGER PRIMARY KEY, dept_id INTEGER, FOREIGN KEY (dept_id) REFERENCES departments(id))`,
+		`CREATE TABLE budgets (id INTEGER PRIMARY KEY, dept_id INTEGER, FOREIGN KEY (dept_id) REFERENCES departments(id))`,
+		`INSERT INTO departments (id, name) VALUES (1,'Eng'),(2,'Sales')`,
+		`INSERT INTO employees (id, dept_id) VALUES (10,1),(11,1),(12,2)`,
+		`INSERT INTO budgets (id, dept_id) VALUES (100,1),(101,2)`,
+	} {
+		if _, err := conn.DB().Exec(q); err != nil {
+			t.Fatalf("exec: %v\n%s", err, q)
+		}
+	}
+	m := &Model{
+		connection: conn,
+		results:    NewResultsTable(),
+		editor:     NewQueryEditor(),
+		tables:     []string{"departments", "employees", "budgets"},
+	}
+
+	// Focus dept id=1 in the results grid so counts are row-scoped.
+	m.results.SetResult([]string{"id", "name"}, [][]string{{"1", "Eng"}}, "")
+	m.results.SetEditable("departments", []string{"id"})
+
+	msg, ok := m.runExCommand("refs departments")().(lookupResultMsg)
+	if !ok {
+		t.Fatalf("expected lookupResultMsg, got %T", m.runExCommand("refs departments"))
+	}
+	if msg.err != nil {
+		t.Fatalf("refs fetch error: %v", msg.err)
+	}
+
+	// Title should identify the scoped row.
+	if !strings.Contains(msg.title, "#1") {
+		t.Errorf("title %q should be row-scoped (#1)", msg.title)
+	}
+	// A Count column should be present.
+	hasCount := false
+	for _, c := range msg.result.Columns {
+		if c.Name == "Count" {
+			hasCount = true
+		}
+	}
+	if !hasCount {
+		t.Fatalf("expected Count column, got %+v", msg.result.Columns)
+	}
+
+	// Map child table -> its count string and verify dept 1 fan-out.
+	counts := map[string]string{}
+	for _, row := range msg.result.Rows {
+		// row = [Table, Column, References, Count]
+		counts[row[0]] = row[len(row)-1]
+	}
+	if counts["employees"] != "2" {
+		t.Errorf("employees count = %q, want 2", counts["employees"])
+	}
+	if counts["budgets"] != "1" {
+		t.Errorf("budgets count = %q, want 1", counts["budgets"])
+	}
+}
+
+func TestExRefsUnscopedNoCountColumn(t *testing.T) {
+	// When the grid is not backing the queried table, no Count column appears
+	// (backward-compatible fallback to the original behaviour).
+	conn := newSQLiteTestConn(t)
+	defer conn.Close()
+	for _, q := range []string{
+		`CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT)`,
+		`CREATE TABLE employees (id INTEGER PRIMARY KEY, dept_id INTEGER, FOREIGN KEY (dept_id) REFERENCES departments(id))`,
+		`INSERT INTO departments VALUES (1,'Eng')`,
+		`INSERT INTO employees VALUES (10,1)`,
+	} {
+		if _, err := conn.DB().Exec(q); err != nil {
+			t.Fatalf("exec: %v", err)
+		}
+	}
+	m := &Model{
+		connection: conn,
+		results:    NewResultsTable(), // no result loaded -> not scoped
+		editor:     NewQueryEditor(),
+		tables:     []string{"departments", "employees"},
+	}
+
+	msg, ok := m.runExCommand("refs departments")().(lookupResultMsg)
+	if !ok {
+		t.Fatalf("expected lookupResultMsg, got %T", m.runExCommand("refs departments"))
+	}
+	if msg.err != nil {
+		t.Fatalf("refs fetch error: %v", msg.err)
+	}
+	for _, c := range msg.result.Columns {
+		if c.Name == "Count" {
+			t.Errorf("unscoped :refs should not have a Count column, got %+v", msg.result.Columns)
+		}
+	}
+	if !strings.Contains(msg.title, "departments") || strings.Contains(msg.title, "#") {
+		t.Errorf("unscoped title %q should not be row-scoped", msg.title)
+	}
+}
+
 func TestLookupPanelEmpty(t *testing.T) {
 	var p LookupPanel
 	p.Show("References to users", db.Result{})

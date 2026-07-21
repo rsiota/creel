@@ -5,8 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -1342,30 +1344,500 @@ func (m *Model) resolveDDLTableArg(name string) string {
 }
 
 // exRefs lists the foreign keys referencing a table (:refs <table>) — the
-// reverse of g d. The lookup runs async and opens in the lookup overlay panel.
-// It reads connection metadata, so it is unaffected by (and does not block on)
-// an active transaction.
+// reverse of g d. When the results grid is backing the same table and a row is
+// focused, it additionally shows a per-referrer Count column computed against
+// that row's value ("Orders (14)"), turning the relationship list into a live,
+// countable inbound view — the first step toward the row-explorer fan-out.
+// The lookup runs async and opens in the lookup overlay panel. It reads
+// connection metadata, so it is unaffected by (and does not block on) an
+// active transaction.
 func (m *Model) exRefs(name string) tea.Cmd {
 	table := m.resolveTableArg(name)
 	if table == "" {
 		return nil
 	}
 	conn := m.connection
+	driver := conn.Config().Driver
+
+	// Capture the focused row's column→value map on the main goroutine so the
+	// async closure can compute per-referrer counts. Counts are only shown when
+	// the results grid is backing this same table with a focused row.
+	rowVals, label, scoped := m.focusedRowValues(table)
+
 	return func() tea.Msg {
 		refs, err := conn.DB().ReferencingForeignKeys(table)
 		if err != nil {
 			return lookupResultMsg{err: err}
 		}
+
 		cols := []db.Column{{Name: "Table"}, {Name: "Column"}, {Name: "References"}}
-		rows := make([][]string, 0, len(refs))
-		for _, r := range refs {
-			rows = append(rows, []string{r.Table, r.Column, table + "." + r.RefColumn})
+		if scoped {
+			cols = append(cols, db.Column{Name: "Count"})
 		}
+		rows := make([][]string, len(refs))
+
+		if scoped {
+			// Fan out count queries concurrently — database/sql pools
+			// connections and is safe for parallel use, and each goroutine
+			// writes a distinct slice index, so the slice stays race-free.
+			var wg sync.WaitGroup
+			for i, r := range refs {
+				wg.Add(1)
+				go func(i int, r db.Referrer) {
+					defer wg.Done()
+					rows[i] = []string{r.Table, r.Column, table + "." + r.RefColumn, countReferrer(conn, driver, r, rowVals)}
+				}(i, r)
+			}
+			wg.Wait()
+		} else {
+			for i, r := range refs {
+				rows[i] = []string{r.Table, r.Column, table + "." + r.RefColumn}
+			}
+		}
+
 		return lookupResultMsg{
-			title:  fmt.Sprintf("References to %s", table),
+			title:  "References to " + table + label,
 			result: db.Result{Columns: cols, Rows: rows},
 		}
 	}
+}
+
+// focusedRowValues returns the focused results row as a lowercased
+// column-name → value map, plus a short " · pk=val" label identifying which
+// row the counts are scoped to. ok is false when the grid is not backing
+// `table` (or has no focused row), in which case :refs omits the Count column
+// and behaves as before. Must run on the main goroutine — it reads live UI
+// state.
+func (m *Model) focusedRowValues(table string) (vals map[string]string, label string, ok bool) {
+	r := m.results
+	if !r.HasResult() {
+		return nil, "", false
+	}
+	if src := r.SourceTable(); src == "" || !strings.EqualFold(src, table) {
+		return nil, "", false
+	}
+	row := r.CursorRow()
+	if row < 0 || row >= r.NumRows() {
+		return nil, "", false
+	}
+	vals = make(map[string]string, r.NumCols())
+	for c := 0; c < r.NumCols(); c++ {
+		vals[strings.ToLower(r.ColumnName(c))] = r.RowValue(row, c)
+	}
+	return vals, pkLabel(r), true
+}
+
+// pkLabel builds a " · #val" suffix identifying the focused row, preferring
+// the primary key tuple and falling back to the first non-empty cell when
+// there is no PK. Empty when no usable value is found.
+func pkLabel(r ResultsTable) string {
+	if tup := r.CursorPKTuple(); len(tup) > 0 {
+		parts := make([]string, 0, len(tup))
+		for _, v := range tup {
+			if v == "" || v == "NULL" {
+				continue
+			}
+			parts = append(parts, v)
+		}
+		if len(parts) > 0 {
+			return " · #" + strings.Join(parts, ", ")
+		}
+	}
+	for c := 0; c < r.NumCols(); c++ {
+		if v := r.RowValue(r.CursorRow(), c); v != "" && v != "NULL" {
+			return " · " + r.ColumnName(c) + "=" + v
+		}
+	}
+	return ""
+}
+
+// countReferrer returns how many rows in the child table reference the focused
+// parent row via this FK. "-" means nothing to match (the parent value is
+// absent/NULL), "?" means the count query failed (the row still renders). Uses
+// the same string-escaping convention as g d's buildForeignKeyQuery.
+func countReferrer(conn *db.Connection, driver db.Driver, ref db.Referrer, rowVals map[string]string) string {
+	val, ok := rowVals[strings.ToLower(ref.RefColumn)]
+	if !ok || val == "" || val == "NULL" {
+		return "-"
+	}
+	return countRelated(conn, driver, ref.Table, ref.Column, val)
+}
+
+// countRelated returns how many rows in `table` have `col` equal to `val`, as
+// a string. "?" means the count query failed. Shared by :refs' per-referrer
+// counts and the relationship explorer's per-edge counts.
+func countRelated(conn *db.Connection, driver db.Driver, table, col, val string) string {
+	q := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s = %s",
+		quoteIdentD(driver, table), quoteIdentD(driver, col), quoteSQLString(val))
+	res, err := conn.DB().Execute(q)
+	if err != nil {
+		return "?"
+	}
+	if len(res.Rows) == 0 || len(res.Rows[0]) == 0 {
+		return "0"
+	}
+	return res.Rows[0][0]
+}
+
+// openExplorer reveals the relationship explorer for the focused results row
+// and kicks off the first load. Invoked by g r and :explore. The panel is the
+// interactive cockpit over the grid: each inbound/outbound FK edge is a node
+// you can drill into (Enter) or step back from (←) via the queryStack.
+func (m *Model) openExplorer() tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	m.explorer.Show()
+	m.explorer.markLoading()
+	return m.loadExplorer()
+}
+
+// loadExplorer builds the explorer tree root from the focused results row and
+// loads its first-level edges (with counts), returning explorerLoadedMsg. It
+// powers openExplorer and the auto-refresh after Enter/back (wired in app.go on
+// queryExecutedMsg). When there is nothing to explore it returns a message
+// with an emptyMsg so the panel shows a reason rather than a blank box.
+func (m *Model) loadExplorer() tea.Cmd {
+	r := m.results
+	depth := len(m.queryStack)
+	if m.connection == nil {
+		return explorerMsg(explorerLoadedMsg{depth: depth, emptyMsg: "not connected"})
+	}
+	if !r.HasResult() {
+		return explorerMsg(explorerLoadedMsg{depth: depth, emptyMsg: "no results — run a query first"})
+	}
+	src := r.SourceTable()
+	if src == "" {
+		return explorerMsg(explorerLoadedMsg{depth: depth, emptyMsg: "current results are not a single table — browse a table to explore"})
+	}
+	rowVals, label, ok := m.focusedRowValues(src)
+	if !ok {
+		return explorerMsg(explorerLoadedMsg{depth: depth, emptyMsg: "no focused row — select a row to explore its relationships"})
+	}
+	conn := m.connection
+	driver := conn.Config().Driver
+	return func() tea.Msg {
+		root := &expNode{kind: nodeRow, table: src, rowVals: rowVals, label: label, expanded: true}
+		edges, err := loadRowEdges(conn, driver, src, rowVals, nil)
+		if err != nil {
+			return explorerLoadedMsg{depth: depth, err: err}
+		}
+		for _, e := range edges {
+			e.parent = root
+			e.depth = 1
+		}
+		root.children = edges
+		if len(edges) == 0 {
+			root.children = []*expNode{synthNode(src+" has no relationships", root)}
+		}
+		return explorerLoadedMsg{root: root, depth: depth}
+	}
+}
+
+// explorerMsg wraps a pre-resolved explorerLoadedMsg as a no-op command, for
+// the synchronous empty/error paths of loadExplorer.
+func explorerMsg(msg explorerLoadedMsg) tea.Cmd {
+	return func() tea.Msg { return msg }
+}
+
+// loadExplorerChildren lazily loads a node's children, returning
+// explorerChildrenMsg: for an edge node it loads the related rows (capped at
+// explorerChildLimit); for a row node it loads that row's edges. Depth-capped
+// nodes get a synthetic marker instead of a load.
+func (m *Model) loadExplorerChildren(node *expNode) tea.Cmd {
+	if node == nil {
+		return nil
+	}
+	if node.depth >= maxExplorerDepth {
+		return func() tea.Msg {
+			return explorerChildrenMsg{parent: node, children: []*expNode{synthNode("(depth limit reached)", node)}}
+		}
+	}
+	conn := m.connection
+	driver := conn.Config().Driver
+	if node.isEdge() {
+		val := node.filterVal
+		full := edgeDrillQuery(driver, node.edge, val)
+		q := full + fmt.Sprintf(" LIMIT %d", explorerChildLimit+1)
+		tbl := node.edge.targetTable
+		// Collect every row already on the path from the root to this edge so
+		// we can suppress children that would re-enter it. FK graphs cycle
+		// (users → orders → users), and without this the drill-down re-shows
+		// the row you started at, ad infinitum (until maxExplorerDepth).
+		ancestors := ancestorIdentities(node)
+		return func() tea.Msg {
+			res, err := conn.DB().Execute(q)
+			if err != nil {
+				return explorerChildrenMsg{parent: node, err: err}
+			}
+			pkCols, _ := conn.DB().PrimaryKeys(tbl)
+			rows := buildChildRowNodes(res, tbl, pkCols, driver)
+			// Drop child rows that are already ancestors (cycle break).
+			cycled := 0
+			if len(ancestors) > 0 {
+				kept := rows[:0]
+				for _, r := range rows {
+					if ancestors[rowIdentity(tbl, r.rowVals)] {
+						cycled++
+						continue
+					}
+					kept = append(kept, r)
+				}
+				rows = kept
+			}
+			if len(res.Rows) > explorerChildLimit {
+				more := synthNode(fmt.Sprintf("(+%d more — enter to open in grid)", len(res.Rows)-explorerChildLimit), node)
+				more.drillQuery = full // full, unlimited set
+				if len(rows) > explorerChildLimit {
+					rows = append(rows[:explorerChildLimit], more)
+				} else {
+					rows = append(rows, more)
+				}
+			}
+			switch {
+			case len(rows) == 0 && cycled > 0:
+				return explorerChildrenMsg{parent: node, fold: true}
+			case len(rows) == 0:
+				rows = []*expNode{synthNode("(no rows)", node)}
+			}
+			return explorerChildrenMsg{parent: node, children: rows}
+		}
+	}
+	// row node: load its edges, omitting outbound edges that loop back to a row
+	// already on the path (so e.g. a child row's FK to its parent isn't shown).
+	ancestors := ancestorRowNodes(node)
+	return func() tea.Msg {
+		edges, err := loadRowEdges(conn, driver, node.table, node.rowVals, ancestors)
+		if err != nil {
+			return explorerChildrenMsg{parent: node, err: err}
+		}
+		if len(edges) == 0 {
+			// Nothing to list (no FKs, or every edge was a back-edge): fold the
+			// node back up rather than show a "(no relationships)" marker.
+			return explorerChildrenMsg{parent: node, fold: true}
+		}
+		return explorerChildrenMsg{parent: node, children: edges}
+	}
+}
+
+// loadRowEdges fetches a row's outbound + inbound FK edges and resolves a live
+// per-edge count, returning edge nodes ready to attach as a row's children.
+// The count fan-out is concurrent (one goroutine per edge, distinct index).
+func loadRowEdges(conn *db.Connection, driver db.Driver, table string, rowVals map[string]string, ancestors []*expNode) ([]*expNode, error) {
+	out, errO := conn.DB().ForeignKeys(table)
+	in, errI := conn.DB().ReferencingForeignKeys(table)
+	if errO != nil && errI != nil {
+		return nil, errO
+	}
+	edges := make([]*expNode, 0, len(out)+len(in))
+	for _, fk := range out {
+		if errO != nil {
+			continue
+		}
+		val := rowVals[strings.ToLower(fk.Column)]
+		e := &expNode{
+			kind:      nodeEdge,
+			edge:      relNode{dir: relOutbound, targetTable: fk.RefTable, targetColumn: fk.RefColumn, sourceColumn: fk.Column},
+			filterVal: val,
+		}
+		e.drillQuery = edgeDrillQuery(driver, e.edge, val)
+		edges = append(edges, e)
+	}
+	for _, rf := range in {
+		if errI != nil {
+			continue
+		}
+		val := rowVals[strings.ToLower(rf.RefColumn)]
+		e := &expNode{
+			kind:      nodeEdge,
+			edge:      relNode{dir: relInbound, targetTable: rf.Table, targetColumn: rf.Column, sourceColumn: rf.RefColumn},
+			filterVal: val,
+		}
+		e.drillQuery = edgeDrillQuery(driver, e.edge, val)
+		edges = append(edges, e)
+	}
+	var wg sync.WaitGroup
+	for i := range edges {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			val := edges[i].filterVal
+			if val == "" || val == "NULL" {
+				edges[i].edge.count = "-"
+				return
+			}
+			edges[i].edge.count = countRelated(conn, driver, edges[i].edge.targetTable, edges[i].edge.targetColumn, val)
+		}(i)
+	}
+	wg.Wait()
+
+	// Keep only edges worth showing: a positive count, and — for outbound
+	// edges — not one that loops back to a row already on the path (e.g. a
+	// child row's FK pointing at the parent we came from). Inbound fan-out is
+	// always kept; an ancestor among its children is suppressed when expanded.
+	kept := edges[:0]
+	for _, e := range edges {
+		if !isNumericCount(e.edge.count) {
+			continue
+		}
+		if c, _ := strconv.Atoi(e.edge.count); c <= 0 {
+			continue
+		}
+		if e.edge.dir == relOutbound && isOutboundBackEdge(e, ancestors) {
+			continue
+		}
+		kept = append(kept, e)
+	}
+	return kept, nil
+}
+
+// isOutboundBackEdge reports whether an outbound edge's target row is already
+// an ancestor on the path from the root — i.e. expanding it would only loop
+// back to a row already shown. Outbound FK targets are unique (a PK or unique
+// column), so a matching ancestor means there is nothing new to drill into.
+func isOutboundBackEdge(e *expNode, ancestors []*expNode) bool {
+	col := strings.ToLower(e.edge.targetColumn)
+	for _, a := range ancestors {
+		if a.table == e.edge.targetTable && a.rowVals[col] == e.filterVal {
+			return true
+		}
+	}
+	return false
+}
+
+// edgeDrillQuery builds the SELECT to open an edge's full related set in the
+// grid (Enter on an edge node). An absent value falls back to an unfiltered
+// browse of the target table.
+func edgeDrillQuery(driver db.Driver, edge relNode, val string) string {
+	tbl := quoteIdentD(driver, edge.targetTable)
+	col := quoteIdentD(driver, edge.targetColumn)
+	if val == "" || val == "NULL" {
+		return fmt.Sprintf("SELECT * FROM %s", tbl)
+	}
+	return fmt.Sprintf("SELECT * FROM %s WHERE %s = %s", tbl, col, quoteSQLString(val))
+}
+
+// buildChildRowNodes turns a SELECT result set into row nodes, one per row,
+// each carrying its column→value map, a display label, and a drill query to
+// open that exact row in the grid on Enter.
+func buildChildRowNodes(res db.Result, table string, pkCols []string, driver db.Driver) []*expNode {
+	cols := make([]string, len(res.Columns))
+	for i, c := range res.Columns {
+		cols[i] = c.Name
+	}
+	nodes := make([]*expNode, 0, len(res.Rows))
+	for ri, row := range res.Rows {
+		vals := make(map[string]string, len(cols))
+		for i := range cols {
+			if i < len(row) {
+				vals[strings.ToLower(cols[i])] = row[i]
+			}
+		}
+		nodes = append(nodes, &expNode{
+			kind:       nodeRow,
+			table:      table,
+			rowVals:    vals,
+			label:      rowLabel(cols, vals, pkCols, ri),
+			drillQuery: rowDrillQuery(driver, table, pkCols, vals),
+		})
+	}
+	return nodes
+}
+
+// rowIdentity returns a canonical key for one row, used only to detect FK
+// cycles in the explorer tree: a child row that matches a row already on the
+// path from the root is suppressed so drilling never re-shows the row you
+// started from. Two rows are "the same" exactly when every cell matches.
+func rowIdentity(table string, vals map[string]string) string {
+	keys := make([]string, 0, len(vals))
+	for k := range vals {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString(table)
+	b.WriteByte('|')
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(vals[k])
+	}
+	return b.String()
+}
+
+// ancestorIdentities collects the row identities along the path from the root
+// down to (but excluding) the given edge node — every row the explorer has
+// already expanded through to reach this edge. Used to break FK cycles.
+func ancestorIdentities(edge *expNode) map[string]bool {
+	set := map[string]bool{}
+	for p := edge.parent; p != nil; p = p.parent {
+		if p.kind == nodeRow && !p.synthetic && p.rowVals != nil {
+			set[rowIdentity(p.table, p.rowVals)] = true
+		}
+	}
+	return set
+}
+
+// ancestorRowNodes returns the row nodes on the path from the root down to (but
+// excluding) the given node, nearest-first. Used to omit outbound edges that
+// would loop back to a row already shown.
+func ancestorRowNodes(node *expNode) []*expNode {
+	var out []*expNode
+	for p := node.parent; p != nil; p = p.parent {
+		if p.kind == nodeRow && !p.synthetic && p.rowVals != nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// rowLabel builds a human-friendly identity for a child row: the PK tuple
+// ("#1001") if available, else the first non-empty cell, else a positional
+// fallback rendered as "#N".
+func rowLabel(cols []string, vals map[string]string, pkCols []string, idx int) string {
+	if len(pkCols) > 0 {
+		parts := make([]string, 0, len(pkCols))
+		ok := true
+		for _, pk := range pkCols {
+			v := vals[strings.ToLower(pk)]
+			if v == "" || v == "NULL" {
+				ok = false
+				break
+			}
+			parts = append(parts, v)
+		}
+		if ok && len(parts) > 0 {
+			return "#" + strings.Join(parts, ", ")
+		}
+	}
+	for _, c := range cols {
+		v := vals[strings.ToLower(c)]
+		if v != "" && v != "NULL" {
+			return c + "=" + v
+		}
+	}
+	return fmt.Sprintf("#%d", idx)
+}
+
+// rowDrillQuery builds the SELECT to open one exact row in the grid on Enter.
+// Returns "" when the table has no PK (Enter is then disabled for that node).
+func rowDrillQuery(driver db.Driver, table string, pkCols []string, vals map[string]string) string {
+	if len(pkCols) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(pkCols))
+	for _, pk := range pkCols {
+		v := vals[strings.ToLower(pk)]
+		if v == "" || v == "NULL" {
+			return "" // incomplete PK — can't address the row uniquely
+		}
+		parts = append(parts, fmt.Sprintf("%s = %s", quoteIdentD(driver, pk), quoteSQLString(v)))
+	}
+	return fmt.Sprintf("SELECT * FROM %s WHERE %s", quoteIdentD(driver, table), strings.Join(parts, " AND "))
 }
 
 // exUses lists the objects (views, functions, procedures, triggers) that

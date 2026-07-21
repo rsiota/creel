@@ -311,7 +311,7 @@ func exCommands() []exCmdSpec {
 		},
 		{
 			verbs:   []string{"refs", "references"},
-			desc:    "foreign keys referencing a table",
+			desc:    "inbound FKs; per-row counts when focused",
 			usage:   ":refs [table]",
 			argKind: exArgTable,
 			run: func(m *Model, args []string, _ bool) tea.Cmd {
@@ -320,6 +320,15 @@ func exCommands() []exCmdSpec {
 					arg = args[0]
 				}
 				return m.exRefs(arg)
+			},
+		},
+		{
+			verbs:   []string{"explore", "explorer", "er"},
+			desc:    "relationship explorer for the focused row (g r)",
+			usage:   ":explore",
+			argKind: exArgNone,
+			run: func(m *Model, _ []string, _ bool) tea.Cmd {
+				return m.openExplorer()
 			},
 		},
 		{
