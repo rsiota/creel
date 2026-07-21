@@ -9,15 +9,17 @@ func (m Model) isFocusable(f Focus) bool {
 		return m.inspector.IsVisible()
 	case FocusAssistant:
 		return m.assistant.IsVisible()
+	case FocusExplorer:
+		return m.explorer.IsVisible() && m.explorer.docked
 	}
 	return true
 }
 
 func (m Model) cycleFocus() Model {
 	next := m.focus
-	for i := 0; i <= int(FocusAssistant); i++ {
+	for i := 0; i <= int(FocusExplorer); i++ {
 		next++
-		if next > FocusAssistant {
+		if next > FocusExplorer {
 			next = FocusConnections
 		}
 		if m.isFocusable(next) {
@@ -31,10 +33,10 @@ func (m Model) cycleFocus() Model {
 
 func (m Model) cycleFocusBack() Model {
 	next := m.focus
-	for i := 0; i <= int(FocusAssistant); i++ {
+	for i := 0; i <= int(FocusExplorer); i++ {
 		next--
 		if next < FocusConnections {
-			next = FocusAssistant
+			next = FocusExplorer
 		}
 		if m.isFocusable(next) {
 			break
@@ -83,10 +85,14 @@ func (m Model) moveFocus(direction string) Model {
 		case "ctrl+j":
 			m.focus = FocusResults
 		case "ctrl+l":
-			// The right-hand slot holds at most one of inspector / assistant.
-			if m.assistant.IsVisible() {
+			// The right-hand slot holds at most one of inspector / assistant /
+			// docked explorer.
+			switch {
+			case m.explorer.IsVisible() && m.explorer.docked:
+				m.focus = FocusExplorer
+			case m.assistant.IsVisible():
 				m.focus = FocusAssistant
-			} else if m.inspector.IsVisible() {
+			case m.inspector.IsVisible():
 				m.focus = FocusInspector
 			}
 		}
@@ -97,9 +103,12 @@ func (m Model) moveFocus(direction string) Model {
 		case "ctrl+k":
 			m.focus = FocusEditor
 		case "ctrl+l":
-			if m.assistant.IsVisible() {
+			switch {
+			case m.explorer.IsVisible() && m.explorer.docked:
+				m.focus = FocusExplorer
+			case m.assistant.IsVisible():
 				m.focus = FocusAssistant
-			} else if m.inspector.IsVisible() {
+			case m.inspector.IsVisible():
 				m.focus = FocusInspector
 			}
 		}
@@ -108,6 +117,10 @@ func (m Model) moveFocus(direction string) Model {
 			m.focus = FocusResults
 		}
 	case FocusAssistant:
+		if direction == "ctrl+h" {
+			m.focus = FocusResults
+		}
+	case FocusExplorer:
 		if direction == "ctrl+h" {
 			m.focus = FocusResults
 		}
@@ -165,15 +178,18 @@ func (m *Model) layoutWorkspace() {
 
 	inspectorVisible := m.inspector.IsVisible()
 	assistantVisible := m.assistant.IsVisible()
+	explorerDocked := m.explorer.IsVisible() && m.explorer.docked
 
 	rightWidth := m.width - sidebarWidth - borderOverhead
-	// The inspector and assistant share the right-hand slot (mutually
-	// exclusive), so subtract whichever (if any) is open.
+	// The inspector, assistant, and docked explorer share the right-hand slot
+	// (mutually exclusive), so subtract whichever (if any) is open.
 	rightSlotWidth := 0
 	if inspectorVisible {
 		rightSlotWidth = InspectorWidth
 	} else if assistantVisible {
 		rightSlotWidth = AssistantWidth
+	} else if explorerDocked {
+		rightSlotWidth = InspectorWidth
 	}
 	if rightSlotWidth > 0 {
 		rightWidth -= rightSlotWidth
@@ -210,16 +226,20 @@ func (m *Model) layoutWorkspace() {
 		viewHeight := tabBarHeight + editorHeight + resultsHeight
 		m.assistant.SetSize(AssistantWidth-borderOverhead, viewHeight)
 	}
+	if explorerDocked {
+		viewHeight := tabBarHeight + editorHeight + resultsHeight
+		m.explorer.SetSize(InspectorWidth-borderOverhead, viewHeight)
+	}
 
-	// Modal overlay panels (explorer / explain / lookup) share a centered 70%
-	// size. They MUST be sized here rather than only in View: View has a value
-	// receiver, so a SetSize there mutates a throwaway copy and the panel's
-	// height stays 0 — yielding a 1-line viewport that scrolls on every cursor
-	// move. layoutWorkspace mutates the model via its pointer receiver and runs
-	// on every keypress and resize, so the size persists into Update.
+	// Modal overlay panels (explorer popup / explain / lookup) share a centered
+	// 70% size. They MUST be sized here rather than only in View: View has a
+	// value receiver, so a SetSize there mutates a throwaway copy. The docked
+	// explorer is sized as a slot panel above, not here.
 	overlayW := m.width * 70 / 100
 	overlayH := (m.height - 1) * 70 / 100
-	m.explorer.SetSize(overlayW, overlayH)
+	if m.explorer.IsVisible() && !m.explorer.docked {
+		m.explorer.SetSize(overlayW, overlayH)
+	}
 	m.explainPanel.SetSize(overlayW, overlayH)
 	m.lookupPanel.SetSize(overlayW, overlayH)
 }

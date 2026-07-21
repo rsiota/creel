@@ -1489,7 +1489,77 @@ func (m *Model) openExplorer() tea.Cmd {
 		return nil
 	}
 	m.explorer.Show()
+	m.explorer.docked = false // g r / :explore is always the modal popup
 	m.explorer.markLoading()
+	return m.loadExplorer()
+}
+
+// openDockedExplorer toggles the relationship explorer as a right-slot panel
+// (the "inspector-tab" variant): non-modal, sharing the slot with the
+// inspector/assistant, and cursor-driven — it re-roots to the focused results
+// row as the cursor moves. Invoked by `:explore panel`.
+func (m *Model) openDockedExplorer() tea.Cmd {
+	if m.explorer.IsVisible() && m.explorer.docked {
+		m.closeDockedExplorer()
+		return nil
+	}
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	// The right slot holds one panel: close inspector/assistant.
+	m.inspector.Hide()
+	m.assistant.Hide()
+	m.explorer.ShowDocked()
+	m.explorer.markLoading()
+	m.focus = FocusExplorer
+	m.layoutWorkspace()
+	m.applyFocus()
+	return m.loadExplorer()
+}
+
+// closeDockedExplorer hides the docked explorer panel and returns focus to the
+// results grid.
+func (m *Model) closeDockedExplorer() {
+	m.explorer.Hide()
+	if m.focus == FocusExplorer {
+		m.focus = FocusResults
+	}
+	m.layoutWorkspace()
+	m.applyFocus()
+}
+
+// explorerAnchor is the identity of the results row the explorer would root at
+// (source table + PK tuple), or "" when there is nothing to anchor to. Used to
+// detect cursor moves so the docked panel can re-root without redundant loads.
+func (m Model) explorerAnchor() string {
+	r := m.results
+	if !r.HasResult() {
+		return ""
+	}
+	src := r.SourceTable()
+	if src == "" {
+		return ""
+	}
+	tup := r.CursorPKTuple()
+	if len(tup) == 0 {
+		return ""
+	}
+	return src + "|" + strings.Join(tup, ",")
+}
+
+// maybeReloadDockedExplorer re-roots the docked explorer when the results
+// cursor has landed on a different row. The popup (non-docked) is unaffected.
+// It does not markLoading, so the previous tree stays visible until the new
+// root arrives (no flicker on every cursor move).
+func (m Model) maybeReloadDockedExplorer() tea.Cmd {
+	if !m.explorer.IsVisible() || !m.explorer.docked {
+		return nil
+	}
+	cur := m.explorerAnchor()
+	if cur == "" || cur == m.explorer.anchor {
+		return nil
+	}
 	return m.loadExplorer()
 }
 

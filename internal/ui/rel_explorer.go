@@ -96,14 +96,21 @@ type RelExplorer struct {
 	loading  bool // initial root load in flight
 	err      string
 	emptyMsg string // why there is no root (no source table, etc.)
+
+	docked bool   // panel mode: rendered in the right slot, cursor-driven (vs. modal popup)
+	anchor string // the results row (table + PK tuple) the current tree is rooted at
 }
 
 // NewRelExplorer returns a hidden explorer panel.
 func NewRelExplorer() RelExplorer { return RelExplorer{} }
 
 func (e RelExplorer) IsVisible() bool { return e.visible }
-func (e *RelExplorer) Show()          { e.visible = true }
-func (e *RelExplorer) Hide()          { e.visible = false }
+func (e RelExplorer) IsDocked() bool   { return e.docked }
+func (e *RelExplorer) Show()           { e.visible = true }
+// ShowDocked reveals the explorer as a right-slot panel (non-modal, cursor-
+// driven) rather than the centered modal popup.
+func (e *RelExplorer) ShowDocked() { e.visible = true; e.docked = true }
+func (e *RelExplorer) Hide()       { e.visible = false; e.docked = false }
 
 // SetSize sets the panel's exterior dimensions (including border).
 func (e *RelExplorer) SetSize(w, h int) { e.width = w; e.height = h }

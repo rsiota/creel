@@ -325,9 +325,12 @@ func exCommands() []exCmdSpec {
 		{
 			verbs:   []string{"explore", "explorer", "er"},
 			desc:    "relationship explorer for the focused row (g r)",
-			usage:   ":explore",
-			argKind: exArgNone,
-			run: func(m *Model, _ []string, _ bool) tea.Cmd {
+			usage:   ":explore [panel]",
+			argKind: exArgOptional,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				if len(args) > 0 && strings.EqualFold(args[0], "panel") {
+					return m.openDockedExplorer()
+				}
 				return m.openExplorer()
 			},
 		},

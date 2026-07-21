@@ -29,6 +29,7 @@ const (
 	FocusResults
 	FocusInspector
 	FocusAssistant
+	FocusExplorer
 )
 
 // state represents the current screen the app is showing.
@@ -926,7 +927,17 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.state == stateAddConnection {
 			return m.updateAddConnection(msg)
 		}
-		return m.updateWorkspace(msg)
+		nm, ncmd := m.updateWorkspace(msg)
+		// Docked explorer is cursor-driven: if the results cursor landed on a
+		// different row, re-root the tree. Cheap anchor check; reloads only on a
+		// real change. (The popup variant is unaffected.)
+		if mm, ok := nm.(Model); ok {
+			if rcmd := mm.maybeReloadDockedExplorer(); rcmd != nil {
+				ncmd = tea.Batch(ncmd, rcmd)
+			}
+			return mm, ncmd
+		}
+		return nm, ncmd
 
 	case tea.MouseMsg:
 		// Help overlay is modal: the mouse wheel scrolls it; other mouse
@@ -1346,6 +1357,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		default:
 			m.explorer.applyRoot(msg.root, msg.depth)
 		}
+		// Record the row this tree is now rooted at, so the docked panel can tell
+		// a real cursor move from a redundant reload.
+		m.explorer.anchor = m.explorerAnchor()
 		return m, nil
 	case explorerChildrenMsg:
 		if !m.explorer.IsVisible() || msg.parent == nil {
@@ -2597,11 +2611,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Relationship explorer is modal. j/k move through the tree; → expands the
-	// selected node (loading children lazily); ← collapses (or jumps to parent);
-	// Enter opens a node's data in the grid and re-roots the tree there; r
-	// retargets to the focused row; esc/q close.
-	if m.explorer.IsVisible() {
+	// Relationship explorer popup is modal. j/k move through the tree; → expands
+	// the selected node (loading children lazily); ← collapses (or jumps to
+	// parent); Enter opens a node's data in the grid and re-roots the tree
+	// there; r retargets to the focused row; esc/q close. (The docked panel
+	// variant is non-modal and handled under FocusExplorer below.)
+	if m.explorer.IsVisible() && !m.explorer.docked {
 		switch msg.String() {
 		case "esc", "q", "ctrl+c":
 			m.explorer.Hide()
@@ -2739,8 +2754,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+o":
 		m.inspector.Toggle()
 		if m.inspector.IsVisible() {
-			// Assistant shares the inspector's right slot — close it.
+			// Inspector shares the right slot with assistant / docked explorer.
 			m.assistant.Hide()
+			m.explorer.Hide()
 			m.focus = FocusInspector
 		} else if m.focus == FocusInspector {
 			m.focus = FocusResults
@@ -2751,8 +2767,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+f":
 		m.assistant.Toggle()
 		if m.assistant.IsVisible() {
-			// Inspector shares the assistant's right slot — close it.
+			// Assistant shares the right slot with inspector / docked explorer.
 			m.inspector.Hide()
+			m.explorer.Hide()
 			m.focus = FocusAssistant
 		} else if m.focus == FocusAssistant {
 			m.focus = FocusResults
@@ -3825,6 +3842,28 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a, acmd := m.assistant.HandleKey(msg)
 		m.assistant = a
 		return m, acmd
+	case FocusExplorer:
+		// Docked relationship-explorer panel. Non-modal: global focus movement
+		// (ctrl+h/l) is handled before this switch. Tree nav mirrors the popup:
+		// j/k move, → expands, ← collapses, Enter re-roots the grid, r retargets,
+		// esc/q close the panel.
+		switch msg.String() {
+		case "esc", "q":
+			m.closeDockedExplorer()
+			return m, nil
+		case "enter":
+			return m, m.explorerActivate()
+		case "right", "l":
+			return m, m.explorerExpand()
+		case "left", "h":
+			m.explorerCollapse()
+			return m, nil
+		case "r":
+			m.explorer.markLoading()
+			return m, m.loadExplorer()
+		}
+		m.explorer = m.explorer.Update(msg)
+		return m, nil
 	}
 	return m, cmd
 }
@@ -4098,6 +4137,8 @@ func (m Model) viewWorkspace() string {
 		rightWidth -= inspectorWidth
 	} else if m.assistant.IsVisible() {
 		rightWidth -= AssistantWidth
+	} else if m.explorer.IsVisible() && m.explorer.docked {
+		rightWidth -= inspectorWidth
 	}
 
 	// Build the content area (tabs are inside the editor panel).
@@ -4185,8 +4226,8 @@ func (m Model) viewWorkspace() string {
 
 	rightPanel := contentPanel
 
-	// Build the right-hand slot panel: the inspector and assistant are mutually
-	// exclusive, so at most one is rendered here.
+	// Build the right-hand slot panel: the inspector, assistant, and docked
+	// relationship explorer are mutually exclusive, so at most one is rendered.
 	var slotPanel string
 	if m.inspector.IsVisible() {
 		slotContentHeight := lipgloss.Height(rightPanel) - borderOverhead
@@ -4214,6 +4255,18 @@ func (m Model) viewWorkspace() string {
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(m.borderForFocus(FocusAssistant)).
 			Render(m.assistant.View())
+	} else if m.explorer.IsVisible() && m.explorer.docked {
+		slotContentHeight := lipgloss.Height(rightPanel) - borderOverhead
+		if slotContentHeight < 3 {
+			slotContentHeight = 3
+		}
+		m.explorer.SetSize(inspectorWidth-borderOverhead, slotContentHeight)
+		slotPanel = lipgloss.NewStyle().
+			Width(inspectorWidth - borderOverhead).
+			Height(slotContentHeight).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(m.borderForFocus(FocusExplorer)).
+			Render(m.explorer.View())
 	}
 
 	// Sidebar content height = right panel height minus sidebar's own borders.
@@ -4325,7 +4378,7 @@ func (m Model) viewWorkspace() string {
 		Render(" " + m.statusBar(connName))
 
 	var workspace string
-	if m.inspector.IsVisible() || m.assistant.IsVisible() {
+	if m.inspector.IsVisible() || m.assistant.IsVisible() || (m.explorer.IsVisible() && m.explorer.docked) {
 		workspace = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel, slotPanel)
 	} else {
 		workspace = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel)
@@ -4401,8 +4454,9 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, lookupPanelView, panelX, panelY)
 	}
 
-	// Overlay relationship explorer if visible
-	if m.explorer.IsVisible() {
+	// Overlay relationship explorer popup if visible (the docked variant is
+	// rendered in the right slot above, not as an overlay).
+	if m.explorer.IsVisible() && !m.explorer.docked {
 		m.explorer.SetSize(m.width*70/100, (m.height-1)*70/100)
 		explorerView := m.explorer.View()
 		panelW := lipgloss.Width(explorerView)

@@ -138,9 +138,10 @@ func TestLoadRowEdgesFiltersZeroCount(t *testing.T) {
 // This test ensures updateLayout leaves the explorer with a real viewport.
 func TestExplorerSizedByLayout(t *testing.T) {
 	// layoutWorkspace sizes the editor/results/etc., so they must be initialized
-	// (a bare Model would panic inside the textarea). The explorer itself only
-	// needs width/height to be sized.
+	// (a bare Model would panic inside the textarea). The explorer popup is only
+	// sized while visible, so reveal it first.
 	m := &Model{state: stateWorkspace, width: 80, height: 24, editor: NewQueryEditor()}
+	m.explorer.Show()
 	*m = m.updateLayout()
 	if m.explorer.height == 0 {
 		t.Fatalf("explorer.height is 0 after updateLayout — overlay not sized persistently (nodeViewport=%d)", m.explorer.nodeViewport())
@@ -152,6 +153,77 @@ func TestExplorerSizedByLayout(t *testing.T) {
 	// same height-derived viewport math.
 	if m.explainPanel.height == 0 || m.lookupPanel.height == 0 {
 		t.Errorf("explain/lookup overlay height not set after updateLayout (explain=%d lookup=%d)", m.explainPanel.height, m.lookupPanel.height)
+	}
+}
+
+// TestDockedExplorerOpensAndCursorReloads covers the inspector-tab variant:
+// `:explore panel` opens the explorer docked in the right slot (visible,
+// docked, focused), and it re-roots as the results cursor moves between rows.
+func TestDockedExplorerOpensAndCursorReloads(t *testing.T) {
+	conn := newSQLiteTestConn(t)
+	defer conn.Close()
+	for _, q := range []string{
+		`CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)`,
+		`CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users(id))`,
+		`INSERT INTO users VALUES (1,'Alice')`,
+		`INSERT INTO users VALUES (2,'Bob')`,
+		`INSERT INTO orders (id,user_id) VALUES (10,1),(11,2)`,
+	} {
+		if _, err := conn.DB().Exec(q); err != nil {
+			t.Fatalf("exec: %v\n%s", err, q)
+		}
+	}
+	m := &Model{
+		connection: conn,
+		results:    NewResultsTable(),
+		editor:     NewQueryEditor(),
+		tables:     []string{"users", "orders"},
+	}
+	m.results.SetResult([]string{"id", "name"}, [][]string{{"1", "Alice"}, {"2", "Bob"}}, "")
+	m.results.SetEditable("users", []string{"id"})
+
+	// `:explore panel` opens the docked variant and kicks off the first load.
+	loadCmd := m.runExCommand("explore panel")
+	if loadCmd == nil {
+		t.Fatalf(":explore panel returned nil")
+	}
+	if !m.explorer.IsVisible() || !m.explorer.docked {
+		t.Errorf("explorer should be visible+docked (visible=%v docked=%v)", m.explorer.IsVisible(), m.explorer.docked)
+	}
+	if m.focus != FocusExplorer {
+		t.Errorf("focus = %v, want FocusExplorer", m.focus)
+	}
+
+	// First load roots at user 1 (cursor row 0).
+	msg := loadCmd().(explorerLoadedMsg)
+	if msg.root == nil || msg.root.table != "users" {
+		t.Fatalf("expected user-1 root, got %+v", msg)
+	}
+	m.explorer.applyRoot(msg.root, msg.depth)
+	m.explorer.anchor = m.explorerAnchor()
+
+	// Cursor unchanged → no reload.
+	if c := m.maybeReloadDockedExplorer(); c != nil {
+		t.Errorf("reload should be nil when cursor unchanged")
+	}
+	// Move to user 2 → anchor changes → reload re-roots.
+	m.results.SetCursor(1, 0)
+	reload := m.maybeReloadDockedExplorer()
+	if reload == nil {
+		t.Fatalf("expected a reload cmd after moving cursor to a new row")
+	}
+	msg2 := reload().(explorerLoadedMsg)
+	if msg2.root == nil || msg2.root.table != "users" {
+		t.Fatalf("expected user-2 root, got %+v", msg2)
+	}
+	if msg.root.label == msg2.root.label {
+		t.Errorf("tree did not re-root after cursor move (both %q)", msg.root.label)
+	}
+
+	// `:explore panel` again toggles it closed.
+	m.runExCommand("explore panel")
+	if m.explorer.IsVisible() {
+		t.Errorf("explorer should be hidden after toggling :explore panel off")
 	}
 }
 
