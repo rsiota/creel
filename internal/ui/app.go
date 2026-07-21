@@ -4256,17 +4256,11 @@ func (m Model) viewWorkspace() string {
 			BorderForeground(m.borderForFocus(FocusAssistant)).
 			Render(m.assistant.View())
 	} else if m.explorer.IsVisible() && m.explorer.docked {
-		slotContentHeight := lipgloss.Height(rightPanel) - borderOverhead
-		if slotContentHeight < 3 {
-			slotContentHeight = 3
-		}
-		m.explorer.SetSize(inspectorWidth-borderOverhead, slotContentHeight)
-		slotPanel = lipgloss.NewStyle().
-			Width(inspectorWidth - borderOverhead).
-			Height(slotContentHeight).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(m.borderForFocus(FocusExplorer)).
-			Render(m.explorer.View())
+		// The explorer's View() already draws its own border, so place it
+		// directly (no second border) sized to the full slot.
+		slotH := lipgloss.Height(rightPanel)
+		m.explorer.SetSize(inspectorWidth, slotH)
+		slotPanel = m.explorer.View()
 	}
 
 	// Sidebar content height = right panel height minus sidebar's own borders.

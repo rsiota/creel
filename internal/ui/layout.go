@@ -227,8 +227,10 @@ func (m *Model) layoutWorkspace() {
 		m.assistant.SetSize(AssistantWidth-borderOverhead, viewHeight)
 	}
 	if explorerDocked {
-		viewHeight := tabBarHeight + editorHeight + resultsHeight
-		m.explorer.SetSize(InspectorWidth-borderOverhead, viewHeight)
+		// Rendered directly in the slot (View() carries its own border), so the
+		// total panel is InspectorWidth × (editor+results+borders).
+		viewHeight := tabBarHeight + editorHeight + resultsHeight + borderOverhead
+		m.explorer.SetSize(InspectorWidth, viewHeight)
 	}
 
 	// Modal overlay panels (explorer popup / explain / lookup) share a centered
