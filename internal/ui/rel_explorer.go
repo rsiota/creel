@@ -76,9 +76,9 @@ type expNode struct {
 // isEdge reports whether this is a relationship edge node.
 func (n *expNode) isEdge() bool { return n.kind == nodeEdge }
 
-// RelExplorer is a modal overlay that turns the focused results row into a
-// navigable, expandable object graph — the literal "browse a row like a folder"
-// model. The root is the focused grid row; its inbound + outbound FK edges are
+// RelExplorer is a docked right-slot panel that turns the focused results row
+// into a navigable, expandable object graph — the literal "browse a row like a
+// folder" model. The root is the focused grid row; its inbound + outbound FK edges are
 // the first level. Expand an edge (→) to see the child rows inline; expand a
 // child row to see its edges, and so on, depth-capped. Enter opens a node's
 // data in the grid (a specific row, or all of an edge's children) and re-roots
@@ -97,7 +97,7 @@ type RelExplorer struct {
 	err      string
 	emptyMsg string // why there is no root (no source table, etc.)
 
-	docked  bool   // panel mode: rendered in the right slot, cursor-driven (vs. modal popup)
+	docked  bool   // panel mode: rendered in the right slot, cursor-driven
 	anchor  string // the results row (table + PK tuple) the current tree is rooted at
 	focused bool   // mirror of Model.focus == FocusExplorer, for the border color
 }
@@ -107,9 +107,8 @@ func NewRelExplorer() RelExplorer { return RelExplorer{} }
 
 func (e RelExplorer) IsVisible() bool { return e.visible }
 func (e RelExplorer) IsDocked() bool   { return e.docked }
-func (e *RelExplorer) Show()           { e.visible = true }
-// ShowDocked reveals the explorer as a right-slot panel (non-modal, cursor-
-// driven) rather than the centered modal popup.
+// ShowDocked reveals the explorer as a right-slot panel (non-modal,
+// cursor-driven).
 func (e *RelExplorer) ShowDocked() { e.visible = true; e.docked = true }
 func (e *RelExplorer) Hide()       { e.visible = false; e.docked = false }
 
@@ -377,7 +376,7 @@ func (e RelExplorer) View() string {
 	// Padding(0,1) leaves (e.width-2)-2 = e.width-4 = inner for text, and the
 	// border brings the total to e.width. Height excludes border+padding, so
 	// Height(nodeViewport) + border = e.height. This lets the docked slot place
-	// View() directly (no second border) and the popup center it precisely.
+	// View() directly (no second border).
 	return lipgloss.NewStyle().
 		Width(e.width - borderOverhead).
 		Height(vh).

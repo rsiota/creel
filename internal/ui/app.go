@@ -930,7 +930,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		nm, ncmd := m.updateWorkspace(msg)
 		// Docked explorer is cursor-driven: if the results cursor landed on a
 		// different row, re-root the tree. Cheap anchor check; reloads only on a
-		// real change. (The popup variant is unaffected.)
+		// real change.
 		if mm, ok := nm.(Model); ok {
 			if rcmd := mm.maybeReloadDockedExplorer(); rcmd != nil {
 				ncmd = tea.Batch(ncmd, rcmd)
@@ -2611,31 +2611,6 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Relationship explorer popup is modal. j/k move through the tree; → expands
-	// the selected node (loading children lazily); ← collapses (or jumps to
-	// parent); Enter opens a node's data in the grid and re-roots the tree
-	// there; r retargets to the focused row; esc/q close. (The docked panel
-	// variant is non-modal and handled under FocusExplorer below.)
-	if m.explorer.IsVisible() && !m.explorer.docked {
-		switch msg.String() {
-		case "esc", "q", "ctrl+c":
-			m.explorer.Hide()
-			return m, nil
-		case "enter":
-			return m, m.explorerActivate()
-		case "right", "l":
-			return m, m.explorerExpand()
-		case "left", "h":
-			m.explorerCollapse()
-			return m, nil
-		case "r":
-			m.explorer.markLoading()
-			return m, m.loadExplorer()
-		}
-		m.explorer = m.explorer.Update(msg)
-		return m, nil
-	}
-
 	// Command palette is modal — intercept all keys when visible.
 	if m.palette.visible {
 		var cmd tea.Cmd
@@ -3263,12 +3238,13 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// g r — relationship explorer: a navigable object-graph view of the
-		// focused row's inbound + outbound FK edges with live counts.
+		// g r — relationship explorer: toggles the docked panel, a navigable
+		// object-graph view of the focused row's inbound + outbound FK edges
+		// with live counts that re-roots as the cursor moves. Same as `:explore`.
 		if msg.String() == "r" && m.resultsPendingG {
 			m.resultsPendingG = false
 			m.resultsPendingY = false
-			return m, m.openExplorer()
+			return m, m.openDockedExplorer()
 		}
 
 		// g/G navigation works on empty tables too.
@@ -3844,9 +3820,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, acmd
 	case FocusExplorer:
 		// Docked relationship-explorer panel. Non-modal: global focus movement
-		// (ctrl+h/l) is handled before this switch. Tree nav mirrors the popup:
-		// j/k move, → expands, ← collapses, Enter re-roots the grid, r retargets,
-		// esc/q close the panel.
+		// (ctrl+h/l) is handled before this switch. Tree nav: j/k move, → expands,
+		// ← collapses, Enter re-roots the grid, r retargets, esc/q close the panel.
 		switch msg.String() {
 		case "esc", "q":
 			m.closeDockedExplorer()
@@ -4448,19 +4423,6 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, lookupPanelView, panelX, panelY)
-	}
-
-	// Overlay relationship explorer popup if visible (the docked variant is
-	// rendered in the right slot above, not as an overlay).
-	if m.explorer.IsVisible() && !m.explorer.docked {
-		m.explorer.focused = true // modal popup is always focused while open
-		m.explorer.SetSize(m.width*70/100, (m.height-1)*70/100)
-		explorerView := m.explorer.View()
-		panelW := lipgloss.Width(explorerView)
-		panelH := lipgloss.Height(explorerView)
-		panelX := (m.width - panelW) / 2
-		panelY := (m.height - 1 - panelH) / 2
-		view = placeOverlay(view, explorerView, panelX, panelY)
 	}
 
 	// Overlay filter picker if visible

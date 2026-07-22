@@ -1479,25 +1479,10 @@ func countRelated(conn *db.Connection, driver db.Driver, table, col, val string)
 	return res.Rows[0][0]
 }
 
-// openExplorer reveals the relationship explorer for the focused results row
-// and kicks off the first load. Invoked by g r and :explore. The panel is the
-// interactive cockpit over the grid: each inbound/outbound FK edge is a node
-// you can drill into (Enter) or step back from (←) via the queryStack.
-func (m *Model) openExplorer() tea.Cmd {
-	if m.connection == nil {
-		m.schemaMsg = "not connected"
-		return nil
-	}
-	m.explorer.Show()
-	m.explorer.docked = false // g r / :explore is always the modal popup
-	m.explorer.markLoading()
-	return m.loadExplorer()
-}
-
 // openDockedExplorer toggles the relationship explorer as a right-slot panel
 // (the "inspector-tab" variant): non-modal, sharing the slot with the
 // inspector/assistant, and cursor-driven — it re-roots to the focused results
-// row as the cursor moves. Invoked by `:explore panel`.
+// row as the cursor moves. Invoked by `g r` and `:explore`.
 func (m *Model) openDockedExplorer() tea.Cmd {
 	if m.explorer.IsVisible() && m.explorer.docked {
 		m.closeDockedExplorer()
@@ -1549,11 +1534,11 @@ func (m Model) explorerAnchor() string {
 }
 
 // maybeReloadDockedExplorer re-roots the docked explorer when the results
-// cursor has landed on a different row. The popup (non-docked) is unaffected.
-// It does not markLoading, so the previous tree stays visible until the new
-// root arrives (no flicker on every cursor move).
+// cursor has landed on a different row. It does not markLoading, so the
+// previous tree stays visible until the new root arrives (no flicker on every
+// cursor move).
 func (m Model) maybeReloadDockedExplorer() tea.Cmd {
-	if !m.explorer.IsVisible() || !m.explorer.docked {
+	if !m.explorer.IsVisible() {
 		return nil
 	}
 	cur := m.explorerAnchor()
@@ -1565,9 +1550,9 @@ func (m Model) maybeReloadDockedExplorer() tea.Cmd {
 
 // loadExplorer builds the explorer tree root from the focused results row and
 // loads its first-level edges (with counts), returning explorerLoadedMsg. It
-// powers openExplorer and the auto-refresh after Enter/back (wired in app.go on
-// queryExecutedMsg). When there is nothing to explore it returns a message
-// with an emptyMsg so the panel shows a reason rather than a blank box.
+// powers openDockedExplorer and the auto-refresh after Enter/back (wired in
+// app.go on queryExecutedMsg). When there is nothing to explore it returns a
+// message with an emptyMsg so the panel shows a reason rather than a blank box.
 func (m *Model) loadExplorer() tea.Cmd {
 	r := m.results
 	depth := len(m.queryStack)

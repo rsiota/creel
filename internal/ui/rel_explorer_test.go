@@ -131,7 +131,7 @@ func TestLoadRowEdgesFiltersZeroCount(t *testing.T) {
 }
 
 // TestExplorerSizedByLayout is a regression test for a subtle bug: the
-// explorer/lookup/explain overlays were once sized only inside View(), which
+// explorer/lookup/explain panels were once sized only inside View(), which
 // has a VALUE receiver — so SetSize mutated a throwaway copy and the panel's
 // stored height stayed 0. With height 0, nodeViewport() collapses to 1, so
 // every cursor move scrolled the single visible line ("every j scrolls").
@@ -139,10 +139,10 @@ func TestLoadRowEdgesFiltersZeroCount(t *testing.T) {
 // This test ensures updateLayout leaves the explorer with a real viewport.
 func TestExplorerSizedByLayout(t *testing.T) {
 	// layoutWorkspace sizes the editor/results/etc., so they must be initialized
-	// (a bare Model would panic inside the textarea). The explorer popup is only
-	// sized while visible, so reveal it first.
+	// (a bare Model would panic inside the textarea). The docked explorer panel
+	// is only sized while visible, so reveal it first.
 	m := &Model{state: stateWorkspace, width: 80, height: 24, editor: NewQueryEditor()}
-	m.explorer.Show()
+	m.explorer.ShowDocked()
 	*m = m.updateLayout()
 	if m.explorer.height == 0 {
 		t.Fatalf("explorer.height is 0 after updateLayout — overlay not sized persistently (nodeViewport=%d)", m.explorer.nodeViewport())
@@ -740,7 +740,7 @@ func TestRelExplorerViewExactBoxModel(t *testing.T) {
 
 // TestRelExplorerBorderColor mirrors the inspector/assistant focus convention:
 // the explorer border uses the accent color when it holds focus and the dim
-// unfocused color otherwise. The modal popup is always focused while open.
+// unfocused color otherwise.
 func TestRelExplorerBorderColor(t *testing.T) {
 	e := NewRelExplorer()
 	if e.borderColor() != colorBorderUnfocused {

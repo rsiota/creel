@@ -11,7 +11,7 @@ Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `gsql`
 - **Vim-mode editor** — normal/insert modes, motions (`h/j/k/l`, `w/b`), operators (`dd`, `dw`, `x`, `D`), yank/paste, and SQL autocompletion
 - **Table browser** — expand/collapse columns, inspect schemas, fuzzy-filter tables
 - **Results grid** — sort, filter, search, hide/show columns, follow foreign keys (`g d`), mark and bulk-delete rows
-- **Relationship explorer** (`g r`) — browse a row like a folder: an expandable object-graph tree of the focused row's inbound and outbound foreign keys, with a live per-edge count. Expand an edge (`→`) to see the related rows inline, expand a row to see *its* edges, and so on (depth-capped); `Enter` opens a node in the grid, `←` collapses, `r` retargets. Counts and child rows fan out concurrently across all three drivers
+- **Relationship explorer** (`g r` / `:explore panel`) — a docked panel that browses a row like a folder: an expandable object-graph tree of the focused row's inbound and outbound foreign keys, with a live per-edge count. Expand an edge (`→`) to see the related rows inline, expand a row to see *its* edges, and so on (depth-capped); `Enter` opens a node in the grid, `←` collapses, `r` retargets. The panel stays open and re-roots as the cursor moves. Counts and child rows fan out concurrently across all three drivers
 - **Inline editing** — edit cells directly, insert rows, clone rows, paste from clipboard
 - **Record inspector** — side panel with a vertical form view that tracks the results cursor
 - **Query history & bookmarks** — per-connection, persisted, searchable

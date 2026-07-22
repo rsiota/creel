@@ -233,15 +233,12 @@ func (m *Model) layoutWorkspace() {
 		m.explorer.SetSize(InspectorWidth, viewHeight)
 	}
 
-	// Modal overlay panels (explorer popup / explain / lookup) share a centered
-	// 70% size. They MUST be sized here rather than only in View: View has a
-	// value receiver, so a SetSize there mutates a throwaway copy. The docked
-	// explorer is sized as a slot panel above, not here.
+	// Modal overlay panels (explain / lookup) share a centered 70% size. They
+	// MUST be sized here rather than only in View: View has a value receiver,
+	// so a SetSize there mutates a throwaway copy. The docked explorer is sized
+	// as a slot panel above, not here.
 	overlayW := m.width * 70 / 100
 	overlayH := (m.height - 1) * 70 / 100
-	if m.explorer.IsVisible() && !m.explorer.docked {
-		m.explorer.SetSize(overlayW, overlayH)
-	}
 	m.explainPanel.SetSize(overlayW, overlayH)
 	m.lookupPanel.SetSize(overlayW, overlayH)
 }
