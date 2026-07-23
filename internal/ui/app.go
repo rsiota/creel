@@ -522,6 +522,10 @@ func NewModel(cfg *config.Config) Model {
 	// the first frame. init() already applied the default; this overrides it.
 	applyPalette(paletteForTheme(settings.Theme))
 
+	// Apply the icon set the same way: portable triangles by default, Nerd
+	// Font angle glyphs when `icons: nerdfont` is set.
+	applyIcons(settings.Icons)
+
 	m := Model{
 		state:           stateConnections,
 		focus:           FocusConnections,
@@ -4284,9 +4288,9 @@ func (m Model) viewWorkspace() string {
 			line = indent + colName + " " + colType
 		} else {
 			style := normalStyle
-			expandIcon := "▸"
+			expandIcon := icons.collapsed
 			if _, ok := m.expanded[item.text]; ok {
-				expandIcon = "▾"
+				expandIcon = icons.expanded
 			}
 			if isCursor && !m.sidebarFiltering {
 				style = selectedStyle

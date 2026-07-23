@@ -61,7 +61,7 @@ func TestExLookupResolvesKnownVerbs(t *testing.T) {
 		"describe", "desc", "d", "columns", "indexes", "constraints", "fk",
 		"tables", "dt", "views", "dv", "schemas", "search", "find",
 		"stats", "count", "sample", "head", "format",
-		"bookmark", "import", "rerun", "watch", "tail", "theme",
+		"bookmark", "import", "rerun", "watch", "tail", "theme", "icons",
 		"limit", "timing", "peek", "filter", "open", "o", "save",
 		"tabnew", "tabclose", "tabnext", "tabn", "tabprev", "tabp", "tabs",
 	}

@@ -204,6 +204,7 @@ optional and fall back to defaults when omitted:
 | `query_timeout`  | 30s          | Per-query deadline (friendly form: `2m`, `1h30m`, or a bare seconds int) |
 | `default_driver` | sqlite       | Driver pre-filled in the add-connection form                             |
 | `theme`          | tokyo-night  | Palette: `tokyo-night`, `gruvbox`, `nord`, `catppuccin`, `light` + ~565 auto-derived from iTerm2-Color-Schemes (dracula, solarized, …). Unknown → default |
+| `icons`          | unicode      | Glyph set for tree expand/collapse markers (sidebar, connection groups, relationship explorer). `unicode` uses portable triangles (▾/▸); `nerdfont` uses Nerd Font angle chevrons (U+F107/U+F105) — open, rotationally-symmetric like treemacs, but only renders correctly in a terminal running a Nerd Font. Unknown → default |
 | `transparent_background` | false | By default gsql fills the app background with the theme's bg colour (required for light themes to be readable). Set `true` to leave it unpainted so the terminal's own background / transparency shows through — at the cost of light themes looking wrong. |
 | `confirm_destructive` | true | Destructive actions (drop table/database, truncate, delete rows, discard edits, drop column, delete provider/connection, clear history/bookmarks) prompt for confirmation. Set `false` to skip the prompts and run each action immediately. |
 
@@ -213,6 +214,7 @@ settings:
   query_timeout: 1m
   default_driver: postgres
   theme: gruvbox
+  icons: nerdfont
   confirm_destructive: false
 ```
 

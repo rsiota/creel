@@ -371,18 +371,19 @@ func (e RelExplorer) View() string {
 	for len(body) < vh {
 		body = append(body, "")
 	}
-	// Render an exact e.width × e.height panel. lipgloss Width INCLUDES
-	// horizontal padding (but not border): Width(e.width-borderOverhead) with
-	// Padding(0,1) leaves (e.width-2)-2 = e.width-4 = inner for text, and the
-	// border brings the total to e.width. Height excludes border+padding, so
-	// Height(nodeViewport) + border = e.height. This lets the docked slot place
-	// View() directly (no second border).
+	// Render an exact e.width × e.height panel with no interior padding, so the
+	// tree's chevrons anchor flush to the left border rather than sitting in a
+	// panel gutter (every line carries its own glyph, so a gutter would only
+	// push them right). lipgloss Width excludes border: Width(e.width-
+	// borderOverhead) leaves e.width-2 = inner for text, and the border brings
+	// the total to e.width. Height excludes border, so Height(nodeViewport) +
+	// border = e.height. This lets the docked slot place View() directly (no
+	// second border).
 	return lipgloss.NewStyle().
 		Width(e.width - borderOverhead).
 		Height(vh).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(e.borderColor()).
-		Padding(0, 1).
 		Render(strings.Join(body, "\n"))
 }
 
@@ -411,7 +412,7 @@ func (e RelExplorer) bodyLines() []string {
 		return []string{muted.Render(msg)}
 	}
 
-	inner := e.width - 4 // border(2) + padding(2)
+	inner := e.width - 2 // border only (no interior padding); text anchors flush left
 	if inner < 10 {
 		inner = 10
 	}
@@ -450,31 +451,36 @@ func (e RelExplorer) cursorNodeIndex(n *expNode) int {
 }
 
 // renderLine formats one tree node with depth indentation, an expand glyph,
-// and a kind-specific label. The selected line is inverted (no chevron) like
-// the command palette; every line gets a 2-space gutter so columns align.
+// and a kind-specific label. Each line carries 1 cell of padding per side via
+// the line style (not the panel) so the chevron sits one cell in from the
+// border — the same spacing as the sidebar/table explorer — while a selected
+// line's highlight fills through that padding to reach the border. Depth
+// indentation is the only thing that shifts a line further right.
 func (n *expNode) renderLine(selectedIdx int, inner int) string {
 	indent := strings.Repeat("  ", n.depth)
-	glyph := "▸"
+	glyph := icons.collapsed
 	switch {
 	case n.loading:
 		glyph = "⟳"
 	case n.expanded:
-		glyph = "▼"
+		glyph = icons.expanded
 	case n.synthetic:
 		glyph = "·"
 	}
 	content := indent + glyph + " " + n.displayLabel()
-	line := truncateCell("  "+content, inner)
+	// inner-2 reserves one cell of padding per side, applied by the line style.
+	body := truncateCell(content, inner-2)
 	if selectedIdx >= 0 {
 		return lipgloss.NewStyle().
 			Background(colorPrimary).Foreground(colorBg).
-			Render(padRight(line, inner))
+			Padding(0, 1).
+			Render(body)
 	}
 	style := lipgloss.NewStyle().Foreground(colorFg)
 	if n.synthetic {
 		style = lipgloss.NewStyle().Foreground(colorMuted)
 	}
-	return style.Render(line)
+	return style.Padding(0, 1).Render(body)
 }
 
 // displayLabel builds the text after the glyph for each node kind.

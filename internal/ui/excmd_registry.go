@@ -767,6 +767,19 @@ func exCommands() []exCmdSpec {
 			},
 		},
 		{
+			verbs:   []string{"icons"},
+			desc:    "switch the tree expand/collapse glyph set",
+			usage:   ":icons <unicode|nerdfont>",
+			argKind: exArgRequired,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				if len(args) == 0 {
+					m.schemaMsg = ":icons needs a name (unicode or nerdfont)"
+					return nil
+				}
+				return m.exIcons(args[0])
+			},
+		},
+		{
 			verbs:   []string{"ai"},
 			desc:    "ask the AI to write SQL from a natural-language request",
 			usage:   ":ai <request>",

@@ -35,6 +35,14 @@ type Settings struct {
 	// every config save.
 	Theme string `yaml:"theme,omitempty"`
 
+	// Icons selects the glyph set for tree expand/collapse markers (sidebar,
+	// connection groups, relationship explorer). Empty (the default) uses
+	// portable Unicode triangles (▾/▸). "nerdfont" swaps in Nerd Font angle
+	// glyphs (U+F107 down / U+F105 right) for terminals running a Nerd Font;
+	// without one they render as blank/tofu boxes. Unknown values fall back to
+	// the default, so it is left unsanitized like Theme.
+	Icons string `yaml:"icons,omitempty"`
+
 	// TransparentBackground leaves the app's background unpainted so the
 	// terminal's own background (or window transparency / background image)
 	// shows through. By default gsql fills the background with the active

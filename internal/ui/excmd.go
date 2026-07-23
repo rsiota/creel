@@ -2145,6 +2145,31 @@ func (m *Model) exTheme(name string) tea.Cmd {
 	return nil
 }
 
+// exIcons switches the tree expand/collapse glyph set (:icons <unicode|nerdfont>),
+// applying it live and persisting the choice to config — the same shape as
+// exTheme. "unicode" (or "default") restores the portable triangles and
+// clears the stored value (so it omits from YAML); "nerdfont" uses Nerd Font
+// angle chevrons (U+F105/U+F107), which need a Nerd Font in the terminal.
+func (m *Model) exIcons(name string) tea.Cmd {
+	resolved, ok := resolveIconSet(name)
+	if !ok {
+		m.schemaMsg = fmt.Sprintf("unknown icon set: %s (try :icons unicode or :icons nerdfont)", name)
+		return nil
+	}
+	m.settings.Icons = resolved
+	if m.config != nil {
+		m.config.Settings.Icons = resolved
+		_ = m.config.Save()
+	}
+	applyIcons(resolved)
+	label := resolved
+	if label == "" {
+		label = "unicode"
+	}
+	m.schemaMsg = "icons: " + label
+	return nil
+}
+
 // exCount runs SELECT count(*) FROM <table> (:count [table]), defaulting to
 // the current table. It reuses the :goto pattern (set the editor, run the
 // statement) so the count lands in the results panel like any query.

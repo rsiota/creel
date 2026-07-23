@@ -650,9 +650,9 @@ func renderGroupHeader(group string, collapsed, isCursor bool, contentW, count i
 	if label == "" {
 		label = "Ungrouped"
 	}
-	marker := "▾"
+	marker := icons.expanded
 	if collapsed {
-		marker = "▸"
+		marker = icons.collapsed
 	}
 	nameSty := lipgloss.NewStyle().Foreground(colorLabel).Bold(true)
 	if isCursor {
