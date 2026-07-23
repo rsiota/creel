@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // relDir labels a relationship edge's direction relative to a row.
@@ -454,8 +455,11 @@ func (e RelExplorer) cursorNodeIndex(n *expNode) int {
 // and a kind-specific label. Each line carries 1 cell of padding per side via
 // the line style (not the panel) so the chevron sits one cell in from the
 // border — the same spacing as the sidebar/table explorer — while a selected
-// line's highlight fills through that padding to reach the border. Depth
-// indentation is the only thing that shifts a line further right.
+// line's highlight fills through that padding to reach the border. Edge
+// labels grey the child count (colorLabel, the sidebar's expanded-column
+// colour); the selected/inverted line stays plain so its background fill is
+// not broken by the count's embedded colour reset. Depth indentation is the
+// only thing that shifts a line further right.
 func (n *expNode) renderLine(selectedIdx int, inner int) string {
 	indent := strings.Repeat("  ", n.depth)
 	glyph := icons.collapsed
@@ -467,9 +471,26 @@ func (n *expNode) renderLine(selectedIdx int, inner int) string {
 	case n.synthetic:
 		glyph = "·"
 	}
-	content := indent + glyph + " " + n.displayLabel()
+	// Edge labels grey the child count. Only on non-selected lines: the
+	// selected line is inverted as one plain block so its background fill
+	// isn't broken by the count's embedded reset.
+	greyed := n.isEdge() && selectedIdx < 0
+	var label string
+	if greyed {
+		label = n.edge.targetTable + " " +
+			lipgloss.NewStyle().Foreground(colorLabel).Render("("+n.edgeCount()+")")
+	} else {
+		label = n.displayLabel()
+	}
+	content := indent + glyph + " " + label
 	// inner-2 reserves one cell of padding per side, applied by the line style.
-	body := truncateCell(content, inner-2)
+	// Greyed lines embed ANSI, so they need the ANSI-aware fitter; plain lines
+	// use the uniseg-based truncateCell.
+	fit := truncateCell
+	if greyed {
+		fit = truncateCellANSI
+	}
+	body := fit(content, inner-2)
 	if selectedIdx >= 0 {
 		return lipgloss.NewStyle().
 			Background(colorPrimary).Foreground(colorBg).
@@ -486,11 +507,7 @@ func (n *expNode) renderLine(selectedIdx int, inner int) string {
 // displayLabel builds the text after the glyph for each node kind.
 func (n *expNode) displayLabel() string {
 	if n.isEdge() {
-		count := n.edge.count
-		if count == "" {
-			count = "?"
-		}
-		return fmt.Sprintf("%s (%s)", n.edge.targetTable, count)
+		return fmt.Sprintf("%s (%s)", n.edge.targetTable, n.edgeCount())
 	}
 	// row node
 	if n.depth == 0 {
@@ -513,3 +530,27 @@ func isNumericCount(s string) bool {
 
 // padRight and runeLen are package-level helpers (explain_panel.go /
 // results_table.go); the explorer reuses them for alignment.
+
+// truncateCellANSI is the ANSI-aware counterpart of truncateCell: it fits a
+// string that may embed escape codes (e.g. a per-segment colour) to a fixed
+// visible width, truncating with "…" or padding with spaces. truncateCell uses
+// uniseg, which is ANSI-naive and would miscount a styled string's width.
+func truncateCellANSI(s string, width int) string {
+	w := lipgloss.Width(s) // ANSI-aware visible width
+	if w <= width {
+		return s + strings.Repeat(" ", width-w)
+	}
+	if width <= 1 {
+		return "…"
+	}
+	return ansi.Truncate(s, width, "…")
+}
+
+// edgeCount returns the relationship edge's child count for display,
+// defaulting to "?" while it is loading or unknown.
+func (n *expNode) edgeCount() string {
+	if n.edge.count == "" {
+		return "?"
+	}
+	return n.edge.count
+}
