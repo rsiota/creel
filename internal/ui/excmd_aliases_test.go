@@ -60,6 +60,10 @@ func TestExIconsMissingArg(t *testing.T) {
 func TestExIconsAppliesAndPersists(t *testing.T) {
 	defer applyIcons("") // restore default triangles
 
+	// :icons persists via m.config.Save(); redirect the config dir so the test
+	// does not overwrite the user's real ~/.config/gsql/config.yaml.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
 	cfg := &config.Config{}
 	m := NewModel(cfg)
 	if got := icons.collapsed; got != "▸" {
