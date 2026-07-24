@@ -204,3 +204,36 @@ func TestERDCardColumnAlignment(t *testing.T) {
 		t.Errorf("column names misaligned: id@%d note@%d", x1, x2)
 	}
 }
+
+// TestERDCardTypeRightAligned asserts column types are flush to the card's
+// inner right edge (one cell left of the right border) while names start at a
+// fixed left offset — i.e. names left-aligned, types right-aligned.
+func TestERDCardTypeRightAligned(t *testing.T) {
+	cols := []db.Column{{Name: "id", Type: "int"}, {Name: "user_id", Type: "integer"}, {Name: "note", Type: "text"}}
+	schemas := map[string][]db.Column{"t": cols}
+	pks := map[string][]string{"t": {"id"}}
+	c := renderGraphERD([]string{"t"}, schemas, pks, nil)
+
+	// The card's right border │ is the rightmost such rune on the separator row.
+	borderX := -1
+	for x := c.w - 1; x >= 0; x-- {
+		if g, _, _ := cellGlyph(c.cells[1][x]); g == '│' {
+			borderX = x
+			break
+		}
+	}
+	if borderX < 0 {
+		t.Fatal("can't locate card right border")
+	}
+	innerRight := borderX - 1
+	for i, col := range cols {
+		y := 2 + i
+		typ := []rune(strings.ToUpper(erdType(col.Type)))
+		if g, _, _ := cellGlyph(c.cells[y][innerRight]); g != typ[len(typ)-1] {
+			t.Errorf("type %q not flush to inner right edge x=%d (got %q)", col.Type, innerRight, g)
+		}
+		if g, _, _ := cellGlyph(c.cells[y][3]); g != []rune(col.Name)[0] {
+			t.Errorf("name %q not at left offset x=3 (got %q)", col.Name, g)
+		}
+	}
+}

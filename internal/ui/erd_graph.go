@@ -291,37 +291,26 @@ func (c *gcard) firstPK() string {
 	return ""
 }
 
-// measureCard computes the card's width/height from its columns. Columns show
-// a PK (◆) / FK (◇) marker, the name, and a sanitized type.
+// measureCard computes the card's width/height from its columns. Each column
+// row is laid out as: marker + space + name  …gap…  type, with the name
+// left-aligned and the type right-aligned to the inner right edge, so names
+// and types line up across rows. The card width fits the widest such row.
 func measureCard(name string, cols []db.Column, pkSet, fkSet map[string]bool) gcard {
-	maxLine := len(name)
+	const minGap = 2                  // at least two spaces between the name and the type
+	contentW := len([]rune(name)) + 2 // " name " in the title row
 	for _, cc := range cols {
-		line := colLine(cc, pkSet, fkSet)
-		if l := lineWidth(line); l > maxLine {
-			maxLine = l
+		need := 1 + 1 + len([]rune(cc.Name)) + minGap + len([]rune(erdType(cc.Type)))
+		if need > contentW {
+			contentW = need
 		}
 	}
-	w := maxLine + 4 // border(2) + padding(2)
+	w := contentW + 2 // left + right borders
 	if w < 10 {
 		w = 10
 	}
 	h := len(cols) + 3 // top border (title embedded) + separator + columns + bottom border
 	return gcard{name: name, cols: cols, pkSet: pkSet, fkSet: fkSet, w: w, h: h}
 }
-
-// colLine renders a column's in-card line as a slice of (text, style) segments.
-// We return a simple string and track visible width via rune count.
-func colLine(c db.Column, pkSet, fkSet map[string]bool) string {
-	marker := " "
-	if pkSet[c.Name] {
-		marker = "◆"
-	} else if fkSet[c.Name] {
-		marker = "◇"
-	}
-	return marker + " " + c.Name + "  " + erdType(c.Type)
-}
-
-func lineWidth(s string) int { return len([]rune(s)) }
 
 // --- layout -----------------------------------------------------------------
 
@@ -443,7 +432,8 @@ func (c *gcanvas) drawCard(g *gcard) {
 	for x := g.x + 1; x < g.x+g.w-1; x++ {
 		c.setCh(x, g.y+1, '─', fg, false)
 	}
-	// Column rows: marker + name in the default colour, type in muted + upper.
+	// Column rows: marker + name left-aligned, type right-aligned to the inner
+	// right edge (g.x+w-2) and rendered uppercase + muted.
 	for i, col := range g.cols {
 		y := g.y + 2 + i
 		c.setCh(g.x, y, '│', fg, false)
@@ -454,16 +444,12 @@ func (c *gcanvas) drawCard(g *gcard) {
 		} else if g.fkSet[col.Name] {
 			marker = "◇"
 		}
-		x := g.x + 1
-		c.putText(x, y, marker, "", false)
-		x += len([]rune(marker))
-		c.putText(x, y, " ", "", false)
-		x++
-		c.putText(x, y, col.Name, "", false)
-		x += len([]rune(col.Name))
-		c.putText(x, y, "  ", "", false)
-		x += 2
-		c.putText(x, y, strings.ToUpper(erdType(col.Type)), string(colorMuted), false)
+		// Left: marker + space, then the name starting at g.x+3.
+		c.putText(g.x+1, y, marker+" ", "", false)
+		c.putText(g.x+3, y, col.Name, "", false)
+		// Right: type flush to the inner right edge.
+		typ := strings.ToUpper(erdType(col.Type))
+		c.putText(g.x+g.w-1-len([]rune(typ)), y, typ, string(colorMuted), false)
 	}
 	// Bottom border.
 	c.setCh(g.x, g.y+g.h-1, '╰', fg, false)
