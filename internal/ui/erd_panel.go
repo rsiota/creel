@@ -157,9 +157,10 @@ func (e *ERDPanel) adjustScroll(vh int) {
 	}
 }
 
-// View renders the active view's scroll window edge to edge — no border,
-// title, or footer, so the diagram fills the whole workspace (the status line
-// remains visible below it). Key hints live in the status bar / help overlay.
+// View renders the active view edge to edge — no border, title, or footer,
+// so the diagram fills the whole workspace (the status line remains visible
+// below it). The graph is centred in the viewport when it's smaller than the
+// available area; when it's larger, the scroll/pan position applies as usual.
 // The body is padded to the full content width/height so the overlay fully
 // covers the workspace behind it.
 func (e ERDPanel) View() string {
@@ -177,7 +178,6 @@ func (e ERDPanel) View() string {
 		end = n
 	}
 
-	var body string
 	if e.merm {
 		var visible []string
 		for i := e.scrollY; i < end; i++ {
@@ -186,18 +186,17 @@ func (e ERDPanel) View() string {
 		for len(visible) < ch {
 			visible = append(visible, "")
 		}
-		body = lipgloss.JoinVertical(lipgloss.Left, visible...)
-	} else if e.graph != nil {
-		body = e.graph.Window(e.scrollX, cw, e.scrollY, ch)
-		rows := strings.Count(body, "\n") + 1
-		for rows < ch {
-			body += "\n"
-			rows++
-		}
-	} else {
-		body = mutedStyle.Render("(no tables)")
+		body := lipgloss.JoinVertical(lipgloss.Left, visible...)
+		return lipgloss.NewStyle().Width(cw).Height(ch).Render(body)
 	}
-	return lipgloss.NewStyle().Width(cw).Height(ch).Render(body)
+	if e.graph != nil {
+		// Window returns at most cw×ch (clipped to the canvas), so when the
+		// diagram is smaller than the viewport Place centres it; when it fills
+		// or exceeds the viewport, Place is a no-op and scroll/pan applies.
+		body := e.graph.Window(e.scrollX, cw, e.scrollY, ch)
+		return lipgloss.Place(cw, ch, lipgloss.Center, lipgloss.Center, body)
+	}
+	return lipgloss.Place(cw, ch, lipgloss.Center, lipgloss.Center, mutedStyle.Render("(no tables)"))
 }
 
 // joinERDLines joins diagram source lines for copy/save.
