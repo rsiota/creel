@@ -497,7 +497,7 @@ func (c *gcanvas) drawSideArrowLeft(child, parent *gcard, childCol, parentCol st
 	// horizontal along child's FK row, then vertical hugging parent, arrowhead in.
 	c.hline(entryX, exitX, cy, fg)
 	c.vline(entryX, cy, py, fg)
-	c.setCh(entryX, py, '◂', fg, false)
+	c.setCh(entryX, py, arrowheadL(), fg, true)
 }
 
 func (c *gcanvas) drawSideArrowRight(child, parent *gcard, childCol, parentCol string) {
@@ -508,7 +508,7 @@ func (c *gcanvas) drawSideArrowRight(child, parent *gcard, childCol, parentCol s
 	entryX := parent.x - 1     // gutter cell touching parent's left border
 	c.hline(exitX, entryX, cy, fg)
 	c.vline(entryX, cy, py, fg)
-	c.setCh(entryX, py, '▸', fg, false)
+	c.setCh(entryX, py, arrowheadR(), fg, true)
 }
 
 // drawMarginArrow routes a non-adjacent FK over the top margin. The vertical
@@ -526,16 +526,16 @@ func (c *gcanvas) drawMarginArrow(child, parent *gcard, childCol, parentCol stri
 	if parent.x <= child.x {
 		childRiserX = child.x - 1          // gutter to the left of the child
 		parentRiserX = parent.x + parent.w // gutter to the right of the parent
-		head = '◂'                         // points left, into the parent's right edge
+		head = arrowheadL()                // points left, into the parent's right edge
 	} else {
 		childRiserX = child.x + child.w // gutter to the right of the child
 		parentRiserX = parent.x - 1     // gutter to the left of the parent
-		head = '▸'                      // points right, into the parent's left edge
+		head = arrowheadR()             // points right, into the parent's left edge
 	}
 	c.vline(childRiserX, laneY, cy, fg)
 	c.hline(childRiserX, parentRiserX, laneY, fg)
 	c.vline(parentRiserX, laneY, py, fg)
-	c.setCh(parentRiserX, py, head, fg, false)
+	c.setCh(parentRiserX, py, head, fg, true)
 }
 
 // --- entry point ------------------------------------------------------------

@@ -17,20 +17,38 @@ import "strings"
 type iconSet struct {
 	collapsed string // right-pointing, expandable
 	expanded  string // down-pointing, open
+	arrowL    string // arrowhead pointing left (into a parent on the left)
+	arrowR    string // arrowhead pointing right (into a parent on the right)
 }
 
 const iconSetNerdFont = "nerdfont"
 
-var icons = iconSet{collapsed: "▸", expanded: "▾"}
+var icons = iconSet{collapsed: "▸", expanded: "▾", arrowL: "◀", arrowR: "▶"}
 
 // applyIcons sets the active glyph pair from the `icons` config value. Empty
 // or unknown names fall back to the portable Unicode triangles.
 func applyIcons(name string) {
 	if name == iconSetNerdFont {
-		icons = iconSet{collapsed: "\uf105", expanded: "\uf107"}
+		// Nerd Font angle chevrons for trees, and Powerline solid triangles
+		// (U+E0B2 left / U+E0B0 right) for ERD arrowheads.
+		icons = iconSet{collapsed: "\uf105", expanded: "\uf107", arrowL: "\ue0b2", arrowR: "\ue0b0"}
 		return
 	}
-	icons = iconSet{collapsed: "▸", expanded: "▾"}
+	// Unicode: filled triangles. The medium black triangles (U+25C0/U+25B6)
+	// read far better as arrowheads than the small ones (U+25C2/U+25B8).
+	icons = iconSet{collapsed: "▸", expanded: "▾", arrowL: "◀", arrowR: "▶"}
+}
+
+// arrowheadL/R return the rune for a left/right-pointing ERD arrowhead,
+// following the active icon set. Used by the graph renderer.
+func arrowheadL() rune { return firstRune(icons.arrowL) }
+func arrowheadR() rune { return firstRune(icons.arrowR) }
+
+func firstRune(s string) rune {
+	for _, r := range s {
+		return r
+	}
+	return ' '
 }
 
 // resolveIconSet maps a user-facing icon-set name (as typed in :icons or the
