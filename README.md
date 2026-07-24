@@ -15,7 +15,7 @@ Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `gsql`
 - **Inline editing** — edit cells directly, insert rows, clone rows, paste from clipboard
 - **Record inspector** — side panel with a vertical form view that tracks the results cursor
 - **Query history & bookmarks** — per-connection, persisted, searchable
-- **Session restore** — reopening a connection brings back your open tabs and editor buffers from the last visit (keyed per connection + database). Buffers are restored but not re-executed; a `gsql -f` startup file still takes precedence on first connect
+- **Session restore** — reopening a connection brings back your open tabs and editor buffers from the last visit (keyed per connection + database). Buffers are restored but not re-executed; a `gsql -f` startup file still takes precedence on first connect. `:session clear` wipes the saved snapshot, `:session save` snapshots now
 - **EXPLAIN plans** — driver-aware rendering (`g e`) of query plans
 - **Schema editing** — add columns, rename tables, create/drop/truncate tables, and a grid-based table designer (`N`)
 - **Table structure view** (`d`) — a tabbed structure editor: columns (editable grid), foreign keys, indexes, check constraints, and triggers in one view, plus a definition tab for views

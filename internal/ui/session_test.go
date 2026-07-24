@@ -2,6 +2,7 @@ package ui
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ruben/gsql/internal/config"
@@ -170,5 +171,85 @@ func TestBeginQuitPersistsSession(t *testing.T) {
 	m2.restoreSession()
 	if m2.editor.Value() != "SELECT 1;" {
 		t.Errorf("session not persisted by beginQuit: %q", m2.editor.Value())
+	}
+}
+
+// TestExSessionNotConnected guards the no-connection path.
+func TestExSessionNotConnected(t *testing.T) {
+	m := &Model{}
+	m.runExCommand("session clear")
+	if !strings.Contains(m.schemaMsg, "not connected") {
+		t.Errorf("no-connection :session -> %q", m.schemaMsg)
+	}
+}
+
+// TestExSessionSaveStatusClear covers the save / status / clear lifecycle,
+// including that state persists to disk (a fresh model sees it).
+func TestExSessionSaveStatusClear(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	conn := newNamedSQLiteConn(t, "lifecycle")
+
+	m := NewModel(&config.Config{})
+	m.connection = conn
+
+	// Bare :session with nothing saved yet.
+	m.runExCommand("session")
+	if !strings.Contains(m.schemaMsg, "no saved session") {
+		t.Errorf("bare :session -> %q", m.schemaMsg)
+	}
+
+	// Seed some content, then :session save.
+	m.editor.SetValue("SELECT * FROM t;")
+	m.saveTabState()
+	m.runExCommand("session save")
+	if !strings.Contains(m.schemaMsg, "session saved") {
+		t.Errorf(":session save -> %q", m.schemaMsg)
+	}
+
+	// Status now reports the saved tab.
+	m.runExCommand("session status")
+	if !strings.Contains(m.schemaMsg, "1 tab") {
+		t.Errorf(":session status -> %q", m.schemaMsg)
+	}
+
+	// A fresh model sees it as saved (persists to disk, not just the cache).
+	m2 := NewModel(&config.Config{})
+	m2.connection = conn
+	m2.runExCommand("session")
+	if !strings.Contains(m2.schemaMsg, "1 tab") {
+		t.Errorf("fresh model :session -> %q", m2.schemaMsg)
+	}
+
+	// Clear drops it (and is seen by another fresh model).
+	m2.runExCommand("session clear")
+	if !strings.Contains(m2.schemaMsg, "cleared") {
+		t.Errorf(":session clear -> %q", m2.schemaMsg)
+	}
+	m3 := NewModel(&config.Config{})
+	m3.connection = conn
+	m3.runExCommand("session")
+	if !strings.Contains(m3.schemaMsg, "no saved session") {
+		t.Errorf("after clear :session -> %q", m3.schemaMsg)
+	}
+}
+
+// TestExSessionClearDoesNotTouchLiveWorkspace confirms clearing only removes
+// the persisted snapshot — the current editor/tabs are left intact.
+func TestExSessionClearDoesNotTouchLiveWorkspace(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	conn := newNamedSQLiteConn(t, "live")
+
+	m := NewModel(&config.Config{})
+	m.connection = conn
+	m.editor.SetValue("KEEP ME")
+	m.saveTabState()
+	m.runExCommand("session save")
+
+	m.runExCommand("session clear")
+	if m.editor.Value() != "KEEP ME" {
+		t.Errorf("clear disturbed live editor: %q", m.editor.Value())
+	}
+	if len(m.resultsTabs) != 1 {
+		t.Errorf("clear disturbed live tabs: %d", len(m.resultsTabs))
 	}
 }

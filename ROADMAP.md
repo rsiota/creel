@@ -174,6 +174,10 @@ gets per-file behaviour for free.
   `startupFileLoaded` flag that suppresses the **first** connect's restore, so
   an explicitly-loaded buffer is never clobbered by a returning session;
   later connects restore normally.
+- `:session` ex command manages the snapshot: `:session clear` drops it (the
+  live workspace is untouched, and it re-saves on next quit, so it is not
+  confirm-gated), `:session save` snapshots now, bare `:session` reports
+  status.
 - Files: `internal/session/` (store), `internal/ui/session.go` (save/restore/
   beginQuit), `internal/ui/connection_ops.go`, `internal/ui/app.go`,
   `internal/ui/excmd.go`, `internal/ui/excmd_registry.go`.

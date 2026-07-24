@@ -1243,6 +1243,59 @@ func (m *Model) loadStartupFile(path string) (string, error) {
 	return expanded, nil
 }
 
+// exSession manages the saved workspace session for the current connection +
+// database (:session clear | :session save | :session). "clear" drops the
+// persisted snapshot so the next reconnect starts fresh — the live workspace
+// is untouched, and it re-saves on the next quit/teardown, so it is not gated
+// behind confirm_destructive. "save" snapshots now (without quitting); bare
+// reports whether a session is stored and how many tabs it holds.
+func (m *Model) exSession(args []string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	conn, database, ok := m.sessionKey()
+	if !ok || m.sessionStore == nil {
+		m.schemaMsg = "no active session"
+		return nil
+	}
+	sub := ""
+	if len(args) > 0 {
+		sub = strings.ToLower(strings.TrimSpace(args[0]))
+	}
+	switch sub {
+	case "clear", "off", "reset", "delete":
+		if err := m.sessionStore.Clear(conn, database); err != nil {
+			m.schemaMsg = "session: " + err.Error()
+			return nil
+		}
+		m.schemaMsg = "session cleared — reconnect will start fresh"
+		return nil
+	case "save":
+		m.saveSession()
+		m.schemaMsg = "session saved"
+		return nil
+	case "", "status", "show":
+		st, err := m.sessionStore.Load(conn, database)
+		if err != nil {
+			m.schemaMsg = "session: " + err.Error()
+			return nil
+		}
+		if !st.HasContent() {
+			m.schemaMsg = "no saved session"
+		} else {
+			active := st.Active
+			if active < 0 || active >= len(st.Tabs) {
+				active = 0
+			}
+			m.schemaMsg = fmt.Sprintf("session: %d tab(s) saved, active %d", len(st.Tabs), active+1)
+		}
+		return nil
+	}
+	m.schemaMsg = "usage: :session [clear|save]"
+	return nil
+}
+
 // exWriteFile writes the editor buffer to a file (:w <file>) — vim's :write.
 // It overwrites an existing file (use a versioned name if you need to keep the
 // old one). ~ is expanded; relative paths resolve against the working dir.

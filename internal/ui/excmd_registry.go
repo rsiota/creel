@@ -606,6 +606,13 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.toggleBookmarks(); return nil },
 		},
 		{
+			verbs:   []string{"session"},
+			desc:    "manage the saved workspace session",
+			usage:   ":session [clear|save]",
+			argKind: exArgOptional,
+			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exSession(args) },
+		},
+		{
 			verbs:   []string{"describe", "desc", "d"},
 			desc:    "open the structure view for a table",
 			usage:   ":describe [table]",
