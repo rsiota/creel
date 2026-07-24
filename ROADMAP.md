@@ -247,8 +247,35 @@ shown so a row surfaces just the relationships it actually participates in.
 Lazy loads (`loadExplorerChildren`) issue one query per expand; row nodes
 derive PK-based labels and drill queries via `PrimaryKeys`.
 
-**Still open (the static diagram):** the `g R` boxes-and-arrows / Mermaid
-export ERD remains the visual complement to this navigator.
+**Static ERD ✅ DONE (2026-07-24): `g R` / `:erd` — Mermaid erDiagram.** The
+visual complement to the navigator ships as a generated Mermaid `erDiagram`
+(a format GitHub/GitLab render inline in markdown), shown in a scrollable
+overlay panel mirroring the EXPLAIN/lookup panels.
+
+- `g R` (and `:erd <table>`) draws the focused table + its direct FK
+  neighbours (inbound + outbound); bare `:erd` draws the whole schema. Views
+  are excluded (an ERD models base-table entities).
+- Each entity lists its columns with `PK`/`FK` markers; each FK becomes a
+  one-to-many (`||--o{`) relationship labelled with the FK column. Cardinality
+  is structural only — the cached schema has no nullability, so `||--||` vs
+  `||--o{` is not distinguished.
+- In the panel: `y` copies the source to the clipboard, `s` saves to `erd.mmd`
+  (cwd), `j/k/g/G/ctrl+d/ctrl+u` scroll, `esc`/`q` close. `:erd save [file]`
+  writes the whole-schema diagram to a path without opening the panel.
+- Data comes from the connection-time schema caches (`columnCache`/
+  `pkCache`/`fkCache`, populated by `prefetchSchemas`), so generation is
+  synchronous and instant.
+- Files: `internal/ui/erd.go` (generator + openERD/exERD/save),
+  `internal/ui/erd_panel.go` (panel), `internal/ui/app.go`,
+  `internal/ui/excmd_registry.go`, `internal/ui/registry.go`. The drift guard
+  (`registry_test.go`) now also recognises `msg.String() == "x"` chord
+  dispatch, not just `case "x":` clauses.
+  Tests: `internal/ui/erd_test.go`.
+
+A future follow-up could render a true boxes-and-arrows ASCII/Lipgloss layout
+in-app; Mermaid was chosen first because terminal auto-layout for non-trivial
+schemas is hard, and Mermaid round-trips to documentation that renders
+natively on GitHub/GitLab.
 
 ### 12. Connection groups / folders ✅ DONE (2026-07-12)
 Connections carry an optional `group` field; the connection list renders

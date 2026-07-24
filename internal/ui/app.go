@@ -328,6 +328,7 @@ type Model struct {
 	cellEdit            CellEditPopup
 	explainPanel        ExplainPanel
 	lookupPanel         LookupPanel
+	erdPanel            ERDPanel
 	explorer            RelExplorer
 	palette             palette
 	ex                  exCmd
@@ -2618,6 +2619,24 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// ERD panel is modal — j/k scroll, y copy, s save, esc/q close.
+	if m.erdPanel.IsVisible() {
+		switch msg.String() {
+		case "esc", "q", "ctrl+c":
+			m.erdPanel.Hide()
+			return m, nil
+		case "y", "Y":
+			_ = clipboard.WriteAll(joinERDLines(m.erdPanel.Lines()))
+			m.schemaMsg = "erd copied to clipboard"
+			return m, nil
+		case "s":
+			m.saveERDToFile("erd.mmd", m.erdPanel.Lines())
+			return m, nil
+		}
+		m.erdPanel = m.erdPanel.Update(msg)
+		return m, nil
+	}
+
 	// Command palette is modal — intercept all keys when visible.
 	if m.palette.visible {
 		var cmd tea.Cmd
@@ -3252,6 +3271,15 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.resultsPendingG = false
 			m.resultsPendingY = false
 			return m, m.openDockedExplorer()
+		}
+
+		// g R — static ERD: a Mermaid erDiagram of the current table's FK
+		// neighbourhood (or the whole schema when no table is focused), shown in
+		// a scrollable panel. Same as `:erd [table]`.
+		if msg.String() == "R" && m.resultsPendingG {
+			m.resultsPendingG = false
+			m.resultsPendingY = false
+			return m, m.openERD(m.currentTable())
 		}
 
 		// g/G navigation works on empty tables too.
@@ -4367,7 +4395,7 @@ func (m Model) viewWorkspace() string {
 
 	// Dim the workspace panels behind long-lived editing overlays.
 	// The status bar is kept undimmed so hints remain clearly visible.
-	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() || m.crossSearch.IsVisible() || m.explainPanel.IsVisible() || m.lookupPanel.IsVisible() {
+	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() || m.crossSearch.IsVisible() || m.explainPanel.IsVisible() || m.lookupPanel.IsVisible() || m.erdPanel.IsVisible() {
 		workspace = dimBackground(workspace)
 	}
 
@@ -4433,6 +4461,17 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, lookupPanelView, panelX, panelY)
+	}
+
+	// Overlay ERD panel if visible
+	if m.erdPanel.IsVisible() {
+		m.erdPanel.SetSize(m.width*80/100, (m.height-1)*80/100)
+		erdPanelView := m.erdPanel.View()
+		panelW := lipgloss.Width(erdPanelView)
+		panelH := lipgloss.Height(erdPanelView)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, erdPanelView, panelX, panelY)
 	}
 
 	// Overlay filter picker if visible

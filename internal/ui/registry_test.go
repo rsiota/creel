@@ -104,10 +104,32 @@ func collectDispatchTokens(t *testing.T, name string) map[string]bool {
 					addStringLit(tokens, arg)
 				}
 			}
+		case *ast.BinaryExpr:
+			// Chord handlers dispatch as msg.String() == "x" (e.g. the g r / g R
+			// chords), which a case clause can't express. Collect the string
+			// operand of such a comparison so documented chords are recognised.
+			if nn.Op == token.EQL {
+				if isStringMethodCall(nn.X) {
+					addStringLit(tokens, nn.Y)
+				} else if isStringMethodCall(nn.Y) {
+					addStringLit(tokens, nn.X)
+				}
+			}
 		}
 		return true
 	})
 	return tokens
+}
+
+// isStringMethodCall reports whether e is a foo.String() call — the left side
+// of the chord-handler comparison msg.String() == "x".
+func isStringMethodCall(e ast.Expr) bool {
+	call, ok := e.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	return ok && sel.Sel.Name == "String"
 }
 
 // addStringLit records a string-literal expression into the token set.

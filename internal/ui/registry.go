@@ -199,6 +199,7 @@ func registry() []Section {
 				{"g d", []string{"g", "d"}, "follow foreign key", ""},
 				{"g b", []string{"g", "b"}, "go back", ""},
 				{"g r", []string{"g", "r"}, "relationship explorer (panel)", ""},
+				{"g R", []string{"g", "R"}, "static ERD (Mermaid diagram)", ""},
 				{"/", []string{"/"}, "search all columns", "/"},
 				{"g f", []string{"g", "f"}, "filter column values", ""},
 				{"*", []string{"*"}, "keep rows equal to cursor cell", ""},

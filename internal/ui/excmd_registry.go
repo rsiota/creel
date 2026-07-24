@@ -330,6 +330,13 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.openDockedExplorer() },
 		},
 		{
+			verbs:   []string{"erd"},
+			desc:    "static ERD (Mermaid erDiagram) of the schema or a table's neighbourhood",
+			usage:   ":erd [table|save [file]]",
+			argKind: exArgText,
+			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exERD(args) },
+		},
+		{
 			verbs:   []string{"uses"},
 			desc:    "objects referencing a table in their definition",
 			usage:   ":uses [table]",
