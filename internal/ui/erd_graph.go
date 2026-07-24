@@ -291,15 +291,18 @@ func (c *gcard) firstPK() string {
 	return ""
 }
 
+const erdCardRightPad = 1 // space between the type and the right border
+
 // measureCard computes the card's width/height from its columns. Each column
-// row is laid out as: marker + space + name  …gap…  type, with the name
-// left-aligned and the type right-aligned to the inner right edge, so names
-// and types line up across rows. The card width fits the widest such row.
+// row is laid out as: marker + space + name  …gap…  type + right-pad, with the
+// name left-aligned and the type right-aligned one cell inside the right
+// border, so names and types line up across rows. The card width fits the
+// widest such row.
 func measureCard(name string, cols []db.Column, pkSet, fkSet map[string]bool) gcard {
 	const minGap = 2                  // at least two spaces between the name and the type
 	contentW := len([]rune(name)) + 2 // " name " in the title row
 	for _, cc := range cols {
-		need := 1 + 1 + len([]rune(cc.Name)) + minGap + len([]rune(erdType(cc.Type)))
+		need := 1 + 1 + len([]rune(cc.Name)) + minGap + len([]rune(erdType(cc.Type))) + erdCardRightPad
 		if need > contentW {
 			contentW = need
 		}
@@ -450,9 +453,9 @@ func (c *gcanvas) drawCard(g *gcard) {
 		// Left: marker + space, then the name starting at g.x+3.
 		c.putText(g.x+1, y, marker+" ", "", false)
 		c.putText(g.x+3, y, col.Name, "", false)
-		// Right: type flush to the inner right edge.
+		// Right: type one cell inside the right border (a space separates it).
 		typ := strings.ToUpper(erdType(col.Type))
-		c.putText(g.x+g.w-1-len([]rune(typ)), y, typ, string(colorMuted), false)
+		c.putText(g.x+g.w-1-erdCardRightPad-len([]rune(typ)), y, typ, string(colorMuted), false)
 	}
 	// Bottom border.
 	c.setCh(g.x, g.y+g.h-1, '╰', fg, false)

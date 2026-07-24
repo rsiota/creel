@@ -225,12 +225,16 @@ func TestERDCardTypeRightAligned(t *testing.T) {
 	if borderX < 0 {
 		t.Fatal("can't locate card right border")
 	}
-	innerRight := borderX - 1
+	innerRight := borderX - 1 - erdCardRightPad
 	for i, col := range cols {
 		y := 3 + i // top border + title + separator, then columns
 		typ := []rune(strings.ToUpper(erdType(col.Type)))
 		if g, _, _ := cellGlyph(c.cells[y][innerRight]); g != typ[len(typ)-1] {
-			t.Errorf("type %q not flush to inner right edge x=%d (got %q)", col.Type, innerRight, g)
+			t.Errorf("type %q not at inner edge x=%d (got %q)", col.Type, innerRight, g)
+		}
+		// the cell between the type and the border must be a space
+		if g, _, _ := cellGlyph(c.cells[y][borderX-1]); g != ' ' {
+			t.Errorf("expected space before right border x=%d (got %q)", borderX-1, g)
 		}
 		if g, _, _ := cellGlyph(c.cells[y][3]); g != []rune(col.Name)[0] {
 			t.Errorf("name %q not at left offset x=3 (got %q)", col.Name, g)
