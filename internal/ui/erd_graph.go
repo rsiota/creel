@@ -418,21 +418,18 @@ func placeCards(cards map[string]*gcard, order []string, rank map[string]int, ma
 }
 
 // --- drawing ----------------------------------------------------------------
-
-const (
-	erdCardBorder = "primary"
-	erdCardTitle  = "primary"
-	erdArrowFg    = "accent"
-)
+// Card borders/title use the primary colour, arrows the accent colour, and
+// column types the muted colour. These reference the palette vars (set by
+// applyPalette) at draw time, so they pick up theme changes.
 
 func (c *gcanvas) drawCard(g *gcard) {
-	fg := erdCardBorder
+	fg := string(colorPrimary)
 	// Top border with embedded title.
 	titleCell := g.x + 2
 	c.setCh(g.x, g.y, '╭', fg, false)
 	c.setCh(g.x+g.w-1, g.y, '╮', fg, false)
 	titleText := " " + g.name + " "
-	c.putText(titleCell, g.y, titleText, erdCardTitle, true)
+	c.putText(titleCell, g.y, titleText, string(colorPrimary), true)
 	// fill top border between title and right corner
 	for x := titleCell + len([]rune(titleText)); x < g.x+g.w-1; x++ {
 		c.setCh(x, g.y, '─', fg, false)
@@ -446,13 +443,27 @@ func (c *gcanvas) drawCard(g *gcard) {
 	for x := g.x + 1; x < g.x+g.w-1; x++ {
 		c.setCh(x, g.y+1, '─', fg, false)
 	}
-	// Column rows.
+	// Column rows: marker + name in the default colour, type in muted + upper.
 	for i, col := range g.cols {
 		y := g.y + 1 + 2 + i
 		c.setCh(g.x, y, '│', fg, false)
 		c.setCh(g.x+g.w-1, y, '│', fg, false)
-		line := colLine(col, g.pkSet, g.fkSet)
-		c.putText(g.x+1, y, line, "", false)
+		marker := " "
+		if g.pkSet[col.Name] {
+			marker = "◆"
+		} else if g.fkSet[col.Name] {
+			marker = "◇"
+		}
+		x := g.x + 1
+		c.putText(x, y, marker, "", false)
+		x += len([]rune(marker))
+		c.putText(x, y, " ", "", false)
+		x++
+		c.putText(x, y, col.Name, "", false)
+		x += len([]rune(col.Name))
+		c.putText(x, y, "  ", "", false)
+		x += 2
+		c.putText(x, y, strings.ToUpper(erdType(col.Type)), string(colorMuted), false)
 	}
 	// Bottom border.
 	c.setCh(g.x, g.y+g.h-1, '╰', fg, false)
@@ -487,7 +498,7 @@ func (c *gcanvas) drawArrow(child, parent *gcard, rank map[string]int, laneY int
 
 // drawSideArrowLeft: parent sits to the left of child. Elbow in the gutter.
 func (c *gcanvas) drawSideArrowLeft(child, parent *gcard, childCol, parentCol string) {
-	fg := erdArrowFg
+	fg := string(colorAccent)
 	cy := child.colRowY(childCol)
 	py := parent.colRowY(parentCol)
 	exitX := child.x - 1          // gutter cell touching child's left border
@@ -499,7 +510,7 @@ func (c *gcanvas) drawSideArrowLeft(child, parent *gcard, childCol, parentCol st
 }
 
 func (c *gcanvas) drawSideArrowRight(child, parent *gcard, childCol, parentCol string) {
-	fg := erdArrowFg
+	fg := string(colorAccent)
 	cy := child.colRowY(childCol)
 	py := parent.colRowY(parentCol)
 	exitX := child.x + child.w // gutter cell touching child's right border
@@ -512,7 +523,7 @@ func (c *gcanvas) drawSideArrowRight(child, parent *gcard, childCol, parentCol s
 // drawMarginArrow routes over the top margin: up from child's FK column,
 // across a lane, down into the parent's PK column.
 func (c *gcanvas) drawMarginArrow(child, parent *gcard, childCol, parentCol string, laneY int) {
-	fg := erdArrowFg
+	fg := string(colorAccent)
 	cx := child.colNameX(childCol)
 	px := parent.colNameX(parentCol)
 	bottomY := child.y - 1
