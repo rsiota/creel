@@ -214,10 +214,10 @@ func TestERDCardTypeRightAligned(t *testing.T) {
 	pks := map[string][]string{"t": {"id"}}
 	c := renderGraphERD([]string{"t"}, schemas, pks, nil)
 
-	// The card's right border │ is the rightmost such rune on the separator row.
+	// The card's right border │ on the separator row (row 2: border/title/sep).
 	borderX := -1
 	for x := c.w - 1; x >= 0; x-- {
-		if g, _, _ := cellGlyph(c.cells[1][x]); g == '│' {
+		if g, _, _ := cellGlyph(c.cells[2][x]); g == '│' {
 			borderX = x
 			break
 		}
@@ -227,7 +227,7 @@ func TestERDCardTypeRightAligned(t *testing.T) {
 	}
 	innerRight := borderX - 1
 	for i, col := range cols {
-		y := 2 + i
+		y := 3 + i // top border + title + separator, then columns
 		typ := []rune(strings.ToUpper(erdType(col.Type)))
 		if g, _, _ := cellGlyph(c.cells[y][innerRight]); g != typ[len(typ)-1] {
 			t.Errorf("type %q not flush to inner right edge x=%d (got %q)", col.Type, innerRight, g)

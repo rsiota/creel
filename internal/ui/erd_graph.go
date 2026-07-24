@@ -252,12 +252,12 @@ type gcard struct {
 }
 
 // colRowY returns the canvas y of a column's text row, or the card's vertical
-// centre if the column is absent. Layout: row 0 = top border (title embedded),
-// row 1 = separator, rows 2.. = columns.
+// centre if the column is absent. Layout: row 0 = top border, row 1 = title,
+// row 2 = separator, rows 3.. = columns.
 func (c *gcard) colRowY(col string) int {
 	for i, cc := range c.cols {
 		if cc.Name == col {
-			return c.y + 2 + i
+			return c.y + 3 + i
 		}
 	}
 	return c.y + c.h/2
@@ -308,7 +308,7 @@ func measureCard(name string, cols []db.Column, pkSet, fkSet map[string]bool) gc
 	if w < 10 {
 		w = 10
 	}
-	h := len(cols) + 3 // top border (title embedded) + separator + columns + bottom border
+	h := len(cols) + 4 // top border + title + separator + columns + bottom border
 	return gcard{name: name, cols: cols, pkSet: pkSet, fkSet: fkSet, w: w, h: h}
 }
 
@@ -413,29 +413,32 @@ func placeCards(cards map[string]*gcard, order []string, rank map[string]int, ma
 
 func (c *gcanvas) drawCard(g *gcard) {
 	fg := string(colorPrimary)
-	// Top border with embedded title.
-	titleCell := g.x + 2
+	// Top border (plain — the title sits on its own row below it).
 	c.setCh(g.x, g.y, '╭', fg, false)
 	c.setCh(g.x+g.w-1, g.y, '╮', fg, false)
-	titleText := " " + g.name + " "
-	c.putText(titleCell, g.y, titleText, string(colorPrimary), true)
-	// fill top border between title and right corner
-	for x := titleCell + len([]rune(titleText)); x < g.x+g.w-1; x++ {
+	for x := g.x + 1; x < g.x+g.w-1; x++ {
 		c.setCh(x, g.y, '─', fg, false)
 	}
-	for x := g.x + 1; x < titleCell; x++ {
-		c.setCh(x, g.y, '─', fg, false)
-	}
-	// Title→columns separator.
+	// Title row: the table name centred between the side borders (bold/primary).
 	c.setCh(g.x, g.y+1, '│', fg, false)
 	c.setCh(g.x+g.w-1, g.y+1, '│', fg, false)
+	nameW := len([]rune(g.name))
+	inner := g.w - 2
+	leftPad := (inner - nameW) / 2
+	if leftPad < 0 {
+		leftPad = 0
+	}
+	c.putText(g.x+1+leftPad, g.y+1, g.name, string(colorPrimary), true)
+	// Title→columns separator.
+	c.setCh(g.x, g.y+2, '│', fg, false)
+	c.setCh(g.x+g.w-1, g.y+2, '│', fg, false)
 	for x := g.x + 1; x < g.x+g.w-1; x++ {
-		c.setCh(x, g.y+1, '─', fg, false)
+		c.setCh(x, g.y+2, '─', fg, false)
 	}
 	// Column rows: marker + name left-aligned, type right-aligned to the inner
 	// right edge (g.x+w-2) and rendered uppercase + muted.
 	for i, col := range g.cols {
-		y := g.y + 2 + i
+		y := g.y + 3 + i
 		c.setCh(g.x, y, '│', fg, false)
 		c.setCh(g.x+g.w-1, y, '│', fg, false)
 		marker := " "
