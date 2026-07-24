@@ -60,20 +60,20 @@ func (e *ERDPanel) SetSize(width, height int) {
 	e.height = height
 }
 
+// The panel is frameless and fills the whole workspace, so the content area
+// is the full size (no border/padding overhead).
 func (e ERDPanel) contentHeight() int {
-	h := e.height - borderOverhead
-	if h < 1 {
-		h = 1
+	if e.height < 1 {
+		return 1
 	}
-	return h
+	return e.height
 }
 
 func (e ERDPanel) contentWidth() int {
-	w := e.width - borderOverhead
-	if w < 1 {
-		w = 1
+	if e.width < 1 {
+		return 1
 	}
-	return w
+	return e.width
 }
 
 // lineCount is the number of scrollable rows in the active view.
@@ -90,7 +90,7 @@ func (e ERDPanel) lineCount() int {
 // Update handles scroll/pan/toggle keys, returning the updated panel.
 func (e ERDPanel) Update(msg tea.KeyMsg) ERDPanel {
 	n := e.lineCount()
-	vh := e.contentHeight() - 1 // reserve one line for the footer hint
+	vh := e.contentHeight()
 	if vh < 1 {
 		vh = 1
 	}
@@ -157,18 +157,22 @@ func (e *ERDPanel) adjustScroll(vh int) {
 	}
 }
 
-// View renders the panel: titled header, the active view's scroll window, and a
-// footer hint line.
+// View renders the active view's scroll window edge to edge — no border,
+// title, or footer, so the diagram fills the whole workspace (the status line
+// remains visible below it). Key hints live in the status bar / help overlay.
+// The body is padded to the full content width/height so the overlay fully
+// covers the workspace behind it.
 func (e ERDPanel) View() string {
+	cw := e.contentWidth()
+	ch := e.contentHeight()
 	n := e.lineCount()
-	vh := e.contentHeight() - 1 // -1 for the footer
-	if vh < 1 {
-		vh = 1
+	if ch < 1 {
+		ch = 1
 	}
 	if e.scrollY > n {
 		e.scrollY = 0
 	}
-	end := e.scrollY + vh
+	end := e.scrollY + ch
 	if end > n {
 		end = n
 	}
@@ -179,39 +183,21 @@ func (e ERDPanel) View() string {
 		for i := e.scrollY; i < end; i++ {
 			visible = append(visible, e.mermaid[i])
 		}
-		for len(visible) < vh {
+		for len(visible) < ch {
 			visible = append(visible, "")
 		}
 		body = lipgloss.JoinVertical(lipgloss.Left, visible...)
 	} else if e.graph != nil {
-		body = e.graph.Window(e.scrollX, e.contentWidth(), e.scrollY, vh)
-		// pad to vh rows so the border height stays fixed
+		body = e.graph.Window(e.scrollX, cw, e.scrollY, ch)
 		rows := strings.Count(body, "\n") + 1
-		for rows < vh {
+		for rows < ch {
 			body += "\n"
 			rows++
 		}
 	} else {
 		body = mutedStyle.Render("(no tables)")
 	}
-
-	mode := "graph"
-	if e.merm {
-		mode = "mermaid"
-	}
-	header := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).
-		Render(e.title + "  [" + mode + "]")
-	footer := mutedStyle.Render("j/k scroll · h/l pan · m mermaid · y copy · s save · esc close")
-
-	content := lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
-
-	return lipgloss.NewStyle().
-		Width(e.width).
-		Height(e.height).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorPrimary).
-		Padding(0, 1).
-		Render(content)
+	return lipgloss.NewStyle().Width(cw).Height(ch).Render(body)
 }
 
 // joinERDLines joins diagram source lines for copy/save.

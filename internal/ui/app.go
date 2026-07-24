@@ -4395,7 +4395,7 @@ func (m Model) viewWorkspace() string {
 
 	// Dim the workspace panels behind long-lived editing overlays.
 	// The status bar is kept undimmed so hints remain clearly visible.
-	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() || m.crossSearch.IsVisible() || m.explainPanel.IsVisible() || m.lookupPanel.IsVisible() || m.erdPanel.IsVisible() {
+	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() || m.crossSearch.IsVisible() || m.explainPanel.IsVisible() || m.lookupPanel.IsVisible() {
 		workspace = dimBackground(workspace)
 	}
 
@@ -4463,15 +4463,11 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, lookupPanelView, panelX, panelY)
 	}
 
-	// Overlay ERD panel if visible
+	// Overlay ERD panel if visible — fills the whole workspace area (above the
+	// status line), edge to edge, with no frame so the diagram gets maximum room.
 	if m.erdPanel.IsVisible() {
-		m.erdPanel.SetSize(m.width*80/100, (m.height-1)*80/100)
-		erdPanelView := m.erdPanel.View()
-		panelW := lipgloss.Width(erdPanelView)
-		panelH := lipgloss.Height(erdPanelView)
-		panelX := (m.width - panelW) / 2
-		panelY := (m.height - 1 - panelH) / 2
-		view = placeOverlay(view, erdPanelView, panelX, panelY)
+		m.erdPanel.SetSize(m.width, m.height-1)
+		view = placeOverlay(view, m.erdPanel.View(), 0, 0)
 	}
 
 	// Overlay filter picker if visible
