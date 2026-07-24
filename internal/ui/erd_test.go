@@ -265,3 +265,95 @@ func TestERDCardPKBold(t *testing.T) {
 		t.Error("non-key column 'note' should not be bold")
 	}
 }
+
+// cardRects finds every table card on the canvas by locating its ╭ top-left
+// corner and measuring to its ╮ / ╰ edges, returning (x0,y0,x1,y1) inclusive.
+func cardRects(c *gcanvas) [][4]int {
+	var rects [][4]int
+	for y := 0; y < c.h; y++ {
+		for x := 0; x < c.w; x++ {
+			g, _, _ := cellGlyph(c.cells[y][x])
+			if g != '╭' {
+				continue
+			}
+			// width: scan right on this row for the ╮ corner.
+			x1 := x
+			for xx := x + 1; xx < c.w; xx++ {
+				if gg, _, _ := cellGlyph(c.cells[y][xx]); gg == '╮' {
+					x1 = xx
+					break
+				}
+			}
+			// height: scan down this column for the ╰ corner.
+			y1 := y
+			for yy := y + 1; yy < c.h; yy++ {
+				if gg, _, _ := cellGlyph(c.cells[yy][x]); gg == '╰' {
+					y1 = yy
+					break
+				}
+			}
+			rects = append(rects, [4]int{x, y, x1, y1})
+		}
+	}
+	return rects
+}
+
+// isLineCell reports whether a cell holds part of an arrow (a connection
+// segment or an arrowhead), as opposed to card text/border or blank space.
+func isLineCell(c gcell) bool {
+	if c.con != 0 {
+		return true
+	}
+	switch c.ch {
+	case '◂', '▸', '▾', '▲', '◄', '►':
+		return true
+	}
+	return false
+}
+
+// TestERDNoLineCrossesCard builds a schema with a non-adjacent FK whose
+// over-the-top riser would, with the old routing, rise through a table card
+// stacked above the child in the same column. It asserts no arrow line or
+// arrowhead ever lands inside a card's interior.
+//
+//	A(id)  B(id,a_id→A)  X(id,b_id→B)  Z(id,b_id→B,a_id→A)
+//
+// Ranks: A=0, B=1, X=2, Z=2. Column 2 holds X above Z; Z→A is non-adjacent
+// (rank 2→0) and routes over the top margin.
+func TestERDNoLineCrossesCard(t *testing.T) {
+	schemas := map[string][]db.Column{
+		"A": {{Name: "id", Type: "int"}},
+		"B": {{Name: "id", Type: "int"}, {Name: "a_id", Type: "int"}},
+		"X": {{Name: "id", Type: "int"}, {Name: "b_id", Type: "int"}},
+		"Z": {{Name: "id", Type: "int"}, {Name: "b_id", Type: "int"}, {Name: "a_id", Type: "int"}},
+	}
+	pks := map[string][]string{"A": {"id"}, "B": {"id"}, "X": {"id"}, "Z": {"id"}}
+	fks := map[string][]db.ForeignKey{
+		"B": {{Column: "a_id", RefTable: "A", RefColumn: "id"}},
+		"X": {{Column: "b_id", RefTable: "B", RefColumn: "id"}},
+		"Z": {{Column: "b_id", RefTable: "B", RefColumn: "id"}, {Column: "a_id", RefTable: "A", RefColumn: "id"}},
+	}
+	c := renderGraphERD([]string{"A", "B", "X", "Z"}, schemas, pks, fks)
+	if c == nil {
+		t.Fatal("expected a canvas")
+	}
+	rects := cardRects(c)
+	inside := func(x, y int) bool {
+		for _, r := range rects {
+			if x > r[0] && x < r[2] && y > r[1] && y < r[3] {
+				return true // strictly inside (excludes the border itself)
+			}
+		}
+		return false
+	}
+	for y := 0; y < c.h; y++ {
+		for x := 0; x < c.w; x++ {
+			if !isLineCell(c.cells[y][x]) {
+				continue
+			}
+			if inside(x, y) {
+				t.Errorf("arrow line at (%d,%d) passes through a card interior", x, y)
+			}
+		}
+	}
+}

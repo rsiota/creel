@@ -263,12 +263,6 @@ func (c *gcard) colRowY(col string) int {
 	return c.y + c.h/2
 }
 
-// colNameX returns the canvas x where a column's name begins (border + pad
-// + marker + space = +3). Used to align over-the-top arrows with the column.
-func (c *gcard) colNameX(col string) int {
-	return c.x + 3
-}
-
 // firstFK returns the first FK column name (for arrow endpoint alignment).
 func (c *gcard) firstFK() string {
 	for _, cc := range c.cols {
@@ -369,6 +363,7 @@ func placeCards(cards map[string]*gcard, order []string, rank map[string]int, ma
 	}
 
 	colX := make([]int, maxRank+1)
+	colMaxW := make([]int, maxRank+1)
 	x := 0
 	for r := 0; r <= maxRank; r++ {
 		colX[r] = x
@@ -380,6 +375,7 @@ func placeCards(cards map[string]*gcard, order []string, rank map[string]int, ma
 			}
 			h += c.h + 1 // 1-row gap between stacked cards
 		}
+		colMaxW[r] = w
 		if h > canvasH {
 			canvasH = h
 		}
@@ -401,6 +397,7 @@ func placeCards(cards map[string]*gcard, order []string, rank map[string]int, ma
 		for _, t := range byRank[r] {
 			c := cards[t]
 			c.x = colX[r]
+			c.w = colMaxW[r] // uniform width per column: right edges align on the gutter
 			c.y = y
 			c.rank = r
 			y += c.h + 1
@@ -514,24 +511,31 @@ func (c *gcanvas) drawSideArrowRight(child, parent *gcard, childCol, parentCol s
 	c.setCh(entryX, py, '▸', fg, false)
 }
 
-// drawMarginArrow routes over the top margin: up from child's FK column,
-// across a lane, down into the parent's PK column.
+// drawMarginArrow routes a non-adjacent FK over the top margin. The vertical
+// risers run through the column gutters (clear for the canvas's full height)
+// and the horizontal crosses the top margin (above every card), so the line
+// never passes through a table card — even one stacked above the endpoint in
+// the same column. Each riser uses the gutter on the side of its card that
+// faces the other endpoint.
 func (c *gcanvas) drawMarginArrow(child, parent *gcard, childCol, parentCol string, laneY int) {
 	fg := string(colorAccent)
-	cx := child.colNameX(childCol)
-	px := parent.colNameX(parentCol)
-	bottomY := child.y - 1
-	if bottomY < laneY+1 {
-		bottomY = laneY + 1
+	cy := child.colRowY(childCol)
+	py := parent.colRowY(parentCol)
+	var childRiserX, parentRiserX int
+	var head rune
+	if parent.x <= child.x {
+		childRiserX = child.x - 1          // gutter to the left of the child
+		parentRiserX = parent.x + parent.w // gutter to the right of the parent
+		head = '◂'                         // points left, into the parent's right edge
+	} else {
+		childRiserX = child.x + child.w // gutter to the right of the child
+		parentRiserX = parent.x - 1     // gutter to the left of the parent
+		head = '▸'                      // points right, into the parent's left edge
 	}
-	c.vline(cx, laneY, bottomY, fg)
-	c.hline(cx, px, laneY, fg)
-	pBottom := parent.y - 1
-	if pBottom < laneY+1 {
-		pBottom = laneY + 1
-	}
-	c.vline(px, laneY, pBottom, fg)
-	c.setCh(px, pBottom, '▾', fg, false)
+	c.vline(childRiserX, laneY, cy, fg)
+	c.hline(childRiserX, parentRiserX, laneY, fg)
+	c.vline(parentRiserX, laneY, py, fg)
+	c.setCh(parentRiserX, py, head, fg, false)
 }
 
 // --- entry point ------------------------------------------------------------
