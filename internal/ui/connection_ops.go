@@ -62,6 +62,7 @@ func (m *Model) connectByName(name string) tea.Cmd {
 	// the previous session intact.
 	m.rollbackTxn()
 	if m.connection != nil {
+		m.saveSession() // capture the previous connection's workspace first
 		m.connection.Close()
 		m.connection = nil
 	}
@@ -83,8 +84,9 @@ func (m *Model) connectByName(name string) tea.Cmd {
 		return nil
 	}
 
-	cmd := m.editor.Focus()
 	m.loadTables()
+	m.restoreSession() // reopen tabs/editor buffers from the last visit
+	cmd := m.editor.Focus()
 	m.layoutWorkspace()
 	m.applyFocus()
 
@@ -137,6 +139,7 @@ func (m *Model) resetWorkspaceForNewConnection() {
 // showConnectionList disconnects (if needed) and returns to the connection
 // picker. Shared by ctrl+t, :connections, and bare :connect.
 func (m *Model) showConnectionList() tea.Cmd {
+	m.saveSession()
 	if m.connection != nil {
 		m.rollbackTxn()
 		m.connection.Close()
@@ -265,6 +268,7 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	}
 	// UseDatabase may re-open the connection, orphaning an active transaction.
 	m.rollbackTxn()
+	m.saveSession() // capture the previous database's workspace first
 	if err := m.connection.UseDatabase(name); err != nil {
 		m.connError = err.Error()
 		return nil
@@ -289,8 +293,9 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	m.queryStack = nil
 	m.sidebarCursor = 0
 
-	cmd := m.editor.Focus()
 	m.loadTables()
+	m.restoreSession() // reopen tabs/editor buffers from the last visit
+	cmd := m.editor.Focus()
 	m.layoutWorkspace()
 	m.applyFocus()
 	return tea.Batch(cmd, m.prefetchSchemas(), m.fetchTableRowCounts())

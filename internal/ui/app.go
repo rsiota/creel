@@ -17,6 +17,7 @@ import (
 	"github.com/ruben/gsql/internal/db"
 	"github.com/ruben/gsql/internal/history"
 	"github.com/ruben/gsql/internal/secrets"
+	"github.com/ruben/gsql/internal/session"
 )
 
 // Focus represents which panel currently has keyboard focus.
@@ -409,6 +410,8 @@ type Model struct {
 	connection        *db.Connection
 	tx                db.Tx // active manual transaction (:begin/:commit/:rollback); nil = autocommit
 	forceReadOnly     bool  // --readonly CLI flag: forces every connection read-only
+	sessionStore      *session.Store
+	startupFileLoaded bool // gsql -f: suppress the first session restore so the file wins
 	historyStore      *history.Store
 	historyNavEntries []string // cached queries for the current browse session
 	historyNavIdx     int      // -1 = not browsing; otherwise index into historyNavEntries (most recent = len-1)
@@ -555,6 +558,7 @@ func NewModel(cfg *config.Config) Model {
 		tableDesigner:   NewTableDesigner(),
 		schemaEditor:    NewSchemaEditor(),
 		cellEdit:        NewCellEditPopup(),
+		sessionStore:    session.NewStore(historyDir()),
 		historyStore:    history.NewStore(historyDir()),
 		bookmarkStore:   bookmarks.NewStore(historyDir()),
 		expanded:        make(map[string][]db.Column),
@@ -909,10 +913,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+c"))):
-			m.quitting = true
+			m.beginQuit()
 			return m, tea.Quit
 		case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+q"))):
-			m.quitting = true
+			m.beginQuit()
 			return m, tea.Quit
 		}
 
@@ -1681,7 +1685,7 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.connList.StartFilter()
 		return m, nil
 	case "esc", "q":
-		m.quitting = true
+		m.beginQuit()
 		return m, tea.Quit
 	case "up", "k":
 		m.connList.MoveCursor(-1)
@@ -2667,7 +2671,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			(m.focus == FocusEditor && m.editor.VimMode() == VimInsert) {
 			break
 		}
-		m.quitting = true
+		m.beginQuit()
 		return m, tea.Quit
 	case "ctrl+y":
 		m.toggleHistory()

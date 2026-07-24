@@ -15,6 +15,7 @@ Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `gsql`
 - **Inline editing** — edit cells directly, insert rows, clone rows, paste from clipboard
 - **Record inspector** — side panel with a vertical form view that tracks the results cursor
 - **Query history & bookmarks** — per-connection, persisted, searchable
+- **Session restore** — reopening a connection brings back your open tabs and editor buffers from the last visit (keyed per connection + database). Buffers are restored but not re-executed; a `gsql -f` startup file still takes precedence on first connect
 - **EXPLAIN plans** — driver-aware rendering (`g e`) of query plans
 - **Schema editing** — add columns, rename tables, create/drop/truncate tables, and a grid-based table designer (`N`)
 - **Table structure view** (`d`) — a tabbed structure editor: columns (editable grid), foreign keys, indexes, check constraints, and triggers in one view, plus a definition tab for views
@@ -360,6 +361,7 @@ internal/db/            Database abstraction layer
 internal/config/        YAML config load/save
 internal/secrets/       OS keychain secret store (secret:// refs + plaintext fallback)
 internal/history/       Per-connection query history (JSON)
+internal/session/      Per-connection workspace state — open tabs, restored on reconnect (JSON)
 internal/bookmarks/     Saved queries
 internal/ui/            Bubble Tea components
   app.go                Top-level Model (Elm-style state machine)

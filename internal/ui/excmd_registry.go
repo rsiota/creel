@@ -96,7 +96,7 @@ func exCommands() []exCmdSpec {
 				}
 				// Last tab: save (if any) then quit, sequenced so the write
 				// completes before the program exits.
-				m.quitting = true
+				m.beginQuit()
 				if save == nil {
 					return tea.Quit
 				}

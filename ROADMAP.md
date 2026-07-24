@@ -145,10 +145,39 @@ Superseded by #7's `settings.query_timeout` (wired into `ExecuteContext` in
 opt-out sentinel, tracked under #7 follow-ups. Kept for history; no standalone
 work remains.
 
-### 9. Session restore
+### 9. Session restore ✅ DONE (2026-07-23)
 Persist the active tab's editor content + table per connection so reopening a
 connection restores where you left off. History store is a natural home.
 - Files: `internal/history/`, `internal/ui/tabs.go`, `internal/ui/app.go`.
+
+Implemented as a new `internal/session` package (a sibling of `history`, since
+it tracks UI workspace state rather than a query log) that persists a
+`State{Tabs, Active}` as JSON under `<configDir>/sessions/`. State is keyed by
+**(connection, database)** — `db.Connection.Config().Database` always reflects
+the active database, so MySQL/Postgres get per-database sessions and SQLite
+gets per-file behaviour for free.
+
+**Behaviour:**
+- Each tab persists its title, editor buffer (`EditorQuery`), and last executed
+  statement (`LastQuery`). Result rows, cursors, and filters are intentionally
+  **not** persisted — the buffer is restored verbatim and the user re-runs it
+  with `ctrl+e`, mirroring the `gsql -f` startup flag. This avoids stale data
+  and side-effecting writes on reconnect.
+- `saveSession` is called at every teardown boundary (`showConnectionList`, the
+  `connectByName` swap, `selectDatabase`) and on **quit** via a shared
+  `beginQuit()` helper that every quit path (`ctrl+c`/`ctrl+q`/`q`/`:q`/`:qa`/
+  `:wq`/`esc`) now funnels through, so the workspace is captured exactly once
+  before exit.
+- `restoreSession` runs after `loadTables` on connect / database switch. With
+  no session (or a blank one) the default single "New Query" tab is untouched.
+- A `gsql -f` startup file takes precedence: `loadStartupFile` arms a one-shot
+  `startupFileLoaded` flag that suppresses the **first** connect's restore, so
+  an explicitly-loaded buffer is never clobbered by a returning session;
+  later connects restore normally.
+- Files: `internal/session/` (store), `internal/ui/session.go` (save/restore/
+  beginQuit), `internal/ui/connection_ops.go`, `internal/ui/app.go`,
+  `internal/ui/excmd.go`, `internal/ui/excmd_registry.go`.
+  Tests: `internal/session/session_test.go`, `internal/ui/session_test.go`.
 
 ---
 
@@ -406,10 +435,9 @@ features.
 The original top three are all shipped (#1, #4, #3), and the two polish
 follow-ups are done (#7 `confirm_destructive`, #4 check constraints). Tiers
 1–3 of the `:` command set (#15) are complete. Tier 5 Waves A–E are done.
-Next up:
-1. **Session restore** (#9) — persistence; can deepen `:recent` across runs.
-2. **Tier 4** — opt-in DBA (`:who`/`:locks`/`:kill`) if users ask.
-3. Optional DDL follow-ups: `:createdb` / `:dropdb` (db-picker `N`/`D`) ✅
+Session restore (#9) shipped (2026-07-23). Next up:
+1. **Tier 4** — opt-in DBA (`:who`/`:locks`/`:kill`) if users ask.
+2. Optional DDL follow-ups: `:createdb` / `:dropdb` (db-picker `N`/`D`) ✅
    done (2026-07-17). `:addcolumn` (sidebar `a`) ✅ done (2026-07-17) — fills the
    column-DDL gap; 0–1 args open the form, `<table> <name> <type> [nullable]
    [default]` runs ALTER TABLE ADD COLUMN directly via the shared

@@ -318,7 +318,7 @@ func (m *Model) exQuit(force bool) tea.Cmd {
 		return nil
 	}
 	if len(m.resultsTabs) <= 1 {
-		m.quitting = true
+		m.beginQuit()
 		return tea.Quit
 	}
 	m.closeTab(m.activeTabID)
@@ -338,7 +338,7 @@ func (m *Model) exQuitAll(force bool) tea.Cmd {
 			}
 		}
 	}
-	m.quitting = true
+	m.beginQuit()
 	return tea.Quit
 }
 
@@ -1237,6 +1237,9 @@ func (m *Model) loadStartupFile(path string) (string, error) {
 		return expanded, err
 	}
 	m.editor.SetValue(string(content))
+	// A startup file is an explicit request to review this buffer, so the
+	// first connect should not clobber it with a restored session.
+	m.startupFileLoaded = true
 	return expanded, nil
 }
 
