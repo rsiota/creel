@@ -429,11 +429,11 @@ func (c *gcanvas) drawCard(g *gcard) {
 		leftPad = 0
 	}
 	c.putText(g.x+1+leftPad, g.y+1, g.name, string(colorPrimary), true)
-	// Title→columns separator.
+	// Title→columns separator (dimmed so it reads as a divider, not a border).
 	c.setCh(g.x, g.y+2, '│', fg, false)
 	c.setCh(g.x+g.w-1, g.y+2, '│', fg, false)
 	for x := g.x + 1; x < g.x+g.w-1; x++ {
-		c.setCh(x, g.y+2, '─', fg, false)
+		c.setCh(x, g.y+2, '─', string(colorMuted), false)
 	}
 	// Column rows: marker + name left-aligned, type right-aligned to the inner
 	// right edge (g.x+w-2) and rendered uppercase + muted.
