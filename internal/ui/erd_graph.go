@@ -445,14 +445,16 @@ func (c *gcanvas) drawCard(g *gcard) {
 		c.setCh(g.x, y, '│', fg, false)
 		c.setCh(g.x+g.w-1, y, '│', fg, false)
 		marker := " "
-		if g.pkSet[col.Name] {
+		isPK := g.pkSet[col.Name]
+		if isPK {
 			marker = "◆"
 		} else if g.fkSet[col.Name] {
 			marker = "◇"
 		}
-		// Left: marker + space, then the name starting at g.x+3.
-		c.putText(g.x+1, y, marker+" ", "", false)
-		c.putText(g.x+3, y, col.Name, "", false)
+		// Left: marker + space, then the name starting at g.x+3. PK columns are
+		// rendered bold to set them apart.
+		c.putText(g.x+1, y, marker+" ", "", isPK)
+		c.putText(g.x+3, y, col.Name, "", isPK)
 		// Right: type one cell inside the right border (a space separates it).
 		typ := strings.ToUpper(erdType(col.Type))
 		c.putText(g.x+g.w-1-erdCardRightPad-len([]rune(typ)), y, typ, string(colorMuted), false)

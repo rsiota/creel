@@ -241,3 +241,27 @@ func TestERDCardTypeRightAligned(t *testing.T) {
 		}
 	}
 }
+
+// TestERDCardPKBold asserts the primary-key column's name renders bold while
+// a non-key column does not.
+func TestERDCardPKBold(t *testing.T) {
+	cols := []db.Column{{Name: "id", Type: "int"}, {Name: "note", Type: "text"}}
+	schemas := map[string][]db.Column{"t": cols}
+	pks := map[string][]string{"t": {"id"}}
+	c := renderGraphERD([]string{"t"}, schemas, pks, nil)
+	nameBoldAt := func(y int, name string) bool {
+		nr := []rune(name)[0]
+		for x := 0; x < c.w; x++ {
+			if g, _, bold := cellGlyph(c.cells[y][x]); g == nr {
+				return bold
+			}
+		}
+		return false
+	}
+	if !nameBoldAt(3, "id") {
+		t.Error("PK column 'id' should be bold")
+	}
+	if nameBoldAt(4, "note") {
+		t.Error("non-key column 'note' should not be bold")
+	}
+}
