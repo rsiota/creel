@@ -70,6 +70,7 @@ type gcell struct {
 	ch   rune // explicit glyph (card text/border or arrowhead); 0 = none
 	fg   string
 	bold bool
+	bg   string // optional cell background (empty = terminal default)
 	con  erdDir // line connections
 }
 
@@ -113,6 +114,17 @@ func (c *gcanvas) putText(x, y int, s, fg string, bold bool) {
 
 // hline/vline mark connection masks (and a colour) for orthogonal segments;
 // the glyph is derived at emit time so overlapping segments merge into tees/crosses.
+// fillBg paints a background colour across [x1,x2] on row y without touching
+// any cell's glyph/fg — used for subtle row tints like the card header. Safe to
+// call before drawing text/borders: setCh/putText preserve an existing bg.
+func (c *gcanvas) fillBg(x1, x2, y int, bg string) {
+	for x := x1; x <= x2; x++ {
+		if c.inBounds(x, y) {
+			c.cells[y][x].bg = bg
+		}
+	}
+}
+
 func (c *gcanvas) hline(x1, x2, y int, fg string) {
 	if x1 > x2 {
 		x1, x2 = x2, x1
@@ -197,10 +209,11 @@ func (c *gcanvas) emitRow(y, x0, x1 int) string {
 	var b strings.Builder
 	for x := x0; x < x1; {
 		_, fg, bold := cellGlyph(row[x])
+		bg := row[x].bg
 		end := x + 1
 		for end < x1 {
 			_, efg, ebold := cellGlyph(row[end])
-			if efg != fg || ebold != bold {
+			if efg != fg || ebold != bold || row[end].bg != bg {
 				break
 			}
 			end++
@@ -211,13 +224,16 @@ func (c *gcanvas) emitRow(y, x0, x1 int) string {
 			runes = append(runes, g)
 		}
 		seg := string(runes)
-		if fg != "" || bold {
+		if fg != "" || bold || bg != "" {
 			st := lipgloss.NewStyle()
 			if fg != "" {
 				st = st.Foreground(lipgloss.Color(fg))
 			}
 			if bold {
 				st = st.Bold(true)
+			}
+			if bg != "" {
+				st = st.Background(lipgloss.Color(bg))
 			}
 			seg = st.Render(seg)
 		}
@@ -419,7 +435,9 @@ func (c *gcanvas) drawCard(g *gcard) {
 	for x := g.x + 1; x < g.x+g.w-1; x++ {
 		c.setCh(x, g.y, '─', fg, false)
 	}
-	// Title row: the table name centred between the side borders (bold/primary).
+	// Title row: a subtle background tint fills the row between the borders,
+	// with the table name centred on top (bold/primary).
+	c.fillBg(g.x+1, g.x+g.w-2, g.y+1, string(colorHighlight))
 	c.setCh(g.x, g.y+1, '│', fg, false)
 	c.setCh(g.x+g.w-1, g.y+1, '│', fg, false)
 	nameW := len([]rune(g.name))
