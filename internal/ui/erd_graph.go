@@ -437,7 +437,7 @@ func (c *gcanvas) drawCard(g *gcard) {
 	}
 	// Title row: a subtle background tint fills the row between the borders,
 	// with the table name centred on top (bold/primary).
-	c.fillBg(g.x+1, g.x+g.w-2, g.y+1, string(colorHighlight))
+	c.fillBg(g.x+1, g.x+g.w-2, g.y+1, string(colorStripe))
 	c.setCh(g.x, g.y+1, '│', fg, false)
 	c.setCh(g.x+g.w-1, g.y+1, '│', fg, false)
 	nameW := len([]rune(g.name))
