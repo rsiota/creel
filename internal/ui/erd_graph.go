@@ -104,8 +104,10 @@ func (c *gcanvas) setCh(x, y int, r rune, fg string, bold bool) {
 }
 
 func (c *gcanvas) putText(x, y int, s, fg string, bold bool) {
-	for i, r := range s {
-		c.setCh(x+i, y, r, fg, bold)
+	off := 0
+	for _, r := range s {
+		c.setCh(x+off, y, r, fg, bold)
+		off++
 	}
 }
 

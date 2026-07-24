@@ -158,3 +158,49 @@ func TestRenderGraphERDNoTables(t *testing.T) {
 		t.Errorf("expected nil canvas for no tables, got %dx%d", c.w, c.h)
 	}
 }
+
+// TestGcanvasPutTextRuneAligned is a regression guard: putText must advance by
+// rune count, not byte offset, so a multibyte marker (◆ is 3 UTF-8 bytes)
+// doesn't shift the following characters and break column alignment.
+func TestGcanvasPutTextRuneAligned(t *testing.T) {
+	c := newGcanvas(5, 1)
+	c.putText(0, 0, "◆x", "", false)
+	g0, _, _ := cellGlyph(c.cells[0][0])
+	g1, _, _ := cellGlyph(c.cells[0][1])
+	if g0 != '◆' || g1 != 'x' {
+		t.Errorf("putText mispositioned multibyte rune: got %q,%q want ◆,x", g0, g1)
+	}
+}
+
+// TestERDCardColumnAlignment asserts that a PK column line (◆ name) and a plain
+// column line (no marker) start their name at the same canvas x, so the cards'
+// column text lines up.
+func TestERDCardColumnAlignment(t *testing.T) {
+	schemas := map[string][]db.Column{
+		"t": {{Name: "id", Type: "int"}, {Name: "note", Type: "text"}},
+	}
+	pks := map[string][]string{"t": {"id"}}
+	c := renderGraphERD([]string{"t"}, schemas, pks, nil)
+	// Find the x of the first letter of each column name on its row.
+	nameX := func(name string) int {
+		for y := 0; y < c.h; y++ {
+			for x := 0; x+len(name) <= c.w; x++ {
+				match := true
+				for i := 0; i < len(name); i++ {
+					g, _, _ := cellGlyph(c.cells[y][x+i])
+					if g != []rune(name)[i] {
+						match = false
+						break
+					}
+				}
+				if match {
+					return x
+				}
+			}
+		}
+		return -1
+	}
+	if x1, x2 := nameX("id"), nameX("note"); x1 != x2 {
+		t.Errorf("column names misaligned: id@%d note@%d", x1, x2)
+	}
+}
