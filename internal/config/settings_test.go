@@ -88,6 +88,55 @@ func TestDurationUnmarshalInvalid(t *testing.T) {
 	}
 }
 
+// The "off"/"none" sentinels (and a negative number) disable the query
+// timeout: they parse to a negative Duration that Effective leaves intact so
+// the runner applies no deadline.
+func TestQueryTimeoutDisabledSentinel(t *testing.T) {
+	for _, in := range []string{"off", "none", "disable", "OFF", "-1", "-5s"} {
+		var cfg Config
+		yml := "settings:\n  query_timeout: " + in + "\n"
+		if err := yamlUnmarshal(t, yml, &cfg); err != nil {
+			t.Errorf("parse %q: %v", in, err)
+			continue
+		}
+		eff := cfg.Settings.Effective()
+		if eff.QueryTimeout >= 0 {
+			t.Errorf("%q: effective timeout = %v, want negative (disabled)", in, eff.QueryTimeout)
+		}
+	}
+}
+
+// An unset (zero) query_timeout still falls back to the default, distinct from
+// the explicit disable sentinel.
+func TestQueryTimeoutZeroIsDefault(t *testing.T) {
+	var cfg Config
+	yml := "settings:\n  query_timeout: 0\n"
+	if err := yamlUnmarshal(t, yml, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Settings.Effective().QueryTimeout.Std(); got != DefaultQueryTimeout {
+		t.Errorf("zero should fall back to default, got %v", got)
+	}
+}
+
+// The disabled sentinel round-trips through marshal as "off".
+func TestQueryTimeoutDisabledRoundTrip(t *testing.T) {
+	out, err := yamlMarshal(t, Config{Settings: Settings{QueryTimeout: Duration(-1)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "off") || strings.Contains(out, "-1") {
+		t.Errorf("disabled should marshal as 'off', got:\n%s", out)
+	}
+	var back Config
+	if err := yamlUnmarshal(t, out, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Settings.QueryTimeout >= 0 {
+		t.Errorf("round-trip lost disabled sentinel: %v", back.Settings.QueryTimeout)
+	}
+}
+
 // Duration round-trips through marshal/unmarshal in the friendly form.
 func TestDurationRoundTrip(t *testing.T) {
 	cfg := Config{Settings: Settings{QueryTimeout: Duration(30 * time.Second)}}

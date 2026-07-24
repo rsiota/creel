@@ -10,9 +10,10 @@ independent unless noted. Each item lists the files most likely to change.
 ### 1. Secret backend for passwords ✅ DONE (2026-07-10)
 Implemented in `internal/secrets/` + wired through the connection form, save,
 connect, and delete flows. See README "Configuration" and the secrets package
-doc for details. Keyring library: `github.com/zalando/go-keyring`. Remaining
-follow-up: the connection form does not yet expose `ssh_passphrase` for editing
-(it is preserved across edits and resolved at connect).
+doc for details. Keyring library: `github.com/zalando/go-keyring`. The connection form exposes
+all secret fields including `ssh_passphrase` (editable since 2026-07-24), so
+the earlier preserve-across-edits workaround is gone; all three migrate to the
+keychain together when Secrets is set to `keychain`.
 
 ### 2. "Test Connection" action in the form ✅ DONE (2026-07-10)
 `ctrl+t` in the add/edit connection form validates the fields and opens the
@@ -54,8 +55,10 @@ PK, FKs, indexes, triggers, and view definitions.
   metadata tabs.
 - Surface the partial-index predicate on SQLite (PRAGMA only gives a 0/1 flag;
   would need parsing `sqlite_master.sql`).
-- A small `view`/`table` type badge in the sidebar list (currently only shown
-  inside the structure view's header).
+- A small `view`/`table` type badge in the sidebar list ✅ DONE (2026-07-24):
+  views are badged with a muted `view` marker in the sidebar. The view-name
+  set is cached from `Views()` in `loadTables` (one extra metadata query per
+  connect; a failure just leaves no badges).
 
 ---
 
@@ -133,9 +136,11 @@ is omitted on save so connection edits don't sprout a `settings:` block.
   in config opts out to keep terminal transparency. Regenerate the derived
   catalog with `go run ./cmd/genthemes`; see `THIRDPARTY.md` for attribution.
 - `cursor_style`: needs results-cursor rendering work. Field reserved.
-- Letting `query_timeout: 0` disable the deadline via config — currently
-  `Effective` replaces 0 with the 30s default (the runner already supports 0 =
-  no deadline; needs a sentinel to opt out through config).
+- Letting `query_timeout: 0` disable the deadline via config ✅ DONE
+  (2026-07-24): a negative value — or the string `off` / `none` — is the
+  disable sentinel. `Effective` now treats only `0` (unset) as the default;
+  negative survives and the runner applies no deadline (`esc` still cancels).
+  The sentinel round-trips through YAML as `off`.
 - Files: `internal/config/settings.go`, `internal/config/config.go`,
   `internal/ui/app.go`, `internal/ui/connection_form.go`.
 

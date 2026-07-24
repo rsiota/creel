@@ -130,6 +130,7 @@ func (m *Model) resetWorkspaceForNewConnection() {
 	m.queryStack = nil
 	m.expanded = make(map[string][]db.Column)
 	m.columnCache = nil
+	m.views = nil
 	m.recentTables = nil
 	m.sidebarFiltering = false
 	m.sidebarFilter = ""
@@ -325,6 +326,15 @@ func (m *Model) loadTables() {
 		return
 	}
 	m.tables = tables
+	// Cache the view-name set so the sidebar can badge views vs base tables.
+	// A Views() failure (rare; driver/privilege issue) just leaves no badges.
+	m.views = nil
+	if views, err := m.connection.DB().Views(); err == nil {
+		m.views = make(map[string]bool, len(views))
+		for _, v := range views {
+			m.views[v] = true
+		}
+	}
 	m.refreshCompletionCandidates()
 }
 

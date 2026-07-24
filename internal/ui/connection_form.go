@@ -28,9 +28,10 @@ const (
 	fieldSSHUser
 	fieldSSHKeyPath
 	fieldSSHPassword
-	fieldSecrets  // keychain vs plaintext storage for secret fields
-	fieldReadOnly // yes/no toggle
-	fieldGroup    // optional folder label for grouping in the connection list
+	fieldSSHPassphrase // passphrase for the SSH private key (resolved at connect)
+	fieldSecrets       // keychain vs plaintext storage for secret fields
+	fieldReadOnly      // yes/no toggle
+	fieldGroup         // optional folder label for grouping in the connection list
 	fieldCount
 )
 
@@ -38,7 +39,7 @@ const (
 // indices above. It is shared by rendering and any label lookups.
 var formLabels = [...]string{
 	"Name", "Driver", "Database", "Host", "Port", "Username", "Password",
-	"SSH Tunnel", "SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass",
+	"SSH Tunnel", "SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass", "SSH Passphrase",
 	"Secrets", "Read-only", "Group",
 }
 
@@ -113,6 +114,7 @@ func NewConnectionFormEdit(cfg config.ConnectionConfig) ConnectionForm {
 	f.fields[fieldSSHUser].SetValue(cfg.SSHUser)
 	f.fields[fieldSSHKeyPath].SetValue(cfg.SSHKeyPath)
 	f.fields[fieldSSHPassword].SetValue(resolveSecretOrKeep(cfg.SSHPassword))
+	f.fields[fieldSSHPassphrase].SetValue(resolveSecretOrKeep(cfg.SSHPassphrase))
 
 	// Reveal the SSH group if the saved connection used a tunnel.
 	f.fields[fieldSSHTunnel].SetValue(boolField(cfg.SSHHost != ""))
@@ -167,6 +169,7 @@ func newForm(mode formMode, name string) ConnectionForm {
 	fields[fieldSSHUser] = newTextInput("SSH user", "", false)
 	fields[fieldSSHKeyPath] = newTextInput("SSH key path (~/.ssh/id_rsa)", "", false)
 	fields[fieldSSHPassword] = newTextInput("SSH password", "", true)
+	fields[fieldSSHPassphrase] = newTextInput("SSH key passphrase", "", true)
 	fields[fieldSecrets] = newTextInput("keychain / plain", "", false)
 	fields[fieldReadOnly] = newTextInput("no / yes", "", false)
 	fields[fieldGroup] = newTextInput("Folder name (optional, e.g. Work)", "", false)
@@ -238,7 +241,7 @@ func (f ConnectionForm) visibleFields() []int {
 	if isNetworkDriver(f.driver()) {
 		out = append(out, fieldHost, fieldPort, fieldUser, fieldPass, fieldSSHTunnel)
 		if f.sshEnabled() {
-			out = append(out, fieldSSHHost, fieldSSHPort, fieldSSHUser, fieldSSHKeyPath, fieldSSHPassword)
+			out = append(out, fieldSSHHost, fieldSSHPort, fieldSSHUser, fieldSSHKeyPath, fieldSSHPassword, fieldSSHPassphrase)
 		}
 	}
 	out = append(out, fieldSecrets, fieldReadOnly, fieldGroup)
@@ -671,6 +674,7 @@ func (f *ConnectionForm) EnterPressed() (config.ConnectionConfig, string) {
 			cfg.SSHUser = f.fields[fieldSSHUser].Value()
 			cfg.SSHKeyPath = f.fields[fieldSSHKeyPath].Value()
 			cfg.SSHPassword = f.fields[fieldSSHPassword].Value()
+			cfg.SSHPassphrase = f.fields[fieldSSHPassphrase].Value()
 		}
 	}
 

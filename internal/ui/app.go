@@ -337,6 +337,7 @@ type Model struct {
 	tableRowCounts      map[string]int64 // approximate row counts for sidebar display
 	expanded            map[string][]db.Column
 	columnCache         map[string][]db.Column
+	views               map[string]bool            // view names from Views(); badges views in the sidebar
 	pkCache             map[string][]string        // table -> PK columns (AI schema context)
 	fkCache             map[string][]db.ForeignKey // table -> FKs (AI schema context)
 	recentTables        []string                   // MRU table names (most recent first); for :recent
@@ -1784,14 +1785,7 @@ func (m Model) updateAddConnection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 
 			if m.connForm.mode == formModeEdit {
-				// Preserve fields the form does not expose (currently
-				// ssh_passphrase) so editing a connection does not wipe them.
-				var oldPassphrase string
-				if existing := m.config.GetConnection(m.connForm.editName); existing != nil {
-					oldPassphrase = existing.SSHPassphrase
-				}
 				m.config.RemoveConnection(m.connForm.editName)
-				connCfg.SSHPassphrase = oldPassphrase
 			}
 
 			// Migrate secret fields to the OS keychain when requested. Falls back
@@ -1825,8 +1819,10 @@ func (m Model) updateAddConnection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // keychain could not be used; in that case the config is returned unchanged so
 // the caller falls back to storing plaintext.
 //
-// Only fields the form exposes (password, ssh_password) are managed here.
-// ssh_passphrase is resolved at connect time but not edited via the form.
+// The secret fields the form exposes (password, ssh_password, ssh_passphrase)
+// are managed here. Each is migrated to the OS keychain when mode is
+// "keychain", replacing the plaintext value in the config with an opaque
+// reference. Empty values and existing references are left untouched.
 func storeConnSecrets(cfg config.ConnectionConfig, mode string) (config.ConnectionConfig, error) {
 	if mode != "keychain" {
 		return cfg, nil
@@ -1841,6 +1837,7 @@ func storeConnSecrets(cfg config.ConnectionConfig, mode string) (config.Connecti
 	fields := []secretField{
 		{secrets.FieldPassword, cfg.Password},
 		{secrets.FieldSSHPassword, cfg.SSHPassword},
+		{secrets.FieldSSHPassphrase, cfg.SSHPassphrase},
 	}
 	for _, fl := range fields {
 		if fl.val == "" || secrets.IsReference(fl.val) {
@@ -1855,6 +1852,8 @@ func storeConnSecrets(cfg config.ConnectionConfig, mode string) (config.Connecti
 			cfg.Password = ref
 		case secrets.FieldSSHPassword:
 			cfg.SSHPassword = ref
+		case secrets.FieldSSHPassphrase:
+			cfg.SSHPassphrase = ref
 		}
 	}
 	return cfg, nil
@@ -4307,6 +4306,9 @@ func (m Model) viewWorkspace() string {
 					tableName = highlightMatches(item.text, item.matchIdx)
 				}
 				line = style.Render(expandIcon + " " + tableName)
+			}
+			if item.isView {
+				line += " " + mutedStyle.Render("view")
 			}
 		}
 

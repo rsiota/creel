@@ -12,6 +12,7 @@ import (
 type sidebarItem struct {
 	text     string
 	isColumn bool
+	isView   bool // true for views (badged in the sidebar)
 	colType  string
 	matchIdx []int // rune indices of fuzzy-matched chars (for highlighting)
 }
@@ -23,7 +24,7 @@ func (m Model) sidebarItems() []sidebarItem {
 	}
 	var items []sidebarItem
 	for _, t := range m.tables {
-		items = append(items, sidebarItem{text: t})
+		items = append(items, sidebarItem{text: t, isView: m.views[t]})
 		if cols, ok := m.expanded[t]; ok {
 			for _, c := range cols {
 				items = append(items, sidebarItem{text: c.Name, isColumn: true, colType: c.Type})
@@ -38,7 +39,7 @@ func (m Model) filteredTables() []sidebarItem {
 	if m.sidebarFilter == "" {
 		items := make([]sidebarItem, len(m.tables))
 		for i, t := range m.tables {
-			items[i] = sidebarItem{text: t}
+			items[i] = sidebarItem{text: t, isView: m.views[t]}
 		}
 		return items
 	}
@@ -47,7 +48,7 @@ func (m Model) filteredTables() []sidebarItem {
 		func(a, b fuzzyResult[string]) bool { return a.Item < b.Item })
 	items := make([]sidebarItem, len(ranked))
 	for i, r := range ranked {
-		items[i] = sidebarItem{text: r.Item, matchIdx: r.MatchIdx}
+		items[i] = sidebarItem{text: r.Item, isView: m.views[r.Item], matchIdx: r.MatchIdx}
 	}
 	return items
 }

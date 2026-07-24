@@ -202,7 +202,7 @@ optional and fall back to defaults when omitted:
 | Key              | Default      | Description                                                              |
 | ---------------- | ------------ | ------------------------------------------------------------------------ |
 | `page_size`      | 200          | Rows fetched per page in results                                         |
-| `query_timeout`  | 30s          | Per-query deadline (friendly form: `2m`, `1h30m`, or a bare seconds int) |
+| `query_timeout`  | 30s          | Per-query deadline (friendly form: `2m`, `1h30m`, or a bare seconds int). `off` / `none` (or a negative value) disables the deadline entirely — `esc` still cancels |
 | `default_driver` | sqlite       | Driver pre-filled in the add-connection form                             |
 | `theme`          | tokyo-night  | Palette: `tokyo-night`, `gruvbox`, `nord`, `catppuccin`, `light` + ~565 auto-derived from iTerm2-Color-Schemes (dracula, solarized, …). Unknown → default |
 | `icons`          | unicode      | Glyph set for tree expand/collapse markers (sidebar, connection groups, relationship explorer). `unicode` uses portable triangles (▾/▸); `nerdfont` uses Nerd Font angle chevrons (U+F107/U+F105) — open, rotationally-symmetric like treemacs, but only renders correctly in a terminal running a Nerd Font. Unknown → default |

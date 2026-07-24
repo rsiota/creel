@@ -28,7 +28,7 @@ func formKey(r rune) tea.KeyMsg {
 //
 //	sqlite           → 6  (Name, Driver, Database, Secrets, Read-only, Group)
 //	mysql/pg, no SSH → 11  (+ Host, Port, User, Pass, SSH Tunnel)
-//	mysql/pg + SSH   → 16  (+ 5 SSH fields)
+//	mysql/pg + SSH   → 17  (+ 6 SSH fields)
 func TestConnectionFormConditionalFields(t *testing.T) {
 	f := NewConnectionForm()
 	f.SetSize(67, f.contentHeight()) // tall enough to fit every visible field
@@ -69,13 +69,16 @@ func TestConnectionFormConditionalFields(t *testing.T) {
 	f.fields[fieldSSHTunnel].SetValue("yes")
 	f.SetSize(67, f.contentHeight())
 	view = formStripANSI(f.View())
-	if got := countTopBorders(view); got != 16 {
-		t.Errorf("mysql+ssh: visible fields=%d, want 16\n%s", got, view)
+	if got := countTopBorders(view); got != 17 {
+		t.Errorf("mysql+ssh: visible fields=%d, want 17\n%s", got, view)
 	}
 	for _, l := range []string{"SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass"} {
 		if !strings.Contains(view, l) {
 			t.Errorf("mysql+ssh: %q should be visible", l)
 		}
+	}
+	if !strings.Contains(view, "SSH Passphrase") {
+		t.Errorf("mysql+ssh: SSH Passphrase field should be visible\n%s", view)
 	}
 }
 

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -25,7 +26,10 @@ const (
 // Reserved for follow-ups (not yet applied): cursor_style — the struct is
 // designed so adding fields is the only change needed here.
 type Settings struct {
-	PageSize      int      `yaml:"page_size,omitempty"`
+	PageSize int `yaml:"page_size,omitempty"`
+	// QueryTimeout is the per-query deadline. Zero (the zero value / unset)
+	// falls back to DefaultQueryTimeout. A negative value — or the string
+	// "off" / "none" — disables the deadline entirely (esc still cancels).
 	QueryTimeout  Duration `yaml:"query_timeout,omitempty"`
 	DefaultDriver string   `yaml:"default_driver,omitempty"`
 
@@ -67,9 +71,12 @@ func (s Settings) Effective() Settings {
 	if out.PageSize <= 0 {
 		out.PageSize = DefaultPageSize
 	}
-	if out.QueryTimeout <= 0 {
+	if out.QueryTimeout == 0 {
 		out.QueryTimeout = Duration(DefaultQueryTimeout)
 	}
+	// A negative QueryTimeout is the explicit "disabled" sentinel: leave it
+	// negative so the query runner applies no deadline (queryContext treats
+	// <= 0 as no timeout).
 	if out.DefaultDriver == "" {
 		out.DefaultDriver = DefaultDriver
 	}
@@ -86,6 +93,9 @@ func (d Duration) Std() time.Duration { return time.Duration(d) }
 
 // MarshalYAML emits the duration in its friendly string form.
 func (d Duration) MarshalYAML() (interface{}, error) {
+	if time.Duration(d) < 0 {
+		return "off", nil // disabled sentinel round-trips as "off"
+	}
 	return time.Duration(d).String(), nil
 }
 
@@ -98,6 +108,11 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	}
 	switch v := raw.(type) {
 	case string:
+		switch strings.ToLower(v) {
+		case "off", "none", "disable", "disabled":
+			*d = -1 // negative is the disabled sentinel (see Effective)
+			return nil
+		}
 		if parsed, err := time.ParseDuration(v); err == nil {
 			*d = Duration(parsed)
 			return nil

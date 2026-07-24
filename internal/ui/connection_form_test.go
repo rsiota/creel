@@ -136,7 +136,7 @@ func TestConnectionFormFieldCount(t *testing.T) {
 		t.Errorf("expected %d fields, got %d", fieldCount, len(f.fields))
 	}
 	for i, field := range f.fields {
-		if field.EchoMode != textinput.EchoNormal && i != fieldPass && i != fieldSSHPassword {
+		if field.EchoMode != textinput.EchoNormal && i != fieldPass && i != fieldSSHPassword && i != fieldSSHPassphrase {
 			t.Errorf("field %d should use normal echo", i)
 		}
 	}
@@ -242,5 +242,48 @@ func TestConnectionFormReadOnlyRoundTrip(t *testing.T) {
 		if !c.ReadOnly {
 			t.Errorf("%q should enable read-only", v)
 		}
+	}
+}
+
+// TestConnectionFormSSHPassphraseRoundTrip verifies the SSH key passphrase is
+// seeded when editing and extracted on submit. Previously it was hidden and
+// only preserved verbatim across edits.
+func TestConnectionFormSSHPassphraseRoundTrip(t *testing.T) {
+	// Edit seeding: a saved passphrase populates the field.
+	original := config.ConnectionConfig{
+		Name: "tun", Driver: "mysql", Database: "db",
+		Host: "h", Port: 3306, Username: "u",
+		SSHHost: "bastion", SSHPassphrase: "my-passphrase",
+	}
+	f := NewConnectionFormEdit(original)
+	if got := f.fields[fieldSSHPassphrase].Value(); got != "my-passphrase" {
+		t.Fatalf("edit seed: passphrase=%q, want 'my-passphrase'", got)
+	}
+
+	// Submit extraction: a typed passphrase flows into the config when SSH is on.
+	f2 := NewConnectionForm()
+	f2.fields[fieldName].SetValue("tun")
+	f2.fields[fieldDriver].SetValue("mysql")
+	f2.fields[fieldDatabase].SetValue("db")
+	f2.fields[fieldSSHTunnel].SetValue("yes")
+	f2.fields[fieldSSHHost].SetValue("bastion")
+	f2.fields[fieldSSHPassphrase].SetValue("typed-passphrase")
+	cfg, errMsg := f2.EnterPressed()
+	if errMsg != "" {
+		t.Fatalf("unexpected error: %s", errMsg)
+	}
+	if cfg.SSHPassphrase != "typed-passphrase" {
+		t.Errorf("submit: passphrase=%q, want 'typed-passphrase'", cfg.SSHPassphrase)
+	}
+
+	// With the SSH tunnel off, the passphrase is ignored (not extracted).
+	f3 := NewConnectionForm()
+	f3.fields[fieldName].SetValue("tun")
+	f3.fields[fieldDriver].SetValue("mysql")
+	f3.fields[fieldDatabase].SetValue("db")
+	f3.fields[fieldSSHPassphrase].SetValue("ignored")
+	cfg3, _ := f3.EnterPressed()
+	if cfg3.SSHPassphrase != "" {
+		t.Errorf("with SSH off, passphrase should be ignored, got %q", cfg3.SSHPassphrase)
 	}
 }
