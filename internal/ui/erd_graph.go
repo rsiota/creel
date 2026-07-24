@@ -252,12 +252,12 @@ type gcard struct {
 }
 
 // colRowY returns the canvas y of a column's text row, or the card's vertical
-// centre if the column is absent.
+// centre if the column is absent. Layout: row 0 = top border (title embedded),
+// row 1 = separator, rows 2.. = columns.
 func (c *gcard) colRowY(col string) int {
-	const titleRows = 2 // title + separator
 	for i, cc := range c.cols {
 		if cc.Name == col {
-			return c.y + 1 + titleRows + i
+			return c.y + 2 + i
 		}
 	}
 	return c.y + c.h/2
@@ -305,7 +305,7 @@ func measureCard(name string, cols []db.Column, pkSet, fkSet map[string]bool) gc
 	if w < 10 {
 		w = 10
 	}
-	h := 1 + 2 + len(cols) + 1 // top border + title + separator + columns + bottom border
+	h := len(cols) + 3 // top border (title embedded) + separator + columns + bottom border
 	return gcard{name: name, cols: cols, pkSet: pkSet, fkSet: fkSet, w: w, h: h}
 }
 
@@ -445,7 +445,7 @@ func (c *gcanvas) drawCard(g *gcard) {
 	}
 	// Column rows: marker + name in the default colour, type in muted + upper.
 	for i, col := range g.cols {
-		y := g.y + 1 + 2 + i
+		y := g.y + 2 + i
 		c.setCh(g.x, y, '│', fg, false)
 		c.setCh(g.x+g.w-1, y, '│', fg, false)
 		marker := " "
