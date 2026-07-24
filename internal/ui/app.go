@@ -2626,11 +2626,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.erdPanel.Hide()
 			return m, nil
 		case "y", "Y":
-			_ = clipboard.WriteAll(joinERDLines(m.erdPanel.Lines()))
+			_ = clipboard.WriteAll(joinERDLines(m.erdPanel.MermaidLines()))
 			m.schemaMsg = "erd copied to clipboard"
 			return m, nil
 		case "s":
-			m.saveERDToFile("erd.mmd", m.erdPanel.Lines())
+			m.saveERDToFile("erd.mmd", m.erdPanel.MermaidLines())
 			return m, nil
 		}
 		m.erdPanel = m.erdPanel.Update(msg)

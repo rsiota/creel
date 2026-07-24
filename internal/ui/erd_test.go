@@ -101,3 +101,60 @@ func TestERDType(t *testing.T) {
 		}
 	}
 }
+
+// hasRune reports whether the canvas contains r anywhere.
+func hasRune(c *gcanvas, r rune) bool {
+	if c == nil {
+		return false
+	}
+	for y := 0; y < c.h; y++ {
+		for x := 0; x < c.w; x++ {
+			if g, _, _ := cellGlyph(c.cells[y][x]); g == r {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// containsText reports whether the canvas contains the given (unstyled) text on
+// a single row.
+func containsText(c *gcanvas, s string) bool {
+	if c == nil {
+		return false
+	}
+	for y := 0; y < c.h; y++ {
+		if strings.Contains(c.emitRow(y, 0, c.w), s) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestRenderGraphERD(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	c := renderGraphERD(tables, schemas, pks, fks)
+	if c == nil {
+		t.Fatal("expected a canvas")
+	}
+	if c.w < 10 || c.h < 5 {
+		t.Errorf("canvas too small: %dx%d", c.w, c.h)
+	}
+	// Card borders, PK/FK markers, and an arrow glyph must all be present.
+	for _, want := range []rune{'╭', '╰', '│', '─', '◆', '◇', '◂'} {
+		if !hasRune(c, want) {
+			t.Errorf("canvas missing glyph %q", string(want))
+		}
+	}
+	for _, want := range []string{"users", "orders", "user_id"} {
+		if !containsText(c, want) {
+			t.Errorf("canvas missing text %q", want)
+		}
+	}
+}
+
+func TestRenderGraphERDNoTables(t *testing.T) {
+	if c := renderGraphERD(nil, nil, nil, nil); c != nil {
+		t.Errorf("expected nil canvas for no tables, got %dx%d", c.w, c.h)
+	}
+}

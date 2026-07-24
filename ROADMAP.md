@@ -247,35 +247,38 @@ shown so a row surfaces just the relationships it actually participates in.
 Lazy loads (`loadExplorerChildren`) issue one query per expand; row nodes
 derive PK-based labels and drill queries via `PrimaryKeys`.
 
-**Static ERD ✅ DONE (2026-07-24): `g R` / `:erd` — Mermaid erDiagram.** The
-visual complement to the navigator ships as a generated Mermaid `erDiagram`
-(a format GitHub/GitLab render inline in markdown), shown in a scrollable
-overlay panel mirroring the EXPLAIN/lookup panels.
+**Static ERD ✅ DONE (2026-07-24): `g R` / `:erd` — graphical cards-and-arrows + Mermaid.**
+The visual complement to the navigator renders as a real diagram in a
+scrollable overlay panel — bordered table cards laid out in dependency-ranked
+columns with box-drawing arrows from each FK to the PK it references.
 
 - `g R` (and `:erd <table>`) draws the focused table + its direct FK
   neighbours (inbound + outbound); bare `:erd` draws the whole schema. Views
   are excluded (an ERD models base-table entities).
-- Each entity lists its columns with `PK`/`FK` markers; each FK becomes a
-  one-to-many (`||--o{`) relationship labelled with the FK column. Cardinality
-  is structural only — the cached schema has no nullability, so `||--||` vs
-  `||--o{` is not distinguished.
-- In the panel: `y` copies the source to the clipboard, `s` saves to `erd.mmd`
-  (cwd), `j/k/g/G/ctrl+d/ctrl+u` scroll, `esc`/`q` close. `:erd save [file]`
-  writes the whole-schema diagram to a path without opening the panel.
-- Data comes from the connection-time schema caches (`columnCache`/
-  `pkCache`/`fkCache`, populated by `prefetchSchemas`), so generation is
-  synchronous and instant.
-- Files: `internal/ui/erd.go` (generator + openERD/exERD/save),
-  `internal/ui/erd_panel.go` (panel), `internal/ui/app.go`,
+- Each card shows its columns (◆ = PK, ◇ = FK) with types; each FK becomes an
+  arrow whose elbow connects the child's FK row to the parent's PK row, with
+  an arrowhead (◂/▸) at the referenced (parent) side. Adjacent-column FKs route
+  cleanly through the gutter; non-adjacent ones arc over a reserved top margin.
+  Cardinality is structural only (the cached schema has no nullability).
+- Panel: `j/k/g/G/ctrl+d/ctrl+u` scroll, `h/l` pan horizontally (wide schemas),
+  `m` toggles to the Mermaid `erDiagram` source, `y` copies the Mermaid to the
+  clipboard, `s` saves it to `erd.mmd`, `esc`/`q` close. `:erd save [file]`
+  writes the whole-schema Mermaid to a path without opening the panel.
+- Data comes from the connection-time schema caches (`columnCache`/`pkCache`/
+  `fkCache`, populated by `prefetchSchemas`), so generation is synchronous and
+  instant.
+- Rendering is layered on a rune canvas: arrows are recorded as connection
+  masks (merged into tees/crosses at emit time), cards paint over any shared
+  edge cells, arrowheads sit in gutters/margins. The canvas emits ANSI-safe
+  per-style runs and supports a clipped `Window` so wide diagrams don't break
+  the panel border.
+- Files: `internal/ui/erd_graph.go` (canvas, cards, layout, arrows),
+  `internal/ui/erd.go` (Mermaid generator + openERD/exERD/save),
+  `internal/ui/erd_panel.go` (panel, view toggle, scroll/pan), `internal/ui/app.go`,
   `internal/ui/excmd_registry.go`, `internal/ui/registry.go`. The drift guard
   (`registry_test.go`) now also recognises `msg.String() == "x"` chord
   dispatch, not just `case "x":` clauses.
   Tests: `internal/ui/erd_test.go`.
-
-A future follow-up could render a true boxes-and-arrows ASCII/Lipgloss layout
-in-app; Mermaid was chosen first because terminal auto-layout for non-trivial
-schemas is hard, and Mermaid round-trips to documentation that renders
-natively on GitHub/GitLab.
 
 ### 12. Connection groups / folders ✅ DONE (2026-07-12)
 Connections carry an optional `group` field; the connection list renders
