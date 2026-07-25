@@ -433,44 +433,52 @@ func placeCards(cards map[string]*gcard, order []string, rank map[string]int, ma
 }
 
 // --- drawing ----------------------------------------------------------------
-// Card borders/title use the primary colour (accent when highlighted), arrows
-// the unfocused-border grey (accent when they touch the highlighted card), and
-// column types the muted colour. These reference the palette vars (set by
-// applyPalette) at draw time, so they pick up theme changes.
+// Card borders/title use the primary colour, arrows the unfocused-border grey,
+// and column types the muted colour. When a card is selected the other cards
+// are dimmed to the arrow grey (border, title, names, markers, types) so the
+// selection and its blue FK arrows stand out. These reference the palette vars
+// (set by applyPalette) at draw time, so they pick up theme changes.
 
 // drawCard paints a card's border, title, separator, and columns. fg is the
-// border/title colour (primary normally, accent when highlighted).
-func (c *gcanvas) drawCard(g *gcard, fg string) {
+// border/title colour (primary). When dim is set the whole card — border,
+// title, separator, names, markers, and types — is drawn in the arrow grey so
+// a non-selected card fades out behind the focused one.
+func (c *gcanvas) drawCard(g *gcard, fg string, dim bool) {
+	grey := string(colorBorderUnfocused)
+	border, text, sep, typeC := fg, "", string(colorMuted), string(colorMuted)
+	if dim {
+		border, text, sep, typeC = grey, grey, grey, grey
+	}
 	// Top border (plain — the title sits on its own row below it).
-	c.setCh(g.x, g.y, '╭', fg, false)
-	c.setCh(g.x+g.w-1, g.y, '╮', fg, false)
+	c.setCh(g.x, g.y, '╭', border, false)
+	c.setCh(g.x+g.w-1, g.y, '╮', border, false)
 	for x := g.x + 1; x < g.x+g.w-1; x++ {
-		c.setCh(x, g.y, '─', fg, false)
+		c.setCh(x, g.y, '─', border, false)
 	}
 	// Title row: a subtle background tint fills the row between the borders,
 	// with the table name centred on top (bold/primary).
 	c.fillBg(g.x+1, g.x+g.w-2, g.y+1, string(colorStripe))
-	c.setCh(g.x, g.y+1, '│', fg, false)
-	c.setCh(g.x+g.w-1, g.y+1, '│', fg, false)
+	c.setCh(g.x, g.y+1, '│', border, false)
+	c.setCh(g.x+g.w-1, g.y+1, '│', border, false)
 	nameW := len([]rune(g.name))
 	inner := g.w - 2
 	leftPad := (inner - nameW) / 2
 	if leftPad < 0 {
 		leftPad = 0
 	}
-	c.putText(g.x+1+leftPad, g.y+1, g.name, fg, true)
+	c.putText(g.x+1+leftPad, g.y+1, g.name, border, true)
 	// Title→columns separator (dimmed so it reads as a divider, not a border).
-	c.setCh(g.x, g.y+2, '│', fg, false)
-	c.setCh(g.x+g.w-1, g.y+2, '│', fg, false)
+	c.setCh(g.x, g.y+2, '│', border, false)
+	c.setCh(g.x+g.w-1, g.y+2, '│', border, false)
 	for x := g.x + 1; x < g.x+g.w-1; x++ {
-		c.setCh(x, g.y+2, '─', string(colorMuted), false)
+		c.setCh(x, g.y+2, '─', sep, false)
 	}
 	// Column rows: marker + name left-aligned, type right-aligned to the inner
 	// right edge (g.x+w-2) and rendered uppercase + muted.
 	for i, col := range g.cols {
 		y := g.y + 3 + i
-		c.setCh(g.x, y, '│', fg, false)
-		c.setCh(g.x+g.w-1, y, '│', fg, false)
+		c.setCh(g.x, y, '│', border, false)
+		c.setCh(g.x+g.w-1, y, '│', border, false)
 		marker := " "
 		isPK := g.pkSet[col.Name]
 		if isPK {
@@ -480,17 +488,17 @@ func (c *gcanvas) drawCard(g *gcard, fg string) {
 		}
 		// Left: marker + space, then the name starting at g.x+3. PK columns are
 		// rendered bold to set them apart.
-		c.putText(g.x+1, y, marker+" ", "", isPK)
-		c.putText(g.x+3, y, col.Name, "", isPK)
+		c.putText(g.x+1, y, marker+" ", text, isPK)
+		c.putText(g.x+3, y, col.Name, text, isPK)
 		// Right: type one cell inside the right border (a space separates it).
 		typ := strings.ToUpper(erdType(col.Type))
-		c.putText(g.x+g.w-1-erdCardRightPad-len([]rune(typ)), y, typ, string(colorMuted), false)
+		c.putText(g.x+g.w-1-erdCardRightPad-len([]rune(typ)), y, typ, typeC, false)
 	}
 	// Bottom border.
-	c.setCh(g.x, g.y+g.h-1, '╰', fg, false)
-	c.setCh(g.x+g.w-1, g.y+g.h-1, '╯', fg, false)
+	c.setCh(g.x, g.y+g.h-1, '╰', border, false)
+	c.setCh(g.x+g.w-1, g.y+g.h-1, '╯', border, false)
 	for x := g.x + 1; x < g.x+g.w-1; x++ {
-		c.setCh(x, g.y+g.h-1, '─', fg, false)
+		c.setCh(x, g.y+g.h-1, '─', border, false)
 	}
 }
 
@@ -684,31 +692,27 @@ func computeERDLayout(tables []string, schemas map[string][]db.Column, pks map[s
 	return &erdLayout{cards: out, arrows: arrows, canvasW: canvasW, canvasH: canvasH}
 }
 
-// render paints the layout into a fresh canvas. When selected is non-empty, the
-// named card's border and every arrow touching it use the accent colour, so the
-// selection and its relationships stand out against the grey connectors and
-// primary card borders. The layout is colour-agnostic, so this re-paints
-// cheaply on every selection change.
+// render paints the layout into a fresh canvas. With no selection every card is
+// vivid (primary border) and every arrow is grey. When selected names a card it
+// stays vivid while every other card is dimmed to the arrow grey, and the
+// arrows touching the selection turn primary (blue) — so the focused table and
+// its relationships stand out against the faded rest. The layout is
+// colour-agnostic, so this re-paints cheaply on every selection change.
 func (l *erdLayout) render(selected string) *gcanvas {
 	canv := newGcanvas(l.canvasW, l.canvasH)
 	conn := string(colorBorderUnfocused)
-	hl := string(colorAccent)
 	cardFg := string(colorPrimary)
 	// Arrows first (so cards paint over any shared edge cell); arrowheads live
 	// in gutters/margins and never under cards.
 	for _, a := range l.arrows {
 		fg := conn
 		if selected != "" && (a.child.name == selected || a.parent.name == selected) {
-			fg = hl
+			fg = cardFg // touching the selection → blue
 		}
 		canv.drawArrowRouted(a, fg)
 	}
 	for _, c := range l.cards {
-		fg := cardFg
-		if selected != "" && c.name == selected {
-			fg = hl
-		}
-		canv.drawCard(c, fg)
+		canv.drawCard(c, cardFg, selected != "" && c.name != selected)
 	}
 	return canv
 }

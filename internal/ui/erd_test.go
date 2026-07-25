@@ -684,22 +684,33 @@ func TestERDHighlightRender(t *testing.T) {
 	if layout == nil {
 		t.Fatal("expected a layout")
 	}
+	orders := cardByName(layout.cards, "orders")
+	users := cardByName(layout.cards, "users")
+	borderFg := func(c *gcanvas, card *gcard) string {
+		_, fg, _ := cellGlyph(c.cells[card.y][card.x])
+		return fg
+	}
+
 	none := layout.render("")
 	sel := layout.render("orders")
 
-	orders := cardByName(layout.cards, "orders")
-	// The orders card's top-left corner ╭: primary normally, accent when selected.
-	_, fgNone, _ := cellGlyph(none.cells[orders.y][orders.x])
-	_, fgSel, _ := cellGlyph(sel.cells[orders.y][orders.x])
-	if fgNone != string(colorPrimary) {
-		t.Errorf("unselected card border fg=%q want primary", fgNone)
+	// No selection: every card vivid (primary border).
+	if fg := borderFg(none, orders); fg != string(colorPrimary) {
+		t.Errorf("no-selection orders border=%q want primary", fg)
 	}
-	if fgSel != string(colorAccent) {
-		t.Errorf("highlighted card border fg=%q want accent", fgSel)
+	if fg := borderFg(none, users); fg != string(colorPrimary) {
+		t.Errorf("no-selection users border=%q want primary", fg)
+	}
+	// Selected: orders stays vivid (primary), the others dim to grey.
+	if fg := borderFg(sel, orders); fg != string(colorPrimary) {
+		t.Errorf("selected orders border=%q want primary (stays vivid)", fg)
+	}
+	if fg := borderFg(sel, users); fg != string(colorBorderUnfocused) {
+		t.Errorf("non-selected users border=%q want grey (dimmed)", fg)
 	}
 
-	// The single arrow (orders→users) arrowhead: grey normally, accent when
-	// orders is selected (it touches orders).
+	// The single arrow (orders→users): grey normally, blue (primary) when it
+	// touches the selected card.
 	findHeadFg := func(c *gcanvas) string {
 		for y := 0; y < c.h; y++ {
 			for x := 0; x < c.w; x++ {
@@ -711,15 +722,16 @@ func TestERDHighlightRender(t *testing.T) {
 		return ""
 	}
 	if fg := findHeadFg(none); fg != string(colorBorderUnfocused) {
-		t.Errorf("unselected arrowhead fg=%q want grey", fg)
+		t.Errorf("no-selection arrowhead fg=%q want grey", fg)
 	}
-	if fg := findHeadFg(sel); fg != string(colorAccent) {
-		t.Errorf("highlighted arrowhead fg=%q want accent", fg)
+	if fg := findHeadFg(sel); fg != string(colorPrimary) {
+		t.Errorf("selected arrowhead fg=%q want primary (blue)", fg)
 	}
 }
 
 // TestERDToggleHighlight covers the select/switch/deselect/clear logic and that
-// each toggle re-renders the canvas (the selected card's border colour flips).
+// each toggle re-renders the canvas: the selected card stays vivid (primary)
+// while the others dim to grey.
 func TestERDToggleHighlight(t *testing.T) {
 	sp, sa, sg := colorPrimary, colorAccent, colorBorderUnfocused
 	colorPrimary, colorAccent, colorBorderUnfocused = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
@@ -740,30 +752,37 @@ func TestERDToggleHighlight(t *testing.T) {
 		return fg
 	}
 
+	// Select orders: orders vivid (primary), users dimmed (grey).
 	e = e.toggleHighlight(orders)
 	if e.selected != "orders" {
 		t.Fatalf("select orders: selected=%q", e.selected)
 	}
-	if fg := borderFg(e, "orders"); fg != string(colorAccent) {
-		t.Errorf("after select, orders border fg=%q want accent", fg)
+	if fg := borderFg(e, "orders"); fg != string(colorPrimary) {
+		t.Errorf("after select, orders border fg=%q want primary (vivid)", fg)
+	}
+	if fg := borderFg(e, "users"); fg != string(colorBorderUnfocused) {
+		t.Errorf("after select, users border fg=%q want grey (dimmed)", fg)
 	}
 
-	// Switch to users.
+	// Switch to users: users vivid, orders now dimmed.
 	e = e.toggleHighlight(users)
 	if e.selected != "users" {
 		t.Fatalf("select users: selected=%q", e.selected)
 	}
-	if fg := borderFg(e, "users"); fg != string(colorAccent) {
-		t.Errorf("after switch, users border fg=%q want accent", fg)
+	if fg := borderFg(e, "users"); fg != string(colorPrimary) {
+		t.Errorf("after switch, users border fg=%q want primary (vivid)", fg)
 	}
-	if fg := borderFg(e, "orders"); fg != string(colorPrimary) {
-		t.Errorf("after switch, orders border fg=%q want primary", fg)
+	if fg := borderFg(e, "orders"); fg != string(colorBorderUnfocused) {
+		t.Errorf("after switch, orders border fg=%q want grey (dimmed)", fg)
 	}
 
-	// Toggle users off.
+	// Toggle users off → everything vivid again.
 	e = e.toggleHighlight(users)
 	if e.selected != "" {
 		t.Fatalf("toggle off: selected=%q", e.selected)
+	}
+	if fg := borderFg(e, "orders"); fg != string(colorPrimary) {
+		t.Errorf("after deselect, orders border fg=%q want primary", fg)
 	}
 
 	// nil clears.
