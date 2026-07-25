@@ -556,8 +556,9 @@ func (m Model) handleHelpMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // Coordinate translation (screen → canvas) and hit-testing live on ERDPanel.
 //
 // The wheel scrolls the diagram (shift+wheel, or a terminal's native horizontal
-// wheel, pans sideways); left-click on a table card recentres the viewport on
-// it, so a crowded diagram can be navigated without the keyboard.
+// wheel, pans sideways); a single left-click on a table card toggles a
+// highlight that tints the card's border and its FK arrows, and a double-click
+// recentres the viewport on it (for navigating a crowded diagram).
 func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.MouseWheelUp:
@@ -577,10 +578,25 @@ func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelRight:
 		m.erdPanel = m.erdPanel.Wheel(0, 1)
 	case tea.MouseLeft:
+		var clicked *gcard
 		if cx, cy, ok := m.erdPanel.contentToCanvas(msg.X, msg.Y); ok {
-			if c := m.erdPanel.cardAt(cx, cy); c != nil {
-				m.erdPanel = m.erdPanel.centerOnCard(c)
+			clicked = m.erdPanel.cardAt(cx, cy)
+		}
+		now := time.Now()
+		if clicked != nil && !m.lastERDClickTime.IsZero() &&
+			now.Sub(m.lastERDClickTime) <= doubleClickInterval &&
+			m.lastERDClickCard == clicked.name {
+			// Double-click on a card → re-centre the viewport on it.
+			m.lastERDClickTime = time.Time{}
+			m.erdPanel = m.erdPanel.centerOnCard(clicked)
+		} else {
+			// Single-click → toggle highlight (nil clears it, e.g. empty space).
+			m.lastERDClickTime = now
+			m.lastERDClickCard = ""
+			if clicked != nil {
+				m.lastERDClickCard = clicked.name
 			}
+			m.erdPanel = m.erdPanel.toggleHighlight(clicked)
 		}
 	}
 	return m, nil

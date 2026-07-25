@@ -433,12 +433,14 @@ func placeCards(cards map[string]*gcard, order []string, rank map[string]int, ma
 }
 
 // --- drawing ----------------------------------------------------------------
-// Card borders/title use the primary colour, arrows the accent colour, and
+// Card borders/title use the primary colour (accent when highlighted), arrows
+// the unfocused-border grey (accent when they touch the highlighted card), and
 // column types the muted colour. These reference the palette vars (set by
 // applyPalette) at draw time, so they pick up theme changes.
 
-func (c *gcanvas) drawCard(g *gcard) {
-	fg := string(colorPrimary)
+// drawCard paints a card's border, title, separator, and columns. fg is the
+// border/title colour (primary normally, accent when highlighted).
+func (c *gcanvas) drawCard(g *gcard, fg string) {
 	// Top border (plain — the title sits on its own row below it).
 	c.setCh(g.x, g.y, '╭', fg, false)
 	c.setCh(g.x+g.w-1, g.y, '╮', fg, false)
@@ -456,7 +458,7 @@ func (c *gcanvas) drawCard(g *gcard) {
 	if leftPad < 0 {
 		leftPad = 0
 	}
-	c.putText(g.x+1+leftPad, g.y+1, g.name, string(colorPrimary), true)
+	c.putText(g.x+1+leftPad, g.y+1, g.name, fg, true)
 	// Title→columns separator (dimmed so it reads as a divider, not a border).
 	c.setCh(g.x, g.y+2, '│', fg, false)
 	c.setCh(g.x+g.w-1, g.y+2, '│', fg, false)
@@ -492,35 +494,31 @@ func (c *gcanvas) drawCard(g *gcard) {
 	}
 }
 
-// drawArrow connects child→parent (the FK sits on child, referencing parent's
-// PK). Adjacent-column pairs get a clean elbow in the gutter between them;
-// everything else routes over the top margin in a dedicated lane.
-func (c *gcanvas) drawArrow(child, parent *gcard, rank map[string]int, laneY int) {
-	childCol := child.firstFK()
-	if childCol == "" {
-		childCol = child.firstPK()
+// drawArrowRouted paints one laid-out FK arrow in colour fg. Adjacent-column
+// pairs get a clean elbow in the gutter between them; everything else routes
+// over the top margin in the lane assigned at layout time.
+func (c *gcanvas) drawArrowRouted(a erdArrow, fg string) {
+	if a.isMargin {
+		c.drawMarginArrow(a.child, a.parent, a.childCol, a.parentCol, a.laneY, fg)
+		return
 	}
-	parentCol := parent.firstPK()
-
-	if abs(child.rank-parent.rank) == 1 {
-		if parent.x+parent.w <= child.x {
-			c.drawSideArrowLeft(child, parent, childCol, parentCol)
-			return
-		}
-		if child.x+child.w <= parent.x {
-			c.drawSideArrowRight(child, parent, childCol, parentCol)
-			return
-		}
+	if a.parent.x+a.parent.w <= a.child.x {
+		c.drawSideArrowLeft(a.child, a.parent, a.childCol, a.parentCol, fg)
+		return
 	}
-	c.drawMarginArrow(child, parent, childCol, parentCol, laneY)
+	if a.child.x+a.child.w <= a.parent.x {
+		c.drawSideArrowRight(a.child, a.parent, a.childCol, a.parentCol, fg)
+		return
+	}
+	// Adjacent rank but horizontally overlapping: route over the top margin.
+	c.drawMarginArrow(a.child, a.parent, a.childCol, a.parentCol, a.laneY, fg)
 }
 
 // drawSideArrowLeft: parent sits to the left of child. The vertical runs one
 // cell further into the gutter than the arrowhead and bends into a corner at
 // the parent's row, so the line meets the arrowhead along its wide edge as an
 // elbow rather than a dangling stub.
-func (c *gcanvas) drawSideArrowLeft(child, parent *gcard, childCol, parentCol string) {
-	fg := string(colorBorderUnfocused) // connector grey: the unfocused-border tone
+func (c *gcanvas) drawSideArrowLeft(child, parent *gcard, childCol, parentCol, fg string) {
 	cy := child.colRowY(childCol)
 	py := parent.colRowY(parentCol)
 	exitX := child.x - 1         // gutter cell touching child's left border
@@ -534,8 +532,7 @@ func (c *gcanvas) drawSideArrowLeft(child, parent *gcard, childCol, parentCol st
 
 // drawSideArrowRight: parent sits to the right of child, the mirror of Left —
 // the vertical bends into a corner that meets the arrowhead's wide edge.
-func (c *gcanvas) drawSideArrowRight(child, parent *gcard, childCol, parentCol string) {
-	fg := string(colorBorderUnfocused) // connector grey: the unfocused-border tone
+func (c *gcanvas) drawSideArrowRight(child, parent *gcard, childCol, parentCol, fg string) {
 	cy := child.colRowY(childCol)
 	py := parent.colRowY(parentCol)
 	exitX := child.x + child.w // gutter cell touching child's right border
@@ -554,8 +551,7 @@ func (c *gcanvas) drawSideArrowRight(child, parent *gcard, childCol, parentCol s
 // the same column. Each riser uses the gutter on the side of its card that
 // faces the other endpoint. The parent riser bends into a corner at the
 // parent's row to meet its arrowhead, matching the side-arrow elbows.
-func (c *gcanvas) drawMarginArrow(child, parent *gcard, childCol, parentCol string, laneY int) {
-	fg := string(colorBorderUnfocused) // connector grey: the unfocused-border tone
+func (c *gcanvas) drawMarginArrow(child, parent *gcard, childCol, parentCol string, laneY int, fg string) {
 	cy := child.colRowY(childCol)
 	py := parent.colRowY(parentCol)
 	var childRiserX, headX, vertX int
@@ -583,20 +579,39 @@ func (c *gcanvas) drawMarginArrow(child, parent *gcard, childCol, parentCol stri
 
 // --- entry point ------------------------------------------------------------
 
-// renderGraphERD lays out table cards and draws FK→PK arrows, returning the
-// diagram canvas (the panel clips/scrolls a window of it) and the laid-out
-// cards (final positions + PK/FK sets) for mouse hit-testing. With no tables
-// both are nil.
-func renderGraphERD(tables []string, schemas map[string][]db.Column, pks map[string][]string, fks map[string][]db.ForeignKey) (*gcanvas, []*gcard) {
+// erdLayout is the positioned, route-resolved blueprint of a diagram: the
+// laid-out cards plus the resolved FK arrows (endpoints + route + lane). It is
+// independent of colour/highlight, so render() can re-paint it for any
+// selection without redoing the layout maths.
+type erdLayout struct {
+	cards   []*gcard
+	arrows  []erdArrow
+	canvasW int
+	canvasH int
+}
+
+// erdArrow is one resolved FK→PK connection: the endpoint cards and the column
+// rows the line attaches to, whether it routes over the top margin, and (if so)
+// its assigned lane row.
+type erdArrow struct {
+	child, parent       *gcard
+	childCol, parentCol string
+	isMargin            bool
+	laneY               int
+}
+
+// computeERDLayout measures and positions the cards and resolves every FK
+// arrow's route, returning a blueprint render() can paint for any selection.
+// Returns nil for an empty table set.
+func computeERDLayout(tables []string, schemas map[string][]db.Column, pks map[string][]string, fks map[string][]db.ForeignKey) *erdLayout {
 	if len(tables) == 0 {
-		return nil, nil
+		return nil
 	}
 	in := map[string]bool{}
 	for _, t := range tables {
 		in[t] = true
 	}
 
-	// Build cards.
 	cards := map[string]*gcard{}
 	sorted := append([]string(nil), tables...)
 	sort.Strings(sorted)
@@ -630,37 +645,85 @@ func renderGraphERD(tables []string, schemas map[string][]db.Column, pks map[str
 	}
 
 	canvasW, canvasH := placeCards(cards, sorted, rank, maxRank, topMargin)
-	canv := newGcanvas(canvasW, canvasH)
 
-	// Arrows first (so cards paint over any shared edge cell), then cards,
-	// then arrowheads live in gutters/margins (never under cards).
+	// Resolve arrows: endpoint columns, route, and lane assignment for
+	// over-the-top arrows. childCol mirrors the historical behaviour of
+	// attaching at the child's first FK row (every FK of a child shares it).
+	var arrows []erdArrow
 	lane := 0
 	for _, child := range sorted {
 		cg := cards[child]
+		childCol := cg.firstFK()
+		if childCol == "" {
+			childCol = cg.firstPK()
+		}
 		for _, fk := range fks[child] {
 			pg := cards[fk.RefTable]
 			if pg == nil || fk.RefTable == child {
 				continue
 			}
-			isMargin := abs(rank[child]-rank[fk.RefTable]) != 1
-			laneY := -1
-			if isMargin {
-				laneY = lane
+			a := erdArrow{
+				child:     cg,
+				parent:    pg,
+				childCol:  childCol,
+				parentCol: pg.firstPK(),
+				isMargin:  abs(rank[child]-rank[fk.RefTable]) != 1,
+			}
+			if a.isMargin {
+				a.laneY = lane
 				lane++
 			}
-			canv.drawArrow(cg, pg, rank, laneY)
+			arrows = append(arrows, a)
 		}
 	}
-	for _, t := range sorted {
-		canv.drawCard(cards[t])
-	}
-	// Return the laid-out cards (now carrying their final x/y/w/h) in a stable
-	// order for the panel's mouse hit-testing.
+
 	out := make([]*gcard, 0, len(sorted))
 	for _, t := range sorted {
 		out = append(out, cards[t])
 	}
-	return canv, out
+	return &erdLayout{cards: out, arrows: arrows, canvasW: canvasW, canvasH: canvasH}
+}
+
+// render paints the layout into a fresh canvas. When selected is non-empty, the
+// named card's border and every arrow touching it use the accent colour, so the
+// selection and its relationships stand out against the grey connectors and
+// primary card borders. The layout is colour-agnostic, so this re-paints
+// cheaply on every selection change.
+func (l *erdLayout) render(selected string) *gcanvas {
+	canv := newGcanvas(l.canvasW, l.canvasH)
+	conn := string(colorBorderUnfocused)
+	hl := string(colorAccent)
+	cardFg := string(colorPrimary)
+	// Arrows first (so cards paint over any shared edge cell); arrowheads live
+	// in gutters/margins and never under cards.
+	for _, a := range l.arrows {
+		fg := conn
+		if selected != "" && (a.child.name == selected || a.parent.name == selected) {
+			fg = hl
+		}
+		canv.drawArrowRouted(a, fg)
+	}
+	for _, c := range l.cards {
+		fg := cardFg
+		if selected != "" && c.name == selected {
+			fg = hl
+		}
+		canv.drawCard(c, fg)
+	}
+	return canv
+}
+
+// renderGraphERD lays out table cards and draws FK→PK arrows, returning the
+// diagram canvas (the panel clips/scrolls a window of it) and the laid-out
+// cards (final positions + PK/FK sets) for mouse hit-testing. With no tables
+// both are nil. It is a convenience wrapper over computeERDLayout + render with
+// no selection; the panel keeps the layout to re-paint on highlight.
+func renderGraphERD(tables []string, schemas map[string][]db.Column, pks map[string][]string, fks map[string][]db.ForeignKey) (*gcanvas, []*gcard) {
+	l := computeERDLayout(tables, schemas, pks, fks)
+	if l == nil {
+		return nil, nil
+	}
+	return l.render(""), l.cards
 }
 
 // abs is a tiny local helper (math.Abs needs float conversion).

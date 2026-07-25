@@ -360,6 +360,8 @@ type Model struct {
 	lastResultsClickCell   cellRef
 	lastInspectorClickTime time.Time
 	lastInspectorClickCol  int // result column index of last inspector click (-1 = none)
+	lastERDClickTime       time.Time
+	lastERDClickCard       string // table name of last ERD card click ("" = none)
 
 	// Discard confirmation dialog
 	discardConfirm bool

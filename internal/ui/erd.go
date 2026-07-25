@@ -179,9 +179,9 @@ func (m *Model) openERD(focus string) tea.Cmd {
 		targets = erdFocusSet(focus, tables, m.fkCache)
 		title = "ERD — " + focus + " + neighbours"
 	}
-	graph, cards := renderGraphERD(targets, m.columnCache, m.pkCache, m.fkCache)
+	layout := computeERDLayout(targets, m.columnCache, m.pkCache, m.fkCache)
 	mermaid := buildMermaidERD(targets, m.columnCache, m.pkCache, m.fkCache)
-	m.erdPanel.Show(title, graph, cards, mermaid)
+	m.erdPanel.Show(title, layout, mermaid)
 	return nil
 }
 

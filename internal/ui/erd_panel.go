@@ -21,12 +21,14 @@ import (
 // the graph is for looking. j/k scroll, h/l pan horizontally (graph view),
 // g/G/ctrl+d/ctrl+u page, esc/q close.
 type ERDPanel struct {
-	visible bool
-	title   string
-	graph   *gcanvas // graphical view; nil if there were no tables
-	cards   []*gcard // laid-out cards (positions + PK/FK sets) for hit-testing
-	mermaid []string // Mermaid erDiagram source lines
-	merm    bool     // show Mermaid source instead of the graph
+	visible  bool
+	title    string
+	layout   *erdLayout // positioned blueprint; re-rendered on highlight change
+	graph    *gcanvas   // rendered canvas (layout.render(selected)); nil if no tables
+	cards    []*gcard   // laid-out cards (positions + PK/FK sets) for hit-testing
+	selected string     // highlighted table name ("" = none)
+	mermaid  []string   // Mermaid erDiagram source lines
+	merm     bool       // show Mermaid source instead of the graph
 
 	scrollY int // top visible row
 	scrollX int // left visible column (graph view only)
@@ -38,11 +40,19 @@ type ERDPanel struct {
 func (e ERDPanel) IsVisible() bool { return e.visible }
 
 // Show populates the panel with both representations and shows the graph view.
-func (e *ERDPanel) Show(title string, graph *gcanvas, cards []*gcard, mermaid []string) {
+// It keeps the layout so the canvas can be re-painted on highlight changes.
+func (e *ERDPanel) Show(title string, layout *erdLayout, mermaid []string) {
 	e.visible = true
 	e.title = title
-	e.graph = graph
-	e.cards = cards
+	e.layout = layout
+	e.selected = ""
+	if layout != nil {
+		e.cards = layout.cards
+		e.graph = layout.render("")
+	} else {
+		e.cards = nil
+		e.graph = nil
+	}
 	e.mermaid = mermaid
 	e.merm = false
 	e.scrollY = 0
@@ -290,6 +300,24 @@ func (e ERDPanel) centerOnCard(c *gcard) ERDPanel {
 	}
 	if e.cursor < 0 {
 		e.cursor = 0
+	}
+	return e
+}
+
+// toggleHighlight selects (or deselects) a card, re-rendering the canvas so the
+// card's border and its FK arrows pick up the accent colour. Clicking the
+// already-selected card, or nil (empty space), clears the selection.
+func (e ERDPanel) toggleHighlight(c *gcard) ERDPanel {
+	switch {
+	case c == nil:
+		e.selected = ""
+	case e.selected == c.name:
+		e.selected = ""
+	default:
+		e.selected = c.name
+	}
+	if e.layout != nil {
+		e.graph = e.layout.render(e.selected)
 	}
 	return e
 }

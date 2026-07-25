@@ -3,8 +3,10 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/ruben/gsql/internal/db"
 )
@@ -633,21 +635,141 @@ func TestHandleERDMouse(t *testing.T) {
 		t.Errorf("wheel right: scrollX=%d want 4", ep.scrollX)
 	}
 
-	// Left-click on a card recentres on it. The viewport (10×6) at scroll 0
-	// shows canvas [0..9,0..5]; a card at canvas (5,4) covers screen (6,5).
+	// Single left-click on a card toggles its highlight (sets selected), no pan.
 	m4 := Model{erdPanel: ERDPanel{width: 10, height: 6}}
 	m4.erdPanel.graph = newGcanvas(40, 30)
 	m4.erdPanel.cards = []*gcard{{name: "t", x: 5, y: 4, w: 4, h: 3}}
 	mm4, _ := m4.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, X: 6, Y: 5})
-	if ep := mm4.(Model).erdPanel; ep.scrollX != 2 || ep.scrollY != 2 {
-		t.Errorf("click card: scroll=(%d,%d) want (2,2)", ep.scrollX, ep.scrollY)
+	if ep := mm4.(Model).erdPanel; ep.selected != "t" {
+		t.Errorf("single-click card: selected=%q want %q", ep.selected, "t")
+	}
+	if ep := mm4.(Model).erdPanel; ep.scrollX != 0 || ep.scrollY != 0 {
+		t.Errorf("single-click should not pan: scroll=(%d,%d)", ep.scrollX, ep.scrollY)
 	}
 
-	// Left-click on empty space (no card) is a no-op.
+	// Double left-click on the same card recentres on it.
 	m5 := Model{erdPanel: ERDPanel{width: 10, height: 6}}
 	m5.erdPanel.graph = newGcanvas(40, 30)
-	mm5, _ := m5.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, X: 0, Y: 0})
-	if ep := mm5.(Model).erdPanel; ep.scrollX != 0 || ep.scrollY != 0 {
-		t.Errorf("click empty: scroll=(%d,%d) want (0,0)", ep.scrollX, ep.scrollY)
+	m5.erdPanel.cards = []*gcard{{name: "t", x: 5, y: 4, w: 4, h: 3}}
+	m5.lastERDClickTime = time.Now()
+	m5.lastERDClickCard = "t"
+	mm5, _ := m5.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, X: 6, Y: 5})
+	if ep := mm5.(Model).erdPanel; ep.scrollX != 2 || ep.scrollY != 2 {
+		t.Errorf("double-click card: scroll=(%d,%d) want (2,2)", ep.scrollX, ep.scrollY)
+	}
+
+	// Left-click on empty space clears any highlight.
+	m6 := Model{erdPanel: ERDPanel{width: 10, height: 6, selected: "t"}}
+	m6.erdPanel.graph = newGcanvas(40, 30)
+	mm6, _ := m6.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, X: 0, Y: 0})
+	if ep := mm6.(Model).erdPanel; ep.selected != "" {
+		t.Errorf("click empty: selected=%q want empty", ep.selected)
+	}
+}
+
+// --- mouse interaction (step 3: highlight) ----------------------------------
+
+// TestERDHighlightRender verifies render(selected) tints the selected card's
+// border and the arrows touching it with the accent colour, leaving the
+// unselected render using the primary card colour and grey connectors.
+func TestERDHighlightRender(t *testing.T) {
+	// The palette vars are empty until applyPalette runs, so set distinct
+	// non-empty colours or the fg assertions below are vacuous ("" == "").
+	sp, sa, sg := colorPrimary, colorAccent, colorBorderUnfocused
+	colorPrimary, colorAccent, colorBorderUnfocused = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
+	defer func() { colorPrimary, colorAccent, colorBorderUnfocused = sp, sa, sg }()
+
+	tables, schemas, pks, fks := erdFixture() // orders.user_id → users.id
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	if layout == nil {
+		t.Fatal("expected a layout")
+	}
+	none := layout.render("")
+	sel := layout.render("orders")
+
+	orders := cardByName(layout.cards, "orders")
+	// The orders card's top-left corner ╭: primary normally, accent when selected.
+	_, fgNone, _ := cellGlyph(none.cells[orders.y][orders.x])
+	_, fgSel, _ := cellGlyph(sel.cells[orders.y][orders.x])
+	if fgNone != string(colorPrimary) {
+		t.Errorf("unselected card border fg=%q want primary", fgNone)
+	}
+	if fgSel != string(colorAccent) {
+		t.Errorf("highlighted card border fg=%q want accent", fgSel)
+	}
+
+	// The single arrow (orders→users) arrowhead: grey normally, accent when
+	// orders is selected (it touches orders).
+	findHeadFg := func(c *gcanvas) string {
+		for y := 0; y < c.h; y++ {
+			for x := 0; x < c.w; x++ {
+				if g, fg, _ := cellGlyph(c.cells[y][x]); g == arrowheadL() {
+					return fg
+				}
+			}
+		}
+		return ""
+	}
+	if fg := findHeadFg(none); fg != string(colorBorderUnfocused) {
+		t.Errorf("unselected arrowhead fg=%q want grey", fg)
+	}
+	if fg := findHeadFg(sel); fg != string(colorAccent) {
+		t.Errorf("highlighted arrowhead fg=%q want accent", fg)
+	}
+}
+
+// TestERDToggleHighlight covers the select/switch/deselect/clear logic and that
+// each toggle re-renders the canvas (the selected card's border colour flips).
+func TestERDToggleHighlight(t *testing.T) {
+	sp, sa, sg := colorPrimary, colorAccent, colorBorderUnfocused
+	colorPrimary, colorAccent, colorBorderUnfocused = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
+	defer func() { colorPrimary, colorAccent, colorBorderUnfocused = sp, sa, sg }()
+
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	e := ERDPanel{width: 80, height: 24}
+	e.layout = layout
+	e.cards = layout.cards
+	e.graph = layout.render("")
+	orders := cardByName(layout.cards, "orders")
+	users := cardByName(layout.cards, "users")
+
+	borderFg := func(ep ERDPanel, name string) string {
+		c := cardByName(ep.cards, name)
+		_, fg, _ := cellGlyph(ep.graph.cells[c.y][c.x])
+		return fg
+	}
+
+	e = e.toggleHighlight(orders)
+	if e.selected != "orders" {
+		t.Fatalf("select orders: selected=%q", e.selected)
+	}
+	if fg := borderFg(e, "orders"); fg != string(colorAccent) {
+		t.Errorf("after select, orders border fg=%q want accent", fg)
+	}
+
+	// Switch to users.
+	e = e.toggleHighlight(users)
+	if e.selected != "users" {
+		t.Fatalf("select users: selected=%q", e.selected)
+	}
+	if fg := borderFg(e, "users"); fg != string(colorAccent) {
+		t.Errorf("after switch, users border fg=%q want accent", fg)
+	}
+	if fg := borderFg(e, "orders"); fg != string(colorPrimary) {
+		t.Errorf("after switch, orders border fg=%q want primary", fg)
+	}
+
+	// Toggle users off.
+	e = e.toggleHighlight(users)
+	if e.selected != "" {
+		t.Fatalf("toggle off: selected=%q", e.selected)
+	}
+
+	// nil clears.
+	e = e.toggleHighlight(orders)
+	e = e.toggleHighlight(nil)
+	if e.selected != "" {
+		t.Fatalf("nil clear: selected=%q", e.selected)
 	}
 }
