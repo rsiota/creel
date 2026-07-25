@@ -162,6 +162,102 @@ func (e ERDPanel) columnAt(c *gcard, cy int) (db.Column, int, bool) {
 	return c.cols[idx], idx, true
 }
 
+// erdWheelLines is how many rows a vertical mouse-wheel notch scrolls.
+const erdWheelLines = 3
+
+// Wheel scrolls the diagram: dy rows (positive = down) and dx quarter-viewports
+// (positive = right). Vertical moves scrollY directly and keeps the cursor (the
+// keyboard paging anchor) inside the new view; horizontal moves scrollX. The
+// Mermaid view scrolls vertically only.
+func (e ERDPanel) Wheel(dy, dx int) ERDPanel {
+	if dy != 0 {
+		vh := e.contentHeight()
+		maxY := e.lineCount() - vh
+		if maxY < 0 {
+			maxY = 0
+		}
+		e.scrollY += dy * erdWheelLines
+		if e.scrollY < 0 {
+			e.scrollY = 0
+		}
+		if e.scrollY > maxY {
+			e.scrollY = maxY
+		}
+		if vh > 0 {
+			if e.cursor < e.scrollY {
+				e.cursor = e.scrollY
+			}
+			if e.cursor >= e.scrollY+vh {
+				e.cursor = e.scrollY + vh - 1
+			}
+		}
+	}
+	if dx != 0 && !e.merm && e.graph != nil {
+		cw := e.contentWidth()
+		step := cw / 4
+		if step < 1 {
+			step = 1
+		}
+		max := e.graph.w - cw
+		if max < 0 {
+			max = 0
+		}
+		e.scrollX += dx * step
+		if e.scrollX < 0 {
+			e.scrollX = 0
+		}
+		if e.scrollX > max {
+			e.scrollX = max
+		}
+	}
+	return e
+}
+
+// centerOnCard scrolls so the card sits at the viewport's centre, clamped to the
+// diagram's scrollable range. The vertical scroll is otherwise cursor-derived,
+// so this sets scrollY directly and parks the cursor on the card to keep
+// keyboard paging consistent.
+func (e ERDPanel) centerOnCard(c *gcard) ERDPanel {
+	if c == nil || e.graph == nil {
+		return e
+	}
+	cw, ch := e.contentWidth(), e.contentHeight()
+	maxX := e.graph.w - cw
+	if maxX < 0 {
+		maxX = 0
+	}
+	maxY := e.graph.h - ch
+	if maxY < 0 {
+		maxY = 0
+	}
+	sx := c.x + c.w/2 - cw/2
+	if sx < 0 {
+		sx = 0
+	} else if sx > maxX {
+		sx = maxX
+	}
+	sy := c.y + c.h/2 - ch/2
+	if sy < 0 {
+		sy = 0
+	} else if sy > maxY {
+		sy = maxY
+	}
+	e.scrollX = sx
+	e.scrollY = sy
+	// Park the cursor (vertical paging anchor) on the card; adjustScroll won't
+	// fight it on the next keypress since the row is inside the view.
+	if n := e.lineCount(); n > 0 {
+		e.cursor = c.y + c.h/2
+		if e.cursor > n-1 {
+			e.cursor = n - 1
+		}
+	}
+	if e.cursor < 0 {
+		e.cursor = 0
+	}
+	return e
+}
+
 // lineCount is the number of scrollable rows in the active view.
 func (e ERDPanel) lineCount() int {
 	if e.merm {

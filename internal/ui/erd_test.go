@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/ruben/gsql/internal/db"
 )
@@ -534,4 +535,119 @@ func cardName(c *gcard) string {
 		return "<nil>"
 	}
 	return c.name
+}
+
+// --- mouse interaction (step 2: wheel + click) ------------------------------
+
+// TestERDPanelWheel covers vertical/horizontal wheel scrolling and clamping.
+// Vertical moves scrollY directly (keeping the cursor in view); horizontal
+// moves scrollX by a quarter-viewport.
+func TestERDPanelWheel(t *testing.T) {
+	e := ERDPanel{width: 10, height: 6}
+	e.graph = newGcanvas(40, 30) // taller (maxY=24) and wider (maxX=30) than view
+
+	// Vertical: one notch down scrolls erdWheelLines rows.
+	e = e.Wheel(1, 0)
+	if e.scrollY != erdWheelLines {
+		t.Errorf("Wheel down: scrollY=%d want %d", e.scrollY, erdWheelLines)
+	}
+	if e.cursor < e.scrollY || e.cursor >= e.scrollY+e.contentHeight() {
+		t.Errorf("Wheel down left cursor %d outside view [%d,%d)", e.cursor, e.scrollY, e.scrollY+e.contentHeight())
+	}
+
+	// Clamp at the bottom.
+	e.scrollY = 23
+	e = e.Wheel(1, 0)
+	if e.scrollY != 24 {
+		t.Errorf("Wheel at bottom: scrollY=%d want 24 (clamped)", e.scrollY)
+	}
+
+	// Clamp at the top.
+	e = e.Wheel(-100, 0)
+	if e.scrollY != 0 {
+		t.Errorf("Wheel far up: scrollY=%d want 0", e.scrollY)
+	}
+
+	// Horizontal: one notch right pans a quarter viewport (10/4 = 2 cols).
+	e = e.Wheel(0, 1)
+	if e.scrollX != 2 {
+		t.Errorf("Wheel right: scrollX=%d want 2", e.scrollX)
+	}
+	e = e.Wheel(0, 100) // clamp at maxX
+	if e.scrollX != 30 {
+		t.Errorf("Wheel far right: scrollX=%d want 30 (clamped)", e.scrollX)
+	}
+}
+
+// TestERDPanelCenterOnCard covers click-to-recentre: the card's centre lands at
+// the viewport centre, clamped to the scrollable range at the edges.
+func TestERDPanelCenterOnCard(t *testing.T) {
+	e := ERDPanel{width: 10, height: 6}
+	e.graph = newGcanvas(40, 30) // maxX=30, maxY=24
+
+	// A mid-diagram card recentres fully: centre (7,5) → scroll (7-5, 5-3).
+	c := &gcard{name: "t", x: 5, y: 4, w: 4, h: 3} // centre canvas (7,5)
+	e = e.centerOnCard(c)
+	if e.scrollX != 2 || e.scrollY != 2 {
+		t.Errorf("centerOnCard mid: scroll=(%d,%d) want (2,2)", e.scrollX, e.scrollY)
+	}
+
+	// A top-left card clamps to (0,0).
+	e2 := ERDPanel{width: 10, height: 6}
+	e2.graph = newGcanvas(40, 30)
+	e2 = e2.centerOnCard(&gcard{name: "t", x: 0, y: 0, w: 4, h: 3})
+	if e2.scrollX != 0 || e2.scrollY != 0 {
+		t.Errorf("centerOnCard corner: scroll=(%d,%d) want (0,0)", e2.scrollX, e2.scrollY)
+	}
+}
+
+// mouseWheelMsg builds a MouseMsg for a wheel event (with optional shift).
+func mouseWheelMsg(typ tea.MouseEventType, shift bool) tea.MouseMsg {
+	return tea.MouseMsg{Type: typ, Shift: shift}
+}
+
+// TestHandleERDMouse routes wheel and click events through the Model handler,
+// verifying the full path: event → ERDPanel.Wheel / centerOnCard.
+func TestHandleERDMouse(t *testing.T) {
+	m := Model{erdPanel: ERDPanel{width: 10, height: 6}}
+	m.erdPanel.graph = newGcanvas(40, 30)
+
+	// Wheel down → scrollY advances by erdWheelLines.
+	mm, _ := m.handleERDMouse(mouseWheelMsg(tea.MouseWheelDown, false))
+	if ep := mm.(Model).erdPanel; ep.scrollY != erdWheelLines {
+		t.Errorf("wheel down: scrollY=%d want %d", ep.scrollY, erdWheelLines)
+	}
+
+	// Shift+wheel down → horizontal pan (scrollX moves, scrollY unchanged).
+	m2 := Model{erdPanel: ERDPanel{width: 10, height: 6}}
+	m2.erdPanel.graph = newGcanvas(40, 30)
+	mm2, _ := m2.handleERDMouse(mouseWheelMsg(tea.MouseWheelDown, true))
+	m2 = mm2.(Model)
+	if ep := m2.erdPanel; ep.scrollX != 2 || ep.scrollY != 0 {
+		t.Errorf("shift+wheel: scroll=(%d,%d) want (2,0)", ep.scrollX, ep.scrollY)
+	}
+
+	// Native horizontal wheel right → pan right (continues from scrollX=2).
+	mm3, _ := m2.handleERDMouse(mouseWheelMsg(tea.MouseWheelRight, false))
+	if ep := mm3.(Model).erdPanel; ep.scrollX != 4 {
+		t.Errorf("wheel right: scrollX=%d want 4", ep.scrollX)
+	}
+
+	// Left-click on a card recentres on it. The viewport (10×6) at scroll 0
+	// shows canvas [0..9,0..5]; a card at canvas (5,4) covers screen (6,5).
+	m4 := Model{erdPanel: ERDPanel{width: 10, height: 6}}
+	m4.erdPanel.graph = newGcanvas(40, 30)
+	m4.erdPanel.cards = []*gcard{{name: "t", x: 5, y: 4, w: 4, h: 3}}
+	mm4, _ := m4.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, X: 6, Y: 5})
+	if ep := mm4.(Model).erdPanel; ep.scrollX != 2 || ep.scrollY != 2 {
+		t.Errorf("click card: scroll=(%d,%d) want (2,2)", ep.scrollX, ep.scrollY)
+	}
+
+	// Left-click on empty space (no card) is a no-op.
+	m5 := Model{erdPanel: ERDPanel{width: 10, height: 6}}
+	m5.erdPanel.graph = newGcanvas(40, 30)
+	mm5, _ := m5.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, X: 0, Y: 0})
+	if ep := mm5.(Model).erdPanel; ep.scrollX != 0 || ep.scrollY != 0 {
+		t.Errorf("click empty: scroll=(%d,%d) want (0,0)", ep.scrollX, ep.scrollY)
+	}
 }

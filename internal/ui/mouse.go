@@ -553,11 +553,35 @@ func (m Model) handleHelpMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // handleERDMouse routes mouse events to the ERD panel overlay. The panel
 // fills the workspace, so while it's open it intercepts every mouse event —
 // this also stops clicks from reaching the workspace panels hidden behind it.
-// Coordinate translation (screen → canvas) and hit-testing live on ERDPanel;
-// this handler is the routing seam that later steps (wheel pan, hover/drag)
-// build on.
+// Coordinate translation (screen → canvas) and hit-testing live on ERDPanel.
+//
+// The wheel scrolls the diagram (shift+wheel, or a terminal's native horizontal
+// wheel, pans sideways); left-click on a table card recentres the viewport on
+// it, so a crowded diagram can be navigated without the keyboard.
 func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	// Foundation: the panel owns the event so it doesn't fall through. Wheel
-	// pan and card hit-testing arrive in the next step.
+	switch msg.Type {
+	case tea.MouseWheelUp:
+		if msg.Shift {
+			m.erdPanel = m.erdPanel.Wheel(0, -1)
+		} else {
+			m.erdPanel = m.erdPanel.Wheel(-1, 0)
+		}
+	case tea.MouseWheelDown:
+		if msg.Shift {
+			m.erdPanel = m.erdPanel.Wheel(0, 1)
+		} else {
+			m.erdPanel = m.erdPanel.Wheel(1, 0)
+		}
+	case tea.MouseWheelLeft:
+		m.erdPanel = m.erdPanel.Wheel(0, -1)
+	case tea.MouseWheelRight:
+		m.erdPanel = m.erdPanel.Wheel(0, 1)
+	case tea.MouseLeft:
+		if cx, cy, ok := m.erdPanel.contentToCanvas(msg.X, msg.Y); ok {
+			if c := m.erdPanel.cardAt(cx, cy); c != nil {
+				m.erdPanel = m.erdPanel.centerOnCard(c)
+			}
+		}
+	}
 	return m, nil
 }
