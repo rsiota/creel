@@ -675,9 +675,9 @@ func TestHandleERDMouse(t *testing.T) {
 func TestERDHighlightRender(t *testing.T) {
 	// The palette vars are empty until applyPalette runs, so set distinct
 	// non-empty colours or the fg assertions below are vacuous ("" == "").
-	sp, sa, sg := colorPrimary, colorAccent, colorBorderUnfocused
-	colorPrimary, colorAccent, colorBorderUnfocused = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
-	defer func() { colorPrimary, colorAccent, colorBorderUnfocused = sp, sa, sg }()
+	sp, sa, sg, sf := colorPrimary, colorAccent, colorBorderUnfocused, colorFg
+	colorPrimary, colorAccent, colorBorderUnfocused, colorFg = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3"), lipgloss.Color("7")
+	defer func() { colorPrimary, colorAccent, colorBorderUnfocused, colorFg = sp, sa, sg, sf }()
 
 	tables, schemas, pks, fks := erdFixture() // orders.user_id → users.id
 	layout := computeERDLayout(tables, schemas, pks, fks)
@@ -689,6 +689,22 @@ func TestERDHighlightRender(t *testing.T) {
 	borderFg := func(c *gcanvas, card *gcard) string {
 		_, fg, _ := cellGlyph(c.cells[card.y][card.x])
 		return fg
+	}
+	// fg of the first char of a column's name (names start at card.x+3).
+	nameFg := func(c *gcanvas, card *gcard, col string) string {
+		_, fg, _ := cellGlyph(c.cells[card.colRowY(col)][card.x+3])
+		return fg
+	}
+	// fg of the first uppercase char on a column row = the type's first char
+	// (fixture column names are all lowercase, so the first A-Z is the type).
+	typeFg := func(c *gcanvas, card *gcard, col string) string {
+		y := card.colRowY(col)
+		for x := card.x + 3; x < card.x+card.w-1; x++ {
+			if g, fg, _ := cellGlyph(c.cells[y][x]); g >= 'A' && g <= 'Z' {
+				return fg
+			}
+		}
+		return ""
 	}
 
 	none := layout.render("")
@@ -707,6 +723,18 @@ func TestERDHighlightRender(t *testing.T) {
 	}
 	if fg := borderFg(sel, users); fg != string(colorBorderUnfocused) {
 		t.Errorf("non-selected users border=%q want grey (dimmed)", fg)
+	}
+	// Connected column on the dimmed card: users.id (the PK orders.user_id
+	// points at) stays readable — name in the foreground, type in primary.
+	if fg := nameFg(sel, users, "id"); fg != string(colorFg) {
+		t.Errorf("connected users.id name fg=%q want foreground (white)", fg)
+	}
+	if fg := typeFg(sel, users, "id"); fg != string(colorPrimary) {
+		t.Errorf("connected users.id type fg=%q want primary (blue)", fg)
+	}
+	// A non-connected column on the dimmed card stays grey.
+	if fg := nameFg(sel, users, "name"); fg != string(colorBorderUnfocused) {
+		t.Errorf("non-connected users.name name fg=%q want grey", fg)
 	}
 
 	// The single arrow (orders→users): grey normally, blue (primary) when it

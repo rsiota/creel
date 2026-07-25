@@ -436,14 +436,18 @@ func placeCards(cards map[string]*gcard, order []string, rank map[string]int, ma
 // Card borders/title use the primary colour, arrows the unfocused-border grey,
 // and column types the muted colour. When a card is selected the other cards
 // are dimmed to the arrow grey (border, title, names, markers, types) so the
-// selection and its blue FK arrows stand out. These reference the palette vars
-// (set by applyPalette) at draw time, so they pick up theme changes.
+// selection and its blue FK arrows stand out; the connected columns on those
+// dimmed cards (the arrow endpoints) stay readable — name in the foreground,
+// type in primary. These reference the palette vars (set by applyPalette) at
+// draw time, so they pick up theme changes.
 
 // drawCard paints a card's border, title, separator, and columns. fg is the
 // border/title colour (primary). When dim is set the whole card — border,
 // title, separator, names, markers, and types — is drawn in the arrow grey so
-// a non-selected card fades out behind the focused one.
-func (c *gcanvas) drawCard(g *gcard, fg string, dim bool) {
+// a non-selected card fades out behind the focused one; columns listed in
+// hlCols (the arrow endpoints touching the selection) override the dim, with
+// marker/name in the foreground and type in primary.
+func (c *gcanvas) drawCard(g *gcard, fg string, dim bool, hlCols map[string]bool) {
 	grey := string(colorBorderUnfocused)
 	border, text, sep, typeC := fg, "", string(colorMuted), string(colorMuted)
 	if dim {
@@ -488,11 +492,18 @@ func (c *gcanvas) drawCard(g *gcard, fg string, dim bool) {
 		}
 		// Left: marker + space, then the name starting at g.x+3. PK columns are
 		// rendered bold to set them apart.
-		c.putText(g.x+1, y, marker+" ", text, isPK)
-		c.putText(g.x+3, y, col.Name, text, isPK)
+		// A connected column (an arrow endpoint touching the selection) on a
+		// dimmed card snaps back to vivid: marker/name in the foreground, type in
+		// primary (blue), so each relationship stays readable on a faded card.
+		nameC, markC, tC := text, text, typeC
+		if dim && hlCols[col.Name] {
+			nameC, markC, tC = string(colorFg), string(colorFg), string(colorPrimary)
+		}
+		c.putText(g.x+1, y, marker+" ", markC, isPK)
+		c.putText(g.x+3, y, col.Name, nameC, isPK)
 		// Right: type one cell inside the right border (a space separates it).
 		typ := strings.ToUpper(erdType(col.Type))
-		c.putText(g.x+g.w-1-erdCardRightPad-len([]rune(typ)), y, typ, typeC, false)
+		c.putText(g.x+g.w-1-erdCardRightPad-len([]rune(typ)), y, typ, tC, false)
 	}
 	// Bottom border.
 	c.setCh(g.x, g.y+g.h-1, '╰', border, false)
@@ -692,16 +703,41 @@ func computeERDLayout(tables []string, schemas map[string][]db.Column, pks map[s
 	return &erdLayout{cards: out, arrows: arrows, canvasW: canvasW, canvasH: canvasH}
 }
 
+// addCol records that column col of card is a connection endpoint, so it can be
+// kept readable on a dimmed card.
+func addCol(m map[string]map[string]bool, card, col string) {
+	if m[card] == nil {
+		m[card] = map[string]bool{}
+	}
+	m[card][col] = true
+}
+
 // render paints the layout into a fresh canvas. With no selection every card is
 // vivid (primary border) and every arrow is grey. When selected names a card it
-// stays vivid while every other card is dimmed to the arrow grey, and the
-// arrows touching the selection turn primary (blue) — so the focused table and
-// its relationships stand out against the faded rest. The layout is
-// colour-agnostic, so this re-paints cheaply on every selection change.
+// stays vivid while every other card is dimmed to the arrow grey, the arrows
+// touching the selection turn primary (blue), and the columns at the far ends
+// of those arrows (on the dimmed cards) stay readable — marker/name in the
+// foreground, type in primary — so each relationship is legible against the
+// fade. The layout is colour-agnostic, so this re-paints cheaply on every
+// selection change.
 func (l *erdLayout) render(selected string) *gcanvas {
 	canv := newGcanvas(l.canvasW, l.canvasH)
 	conn := string(colorBorderUnfocused)
 	cardFg := string(colorPrimary)
+	// Columns on dimmed cards that connect to the selection: the far endpoints
+	// of every arrow touching it (the parent's PK when the selection is the
+	// child, the child's FK when the selection is the parent).
+	hlCols := map[string]map[string]bool{}
+	if selected != "" {
+		for _, a := range l.arrows {
+			switch {
+			case a.child.name == selected:
+				addCol(hlCols, a.parent.name, a.parentCol)
+			case a.parent.name == selected:
+				addCol(hlCols, a.child.name, a.childCol)
+			}
+		}
+	}
 	// Arrows first (so cards paint over any shared edge cell); arrowheads live
 	// in gutters/margins and never under cards.
 	for _, a := range l.arrows {
@@ -712,7 +748,7 @@ func (l *erdLayout) render(selected string) *gcanvas {
 		canv.drawArrowRouted(a, fg)
 	}
 	for _, c := range l.cards {
-		canv.drawCard(c, cardFg, selected != "" && c.name != selected)
+		canv.drawCard(c, cardFg, selected != "" && c.name != selected, hlCols[c.name])
 	}
 	return canv
 }
