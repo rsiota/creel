@@ -61,6 +61,42 @@ func (e *ERDPanel) Hide() { e.visible = false }
 func (e *ERDPanel) SetSize(width, height int) {
 	e.width = width
 	e.height = height
+	e.clampScroll()
+}
+
+// clampScroll keeps scrollY/scrollX within the diagram's scrollable range. A
+// stale offset left over from a larger diagram or a terminal resize would
+// otherwise push the windowed body past the canvas edge, which makes Place
+// re-centre a too-short slice — eating the tables away from the top while they
+// stay pinned in the middle. Called from SetSize so the model (and thus the
+// mouse hit-tests, which read scrollY) stays consistent; View clamps again as
+// a render-time safeguard.
+func (e *ERDPanel) clampScroll() {
+	ch := e.contentHeight()
+	n := e.lineCount()
+	maxY := n - ch
+	if maxY < 0 {
+		maxY = 0
+	}
+	if e.scrollY > maxY {
+		e.scrollY = maxY
+	}
+	if e.scrollY < 0 {
+		e.scrollY = 0
+	}
+	if e.graph != nil && !e.merm {
+		cw := e.contentWidth()
+		maxX := e.graph.w - cw
+		if maxX < 0 {
+			maxX = 0
+		}
+		if e.scrollX > maxX {
+			e.scrollX = maxX
+		}
+		if e.scrollX < 0 {
+			e.scrollX = 0
+		}
+	}
 }
 
 // The panel is frameless and fills the whole workspace, so the content area
@@ -352,8 +388,12 @@ func (e ERDPanel) View() string {
 	if ch < 1 {
 		ch = 1
 	}
-	if e.scrollY > n {
-		e.scrollY = 0
+	maxY := n - ch
+	if maxY < 0 {
+		maxY = 0
+	}
+	if e.scrollY > maxY {
+		e.scrollY = maxY
 	}
 	end := e.scrollY + ch
 	if end > n {
