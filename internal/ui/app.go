@@ -877,6 +877,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m = m.updateLayout()
+		if m.erdPanel.IsVisible() {
+			m.erdPanel.SetSize(m.width, m.height-1)
+		}
 		return m, nil
 
 	case tea.KeyMsg:
@@ -960,6 +963,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// ERD panel is a full-screen overlay: it owns all mouse events while
 		// visible (and stops them leaking through to the workspace behind it).
 		if m.erdPanel.IsVisible() {
+			// Size the persistent panel (View only sizes a discarded copy), so
+			// the click hit-test reads the real viewport, not a zero-sized one.
+			m.erdPanel.SetSize(m.width, m.height-1)
 			return m.handleERDMouse(msg)
 		}
 		if m.state == stateConnections {

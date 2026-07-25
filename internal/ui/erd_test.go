@@ -773,3 +773,48 @@ func TestERDToggleHighlight(t *testing.T) {
 		t.Fatalf("nil clear: selected=%q", e.selected)
 	}
 }
+
+// TestERDClickViaUpdateSizesPanel is a regression test for a bug where the ERD
+// panel was sized only inside View() (a value-receiver, so it sized a discarded
+// copy). The persistent model kept width/height = 0, so contentToCanvas saw a
+// 1×1 viewport and rejected every click. The fix sizes the persistent panel in
+// Update's mouse path. This routes a click through Model.Update (not a direct
+// handleERDMouse call) with the panel intentionally left unsized, and checks
+// the click both lands and sizes the panel.
+func TestERDClickViaUpdateSizesPanel(t *testing.T) {
+	sp, sa, sg := colorPrimary, colorAccent, colorBorderUnfocused
+	colorPrimary, colorAccent, colorBorderUnfocused = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
+	defer func() { colorPrimary, colorAccent, colorBorderUnfocused = sp, sa, sg }()
+
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	m := Model{width: 120, height: 40}
+	m.erdPanel.Show("erd", layout, nil)
+
+	// Size once just to render and locate the card on screen, then wipe the
+	// size to reproduce the bug's precondition (unsized persistent panel).
+	m.erdPanel.SetSize(m.width, m.height-1)
+	view := ansi.Strip(m.erdPanel.View())
+	var sx, sy int
+	for i, ln := range strings.Split(view, "\n") {
+		if j := strings.Index(ln, "orders"); j >= 0 {
+			sy, sx = i, j
+			break
+		}
+	}
+	m.erdPanel.width = 0
+	m.erdPanel.height = 0
+	if cw, ch := m.erdPanel.contentWidth(), m.erdPanel.contentHeight(); cw != 1 || ch != 1 {
+		t.Fatalf("precondition: want cw=ch=1, got (%d,%d)", cw, ch)
+	}
+
+	// A click routed through Update must size the panel and land on the card.
+	mm, _ := m.Update(tea.MouseMsg{Type: tea.MouseLeft, X: sx, Y: sy})
+	got := mm.(Model).erdPanel
+	if got.selected != "orders" {
+		t.Errorf("click via Update: selected=%q want orders (panel not sized → hit-test rejected?)", got.selected)
+	}
+	if cw := got.contentWidth(); cw != 120 {
+		t.Errorf("persistent panel width after click = %d, want 120", cw)
+	}
+}
