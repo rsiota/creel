@@ -153,6 +153,45 @@ func TestRenderGraphERD(t *testing.T) {
 	}
 }
 
+// TestERDArrowElbow asserts the arrow's vertical run bends into its arrowhead
+// as a corner (┐/┘), not a straight stub (│) left dangling beside it. In the
+// fixture the parent (users) sits left of the child (orders), so the arrowhead
+// is ◀ and its vertical column is the cell immediately to its right.
+func TestERDArrowElbow(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	c := renderGraphERD(tables, schemas, pks, fks)
+	if c == nil {
+		t.Fatal("expected a canvas")
+	}
+	head := arrowheadL()
+	checked := 0
+	for y := 0; y < c.h; y++ {
+		for x := 0; x < c.w; x++ {
+			g, _, _ := cellGlyph(c.cells[y][x])
+			if g != head {
+				continue
+			}
+			nx := x + 1 // vertical runs one cell right of a left-pointing head
+			if !c.inBounds(nx, y) {
+				t.Fatalf("arrowhead at (%d,%d) has no cell to its right", x, y)
+			}
+			ng, _, _ := cellGlyph(c.cells[y][nx])
+			switch ng {
+			case '┐', '┘':
+				// elbow bending into the arrowhead — the wanted shape
+			case '─':
+				// endpoints aligned: a pure horizontal feed, no vertical to bend
+			default:
+				t.Errorf("cell beside arrowhead is %q, want an elbow (┐/┘) or horizontal (─)", string(ng))
+			}
+			checked++
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no ◀ arrowhead found on the canvas")
+	}
+}
+
 func TestRenderGraphERDNoTables(t *testing.T) {
 	if c := renderGraphERD(nil, nil, nil, nil); c != nil {
 		t.Errorf("expected nil canvas for no tables, got %dx%d", c.w, c.h)

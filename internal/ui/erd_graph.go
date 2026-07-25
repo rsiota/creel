@@ -165,6 +165,16 @@ func (c *gcanvas) vline(x, y1, y2 int, fg string) {
 	}
 }
 
+// addConn ORs a connection direction into a cell's line mask, bending a
+// straight segment into an elbow (or tee) where routes meet. Used to turn an
+// arrow's vertical run into the corner that feeds its arrowhead, so the line
+// meets the triangle's base at a 90° angle instead of a dangling stub.
+func (c *gcanvas) addConn(x, y int, d erdDir) {
+	if c.inBounds(x, y) {
+		c.cells[y][x].con |= d
+	}
+}
+
 // String emits the canvas, grouping each row into maximal runs of equal
 // (fg, bold) so styling is applied per-run rather than per-cell. Grouping is
 // by style, not glyph, so a styled title like " users " renders as one span.
@@ -506,8 +516,9 @@ func (c *gcanvas) drawArrow(child, parent *gcard, rank map[string]int, laneY int
 }
 
 // drawSideArrowLeft: parent sits to the left of child. The vertical runs one
-// cell further into the gutter than the arrowhead so it meets the triangle's
-// wide edge, not its centre.
+// cell further into the gutter than the arrowhead and bends into a corner at
+// the parent's row, so the line meets the arrowhead along its wide edge as an
+// elbow rather than a dangling stub.
 func (c *gcanvas) drawSideArrowLeft(child, parent *gcard, childCol, parentCol string) {
 	fg := string(colorAccent)
 	cy := child.colRowY(childCol)
@@ -517,9 +528,12 @@ func (c *gcanvas) drawSideArrowLeft(child, parent *gcard, childCol, parentCol st
 	vertX := headX + 1           // vertical: one cell out, meets the wide edge
 	c.hline(vertX, exitX, cy, fg)
 	c.vline(vertX, cy, py, fg)
+	c.addConn(vertX, py, erdLeft) // bend the vertical into the arrowhead
 	c.setCh(headX, py, arrowheadL(), fg, true)
 }
 
+// drawSideArrowRight: parent sits to the right of child, the mirror of Left —
+// the vertical bends into a corner that meets the arrowhead's wide edge.
 func (c *gcanvas) drawSideArrowRight(child, parent *gcard, childCol, parentCol string) {
 	fg := string(colorAccent)
 	cy := child.colRowY(childCol)
@@ -529,6 +543,7 @@ func (c *gcanvas) drawSideArrowRight(child, parent *gcard, childCol, parentCol s
 	vertX := headX - 1         // vertical: one cell out, meets the wide edge
 	c.hline(exitX, vertX, cy, fg)
 	c.vline(vertX, cy, py, fg)
+	c.addConn(vertX, py, erdRight) // bend the vertical into the arrowhead
 	c.setCh(headX, py, arrowheadR(), fg, true)
 }
 
@@ -537,27 +552,32 @@ func (c *gcanvas) drawSideArrowRight(child, parent *gcard, childCol, parentCol s
 // and the horizontal crosses the top margin (above every card), so the line
 // never passes through a table card — even one stacked above the endpoint in
 // the same column. Each riser uses the gutter on the side of its card that
-// faces the other endpoint.
+// faces the other endpoint. The parent riser bends into a corner at the
+// parent's row to meet its arrowhead, matching the side-arrow elbows.
 func (c *gcanvas) drawMarginArrow(child, parent *gcard, childCol, parentCol string, laneY int) {
 	fg := string(colorAccent)
 	cy := child.colRowY(childCol)
 	py := parent.colRowY(parentCol)
 	var childRiserX, headX, vertX int
+	var bend erdDir
 	var head rune
 	if parent.x <= child.x {
 		childRiserX = child.x - 1   // gutter to the left of the child
 		headX = parent.x + parent.w // tip touches parent's right border
 		vertX = headX + 1           // riser one cell out, meets the wide edge
 		head = arrowheadL()         // points left, into the parent's right edge
+		bend = erdLeft              // corner turns toward the arrowhead
 	} else {
 		childRiserX = child.x + child.w // gutter to the right of the child
 		headX = parent.x - 1            // tip touches parent's left border
 		vertX = headX - 1               // riser one cell out, meets the wide edge
 		head = arrowheadR()             // points right, into the parent's left edge
+		bend = erdRight                 // corner turns toward the arrowhead
 	}
 	c.vline(childRiserX, laneY, cy, fg)
 	c.hline(childRiserX, vertX, laneY, fg)
 	c.vline(vertX, laneY, py, fg)
+	c.addConn(vertX, py, bend) // bend the riser into the arrowhead
 	c.setCh(headX, py, head, fg, true)
 }
 
