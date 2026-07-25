@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/ruben/gsql/internal/db"
 )
 
@@ -133,7 +134,7 @@ func containsText(c *gcanvas, s string) bool {
 
 func TestRenderGraphERD(t *testing.T) {
 	tables, schemas, pks, fks := erdFixture()
-	c := renderGraphERD(tables, schemas, pks, fks)
+	c, _ := renderGraphERD(tables, schemas, pks, fks)
 	if c == nil {
 		t.Fatal("expected a canvas")
 	}
@@ -159,7 +160,7 @@ func TestRenderGraphERD(t *testing.T) {
 // is ◀ and its vertical column is the cell immediately to its right.
 func TestERDArrowElbow(t *testing.T) {
 	tables, schemas, pks, fks := erdFixture()
-	c := renderGraphERD(tables, schemas, pks, fks)
+	c, _ := renderGraphERD(tables, schemas, pks, fks)
 	if c == nil {
 		t.Fatal("expected a canvas")
 	}
@@ -193,7 +194,7 @@ func TestERDArrowElbow(t *testing.T) {
 }
 
 func TestRenderGraphERDNoTables(t *testing.T) {
-	if c := renderGraphERD(nil, nil, nil, nil); c != nil {
+	if c, _ := renderGraphERD(nil, nil, nil, nil); c != nil {
 		t.Errorf("expected nil canvas for no tables, got %dx%d", c.w, c.h)
 	}
 }
@@ -219,7 +220,7 @@ func TestERDCardColumnAlignment(t *testing.T) {
 		"t": {{Name: "id", Type: "int"}, {Name: "note", Type: "text"}},
 	}
 	pks := map[string][]string{"t": {"id"}}
-	c := renderGraphERD([]string{"t"}, schemas, pks, nil)
+	c, _ := renderGraphERD([]string{"t"}, schemas, pks, nil)
 	// Find the x of the first letter of each column name on its row.
 	nameX := func(name string) int {
 		for y := 0; y < c.h; y++ {
@@ -251,7 +252,7 @@ func TestERDCardTypeRightAligned(t *testing.T) {
 	cols := []db.Column{{Name: "id", Type: "int"}, {Name: "user_id", Type: "integer"}, {Name: "note", Type: "text"}}
 	schemas := map[string][]db.Column{"t": cols}
 	pks := map[string][]string{"t": {"id"}}
-	c := renderGraphERD([]string{"t"}, schemas, pks, nil)
+	c, _ := renderGraphERD([]string{"t"}, schemas, pks, nil)
 
 	// The card's right border │ on the separator row (row 2: border/title/sep).
 	borderX := -1
@@ -287,7 +288,7 @@ func TestERDCardPKBold(t *testing.T) {
 	cols := []db.Column{{Name: "id", Type: "int"}, {Name: "note", Type: "text"}}
 	schemas := map[string][]db.Column{"t": cols}
 	pks := map[string][]string{"t": {"id"}}
-	c := renderGraphERD([]string{"t"}, schemas, pks, nil)
+	c, _ := renderGraphERD([]string{"t"}, schemas, pks, nil)
 	nameBoldAt := func(y int, name string) bool {
 		nr := []rune(name)[0]
 		for x := 0; x < c.w; x++ {
@@ -372,7 +373,7 @@ func TestERDNoLineCrossesCard(t *testing.T) {
 		"X": {{Column: "b_id", RefTable: "B", RefColumn: "id"}},
 		"Z": {{Column: "b_id", RefTable: "B", RefColumn: "id"}, {Column: "a_id", RefTable: "A", RefColumn: "id"}},
 	}
-	c := renderGraphERD([]string{"A", "B", "X", "Z"}, schemas, pks, fks)
+	c, _ := renderGraphERD([]string{"A", "B", "X", "Z"}, schemas, pks, fks)
 	if c == nil {
 		t.Fatal("expected a canvas")
 	}
@@ -395,4 +396,142 @@ func TestERDNoLineCrossesCard(t *testing.T) {
 			}
 		}
 	}
+}
+
+// --- mouse hit-testing (step 1 foundation) ----------------------------------
+
+// TestRenderGraphERDReturnsCards asserts renderGraphERD now also returns the
+// laid-out cards, each carrying its final canvas position — the data the panel
+// needs for mouse hit-testing.
+func TestRenderGraphERDReturnsCards(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	_, cards := renderGraphERD(tables, schemas, pks, fks)
+	if len(cards) != 2 {
+		t.Fatalf("expected 2 cards, got %d", len(cards))
+	}
+	byName := map[string]*gcard{}
+	for _, gc := range cards {
+		byName[gc.name] = gc
+	}
+	for _, name := range []string{"users", "orders"} {
+		gc := byName[name]
+		if gc == nil {
+			t.Errorf("missing card %q", name)
+			continue
+		}
+		if gc.w < 1 || gc.h < 1 || gc.x < 0 || gc.y < 0 {
+			t.Errorf("card %q has non-final layout: %+v", name, gc)
+		}
+	}
+}
+
+// cardByName returns the laid-out card with the given table name, or nil.
+func cardByName(cards []*gcard, name string) *gcard {
+	for _, c := range cards {
+		if c != nil && c.name == name {
+			return c
+		}
+	}
+	return nil
+}
+
+// findRunePos returns the (column, row) of the first occurrence of r in s,
+// viewed as newline-separated rows and counted by rune (so multibyte/ANSI-free
+// cells map to their visual column). ok is false if r is absent.
+func findRunePos(s string, r rune) (int, int, bool) {
+	for row, line := range strings.Split(s, "\n") {
+		col := 0
+		for _, c := range line {
+			if c == r {
+				return col, row, true
+			}
+			col++
+		}
+	}
+	return 0, 0, false
+}
+
+// TestERDContentToCanvas verifies the screen→canvas transform inverts the scroll
+// + centring that View applies, in both the centred (canvas smaller than the
+// viewport) and pan (canvas larger) regimes. It renders the panel, locates a
+// known marker glyph, and checks contentToCanvas maps it back to its canvas cell
+// — so the transform can't silently drift from the real rendering.
+func TestERDContentToCanvas(t *testing.T) {
+	check := func(e ERDPanel, cx, cy int) {
+		t.Helper()
+		view := ansi.Strip(e.View())
+		col, row, ok := findRunePos(view, '*')
+		if !ok {
+			t.Fatalf("marker '*' not rendered:\n%s", view)
+		}
+		gx, gy, ok := e.contentToCanvas(col, row)
+		if !ok {
+			t.Fatalf("contentToCanvas(%d,%d) rejected the marker", col, row)
+		}
+		if gx != cx || gy != cy {
+			t.Errorf("contentToCanvas(%d,%d) = (%d,%d), want (%d,%d)", col, row, gx, gy, cx, cy)
+		}
+	}
+
+	// Centred regime: a 6×3 canvas in a 40×10 viewport.
+	e := ERDPanel{width: 40, height: 10}
+	e.graph = newGcanvas(6, 3)
+	e.graph.setCh(2, 1, '*', "", false)
+	check(e, 2, 1)
+
+	// Pan regime: a 40×30 canvas scrolled to (10,4) in a 5×3 viewport.
+	e2 := ERDPanel{width: 5, height: 3, scrollX: 10, scrollY: 4}
+	e2.graph = newGcanvas(40, 30)
+	e2.graph.setCh(12, 6, '*', "", false)
+	check(e2, 12, 6)
+
+	// A click in the centred margin (left of a small diagram) is rejected.
+	if _, _, ok := e.contentToCanvas(0, 0); ok {
+		t.Error("contentToCanvas should reject the centred margin")
+	}
+	// Mermaid view has no canvas to hit-test.
+	em := ERDPanel{width: 40, height: 10, merm: true}
+	em.graph = newGcanvas(6, 3)
+	if _, _, ok := em.contentToCanvas(2, 2); ok {
+		t.Error("contentToCanvas should reject the Mermaid view")
+	}
+}
+
+// TestERDCardAt covers the canvas→card→column hit-tests the hover/click
+// interactions will lean on: a point inside a card resolves to that card and its
+// column row, the title row is not a column, and empty space yields nil.
+func TestERDCardAt(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	_, cards := renderGraphERD(tables, schemas, pks, fks)
+	e := ERDPanel{cards: cards, width: 80, height: 24}
+
+	users := cardByName(cards, "users")
+	if users == nil {
+		t.Fatal("missing users card")
+	}
+	// The id (PK) row resolves to column id at index 0.
+	col, idx, ok := e.columnAt(users, users.colRowY("id"))
+	if !ok || col.Name != "id" || idx != 0 {
+		t.Errorf("columnAt(id row) = %q idx %d ok %v, want id/0/true", col.Name, idx, ok)
+	}
+	// A point inside that row maps to the users card.
+	if got := e.cardAt(users.x+3, users.colRowY("id")); got != users {
+		t.Errorf("cardAt(inside users) = %v, want users", cardName(got))
+	}
+	// The title row is not a column.
+	if _, _, ok := e.columnAt(users, users.y+1); ok {
+		t.Error("title row should not resolve to a column")
+	}
+	// A point outside every card is nil.
+	if got := e.cardAt(-1, -1); got != nil {
+		t.Errorf("cardAt(-1,-1) = %q, want nil", cardName(got))
+	}
+}
+
+// cardName returns a card's name, or "<nil>" for a nil card (test messages).
+func cardName(c *gcard) string {
+	if c == nil {
+		return "<nil>"
+	}
+	return c.name
 }

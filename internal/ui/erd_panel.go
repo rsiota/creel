@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ruben/gsql/internal/db"
 )
 
 // ERDPanel displays a generated entity-relationship diagram as a scrollable,
@@ -23,6 +24,7 @@ type ERDPanel struct {
 	visible bool
 	title   string
 	graph   *gcanvas // graphical view; nil if there were no tables
+	cards   []*gcard // laid-out cards (positions + PK/FK sets) for hit-testing
 	mermaid []string // Mermaid erDiagram source lines
 	merm    bool     // show Mermaid source instead of the graph
 
@@ -36,10 +38,11 @@ type ERDPanel struct {
 func (e ERDPanel) IsVisible() bool { return e.visible }
 
 // Show populates the panel with both representations and shows the graph view.
-func (e *ERDPanel) Show(title string, graph *gcanvas, mermaid []string) {
+func (e *ERDPanel) Show(title string, graph *gcanvas, cards []*gcard, mermaid []string) {
 	e.visible = true
 	e.title = title
 	e.graph = graph
+	e.cards = cards
 	e.mermaid = mermaid
 	e.merm = false
 	e.scrollY = 0
@@ -74,6 +77,89 @@ func (e ERDPanel) contentWidth() int {
 		return 1
 	}
 	return e.width
+}
+
+// --- mouse hit-testing ------------------------------------------------------
+//
+// The graph is rendered centred in the viewport (View uses lipgloss.Place with
+// Center/Center) and offset by the scroll position. To route mouse events we
+// invert that: placedBounds replicates the centring math (floor((size-body)/2),
+// matching lipgloss v1's position.go), and contentToCanvas maps a screen cell
+// back to the canvas cell it covers. cardAt/columnAt then resolve a canvas
+// cell to a card and (if it lands on a column row) a column — the basis for
+// the hover/click interactions built on top.
+
+// placedBounds returns the windowed graph body's size and the (offX, offY)
+// top-left cell it is centred at within the content area. This must match the
+// centring View() applies via lipgloss.Place(Center, Center).
+func (e ERDPanel) placedBounds() (bodyW, bodyH, offX, offY int) {
+	cw, ch := e.contentWidth(), e.contentHeight()
+	bodyW, bodyH = cw, ch
+	if e.graph != nil {
+		if w := e.graph.w - e.scrollX; w < bodyW {
+			bodyW = w
+		}
+		if h := e.graph.h - e.scrollY; h < bodyH {
+			bodyH = h
+		}
+	}
+	if bodyW < 0 {
+		bodyW = 0
+	}
+	if bodyH < 0 {
+		bodyH = 0
+	}
+	offX = (cw - bodyW) / 2
+	offY = (ch - bodyH) / 2
+	return bodyW, bodyH, offX, offY
+}
+
+// contentToCanvas maps a screen cell (sx, sy) within the panel's content area
+// to the canvas cell it covers, inverting the scroll + centring from View().
+// ok is false when there is no graph, the Mermaid view is showing, or the point
+// lands in the empty centred margin rather than over the diagram.
+func (e ERDPanel) contentToCanvas(sx, sy int) (cx, cy int, ok bool) {
+	cw, ch := e.contentWidth(), e.contentHeight()
+	if e.graph == nil || e.merm || sx < 0 || sx >= cw || sy < 0 || sy >= ch {
+		return 0, 0, false
+	}
+	bodyW, bodyH, offX, offY := e.placedBounds()
+	cx = sx - offX + e.scrollX
+	cy = sy - offY + e.scrollY
+	// Reject the centred margin around a diagram smaller than the viewport.
+	if cx < e.scrollX || cx >= e.scrollX+bodyW || cy < e.scrollY || cy >= e.scrollY+bodyH {
+		return 0, 0, false
+	}
+	return cx, cy, true
+}
+
+// cardAt returns the card covering canvas cell (cx, cy), or nil. Cards never
+// overlap in the ranked-column layout, so the first hit wins.
+func (e ERDPanel) cardAt(cx, cy int) *gcard {
+	for _, c := range e.cards {
+		if c == nil {
+			continue
+		}
+		if cx >= c.x && cx < c.x+c.w && cy >= c.y && cy < c.y+c.h {
+			return c
+		}
+	}
+	return nil
+}
+
+// columnAt resolves canvas row cy to the column it lands on within card, plus
+// its 0-based index. ok is false on the card's border/title/separator rows or
+// outside the card. Layout: row 0 = top border, 1 = title, 2 = separator,
+// rows 3.. = columns.
+func (e ERDPanel) columnAt(c *gcard, cy int) (db.Column, int, bool) {
+	if c == nil {
+		return db.Column{}, 0, false
+	}
+	idx := cy - c.y - 3
+	if idx < 0 || idx >= len(c.cols) {
+		return db.Column{}, 0, false
+	}
+	return c.cols[idx], idx, true
 }
 
 // lineCount is the number of scrollable rows in the active view.

@@ -584,10 +584,12 @@ func (c *gcanvas) drawMarginArrow(child, parent *gcard, childCol, parentCol stri
 // --- entry point ------------------------------------------------------------
 
 // renderGraphERD lays out table cards and draws FK→PK arrows, returning the
-// diagram canvas (the panel clips/scrolls a window of it).
-func renderGraphERD(tables []string, schemas map[string][]db.Column, pks map[string][]string, fks map[string][]db.ForeignKey) *gcanvas {
+// diagram canvas (the panel clips/scrolls a window of it) and the laid-out
+// cards (final positions + PK/FK sets) for mouse hit-testing. With no tables
+// both are nil.
+func renderGraphERD(tables []string, schemas map[string][]db.Column, pks map[string][]string, fks map[string][]db.ForeignKey) (*gcanvas, []*gcard) {
 	if len(tables) == 0 {
-		return nil
+		return nil, nil
 	}
 	in := map[string]bool{}
 	for _, t := range tables {
@@ -652,7 +654,13 @@ func renderGraphERD(tables []string, schemas map[string][]db.Column, pks map[str
 	for _, t := range sorted {
 		canv.drawCard(cards[t])
 	}
-	return canv
+	// Return the laid-out cards (now carrying their final x/y/w/h) in a stable
+	// order for the panel's mouse hit-testing.
+	out := make([]*gcard, 0, len(sorted))
+	for _, t := range sorted {
+		out = append(out, cards[t])
+	}
+	return canv, out
 }
 
 // abs is a tiny local helper (math.Abs needs float conversion).

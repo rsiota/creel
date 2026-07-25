@@ -549,3 +549,15 @@ func (m Model) handleHelpMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
+
+// handleERDMouse routes mouse events to the ERD panel overlay. The panel
+// fills the workspace, so while it's open it intercepts every mouse event —
+// this also stops clicks from reaching the workspace panels hidden behind it.
+// Coordinate translation (screen → canvas) and hit-testing live on ERDPanel;
+// this handler is the routing seam that later steps (wheel pan, hover/drag)
+// build on.
+func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// Foundation: the panel owns the event so it doesn't fall through. Wheel
+	// pan and card hit-testing arrive in the next step.
+	return m, nil
+}

@@ -955,6 +955,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.help.IsVisible() {
 			return m.handleHelpMouse(msg)
 		}
+		// ERD panel is a full-screen overlay: it owns all mouse events while
+		// visible (and stops them leaking through to the workspace behind it).
+		if m.erdPanel.IsVisible() {
+			return m.handleERDMouse(msg)
+		}
 		if m.state == stateConnections {
 			return m.handleConnectionsMouse(msg)
 		}
