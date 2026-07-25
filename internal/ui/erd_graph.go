@@ -520,7 +520,7 @@ func (c *gcanvas) drawArrow(child, parent *gcard, rank map[string]int, laneY int
 // the parent's row, so the line meets the arrowhead along its wide edge as an
 // elbow rather than a dangling stub.
 func (c *gcanvas) drawSideArrowLeft(child, parent *gcard, childCol, parentCol string) {
-	fg := string(colorAccent)
+	fg := string(colorBorderUnfocused) // connector grey: the unfocused-border tone
 	cy := child.colRowY(childCol)
 	py := parent.colRowY(parentCol)
 	exitX := child.x - 1         // gutter cell touching child's left border
@@ -535,7 +535,7 @@ func (c *gcanvas) drawSideArrowLeft(child, parent *gcard, childCol, parentCol st
 // drawSideArrowRight: parent sits to the right of child, the mirror of Left —
 // the vertical bends into a corner that meets the arrowhead's wide edge.
 func (c *gcanvas) drawSideArrowRight(child, parent *gcard, childCol, parentCol string) {
-	fg := string(colorAccent)
+	fg := string(colorBorderUnfocused) // connector grey: the unfocused-border tone
 	cy := child.colRowY(childCol)
 	py := parent.colRowY(parentCol)
 	exitX := child.x + child.w // gutter cell touching child's right border
@@ -555,7 +555,7 @@ func (c *gcanvas) drawSideArrowRight(child, parent *gcard, childCol, parentCol s
 // faces the other endpoint. The parent riser bends into a corner at the
 // parent's row to meet its arrowhead, matching the side-arrow elbows.
 func (c *gcanvas) drawMarginArrow(child, parent *gcard, childCol, parentCol string, laneY int) {
-	fg := string(colorAccent)
+	fg := string(colorBorderUnfocused) // connector grey: the unfocused-border tone
 	cy := child.colRowY(childCol)
 	py := parent.colRowY(parentCol)
 	var childRiserX, headX, vertX int
