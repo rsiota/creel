@@ -426,6 +426,7 @@ func (c *ConnectionList) SelectFirstConnectionInGroup() bool {
 	}
 	return false
 }
+
 // visible, keeping the scroll snapped to a row boundary. Among the valid
 // boundaries it picks the smallest (most content above the cursor), so the
 // cursor sits near the bottom of the viewport rather than jumping to the top.

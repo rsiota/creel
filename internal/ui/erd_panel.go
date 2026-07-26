@@ -49,6 +49,13 @@ type ERDPanel struct {
 	searchQuery string
 	searchFocus string
 	searchIndex int
+
+	// FK path-finding ("p"): pathFrom is the anchor (source) card; pathCards is
+	// a traced shortest path (ordered names) shown vivid over a dimmed diagram.
+	// pathMsg carries a transient no-path message for the status line.
+	pathFrom  string
+	pathCards []string
+	pathMsg   string
 }
 
 func (e ERDPanel) IsVisible() bool { return e.visible }
@@ -63,7 +70,7 @@ func (e *ERDPanel) Show(title string, layout *erdLayout, mermaid []string) {
 	if layout != nil {
 		e.cards = layout.cards
 		e.focusName = e.initialFocus()
-		e.graph = layout.render("", e.focusName)
+		e.graph = e.renderedGraph()
 	} else {
 		e.cards = nil
 		e.graph = nil
@@ -74,6 +81,9 @@ func (e *ERDPanel) Show(title string, layout *erdLayout, mermaid []string) {
 	e.scrollY = 0
 	e.scrollX = 0
 	e.cursor = 0
+	e.pathFrom = ""
+	e.pathCards = nil
+	e.pathMsg = ""
 }
 
 // MermaidLines returns the Mermaid source (used by the app's copy/save handlers
@@ -125,21 +135,22 @@ func (e *ERDPanel) clampScroll() {
 	}
 }
 
-// promptHeight is the number of rows reserved below the graph body for a
-// modal prompt (currently the "/" search bar). The body and all geometry
-// derived from contentHeight shrink by this so the prompt never overlaps the
+// statusHeight is the number of rows reserved below the graph body for a
+// modal prompt/status line — the "/" jump bar while searching, or the FK-path
+// status while a path is anchored or traced. The body and all geometry
+// derived from contentHeight shrink by this so the line never overlaps the
 // diagram.
-func (e ERDPanel) promptHeight() int {
-	if e.searching {
+func (e ERDPanel) statusHeight() int {
+	if e.searching || e.pathFrom != "" || len(e.pathCards) > 0 {
 		return 1
 	}
 	return 0
 }
 
 // The panel is frameless and fills the whole workspace, so the content area
-// is the full size minus any prompt row (no border/padding overhead).
+// is the full size minus any status row (no border/padding overhead).
 func (e ERDPanel) contentHeight() int {
-	h := e.height - e.promptHeight()
+	h := e.height - e.statusHeight()
 	if h < 1 {
 		return 1
 	}
@@ -273,7 +284,7 @@ func (e ERDPanel) initialFocus() string {
 func (e ERDPanel) setFocus(name string) ERDPanel {
 	e.focusName = name
 	if e.layout != nil {
-		e.graph = e.layout.render(e.selected, e.focusName)
+		e.graph = e.renderedGraph()
 	}
 	return e
 }
@@ -343,7 +354,7 @@ func (e ERDPanel) moveFocus(dir int) ERDPanel {
 	}
 	e.focusName = cur.name
 	e = e.ensureVisible(cur)
-	e.graph = e.layout.render(e.selected, e.focusName)
+	e.graph = e.renderedGraph()
 	return e
 }
 
@@ -484,6 +495,11 @@ func (e ERDPanel) centerOnCard(c *gcard) ERDPanel {
 // already-selected card, or nil (empty space), clears the selection. The
 // keyboard focus follows the clicked card so the two stay in sync.
 func (e ERDPanel) toggleHighlight(c *gcard) ERDPanel {
+	// The single-card highlight and the FK path are mutually exclusive modes;
+	// entering one clears the other.
+	e.pathFrom = ""
+	e.pathCards = nil
+	e.pathMsg = ""
 	switch {
 	case c == nil:
 		e.selected = ""
@@ -496,7 +512,7 @@ func (e ERDPanel) toggleHighlight(c *gcard) ERDPanel {
 		e.focusName = c.name
 	}
 	if e.layout != nil {
-		e.graph = e.layout.render(e.selected, e.focusName)
+		e.graph = e.renderedGraph()
 	}
 	return e
 }
@@ -565,6 +581,8 @@ func (e ERDPanel) updateGraph(msg tea.KeyMsg) ERDPanel {
 		e = e.toggleHighlight(e.focusCard())
 	case "/":
 		e = e.startSearch()
+	case "p":
+		e = e.togglePath()
 	case "g":
 		e.scrollY = 0
 	case "G":
@@ -626,7 +644,7 @@ func (e ERDPanel) cancelSearch() ERDPanel {
 			e = e.centerOnCard(c)
 		}
 	}
-	e.graph = e.layout.render(e.selected, e.focusName)
+	e.graph = e.renderedGraph()
 	return e
 }
 
@@ -650,7 +668,7 @@ func (e ERDPanel) searchMatches() []*gcard {
 func (e ERDPanel) focusMatch(c *gcard) ERDPanel {
 	e.focusName = c.name
 	e = e.centerOnCard(c)
-	e.graph = e.layout.render(e.selected, e.focusName)
+	e.graph = e.renderedGraph()
 	return e
 }
 
@@ -660,7 +678,7 @@ func (e ERDPanel) focusMatch(c *gcard) ERDPanel {
 func (e ERDPanel) applySearch() ERDPanel {
 	ms := e.searchMatches()
 	if len(ms) == 0 {
-		e.graph = e.layout.render(e.selected, e.focusName)
+		e.graph = e.renderedGraph()
 		return e
 	}
 	if e.searchIndex >= len(ms) {
@@ -738,6 +756,96 @@ func (e ERDPanel) searchPrompt(width int) string {
 		}
 	}
 	return lipgloss.NewStyle().Width(width).Render(" " + b.String())
+}
+
+// --- FK path-finding ("p") ------------------------------------------------
+
+// renderedGraph paints the current panel state (single highlight, keyboard
+// focus, and/or a traced FK path) into a fresh canvas. Centralising this means
+// every interaction (move, search, path toggle) re-renders consistently:
+// a traced path takes precedence over the single-card highlight, and an
+// anchored-but-untraced source reuses the highlight render to preview its
+// direct relations.
+func (e ERDPanel) renderedGraph() *gcanvas {
+	sel := e.selected
+	var p erdPath
+	switch {
+	case len(e.pathCards) > 0:
+		p = pathHighlight(e.pathCards)
+		sel = "" // path takes precedence over the single-card highlight
+	case e.pathFrom != "":
+		sel = e.pathFrom // anchor reuses the highlight render
+	}
+	return e.layout.render(sel, e.focusName, p)
+}
+
+// clearPath resets all path state (anchor, traced cards, message) and
+// re-renders. Used by esc (step back out of path mode) and whenever another
+// mode (highlight, drill-in) supersedes the path.
+func (e ERDPanel) clearPath() ERDPanel {
+	e.pathFrom = ""
+	e.pathCards = nil
+	e.pathMsg = ""
+	e.graph = e.renderedGraph()
+	return e
+}
+
+// togglePath is the "p" action, cycling through three states:
+//   - idle → anchor the focused card as the path source (superseding a
+//     single-card highlight);
+//   - anchored → trace the shortest FK path from the source to the focused
+//     card (pressing p on the anchor itself cancels);
+//   - traced → clear the path back to idle.
+//
+// A failed trace leaves the anchor in place and notes a no-path message.
+func (e ERDPanel) togglePath() ERDPanel {
+	e.pathMsg = "" // clear any prior no-path note
+	switch {
+	case len(e.pathCards) > 0:
+		e.pathFrom = ""
+		e.pathCards = nil
+	case e.pathFrom != "":
+		target := e.focusName
+		if target == "" || target == e.pathFrom {
+			e.pathFrom = "" // p on the anchor cancels
+		} else {
+			if path := erdShortestPath(e.layout, e.pathFrom, target); len(path) > 0 {
+				e.pathCards = path
+			} else {
+				e.pathMsg = fmt.Sprintf("no FK path: %s → %s", e.pathFrom, target)
+			}
+		}
+	default:
+		if c := e.focusCard(); c != nil {
+			e.pathFrom = c.name
+			e.selected = "" // path mode supersedes the single-card highlight
+		}
+	}
+	e.graph = e.renderedGraph()
+	return e
+}
+
+// pathStatusLine renders the one-line FK-path status shown at the bottom of
+// the graph while path mode is active: the source anchor, the traced chain
+// with its hop count, or a no-path note.
+func (e ERDPanel) pathStatusLine(width int) string {
+	var msg string
+	switch {
+	case e.pathMsg != "":
+		msg = lipgloss.NewStyle().Foreground(colorError).Render("◆ " + e.pathMsg)
+	case len(e.pathCards) > 0:
+		hops := len(e.pathCards) - 1
+		hp := "hops"
+		if hops == 1 {
+			hp = "hop"
+		}
+		chain := lipgloss.NewStyle().Foreground(colorPrimary).Render("◆ " + strings.Join(e.pathCards, " → "))
+		msg = chain + " " + mutedStyle.Render(fmt.Sprintf("(%d %s, p to clear)", hops, hp))
+	default: // anchored, not yet traced
+		msg = lipgloss.NewStyle().Foreground(colorAccent).Render("◆ path start: "+e.pathFrom) +
+			" " + mutedStyle.Render("(move to target, p to trace)")
+	}
+	return lipgloss.NewStyle().Width(width).Render(" " + msg)
 }
 
 // updateMermaid handles keys in the Mermaid source view: j/k/g/G/ctrl+d/ctrl+u
@@ -881,6 +989,9 @@ func (e ERDPanel) View() string {
 		body = lipgloss.Place(cw, ch, lipgloss.Center, lipgloss.Center, body)
 		if e.searching {
 			return lipgloss.JoinVertical(lipgloss.Left, body, e.searchPrompt(cw))
+		}
+		if e.pathFrom != "" || len(e.pathCards) > 0 {
+			return lipgloss.JoinVertical(lipgloss.Left, body, e.pathStatusLine(cw))
 		}
 		return body
 	}

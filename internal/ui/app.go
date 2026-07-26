@@ -2638,7 +2638,15 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// (including esc/enter, which the app would otherwise grab).
 		if !m.erdPanel.searching {
 			switch msg.String() {
-			case "esc", "q", "ctrl+c":
+			case "esc":
+				// Esc steps back: clear an active FK path before closing the panel.
+				if m.erdPanel.pathFrom != "" || len(m.erdPanel.pathCards) > 0 {
+					m.erdPanel = m.erdPanel.clearPath()
+					return m, nil
+				}
+				m.erdPanel.Hide()
+				return m, nil
+			case "q", "ctrl+c":
 				m.erdPanel.Hide()
 				return m, nil
 			case "y", "Y":

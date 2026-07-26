@@ -311,8 +311,8 @@ func (c *gcard) firstPK() string {
 	return ""
 }
 
-const erdCardRightPad = 1   // space between the type and the right border
-const erdFocusIcon = '◎'    // header glyph: click to re-focus the ERD on this table
+const erdCardRightPad = 1 // space between the type and the right border
+const erdFocusIcon = '◎'  // header glyph: click to re-focus the ERD on this table
 
 // measureCard computes the card's width/height from its columns. Each column
 // row is laid out as: marker + space + name  …gap…  type + right-pad, with the
@@ -735,6 +735,99 @@ func addCol(m map[string]map[string]bool, card, col string) {
 	m[card][col] = true
 }
 
+// erdPath describes an active multi-hop FK-path highlight for render: the
+// cards on the path (kept vivid while the rest dim) and the edges between
+// consecutive path cards (drawn in primary on top of the grey connectors). A
+// zero value (nil maps) means no path — render falls back to the single-card
+// selected highlight.
+type erdPath struct {
+	cards map[string]bool
+	edges map[string]bool // edgeKey(a, b) for consecutive path cards
+}
+
+// edgeKey returns the undirected key for an FK arrow between two tables, so a
+// path edge matches regardless of which side is the FK child/parent.
+func edgeKey(a, b string) string {
+	if a > b {
+		a, b = b, a
+	}
+	return a + "|" + b
+}
+
+// pathHighlight builds an erdPath from an ordered list of card names.
+func pathHighlight(cards []string) erdPath {
+	p := erdPath{cards: map[string]bool{}, edges: map[string]bool{}}
+	for _, c := range cards {
+		p.cards[c] = true
+	}
+	for i := 1; i < len(cards); i++ {
+		p.edges[edgeKey(cards[i-1], cards[i])] = true
+	}
+	return p
+}
+
+// erdShortestPath returns the shortest FK path (ordered table names) between
+// from and to over the layout's resolved arrows, treating FKs as undirected
+// edges and constrained to the cards present in the layout. Ties are broken by
+// sorted neighbour order for determinism. Returns nil if from == to, either
+// endpoint is absent, or no path connects them.
+func erdShortestPath(l *erdLayout, from, to string) []string {
+	if l == nil || from == "" || to == "" || from == to {
+		return nil
+	}
+	adj := map[string]map[string]bool{}
+	for _, a := range l.arrows {
+		c, p := a.child.name, a.parent.name
+		if adj[c] == nil {
+			adj[c] = map[string]bool{}
+		}
+		if adj[p] == nil {
+			adj[p] = map[string]bool{}
+		}
+		adj[c][p] = true
+		adj[p][c] = true
+	}
+	if adj[from] == nil || adj[to] == nil {
+		return nil
+	}
+	prev := map[string]string{}
+	seen := map[string]bool{from: true}
+	queue := []string{from}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if cur == to {
+			break
+		}
+		nb := make([]string, 0, len(adj[cur]))
+		for n := range adj[cur] {
+			nb = append(nb, n)
+		}
+		sort.Strings(nb)
+		for _, n := range nb {
+			if !seen[n] {
+				seen[n] = true
+				prev[n] = cur
+				queue = append(queue, n)
+			}
+		}
+	}
+	if !seen[to] {
+		return nil
+	}
+	var path []string
+	for c := to; ; c = prev[c] {
+		path = append(path, c)
+		if c == from {
+			break
+		}
+	}
+	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
+		path[i], path[j] = path[j], path[i]
+	}
+	return path
+}
+
 // render paints the layout into a fresh canvas. With no selection every card is
 // vivid (primary border) and every arrow is grey. When selected names a card it
 // stays vivid while every other card is dimmed to the arrow grey, the arrows
@@ -745,16 +838,18 @@ func addCol(m map[string]map[string]bool, card, col string) {
 // selection change. focusName is the keyboard-focused card ("" = none); its
 // border is drawn in the accent colour so the cursor stays visible — even on a
 // dimmed card — without dimming or recolouring anything else.
-func (l *erdLayout) render(selected, focusName string) *gcanvas {
+func (l *erdLayout) render(selected, focusName string, p erdPath) *gcanvas {
 	canv := newGcanvas(l.canvasW, l.canvasH)
 	conn := string(colorBorderUnfocused)
 	cardFg := string(colorPrimary)
 	accent := string(colorAccent)
+	pathActive := len(p.cards) > 0
 	// Columns on dimmed cards that connect to the selection: the far endpoints
 	// of every arrow touching it (the parent's PK when the selection is the
-	// child, the child's FK when the selection is the parent).
+	// child, the child's FK when the selection is the parent). Path mode spans
+	// many cards, so it does not single out connected columns.
 	hlCols := map[string]map[string]bool{}
-	if selected != "" {
+	if selected != "" && !pathActive {
 		for _, a := range l.arrows {
 			switch {
 			case a.child.name == selected:
@@ -765,31 +860,41 @@ func (l *erdLayout) render(selected, focusName string) *gcanvas {
 		}
 	}
 	// Arrows first (so cards paint over any shared edge cell); arrowheads live
-	// in gutters/margins and never under cards. The dimmed (grey) arrows are
-	// painted before the highlighted (blue) ones touching the selection: where
-	// two arrows share a cell the later pass wins (see hline/vline), so a
-	// highlighted connector always renders on top instead of being buried under
-	// a crossing grey arrow.
+	// in gutters/margins and never under cards. Grey connectors are painted
+	// before the vivid (path/selection) ones so the latter always win a shared
+	// cell (last-writer, see hline/vline) and render on top of crossings.
+	onPath := func(a erdArrow) bool { return pathActive && p.edges[edgeKey(a.child.name, a.parent.name)] }
+	touchesSel := func(a erdArrow) bool {
+		return selected != "" && !pathActive && (a.child.name == selected || a.parent.name == selected)
+	}
 	for _, a := range l.arrows {
-		if selected != "" && (a.child.name == selected || a.parent.name == selected) {
-			continue // highlighted arrows are painted last, on top
+		if onPath(a) || touchesSel(a) {
+			continue
 		}
 		canv.drawArrowRouted(a, conn)
 	}
 	for _, a := range l.arrows {
-		if selected == "" || !(a.child.name == selected || a.parent.name == selected) {
-			continue
+		if onPath(a) || touchesSel(a) {
+			canv.drawArrowRouted(a, cardFg)
 		}
-		canv.drawArrowRouted(a, cardFg)
 	}
 	hasRoot := l.focus != ""
 	for _, c := range l.cards {
-		// Border colour: accent for the keyboard-focused card (always visible,
-		// even dimmed), else grey when another card is selected, else primary.
-		// The selected card itself stays primary — selection outranks focus.
+		// Border colour: path cards and the selection are vivid (primary); every
+		// other card is grey when a path/selection is active. The keyboard focus
+		// always wins the border in accent so the cursor stays visible, even on
+		// a dimmed card — selection still outranks focus.
 		border := cardFg
-		if selected != "" && c.name != selected {
+		dim := false
+		if pathActive {
+			on := p.cards[c.name]
+			dim = !on
+			if !on {
+				border = conn
+			}
+		} else if selected != "" && c.name != selected {
 			border = conn
+			dim = true
 		}
 		if focusName != "" && c.name == focusName && c.name != selected {
 			border = accent
@@ -798,7 +903,7 @@ func (l *erdLayout) render(selected, focusName string) *gcanvas {
 		// in a focused ERD (whole-schema view has no root, so no icons). The
 		// icon column is reserved on all cards when focused so titles align.
 		showIcon := hasRoot && c.name != l.focus
-		canv.drawCard(c, border, selected != "" && c.name != selected, hlCols[c.name], showIcon, hasRoot)
+		canv.drawCard(c, border, dim, hlCols[c.name], showIcon, hasRoot)
 	}
 	return canv
 }
@@ -813,7 +918,7 @@ func renderGraphERD(tables []string, schemas map[string][]db.Column, pks map[str
 	if l == nil {
 		return nil, nil
 	}
-	return l.render("", ""), l.cards
+	return l.render("", "", erdPath{}), l.cards
 }
 
 // abs is a tiny local helper (math.Abs needs float conversion).

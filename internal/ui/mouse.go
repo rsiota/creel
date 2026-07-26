@@ -605,7 +605,7 @@ func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			now.Sub(m.lastERDClickTime) <= doubleClickInterval &&
 			m.lastERDClickCard == clicked.name {
 			// Double-click on a card → re-centre the viewport on it (and move the
-		// keyboard focus to it, matching a single click).
+			// keyboard focus to it, matching a single click).
 			m.lastERDClickTime = time.Time{}
 			m.erdPanel = m.erdPanel.setFocus(clicked.name)
 			m.erdPanel = m.erdPanel.centerOnCard(clicked)

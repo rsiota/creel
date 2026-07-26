@@ -707,8 +707,8 @@ func TestERDHighlightRender(t *testing.T) {
 		return ""
 	}
 
-	none := layout.render("", "")
-	sel := layout.render("orders", "")
+	none := layout.render("", "", erdPath{})
+	sel := layout.render("orders", "", erdPath{})
 
 	// No selection: every card vivid (primary border).
 	if fg := borderFg(none, orders); fg != string(colorPrimary) {
@@ -789,7 +789,7 @@ func TestERDHighlightArrowOnTop(t *testing.T) {
 
 	// Select orders: orders→users turns blue, posts→users stays grey. Both
 	// arrows paint the same cells at users' right edge, so blue must win there.
-	sel := layout.render("orders", "")
+	sel := layout.render("orders", "", erdPath{})
 
 	// The shared arrowhead (left-pointing, into users' right border).
 	headCount := 0
@@ -849,7 +849,7 @@ func TestERDFocusIconRender(t *testing.T) {
 
 	// Whole-schema view (no focus): no icons anywhere.
 	layout.focus = ""
-	whole := layout.render("", "")
+	whole := layout.render("", "", erdPath{})
 	for _, card := range layout.cards {
 		if g := iconAt(whole, card); g == erdFocusIcon {
 			t.Errorf("whole-schema: %s header has icon, want none", card.name)
@@ -858,7 +858,7 @@ func TestERDFocusIconRender(t *testing.T) {
 
 	// Focused on users: icon on orders & posts, not on the root users card.
 	layout.focus = "users"
-	foc := layout.render("", "")
+	foc := layout.render("", "", erdPath{})
 	users := cardByName(layout.cards, "users")
 	if g := iconAt(foc, users); g == erdFocusIcon {
 		t.Errorf("focus root users header has icon, want none")
@@ -998,7 +998,7 @@ func TestERDFocusAccent(t *testing.T) {
 	}
 
 	// Focus orders, nothing selected: orders accent, users primary.
-	c := layout.render("", "orders")
+	c := layout.render("", "orders", erdPath{})
 	if fg := borderFg(c, orders); fg != string(colorAccent) {
 		t.Errorf("focused orders border=%q want accent", fg)
 	}
@@ -1006,13 +1006,13 @@ func TestERDFocusAccent(t *testing.T) {
 		t.Errorf("non-focused users border=%q want primary", fg)
 	}
 	// Focus + select the same card: selection wins → primary.
-	c2 := layout.render("orders", "orders")
+	c2 := layout.render("orders", "orders", erdPath{})
 	if fg := borderFg(c2, orders); fg != string(colorPrimary) {
 		t.Errorf("selected+focused orders border=%q want primary (selection wins)", fg)
 	}
 	// Select users, focus orders (a different, dimmed card): orders stays accent
 	// so the cursor is visible even while dimmed; users is primary.
-	c3 := layout.render("users", "orders")
+	c3 := layout.render("users", "orders", erdPath{})
 	if fg := borderFg(c3, orders); fg != string(colorAccent) {
 		t.Errorf("focused-on-dimmed orders border=%q want accent", fg)
 	}
@@ -1051,7 +1051,7 @@ func TestERDKeyboardNav(t *testing.T) {
 
 	// j/k step through the column-1 stack (orders ↔ posts).
 	ep.focusName = "orders"
-	ep.graph = layout.render("", "orders")
+	ep.graph = layout.render("", "orders", erdPath{})
 	ep = ep.Update(key("j"))
 	if ep.focusName != "posts" {
 		t.Errorf("j from orders: focus=%q want posts", ep.focusName)
@@ -1099,7 +1099,7 @@ func TestERDKeyboardHighlight(t *testing.T) {
 		return fg
 	}
 	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "orders"}
-	ep.graph = layout.render("", "orders")
+	ep.graph = layout.render("", "orders", erdPath{})
 
 	ep = ep.Update(tea.KeyMsg{Type: tea.KeySpace})
 	if ep.selected != "orders" {
@@ -1179,7 +1179,7 @@ func TestERDToggleHighlight(t *testing.T) {
 	e := ERDPanel{width: 80, height: 24}
 	e.layout = layout
 	e.cards = layout.cards
-	e.graph = layout.render("", "")
+	e.graph = layout.render("", "", erdPath{})
 	orders := cardByName(layout.cards, "orders")
 	users := cardByName(layout.cards, "users")
 
@@ -1361,7 +1361,7 @@ func TestERDSearchJump(t *testing.T) {
 	layout := erdSearchFixture()
 	runes := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
 	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "users"}
-	ep.graph = layout.render("", "users")
+	ep.graph = layout.render("", "users", erdPath{})
 
 	ep = ep.Update(runes("/"))
 	if !ep.searching {
@@ -1405,7 +1405,7 @@ func TestERDSearchEscapeRestores(t *testing.T) {
 	layout := erdSearchFixture()
 	runes := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
 	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "users"}
-	ep.graph = layout.render("", "users")
+	ep.graph = layout.render("", "users", erdPath{})
 
 	ep = ep.Update(runes("/"))
 	for _, r := range "ord" {
@@ -1431,7 +1431,7 @@ func TestERDSearchBackspace(t *testing.T) {
 	layout := erdSearchFixture()
 	runes := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
 	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "users"}
-	ep.graph = layout.render("", "users")
+	ep.graph = layout.render("", "users", erdPath{})
 
 	ep = ep.Update(runes("/"))
 	for _, r := range "orders" {
@@ -1447,5 +1447,140 @@ func TestERDSearchBackspace(t *testing.T) {
 	}
 	if ep.focusName != "order_items" {
 		t.Errorf("after backspace: focus=%q want order_items (first match of 'order')", ep.focusName)
+	}
+}
+
+// erdPathFixture builds a 4-table layout with a 2-hop chain
+// users—orders—order_items plus a disconnected "logs" table, for FK
+// path-finding tests.
+func erdPathFixture() *erdLayout {
+	tables := []string{"users", "orders", "order_items", "logs"}
+	schemas := map[string][]db.Column{
+		"users":       {{Name: "id", Type: "int"}},
+		"orders":      {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+		"order_items": {{Name: "id", Type: "int"}, {Name: "order_id", Type: "int"}},
+		"logs":        {{Name: "id", Type: "int"}},
+	}
+	pks := map[string][]string{"users": {"id"}, "orders": {"id"}, "order_items": {"id"}, "logs": {"id"}}
+	fks := map[string][]db.ForeignKey{
+		"orders":      {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"order_items": {{Column: "order_id", RefTable: "orders", RefColumn: "id"}},
+	}
+	l := computeERDLayout(tables, schemas, pks, fks)
+	l.focus = ""
+	return l
+}
+
+// TestERDShortestPath covers the BFS: a 2-hop chain, its reverse, the same-table
+// and disconnected-table nil cases.
+func TestERDShortestPath(t *testing.T) {
+	layout := erdPathFixture()
+	join := func(p []string) string { return strings.Join(p, ",") }
+
+	if got := join(erdShortestPath(layout, "users", "order_items")); got != "users,orders,order_items" {
+		t.Errorf("users→order_items = %q want users,orders,order_items", got)
+	}
+	if got := join(erdShortestPath(layout, "order_items", "users")); got != "order_items,orders,users" {
+		t.Errorf("order_items→users = %q want order_items,orders,users", got)
+	}
+	if erdShortestPath(layout, "users", "users") != nil {
+		t.Error("same-table path should be nil")
+	}
+	if erdShortestPath(layout, "users", "logs") != nil {
+		t.Error("users→logs (disconnected) should be nil")
+	}
+}
+
+// TestERDPathToggle covers the three-state "p" cycle: anchor → trace → clear.
+func TestERDPathToggle(t *testing.T) {
+	layout := erdPathFixture()
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "users"}
+	ep.graph = ep.renderedGraph()
+
+	// 1st p: anchor the focused card (users).
+	ep = ep.Update(key("p"))
+	if ep.pathFrom != "users" || len(ep.pathCards) != 0 {
+		t.Errorf("anchor: pathFrom=%q pathCards=%v want users/[]", ep.pathFrom, ep.pathCards)
+	}
+
+	// Move focus to the target and trace.
+	ep.focusName = "order_items"
+	ep = ep.Update(key("p"))
+	if got := strings.Join(ep.pathCards, ","); got != "users,orders,order_items" {
+		t.Errorf("trace: pathCards=%v want [users orders order_items]", ep.pathCards)
+	}
+
+	// 3rd p: clear back to idle.
+	ep = ep.Update(key("p"))
+	if ep.pathFrom != "" || len(ep.pathCards) != 0 {
+		t.Errorf("clear: pathFrom=%q pathCards=%v want empty", ep.pathFrom, ep.pathCards)
+	}
+}
+
+// TestERDPathNoPath checks a trace to a disconnected target notes a no-path
+// message and leaves the anchor in place.
+func TestERDPathNoPath(t *testing.T) {
+	layout := erdPathFixture()
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "users"}
+	ep.graph = ep.renderedGraph()
+
+	ep = ep.togglePath() // anchor users
+	if ep.pathFrom != "users" {
+		t.Fatalf("anchor: pathFrom=%q want users", ep.pathFrom)
+	}
+	ep.focusName = "logs" // disconnected from users
+	ep = ep.togglePath()
+	if ep.pathMsg == "" {
+		t.Error("expected a no-path message")
+	}
+	if len(ep.pathCards) != 0 {
+		t.Errorf("should not have traced: pathCards=%v", ep.pathCards)
+	}
+	if ep.pathFrom != "users" {
+		t.Errorf("anchor should remain: pathFrom=%q want users", ep.pathFrom)
+	}
+}
+
+// TestERDPathRender checks a traced path keeps path cards vivid (primary) and
+// dims the rest (grey).
+func TestERDPathRender(t *testing.T) {
+	sp, sa, sg := colorPrimary, colorAccent, colorBorderUnfocused
+	colorPrimary, colorAccent, colorBorderUnfocused = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
+	defer func() { colorPrimary, colorAccent, colorBorderUnfocused = sp, sa, sg }()
+
+	layout := erdPathFixture()
+	p := pathHighlight([]string{"users", "orders", "order_items"})
+	c := layout.render("", "", p)
+	users := cardByName(layout.cards, "users")
+	logs := cardByName(layout.cards, "logs") // off the path
+	borderFg := func(card *gcard) string {
+		_, fg, _ := cellGlyph(c.cells[card.y][card.x])
+		return fg
+	}
+	if fg := borderFg(users); fg != string(colorPrimary) {
+		t.Errorf("path card users border=%q want primary", fg)
+	}
+	if fg := borderFg(logs); fg != string(colorBorderUnfocused) {
+		t.Errorf("off-path card logs border=%q want grey", fg)
+	}
+}
+
+// TestERDPathClear checks clearPath resets all path state (used by esc).
+func TestERDPathClear(t *testing.T) {
+	layout := erdPathFixture()
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "users"}
+	ep.graph = ep.renderedGraph()
+
+	ep = ep.togglePath()
+	ep.focusName = "order_items"
+	ep = ep.togglePath()
+	if len(ep.pathCards) == 0 {
+		t.Fatal("precondition: path not traced")
+	}
+
+	ep = ep.clearPath()
+	if ep.pathFrom != "" || len(ep.pathCards) != 0 || ep.pathMsg != "" {
+		t.Errorf("clearPath left state: pathFrom=%q pathCards=%v msg=%q", ep.pathFrom, ep.pathCards, ep.pathMsg)
 	}
 }

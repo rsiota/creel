@@ -107,7 +107,8 @@ type RelExplorer struct {
 func NewRelExplorer() RelExplorer { return RelExplorer{} }
 
 func (e RelExplorer) IsVisible() bool { return e.visible }
-func (e RelExplorer) IsDocked() bool   { return e.docked }
+func (e RelExplorer) IsDocked() bool  { return e.docked }
+
 // ShowDocked reveals the explorer as a right-slot panel (non-modal,
 // cursor-driven).
 func (e *RelExplorer) ShowDocked() { e.visible = true; e.docked = true }
