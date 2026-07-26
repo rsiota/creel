@@ -100,6 +100,7 @@ func registry() []Section {
 				{"j/k/h/l", []string{"j", "k", "h", "l", "up", "down", "left", "right"}, "move focus between cards / scroll source", "j/k/h/l"},
 				{"space", []string{" "}, "highlight focused card's relations", "space"},
 				{"enter", []string{"enter"}, "re-focus on the focused card's neighbourhood", "enter"},
+				{"/", []string{"/"}, "jump to a table by name (tab cycles matches)", "/"},
 				{"m", []string{"m"}, "toggle Mermaid erDiagram source", "m"},
 				{"g / G", []string{"g", "G"}, "top / bottom of diagram", "g/G"},
 				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/u"},

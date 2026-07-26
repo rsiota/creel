@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -39,6 +40,15 @@ type ERDPanel struct {
 	cursor  int // for relative paging
 	width   int
 	height  int
+
+	// In-graph table search ("/" jump): typing filters the visible cards and
+	// focuses the first match (tab cycles further matches); enter keeps the
+	// focus, esc restores the pre-search focus. searchFocus snapshots focusName
+	// when search opens so esc can undo.
+	searching   bool
+	searchQuery string
+	searchFocus string
+	searchIndex int
 }
 
 func (e ERDPanel) IsVisible() bool { return e.visible }
@@ -115,13 +125,25 @@ func (e *ERDPanel) clampScroll() {
 	}
 }
 
-// The panel is frameless and fills the whole workspace, so the content area
-// is the full size (no border/padding overhead).
-func (e ERDPanel) contentHeight() int {
-	if e.height < 1 {
+// promptHeight is the number of rows reserved below the graph body for a
+// modal prompt (currently the "/" search bar). The body and all geometry
+// derived from contentHeight shrink by this so the prompt never overlaps the
+// diagram.
+func (e ERDPanel) promptHeight() int {
+	if e.searching {
 		return 1
 	}
-	return e.height
+	return 0
+}
+
+// The panel is frameless and fills the whole workspace, so the content area
+// is the full size minus any prompt row (no border/padding overhead).
+func (e ERDPanel) contentHeight() int {
+	h := e.height - e.promptHeight()
+	if h < 1 {
+		return 1
+	}
+	return h
 }
 
 func (e ERDPanel) contentWidth() int {
@@ -503,6 +525,11 @@ const (
 // toggles highlight on it, and g/G/ctrl+d/ctrl+u page the view; in the Mermaid
 // view j/k/g/G/ctrl+d/ctrl+u scroll the source lines.
 func (e ERDPanel) Update(msg tea.KeyMsg) ERDPanel {
+	// While the in-graph "/" search bar is open it consumes all keys (including
+	// esc/enter, which the app-level ERD block would otherwise grab).
+	if e.searching {
+		return e.updateSearch(msg)
+	}
 	if msg.String() == "m" {
 		e.merm = !e.merm
 		e.scrollX = 0
@@ -536,6 +563,8 @@ func (e ERDPanel) updateGraph(msg tea.KeyMsg) ERDPanel {
 		e = e.moveFocus(erdFocusRight)
 	case " ":
 		e = e.toggleHighlight(e.focusCard())
+	case "/":
+		e = e.startSearch()
 	case "g":
 		e.scrollY = 0
 	case "G":
@@ -571,6 +600,144 @@ func (e ERDPanel) pageGraph(delta int) ERDPanel {
 		e.scrollY = max
 	}
 	return e
+}
+
+// --- in-graph table search ("/" jump) -------------------------------------
+
+// startSearch opens the "/" jump bar, snapshotting the current focus so esc
+// can restore it.
+func (e ERDPanel) startSearch() ERDPanel {
+	e.searching = true
+	e.searchQuery = ""
+	e.searchFocus = e.focusName
+	e.searchIndex = 0
+	return e
+}
+
+// cancelSearch closes the jump bar and restores the pre-search focus.
+func (e ERDPanel) cancelSearch() ERDPanel {
+	e.searching = false
+	e.searchQuery = ""
+	e.searchIndex = 0
+	if e.searchFocus != "" {
+		e.focusName = e.searchFocus
+		e.searchFocus = ""
+		if c := e.cardNamed(e.focusName); c != nil {
+			e = e.centerOnCard(c)
+		}
+	}
+	e.graph = e.layout.render(e.selected, e.focusName)
+	return e
+}
+
+// searchMatches returns the cards whose names contain the query
+// (case-insensitive), in layout order.
+func (e ERDPanel) searchMatches() []*gcard {
+	if e.searchQuery == "" {
+		return nil
+	}
+	q := strings.ToLower(e.searchQuery)
+	var ms []*gcard
+	for _, c := range e.cards {
+		if strings.Contains(strings.ToLower(c.name), q) {
+			ms = append(ms, c)
+		}
+	}
+	return ms
+}
+
+// focusMatch points the keyboard focus at a card, centres it, and re-renders.
+func (e ERDPanel) focusMatch(c *gcard) ERDPanel {
+	e.focusName = c.name
+	e = e.centerOnCard(c)
+	e.graph = e.layout.render(e.selected, e.focusName)
+	return e
+}
+
+// applySearch re-runs the query against the cards and focuses the current
+// searchIndex match (clamped). With no match the focus is left where it is so
+// the view does not jump away on a transient typo.
+func (e ERDPanel) applySearch() ERDPanel {
+	ms := e.searchMatches()
+	if len(ms) == 0 {
+		e.graph = e.layout.render(e.selected, e.focusName)
+		return e
+	}
+	if e.searchIndex >= len(ms) {
+		e.searchIndex = 0
+	}
+	return e.focusMatch(ms[e.searchIndex])
+}
+
+// updateSearch handles keys while the "/" jump bar is open.
+func (e ERDPanel) updateSearch(msg tea.KeyMsg) ERDPanel {
+	switch msg.String() {
+	case "esc", "ctrl+c":
+		return e.cancelSearch()
+	case "enter":
+		// Confirm: keep the current focus, close the bar.
+		e.searching = false
+		e.searchQuery = ""
+		e.searchFocus = ""
+		e.searchIndex = 0
+		return e
+	case "backspace":
+		if len(e.searchQuery) > 0 {
+			e.searchQuery = e.searchQuery[:len(e.searchQuery)-1]
+			e.searchIndex = 0
+			e = e.applySearch()
+		}
+		return e
+	case "tab":
+		ms := e.searchMatches()
+		if len(ms) > 0 {
+			e.searchIndex = (e.searchIndex + 1) % len(ms)
+			return e.focusMatch(ms[e.searchIndex])
+		}
+		return e
+	case "shift+tab":
+		ms := e.searchMatches()
+		if len(ms) > 0 {
+			e.searchIndex = (e.searchIndex - 1 + len(ms)) % len(ms)
+			return e.focusMatch(ms[e.searchIndex])
+		}
+		return e
+	}
+	// Append a printable rune to the query.
+	if msg.Type == tea.KeyRunes && len(msg.Runes) > 0 && msg.Runes[0] >= 0x20 {
+		e.searchQuery += string(msg.Runes[0])
+		e.searchIndex = 0
+		e = e.applySearch()
+	}
+	return e
+}
+
+// searchPrompt renders the one-line "/" jump bar shown at the bottom of the
+// graph while a search is active.
+func (e ERDPanel) searchPrompt(width int) string {
+	q := e.searchQuery
+	var b strings.Builder
+	b.WriteString(lipgloss.NewStyle().Foreground(colorPrimary).Render("/"))
+	if q == "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorAccent).Underline(true).Render(" "))
+	} else {
+		ms := e.searchMatches()
+		qStyle := lipgloss.NewStyle().Foreground(colorPrimary)
+		if len(ms) == 0 {
+			qStyle = lipgloss.NewStyle().Foreground(colorError)
+		}
+		b.WriteString(qStyle.Render(q))
+		b.WriteString(lipgloss.NewStyle().Foreground(colorAccent).Underline(true).Render(" "))
+		switch len(ms) {
+		case 0:
+			b.WriteString(" " + mutedStyle.Render("(no match)"))
+		case 1:
+			// single match: no hint needed
+		default:
+			b.WriteString(" " + mutedStyle.Render(fmt.Sprintf("(%d matches, tab to cycle)", len(ms))))
+		}
+	}
+	return lipgloss.NewStyle().Width(width).Render(" " + b.String())
 }
 
 // updateMermaid handles keys in the Mermaid source view: j/k/g/G/ctrl+d/ctrl+u
@@ -711,7 +878,11 @@ func (e ERDPanel) View() string {
 		// diagram is smaller than the viewport Place centres it; when it fills
 		// or exceeds the viewport, Place is a no-op and scroll/pan applies.
 		body := e.graph.Window(e.scrollX, cw, e.scrollY, ch)
-		return lipgloss.Place(cw, ch, lipgloss.Center, lipgloss.Center, body)
+		body = lipgloss.Place(cw, ch, lipgloss.Center, lipgloss.Center, body)
+		if e.searching {
+			return lipgloss.JoinVertical(lipgloss.Left, body, e.searchPrompt(cw))
+		}
+		return body
 	}
 	return lipgloss.Place(cw, ch, lipgloss.Center, lipgloss.Center, mutedStyle.Render("(no tables)"))
 }

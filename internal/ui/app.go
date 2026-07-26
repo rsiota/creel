@@ -2634,23 +2634,27 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// ERD panel is modal — j/k scroll, y copy, s save, esc/q close.
 	if m.erdPanel.IsVisible() {
-		switch msg.String() {
-		case "esc", "q", "ctrl+c":
-			m.erdPanel.Hide()
-			return m, nil
-		case "y", "Y":
-			_ = clipboard.WriteAll(joinERDLines(m.erdPanel.MermaidLines()))
-			m.schemaMsg = "erd copied to clipboard"
-			return m, nil
-		case "s":
-			m.saveERDToFile("erd.mmd", m.erdPanel.MermaidLines())
-			return m, nil
-		case "enter":
-			// Re-focus the ERD on the keyboard-focused card's neighbourhood (a
-			// no-op when it is already the root). Lives on the model since it
-			// drives openERD; extracted as erdEnter so it can be tested directly.
-			nm, cmd := m.erdEnter()
-			return nm, cmd
+		// While the panel's "/" jump bar is open it consumes all keys
+		// (including esc/enter, which the app would otherwise grab).
+		if !m.erdPanel.searching {
+			switch msg.String() {
+			case "esc", "q", "ctrl+c":
+				m.erdPanel.Hide()
+				return m, nil
+			case "y", "Y":
+				_ = clipboard.WriteAll(joinERDLines(m.erdPanel.MermaidLines()))
+				m.schemaMsg = "erd copied to clipboard"
+				return m, nil
+			case "s":
+				m.saveERDToFile("erd.mmd", m.erdPanel.MermaidLines())
+				return m, nil
+			case "enter":
+				// Re-focus the ERD on the keyboard-focused card's neighbourhood (a
+				// no-op when it is already the root). Lives on the model since it
+				// drives openERD; extracted as erdEnter so it can be tested directly.
+				nm, cmd := m.erdEnter()
+				return nm, cmd
+			}
 		}
 		m.erdPanel = m.erdPanel.Update(msg)
 		return m, nil

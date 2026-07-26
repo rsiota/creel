@@ -1334,3 +1334,118 @@ func TestERDRegistrySection(t *testing.T) {
 		}
 	}
 }
+
+// erdSearchFixture builds a 3-table layout (users, orders, order_items) whose
+// names share substrings, for "/" jump-bar tests.
+func erdSearchFixture() *erdLayout {
+	tables := []string{"users", "orders", "order_items"}
+	schemas := map[string][]db.Column{
+		"users":       {{Name: "id", Type: "int"}},
+		"orders":      {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+		"order_items": {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+	}
+	pks := map[string][]string{"users": {"id"}, "orders": {"id"}, "order_items": {"id"}}
+	fks := map[string][]db.ForeignKey{
+		"orders":      {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"order_items": {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+	}
+	l := computeERDLayout(tables, schemas, pks, fks)
+	l.focus = ""
+	return l
+}
+
+// TestERDSearchJump covers the "/" jump bar: typing filters cards and focuses
+// the first match (alphabetical card order), tab cycles further matches and
+// wraps, enter confirms, and the prompt renders.
+func TestERDSearchJump(t *testing.T) {
+	layout := erdSearchFixture()
+	runes := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "users"}
+	ep.graph = layout.render("", "users")
+
+	ep = ep.Update(runes("/"))
+	if !ep.searching {
+		t.Fatal("'/' did not open the search bar")
+	}
+	for _, r := range "ord" {
+		ep = ep.Update(runes(string(r)))
+	}
+	// matches for "ord" (alphabetical): order_items, orders → first is order_items.
+	if ep.focusName != "order_items" {
+		t.Errorf("after 'ord': focus=%q want order_items", ep.focusName)
+	}
+	// The prompt line should be visible.
+	if !strings.Contains(ep.View(), "/") {
+		t.Error("search prompt not rendered in View")
+	}
+
+	// tab → next match (orders); tab again wraps to the first (order_items).
+	ep = ep.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if ep.focusName != "orders" {
+		t.Errorf("tab: focus=%q want orders", ep.focusName)
+	}
+	ep = ep.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if ep.focusName != "order_items" {
+		t.Errorf("tab wrap: focus=%q want order_items", ep.focusName)
+	}
+
+	// enter confirms: the bar closes and the focus is retained.
+	ep = ep.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if ep.searching {
+		t.Error("enter did not close the search bar")
+	}
+	if ep.focusName != "order_items" {
+		t.Errorf("enter: focus=%q want order_items (retained)", ep.focusName)
+	}
+}
+
+// TestERDSearchEscapeRestores checks esc cancels the search and restores the
+// pre-search focus.
+func TestERDSearchEscapeRestores(t *testing.T) {
+	layout := erdSearchFixture()
+	runes := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "users"}
+	ep.graph = layout.render("", "users")
+
+	ep = ep.Update(runes("/"))
+	for _, r := range "ord" {
+		ep = ep.Update(runes(string(r)))
+	}
+	if ep.focusName != "order_items" {
+		t.Fatalf("precondition: focus=%q want order_items", ep.focusName)
+	}
+
+	ep = ep.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if ep.searching {
+		t.Error("esc did not close the search bar")
+	}
+	if ep.focusName != "users" {
+		t.Errorf("esc: focus=%q want users (restored)", ep.focusName)
+	}
+}
+
+// TestERDSearchBackspace checks backspace shrinks the query and re-applies it:
+// "orders" matches only orders, then backspacing to "order" broadens to the
+// first match order_items.
+func TestERDSearchBackspace(t *testing.T) {
+	layout := erdSearchFixture()
+	runes := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "users"}
+	ep.graph = layout.render("", "users")
+
+	ep = ep.Update(runes("/"))
+	for _, r := range "orders" {
+		ep = ep.Update(runes(string(r)))
+	}
+	if ep.focusName != "orders" {
+		t.Fatalf("precondition: focus=%q want orders", ep.focusName)
+	}
+
+	ep = ep.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	if ep.searchQuery != "order" {
+		t.Errorf("backspace: query=%q want order", ep.searchQuery)
+	}
+	if ep.focusName != "order_items" {
+		t.Errorf("after backspace: focus=%q want order_items (first match of 'order')", ep.focusName)
+	}
+}
