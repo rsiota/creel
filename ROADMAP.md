@@ -280,6 +280,56 @@ columns with box-drawing arrows from each FK to the PK it references.
   dispatch, not just `case "x":` clauses.
   Tests: `internal/ui/erd_test.go`.
 
+**Interactivity tier ✅ DONE (2026-07-26):** the diagram is now fully
+navigable and explorable, not just scrollable.
+- Highlight/render: highlighted (selected) connection arrows render on top of
+  dimmed ones at shared cells (two-pass render, last-writer-wins colour); the
+  connected columns stay readable on dimmed cards.
+- Keyboard: `j`/`k`/`h`/`l` move a focus between cards (spatial
+  nearest-neighbour, viewport follows with minimal scroll), `Space` toggles
+  highlight, `Enter` re-focuses the ERD on the focused card's neighbourhood
+  (drill-in), `g`/`G`/`ctrl+d`/`ctrl+u` page. An accent border tracks the
+  keyboard cursor and stays visible even on dimmed cards.
+- Mouse: click a card to highlight, click a related table's header (marked `◎`)
+  to drill in, double-click to re-centre; the wheel scrolls/pans.
+- `/` jumps to a table by name (live match, `Tab` cycles, `Enter`/`Esc`
+  confirm/cancel) — a one-line prompt reserves a bottom row.
+- `p` traces the shortest FK path between two tables (BFS over the resolved
+  arrows): anchor the source, move to the target, `p` again; the path's cards
+  stay vivid and its edges turn primary while the rest dims, with the chain +
+  hop count on the status line. A third `p` or `Esc` clears it.
+- `render()` generalized from a single selected card to a vivid card/edge set
+  (`erdPath`); the panel centralizes painting in `renderedGraph()`. All ERD
+  keybindings are documented in the `?` help overlay (an "ERD" registry
+  section, drift-guarded) and the status-bar hints.
+- Files: `internal/ui/erd_graph.go`, `internal/ui/erd_panel.go`,
+  `internal/ui/erd.go`, `internal/ui/app.go`, `internal/ui/mouse.go`,
+  `internal/ui/hints.go`, `internal/ui/registry.go`.
+  Tests: `internal/ui/erd_test.go`.
+
+**Follow-ups still open (interactivity):**
+- **Drag-and-drop card positions.** Mechanically cheap — arrow routing is
+  recomputed in `render()` from live `*gcard` pointers, so a moved card
+  re-routes its arrows for free (no separate re-routing step). The hard parts
+  are the design fork and routing robustness: the router only knows three
+  relative arrangements (left-side / right-side / over-top) with **no general
+  obstacle-avoidance**, so *free-form* dragging can produce arrows that cross
+  card bodies. A safe MVP is *column-constrained* drag (reorder within a rank,
+  or nudge a card up/down its column), which preserves the routing invariants.
+  Also needs a persistence story — `openERD`/drill-in re-run
+  `computeERDLayout`, which would wipe manual positions unless stored as
+  per-table overrides — and a clear grab/drop interaction (TUI mouse is
+  cell-coarse; grab on header, drop on release, ghosted at the cursor).
+- **Collapse/expand cards** (`zc`/`zo` vim-style) — fold a card to header-only
+  to declutter dense schemas; pairs well with drag (collapsed cards are easier
+  to shove around). Medium effort.
+- **Fit-to-screen / zoom-to-fit** (`z`) — reset scroll so every card is
+  visible. Low-medium effort.
+- **Hover tooltips** (mouse-motion) — full column type/comments on hover.
+  Polish; mouse-motion events are chatty and need throttling. Medium effort.
+- **Mini-map** — a tiny overview with a viewport rectangle for very large
+  schemas. Medium-high effort.
+
 ### 12. Connection groups / folders ✅ DONE (2026-07-12)
 Connections carry an optional `group` field; the connection list renders
 collapsible folder headers (▾/▸) when any connection is grouped, and stays flat
