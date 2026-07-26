@@ -707,8 +707,8 @@ func TestERDHighlightRender(t *testing.T) {
 		return ""
 	}
 
-	none := layout.render("")
-	sel := layout.render("orders")
+	none := layout.render("", "")
+	sel := layout.render("orders", "")
 
 	// No selection: every card vivid (primary border).
 	if fg := borderFg(none, orders); fg != string(colorPrimary) {
@@ -789,7 +789,7 @@ func TestERDHighlightArrowOnTop(t *testing.T) {
 
 	// Select orders: orders→users turns blue, posts→users stays grey. Both
 	// arrows paint the same cells at users' right edge, so blue must win there.
-	sel := layout.render("orders")
+	sel := layout.render("orders", "")
 
 	// The shared arrowhead (left-pointing, into users' right border).
 	headCount := 0
@@ -849,7 +849,7 @@ func TestERDFocusIconRender(t *testing.T) {
 
 	// Whole-schema view (no focus): no icons anywhere.
 	layout.focus = ""
-	whole := layout.render("")
+	whole := layout.render("", "")
 	for _, card := range layout.cards {
 		if g := iconAt(whole, card); g == erdFocusIcon {
 			t.Errorf("whole-schema: %s header has icon, want none", card.name)
@@ -858,7 +858,7 @@ func TestERDFocusIconRender(t *testing.T) {
 
 	// Focused on users: icon on orders & posts, not on the root users card.
 	layout.focus = "users"
-	foc := layout.render("")
+	foc := layout.render("", "")
 	users := cardByName(layout.cards, "users")
 	if g := iconAt(foc, users); g == erdFocusIcon {
 		t.Errorf("focus root users header has icon, want none")
@@ -979,6 +979,193 @@ func TestERDDrillInClick(t *testing.T) {
 	}
 }
 
+// TestERDFocusAccent checks the keyboard-focus border colour: a focused card
+// is accent, a focused+selected card stays primary (selection outranks focus),
+// and a focused card on a dimmed diagram is still accent so the cursor stays
+// visible.
+func TestERDFocusAccent(t *testing.T) {
+	sp, sa, sg, sf := colorPrimary, colorAccent, colorBorderUnfocused, colorFg
+	colorPrimary, colorAccent, colorBorderUnfocused, colorFg = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3"), lipgloss.Color("7")
+	defer func() { colorPrimary, colorAccent, colorBorderUnfocused, colorFg = sp, sa, sg, sf }()
+
+	tables, schemas, pks, fks := erdFixture() // users, orders
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	users := cardByName(layout.cards, "users")
+	orders := cardByName(layout.cards, "orders")
+	borderFg := func(c *gcanvas, card *gcard) string {
+		_, fg, _ := cellGlyph(c.cells[card.y][card.x])
+		return fg
+	}
+
+	// Focus orders, nothing selected: orders accent, users primary.
+	c := layout.render("", "orders")
+	if fg := borderFg(c, orders); fg != string(colorAccent) {
+		t.Errorf("focused orders border=%q want accent", fg)
+	}
+	if fg := borderFg(c, users); fg != string(colorPrimary) {
+		t.Errorf("non-focused users border=%q want primary", fg)
+	}
+	// Focus + select the same card: selection wins → primary.
+	c2 := layout.render("orders", "orders")
+	if fg := borderFg(c2, orders); fg != string(colorPrimary) {
+		t.Errorf("selected+focused orders border=%q want primary (selection wins)", fg)
+	}
+	// Select users, focus orders (a different, dimmed card): orders stays accent
+	// so the cursor is visible even while dimmed; users is primary.
+	c3 := layout.render("users", "orders")
+	if fg := borderFg(c3, orders); fg != string(colorAccent) {
+		t.Errorf("focused-on-dimmed orders border=%q want accent", fg)
+	}
+	if fg := borderFg(c3, users); fg != string(colorPrimary) {
+		t.Errorf("selected users border=%q want primary", fg)
+	}
+}
+
+// TestERDKeyboardNav exercises spatial j/k/h/l focus movement: j/k step through
+// a column's stack and h/l move between rank columns.
+func TestERDKeyboardNav(t *testing.T) {
+	tables := []string{"users", "orders", "posts"}
+	schemas := map[string][]db.Column{
+		"users":  {{Name: "id", Type: "int"}},
+		"orders": {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+		"posts":  {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+	}
+	pks := map[string][]string{"users": {"id"}, "orders": {"id"}, "posts": {"id"}}
+	fks := map[string][]db.ForeignKey{
+		"orders": {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"posts":  {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+	}
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	layout.focus = "" // whole schema: every card is navigable
+	users := cardByName(layout.cards, "users")
+	orders := cardByName(layout.cards, "orders")
+	posts := cardByName(layout.cards, "posts")
+	if !(users.x < orders.x) {
+		t.Fatalf("users should be left of orders (users.x=%d orders.x=%d)", users.x, orders.x)
+	}
+	if !(orders.y < posts.y) {
+		t.Fatalf("orders should be above posts (orders.y=%d posts.y=%d)", orders.y, posts.y)
+	}
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24}
+
+	// j/k step through the column-1 stack (orders ↔ posts).
+	ep.focusName = "orders"
+	ep.graph = layout.render("", "orders")
+	ep = ep.Update(key("j"))
+	if ep.focusName != "posts" {
+		t.Errorf("j from orders: focus=%q want posts", ep.focusName)
+	}
+	ep = ep.Update(key("k"))
+	if ep.focusName != "orders" {
+		t.Errorf("k from posts: focus=%q want orders", ep.focusName)
+	}
+	// h from orders → users (the only card to the left).
+	ep = ep.Update(key("h"))
+	if ep.focusName != "users" {
+		t.Errorf("h from orders: focus=%q want users", ep.focusName)
+	}
+	// l from users → a column-1 card (orders or posts); h then returns to users.
+	ep = ep.Update(key("l"))
+	if ep.focusName != "orders" && ep.focusName != "posts" {
+		t.Errorf("l from users: focus=%q want orders or posts", ep.focusName)
+	}
+	col1 := ep.focusName
+	ep = ep.Update(key("h"))
+	if ep.focusName != "users" {
+		t.Errorf("h from %s: focus=%q want users", col1, ep.focusName)
+	}
+	// h from the leftmost card is a no-op.
+	ep = ep.Update(key("h"))
+	if ep.focusName != "users" {
+		t.Errorf("h from users: focus=%q want users (no card left)", ep.focusName)
+	}
+}
+
+// TestERDKeyboardHighlight checks Space toggles highlight on the focused card
+// (and that a selected+focused card renders primary, not accent).
+func TestERDKeyboardHighlight(t *testing.T) {
+	sp, sa, sg := colorPrimary, colorAccent, colorBorderUnfocused
+	colorPrimary, colorAccent, colorBorderUnfocused = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
+	defer func() { colorPrimary, colorAccent, colorBorderUnfocused = sp, sa, sg }()
+
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	layout.focus = ""
+	orders := cardByName(layout.cards, "orders")
+	users := cardByName(layout.cards, "users")
+	borderFg := func(c *gcanvas, card *gcard) string {
+		_, fg, _ := cellGlyph(c.cells[card.y][card.x])
+		return fg
+	}
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "orders"}
+	ep.graph = layout.render("", "orders")
+
+	ep = ep.Update(tea.KeyMsg{Type: tea.KeySpace})
+	if ep.selected != "orders" {
+		t.Fatalf("space: selected=%q want orders", ep.selected)
+	}
+	if ep.focusName != "orders" {
+		t.Errorf("space moved focus: %q", ep.focusName)
+	}
+	if fg := borderFg(ep.graph, orders); fg != string(colorPrimary) {
+		t.Errorf("selected+focused orders border=%q want primary", fg)
+	}
+	if fg := borderFg(ep.graph, users); fg != string(colorBorderUnfocused) {
+		t.Errorf("dimmed users border=%q want grey", fg)
+	}
+	// Space again clears the selection.
+	ep = ep.Update(tea.KeyMsg{Type: tea.KeySpace})
+	if ep.selected != "" {
+		t.Errorf("space again: selected=%q want empty", ep.selected)
+	}
+}
+
+// TestERDEnterDrillIn checks Enter re-focuses the ERD on the keyboard-focused
+// card's neighbourhood (through the model's key routing + openERD).
+func TestERDEnterDrillIn(t *testing.T) {
+	tables := []string{"users", "orders", "posts"}
+	schemas := map[string][]db.Column{
+		"users":  {{Name: "id", Type: "int"}, {Name: "name", Type: "text"}},
+		"orders": {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+		"posts":  {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+	}
+	pks := map[string][]string{"users": {"id"}, "orders": {"id"}, "posts": {"id"}}
+	fks := map[string][]db.ForeignKey{
+		"orders": {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"posts":  {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+	}
+	focusOf := func(ep ERDPanel) string {
+		if ep.layout != nil {
+			return ep.layout.focus
+		}
+		return ""
+	}
+	m := Model{
+		connection:  &db.Connection{},
+		tables:      tables,
+		columnCache: schemas,
+		pkCache:     pks,
+		fkCache:     fks,
+		width:       80,
+		height:      24,
+	}
+	// Open the whole-schema ERD, focus orders, and press Enter.
+	m.openERD("")
+	if !m.erdPanel.IsVisible() {
+		t.Fatal("openERD(\"\") did not show the panel")
+	}
+	m.erdPanel.focusName = "orders"
+	mm, _ := m.erdEnter()
+	got := mm.erdPanel
+	if focusOf(got) != "orders" {
+		t.Errorf("enter: layout focus=%q want orders", focusOf(got))
+	}
+	if got.cardNamed("orders") == nil {
+		t.Error("enter: orders card missing from re-focused ERD")
+	}
+}
+
 // TestERDToggleHighlight covers the select/switch/deselect/clear logic and that
 // each toggle re-renders the canvas: the selected card stays vivid (primary)
 // while the others dim to grey.
@@ -992,7 +1179,7 @@ func TestERDToggleHighlight(t *testing.T) {
 	e := ERDPanel{width: 80, height: 24}
 	e.layout = layout
 	e.cards = layout.cards
-	e.graph = layout.render("")
+	e.graph = layout.render("", "")
 	orders := cardByName(layout.cards, "orders")
 	users := cardByName(layout.cards, "users")
 

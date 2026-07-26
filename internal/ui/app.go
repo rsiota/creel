@@ -2645,6 +2645,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "s":
 			m.saveERDToFile("erd.mmd", m.erdPanel.MermaidLines())
 			return m, nil
+		case "enter":
+			// Re-focus the ERD on the keyboard-focused card's neighbourhood (a
+			// no-op when it is already the root). Lives on the model since it
+			// drives openERD; extracted as erdEnter so it can be tested directly.
+			nm, cmd := m.erdEnter()
+			return nm, cmd
 		}
 		m.erdPanel = m.erdPanel.Update(msg)
 		return m, nil

@@ -18,17 +18,21 @@ import (
 //     in GitHub/GitLab markdown) — toggle with `m`.
 //
 // `y`/`s` always copy/save the Mermaid source (the exportable text format);
-// the graph is for looking. j/k scroll, h/l pan horizontally (graph view),
-// g/G/ctrl+d/ctrl+u page, esc/q close.
+// the graph is for looking. In the graph view j/k/h/l move a keyboard focus
+// between table cards (the viewport follows), Space toggles highlight, Enter
+// re-focuses the ERD on the focused table, and g/G/ctrl+d/ctrl+u page the
+// view; in the Mermaid view j/k/g/G/ctrl+d/ctrl+u scroll the source. esc/q
+// close.
 type ERDPanel struct {
-	visible  bool
-	title    string
-	layout   *erdLayout // positioned blueprint; re-rendered on highlight change
-	graph    *gcanvas   // rendered canvas (layout.render(selected)); nil if no tables
-	cards    []*gcard   // laid-out cards (positions + PK/FK sets) for hit-testing
-	selected string     // highlighted table name ("" = none)
-	mermaid  []string   // Mermaid erDiagram source lines
-	merm     bool       // show Mermaid source instead of the graph
+	visible   bool
+	title     string
+	layout    *erdLayout // positioned blueprint; re-rendered on highlight change
+	graph     *gcanvas   // rendered canvas (layout.render(selected, focusName)); nil if no tables
+	cards     []*gcard   // laid-out cards (positions + PK/FK sets) for hit-testing
+	selected  string     // highlighted table name ("" = none)
+	focusName string     // keyboard-focused card name ("" = none); shown with an accent border
+	mermaid   []string   // Mermaid erDiagram source lines
+	merm      bool       // show Mermaid source instead of the graph
 
 	scrollY int // top visible row
 	scrollX int // left visible column (graph view only)
@@ -48,10 +52,12 @@ func (e *ERDPanel) Show(title string, layout *erdLayout, mermaid []string) {
 	e.selected = ""
 	if layout != nil {
 		e.cards = layout.cards
-		e.graph = layout.render("")
+		e.focusName = e.initialFocus()
+		e.graph = layout.render("", e.focusName)
 	} else {
 		e.cards = nil
 		e.graph = nil
+		e.focusName = ""
 	}
 	e.mermaid = mermaid
 	e.merm = false
@@ -203,9 +209,125 @@ func (e ERDPanel) cardNamed(name string) *gcard {
 	return nil
 }
 
+// focusCard returns the currently keyboard-focused card, or nil.
+func (e ERDPanel) focusCard() *gcard { return e.cardNamed(e.focusName) }
+
+// isDrillTarget reports whether c offers the drill-in action: a non-root card
+// in a focused ERD. Shared by the header click (drillInCard) and Enter.
+func (e ERDPanel) isDrillTarget(c *gcard) bool {
+	return e.layout != nil && e.layout.focus != "" && c != nil && c.name != e.layout.focus
+}
+
+// initialFocusCard is where the keyboard focus lands when the panel opens: the
+// ERD's focus root when there is one, otherwise the top-most then left-most
+// card. initialFocus is its name ("" if no cards).
+func (e ERDPanel) initialFocusCard() *gcard {
+	if e.layout != nil && e.layout.focus != "" {
+		if c := e.cardNamed(e.layout.focus); c != nil {
+			return c
+		}
+	}
+	var pick *gcard
+	for _, c := range e.cards {
+		if c == nil {
+			continue
+		}
+		if pick == nil || c.y < pick.y || (c.y == pick.y && c.x < pick.x) {
+			pick = c
+		}
+	}
+	return pick
+}
+
+func (e ERDPanel) initialFocus() string {
+	if c := e.initialFocusCard(); c != nil {
+		return c.name
+	}
+	return ""
+}
+
+// setFocus moves the keyboard focus to name and re-renders so the accent border
+// follows. Used to keep the focus in sync with a mouse click.
+func (e ERDPanel) setFocus(name string) ERDPanel {
+	e.focusName = name
+	if e.layout != nil {
+		e.graph = e.layout.render(e.selected, e.focusName)
+	}
+	return e
+}
+
+// ensureVisible scrolls the minimal amount to bring card fully into view (a
+// no-op when the graph already fits the viewport, since scroll stays clamped at
+// 0). Gentler than centerOnCard for step-by-step keyboard navigation.
+func (e ERDPanel) ensureVisible(c *gcard) ERDPanel {
+	if c == nil || e.graph == nil {
+		return e
+	}
+	cw, ch := e.contentWidth(), e.contentHeight()
+	maxX := e.graph.w - cw
+	if maxX < 0 {
+		maxX = 0
+	}
+	maxY := e.graph.h - ch
+	if maxY < 0 {
+		maxY = 0
+	}
+	if c.x < e.scrollX {
+		e.scrollX = c.x
+	}
+	if c.x+c.w > e.scrollX+cw {
+		e.scrollX = c.x + c.w - cw
+	}
+	if c.y < e.scrollY {
+		e.scrollY = c.y
+	}
+	if c.y+c.h > e.scrollY+ch {
+		e.scrollY = c.y + c.h - ch
+	}
+	if e.scrollX > maxX {
+		e.scrollX = maxX
+	}
+	if e.scrollX < 0 {
+		e.scrollX = 0
+	}
+	if e.scrollY > maxY {
+		e.scrollY = maxY
+	}
+	if e.scrollY < 0 {
+		e.scrollY = 0
+	}
+	return e
+}
+
+// moveFocus moves the keyboard focus one card in the given direction (spatial
+// nearest-neighbour via erdNearestCard), scrolls the new card into view, and
+// re-renders. With no current focus it lands on the initial card first.
+func (e ERDPanel) moveFocus(dir int) ERDPanel {
+	if e.layout == nil || len(e.cards) == 0 {
+		return e
+	}
+	cur := e.focusCard()
+	if cur == nil {
+		cur = e.initialFocusCard()
+		if cur == nil {
+			return e
+		}
+	} else {
+		next := erdNearestCard(e.cards, cur, dir)
+		if next == nil {
+			return e // no card in that direction
+		}
+		cur = next
+	}
+	e.focusName = cur.name
+	e = e.ensureVisible(cur)
+	e.graph = e.layout.render(e.selected, e.focusName)
+	return e
+}
+
 // drillInCard returns the card whose header row covers canvas cell (cx, cy)
 // when that header offers a drill-in action — a non-root card in a focused ERD
-// — or nil. The whole title row is the click target (the ⤢ glyph is just the
+// — or nil. The whole title row is the click target (the ◎ glyph is just the
 // visual cue), giving a large, easy-to-hit area; the root card and the
 // whole-schema view have no drill-in, so clicks there fall through to
 // highlight/recentre as before.
@@ -214,7 +336,7 @@ func (e ERDPanel) drillInCard(cx, cy int) *gcard {
 		return nil
 	}
 	for _, c := range e.cards {
-		if c == nil || c.name == e.layout.focus {
+		if c == nil || !e.isDrillTarget(c) {
 			continue
 		}
 		if cy == c.y+1 && cx >= c.x && cx < c.x+c.w {
@@ -337,7 +459,8 @@ func (e ERDPanel) centerOnCard(c *gcard) ERDPanel {
 
 // toggleHighlight selects (or deselects) a card, re-rendering the canvas so the
 // card's border and its FK arrows pick up the accent colour. Clicking the
-// already-selected card, or nil (empty space), clears the selection.
+// already-selected card, or nil (empty space), clears the selection. The
+// keyboard focus follows the clicked card so the two stay in sync.
 func (e ERDPanel) toggleHighlight(c *gcard) ERDPanel {
 	switch {
 	case c == nil:
@@ -347,8 +470,11 @@ func (e ERDPanel) toggleHighlight(c *gcard) ERDPanel {
 	default:
 		e.selected = c.name
 	}
+	if c != nil {
+		e.focusName = c.name
+	}
 	if e.layout != nil {
-		e.graph = e.layout.render(e.selected)
+		e.graph = e.layout.render(e.selected, e.focusName)
 	}
 	return e
 }
@@ -364,8 +490,92 @@ func (e ERDPanel) lineCount() int {
 	return 1
 }
 
-// Update handles scroll/pan/toggle keys, returning the updated panel.
+// erdFocus directions for keyboard navigation between cards.
+const (
+	erdFocusUp = iota
+	erdFocusDown
+	erdFocusLeft
+	erdFocusRight
+)
+
+// Update routes keys to the active view. `m` toggles Mermaid; in the graph view
+// j/k/h/l move the keyboard focus between cards (viewport follows), Space
+// toggles highlight on it, and g/G/ctrl+d/ctrl+u page the view; in the Mermaid
+// view j/k/g/G/ctrl+d/ctrl+u scroll the source lines.
 func (e ERDPanel) Update(msg tea.KeyMsg) ERDPanel {
+	if msg.String() == "m" {
+		e.merm = !e.merm
+		e.scrollX = 0
+		e.cursor = 0
+		e.scrollY = 0
+		return e
+	}
+	if e.merm {
+		return e.updateMermaid(msg)
+	}
+	if e.graph != nil {
+		return e.updateGraph(msg)
+	}
+	return e
+}
+
+// updateGraph handles keys in the graph view: j/k/h/l focus the nearest card in
+// that direction, Space toggles highlight on the focused card, and g/G and
+// ctrl+d/ctrl+u page the viewport (the focus stays put and the next j/k/h/l
+// pulls it back into view).
+func (e ERDPanel) updateGraph(msg tea.KeyMsg) ERDPanel {
+	vh := e.contentHeight()
+	switch msg.String() {
+	case "j", "down":
+		e = e.moveFocus(erdFocusDown)
+	case "k", "up":
+		e = e.moveFocus(erdFocusUp)
+	case "h", "left":
+		e = e.moveFocus(erdFocusLeft)
+	case "l", "right":
+		e = e.moveFocus(erdFocusRight)
+	case " ":
+		e = e.toggleHighlight(e.focusCard())
+	case "g":
+		e.scrollY = 0
+	case "G":
+		if e.graph != nil {
+			max := e.graph.h - vh
+			if max < 0 {
+				max = 0
+			}
+			e.scrollY = max
+		}
+	case "ctrl+d":
+		e = e.pageGraph(vh / 2)
+	case "ctrl+u":
+		e = e.pageGraph(-vh / 2)
+	}
+	return e
+}
+
+// pageGraph scrolls the graph viewport by delta rows, clamped to the diagram.
+func (e ERDPanel) pageGraph(delta int) ERDPanel {
+	if e.graph == nil {
+		return e
+	}
+	max := e.graph.h - e.contentHeight()
+	if max < 0 {
+		max = 0
+	}
+	e.scrollY += delta
+	if e.scrollY < 0 {
+		e.scrollY = 0
+	}
+	if e.scrollY > max {
+		e.scrollY = max
+	}
+	return e
+}
+
+// updateMermaid handles keys in the Mermaid source view: j/k/g/G/ctrl+d/ctrl+u
+// move a row cursor that drives the scroll, matching the original behaviour.
+func (e ERDPanel) updateMermaid(msg tea.KeyMsg) ERDPanel {
 	n := e.lineCount()
 	vh := e.contentHeight()
 	if vh < 1 {
@@ -394,32 +604,58 @@ func (e ERDPanel) Update(msg tea.KeyMsg) ERDPanel {
 		if e.cursor < 0 {
 			e.cursor = 0
 		}
-	case "h", "left":
-		if !e.merm && e.graph != nil {
-			e.scrollX -= e.contentWidth() / 2
-			if e.scrollX < 0 {
-				e.scrollX = 0
-			}
-		}
-	case "l", "right":
-		if !e.merm && e.graph != nil {
-			max := e.graph.w - e.contentWidth()
-			if max < 0 {
-				max = 0
-			}
-			e.scrollX += e.contentWidth() / 2
-			if e.scrollX > max {
-				e.scrollX = max
-			}
-		}
-	case "m":
-		e.merm = !e.merm
-		e.scrollX = 0
-		e.cursor = 0
-		e.scrollY = 0
 	}
 	e.adjustScroll(vh)
 	return e
+}
+
+// erdNearestCard returns the card nearest to from in the given direction, or
+// nil. Down/Up consider cards whose vertical centre is strictly below/above;
+// Left/Right those whose horizontal centre is strictly left/right. Within that
+// half-plane the nearest is chosen by perpendicular distance first (so within a
+// column j/k steps through the stack and h/l jumps to the neighbouring rank
+// column), then by distance along the motion axis.
+func erdNearestCard(cards []*gcard, from *gcard, dir int) *gcard {
+	fx := from.x + from.w/2
+	fy := from.y + from.h/2
+	var best *gcard
+	bestPerp, bestAlong := 0, 0
+	for _, c := range cards {
+		if c == nil || c == from {
+			continue
+		}
+		cx := c.x + c.w/2
+		cy := c.y + c.h/2
+		var along, perp int
+		switch dir {
+		case erdFocusDown:
+			if cy <= fy {
+				continue
+			}
+			along, perp = cy-fy, abs(fx-cx)
+		case erdFocusUp:
+			if cy >= fy {
+				continue
+			}
+			along, perp = fy-cy, abs(fx-cx)
+		case erdFocusRight:
+			if cx <= fx {
+				continue
+			}
+			along, perp = cx-fx, abs(fy-cy)
+		case erdFocusLeft:
+			if cx >= fx {
+				continue
+			}
+			along, perp = fx-cx, abs(fy-cy)
+		default:
+			continue
+		}
+		if best == nil || perp < bestPerp || (perp == bestPerp && along < bestAlong) {
+			best, bestPerp, bestAlong = c, perp, along
+		}
+	}
+	return best
 }
 
 func (e *ERDPanel) adjustScroll(vh int) {

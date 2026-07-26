@@ -447,12 +447,17 @@ func placeCards(cards map[string]*gcard, order []string, rank map[string]int, ma
 // title, separator, names, markers, and types — is drawn in the arrow grey so
 // a non-selected card fades out behind the focused one; columns listed in
 // hlCols (the arrow endpoints touching the selection) override the dim, with
-// marker/name in the foreground and type in primary.
+// marker/name in the foreground and type in primary. The border colour itself
+// is the caller's fg (render picks accent for the keyboard focus, grey for a
+// dimmed card, primary otherwise) — dim only fades the interior (title text,
+// separator, columns), so a focused card keeps its accent border even while
+// dimmed.
 func (c *gcanvas) drawCard(g *gcard, fg string, dim bool, hlCols map[string]bool, showIcon, reserveIcon bool) {
 	grey := string(colorBorderUnfocused)
-	border, text, sep, typeC := fg, "", string(colorMuted), string(colorMuted)
+	border := fg
+	text, sep, typeC := "", string(colorMuted), string(colorMuted)
 	if dim {
-		border, text, sep, typeC = grey, grey, grey, grey
+		text, sep, typeC = grey, grey, grey
 	}
 	// Top border (plain — the title sits on its own row below it).
 	c.setCh(g.x, g.y, '╭', border, false)
@@ -737,11 +742,14 @@ func addCol(m map[string]map[string]bool, card, col string) {
 // of those arrows (on the dimmed cards) stay readable — marker/name in the
 // foreground, type in primary — so each relationship is legible against the
 // fade. The layout is colour-agnostic, so this re-paints cheaply on every
-// selection change.
-func (l *erdLayout) render(selected string) *gcanvas {
+// selection change. focusName is the keyboard-focused card ("" = none); its
+// border is drawn in the accent colour so the cursor stays visible — even on a
+// dimmed card — without dimming or recolouring anything else.
+func (l *erdLayout) render(selected, focusName string) *gcanvas {
 	canv := newGcanvas(l.canvasW, l.canvasH)
 	conn := string(colorBorderUnfocused)
 	cardFg := string(colorPrimary)
+	accent := string(colorAccent)
 	// Columns on dimmed cards that connect to the selection: the far endpoints
 	// of every arrow touching it (the parent's PK when the selection is the
 	// child, the child's FK when the selection is the parent).
@@ -774,13 +782,23 @@ func (l *erdLayout) render(selected string) *gcanvas {
 		}
 		canv.drawArrowRouted(a, cardFg)
 	}
-	focused := l.focus != ""
+	hasRoot := l.focus != ""
 	for _, c := range l.cards {
+		// Border colour: accent for the keyboard-focused card (always visible,
+		// even dimmed), else grey when another card is selected, else primary.
+		// The selected card itself stays primary — selection outranks focus.
+		border := cardFg
+		if selected != "" && c.name != selected {
+			border = conn
+		}
+		if focusName != "" && c.name == focusName && c.name != selected {
+			border = accent
+		}
 		// The drill-in glyph shows on every card except the focus root, and only
 		// in a focused ERD (whole-schema view has no root, so no icons). The
 		// icon column is reserved on all cards when focused so titles align.
-		showIcon := focused && c.name != l.focus
-		canv.drawCard(c, cardFg, selected != "" && c.name != selected, hlCols[c.name], showIcon, focused)
+		showIcon := hasRoot && c.name != l.focus
+		canv.drawCard(c, border, selected != "" && c.name != selected, hlCols[c.name], showIcon, hasRoot)
 	}
 	return canv
 }
@@ -795,7 +813,7 @@ func renderGraphERD(tables []string, schemas map[string][]db.Column, pks map[str
 	if l == nil {
 		return nil, nil
 	}
-	return l.render(""), l.cards
+	return l.render("", ""), l.cards
 }
 
 // abs is a tiny local helper (math.Abs needs float conversion).

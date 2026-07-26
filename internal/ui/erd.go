@@ -189,6 +189,26 @@ func (m *Model) openERD(focus string) tea.Cmd {
 	return nil
 }
 
+// erdEnter is the ERD panel's Enter-key action: re-focus the ERD on the
+// keyboard-focused card's neighbourhood (openERD on that table), centring on
+// the new root. It is a no-op when there is no focused card or it is already
+// the root. Extracted from the model's key routing so it can be exercised
+// directly without the full connection/Update path.
+func (m Model) erdEnter() (Model, tea.Cmd) {
+	c := m.erdPanel.focusCard()
+	if c == nil {
+		return m, nil
+	}
+	if m.erdPanel.layout != nil && m.erdPanel.layout.focus == c.name {
+		return m, nil // already the root
+	}
+	cmd := m.openERD(c.name)
+	if root := m.erdPanel.cardNamed(m.erdPanel.layout.focus); root != nil {
+		m.erdPanel = m.erdPanel.centerOnCard(root)
+	}
+	return m, cmd
+}
+
 // exERD is the `:erd` command: bare draws the whole schema, `:erd <table>`
 // draws the table + its FK neighbours, and `:erd save [file]` writes the
 // whole-schema diagram to a file without opening the panel.
