@@ -114,6 +114,10 @@ func (c *gcanvas) putText(x, y int, s, fg string, bold bool) {
 
 // hline/vline mark connection masks (and a colour) for orthogonal segments;
 // the glyph is derived at emit time so overlapping segments merge into tees/crosses.
+// Colour precedence is last-writer-wins: render() paints the dimmed (grey)
+// arrows before the highlighted (blue) ones, so where two arrows share a cell
+// the highlighted connector's colour ends up on top instead of being buried
+// under a crossing grey line.
 // fillBg paints a background colour across [x1,x2] on row y without touching
 // any cell's glyph/fg — used for subtle row tints like the card header. Safe to
 // call before drawing text/borders: setCh/putText preserve an existing bg.
@@ -139,9 +143,7 @@ func (c *gcanvas) hline(x1, x2, y int, fg string) {
 		if x < x2 {
 			c.cells[y][x].con |= erdRight
 		}
-		if c.cells[y][x].fg == "" {
-			c.cells[y][x].fg = fg
-		}
+		c.cells[y][x].fg = fg
 	}
 }
 
@@ -159,9 +161,7 @@ func (c *gcanvas) vline(x, y1, y2 int, fg string) {
 		if y < y2 {
 			c.cells[y][x].con |= erdDown
 		}
-		if c.cells[y][x].fg == "" {
-			c.cells[y][x].fg = fg
-		}
+		c.cells[y][x].fg = fg
 	}
 }
 
@@ -739,13 +739,22 @@ func (l *erdLayout) render(selected string) *gcanvas {
 		}
 	}
 	// Arrows first (so cards paint over any shared edge cell); arrowheads live
-	// in gutters/margins and never under cards.
+	// in gutters/margins and never under cards. The dimmed (grey) arrows are
+	// painted before the highlighted (blue) ones touching the selection: where
+	// two arrows share a cell the later pass wins (see hline/vline), so a
+	// highlighted connector always renders on top instead of being buried under
+	// a crossing grey arrow.
 	for _, a := range l.arrows {
-		fg := conn
 		if selected != "" && (a.child.name == selected || a.parent.name == selected) {
-			fg = cardFg // touching the selection → blue
+			continue // highlighted arrows are painted last, on top
 		}
-		canv.drawArrowRouted(a, fg)
+		canv.drawArrowRouted(a, conn)
+	}
+	for _, a := range l.arrows {
+		if selected == "" || !(a.child.name == selected || a.parent.name == selected) {
+			continue
+		}
+		canv.drawArrowRouted(a, cardFg)
 	}
 	for _, c := range l.cards {
 		canv.drawCard(c, cardFg, selected != "" && c.name != selected, hlCols[c.name])

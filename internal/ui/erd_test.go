@@ -757,6 +757,72 @@ func TestERDHighlightRender(t *testing.T) {
 	}
 }
 
+// TestERDHighlightArrowOnTop verifies that a highlighted (blue) connector is
+// never buried under a dimmed (grey) one where the two share canvas cells.
+// Two tables both referencing the same parent draw arrows whose arrowhead and
+// vertical riser land on the exact same cells; selecting just one child must
+// leave those shared cells blue (the selected relationship) rather than grey
+// (the unselected one), regardless of arrow draw order.
+func TestERDHighlightArrowOnTop(t *testing.T) {
+	sp, sa, sg, sf := colorPrimary, colorAccent, colorBorderUnfocused, colorFg
+	colorPrimary, colorAccent, colorBorderUnfocused, colorFg = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3"), lipgloss.Color("7")
+	defer func() { colorPrimary, colorAccent, colorBorderUnfocused, colorFg = sp, sa, sg, sf }()
+
+	// orders and posts both reference users → their FK arrows share the
+	// arrowhead cell at users' right edge and the vertical riser beside it.
+	tables := []string{"users", "orders", "posts"}
+	schemas := map[string][]db.Column{
+		"users":  {{Name: "id", Type: "int"}, {Name: "name", Type: "text"}},
+		"orders": {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+		"posts":  {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+	}
+	pks := map[string][]string{"users": {"id"}, "orders": {"id"}, "posts": {"id"}}
+	fks := map[string][]db.ForeignKey{
+		"orders": {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"posts":  {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+	}
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	if layout == nil {
+		t.Fatal("expected a layout")
+	}
+	users := cardByName(layout.cards, "users")
+
+	// Select orders: orders→users turns blue, posts→users stays grey. Both
+	// arrows paint the same cells at users' right edge, so blue must win there.
+	sel := layout.render("orders")
+
+	// The shared arrowhead (left-pointing, into users' right border).
+	headCount := 0
+	var headFg string
+	for y := 0; y < sel.h; y++ {
+		for x := 0; x < sel.w; x++ {
+			if g, fg, _ := cellGlyph(sel.cells[y][x]); g == arrowheadL() {
+				headFg = fg
+				headCount++
+			}
+		}
+	}
+	if headCount != 1 {
+		t.Fatalf("expected one shared left arrowhead, found %d", headCount)
+	}
+	if headFg != string(colorPrimary) {
+		t.Errorf("shared arrowhead fg=%q want primary (blue) — highlight buried under grey arrow", headFg)
+	}
+
+	// The shared vertical-riser bend just outside users' right border (vertX,
+	// parent PK row): both arrows draw a line through it, so it must be blue.
+	if users != nil {
+		py := users.colRowY("id")
+		vertX := users.x + users.w + 1
+		if sel.inBounds(vertX, py) {
+			_, bendFg, _ := cellGlyph(sel.cells[py][vertX])
+			if bendFg != string(colorPrimary) {
+				t.Errorf("shared riser cell fg=%q want primary (blue) — highlight line buried under grey", bendFg)
+			}
+		}
+	}
+}
+
 // TestERDToggleHighlight covers the select/switch/deselect/clear logic and that
 // each toggle re-renders the canvas: the selected card stays vivid (primary)
 // while the others dim to grey.
