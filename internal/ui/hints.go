@@ -48,6 +48,13 @@ func (m Model) hintList() []string {
 		return []string{"j/k", "esc"}
 	case m.lookupPanel.IsVisible():
 		return []string{"j/k", "esc"}
+	case m.erdPanel.IsVisible():
+		// Graph view shows the spatial-nav keys (j/k/h/l, space, enter); the
+		// Mermaid source view only scrolls with j/k, so its hint set is smaller.
+		if m.erdPanel.merm {
+			return []string{"j/k", "enter", "m", "g/G", "ctrl+d/u", "y", "esc"}
+		}
+		return []string{"j/k/h/l", "space", "enter", "m", "g/G", "ctrl+d/u", "y", "esc"}
 	case m.explorer.IsVisible():
 		return []string{"j/k", "enter", "r", "esc"}
 	case m.providerPicker.IsVisible():

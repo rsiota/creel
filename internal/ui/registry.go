@@ -93,6 +93,21 @@ func registry() []Section {
 			},
 		},
 		{
+			Title:  "ERD",
+			Source: "app.go erd_panel.go",
+			Items: []Binding{
+				{"esc / q / ctrl+c", []string{"esc", "q", "ctrl+c"}, "close ERD panel", "esc"},
+				{"j/k/h/l", []string{"j", "k", "h", "l", "up", "down", "left", "right"}, "move focus between cards / scroll source", "j/k/h/l"},
+				{"space", []string{" "}, "highlight focused card's relations", "space"},
+				{"enter", []string{"enter"}, "re-focus on the focused card's neighbourhood", "enter"},
+				{"m", []string{"m"}, "toggle Mermaid erDiagram source", "m"},
+				{"g / G", []string{"g", "G"}, "top / bottom of diagram", "g/G"},
+				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/u"},
+				{"y", []string{"y", "Y"}, "copy Mermaid source to clipboard", "y"},
+				{"s", []string{"s"}, "save Mermaid source to file", "s"},
+			},
+		},
+		{
 			Title:  "Schema Editor",
 			Source: "schema_editor.go app.go",
 			Items: []Binding{

@@ -954,8 +954,8 @@ func TestERDDrillInClick(t *testing.T) {
 	_, _, offX, offY := m.erdPanel.placedBounds()
 	// A column-row cell of orders is the card body, not the header: it toggles
 	// highlight without changing the focus.
-	bodySX := orders.x+3 - m.erdPanel.scrollX + offX
-	bodySY := orders.y+3 - m.erdPanel.scrollY + offY
+	bodySX := orders.x + 3 - m.erdPanel.scrollX + offX
+	bodySY := orders.y + 3 - m.erdPanel.scrollY + offY
 	mb, _ := m.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, X: bodySX, Y: bodySY})
 	pb := mb.(Model).erdPanel
 	if focusOf(pb) != "users" {
@@ -967,8 +967,8 @@ func TestERDDrillInClick(t *testing.T) {
 
 	// Any header cell of orders (here the title area, well clear of the glyph)
 	// re-focuses the ERD on orders.
-	headSX := orders.x+2 - m.erdPanel.scrollX + offX
-	headSY := orders.y+1 - m.erdPanel.scrollY + offY
+	headSX := orders.x + 2 - m.erdPanel.scrollX + offX
+	headSY := orders.y + 1 - m.erdPanel.scrollY + offY
 	mi, _ := m.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, X: headSX, Y: headSY})
 	pi := mi.(Model).erdPanel
 	if focusOf(pi) != "orders" {
@@ -1272,5 +1272,65 @@ func TestERDClickViaUpdateSizesPanel(t *testing.T) {
 	}
 	if cw := got.contentWidth(); cw != 120 {
 		t.Errorf("persistent panel width after click = %d, want 120", cw)
+	}
+}
+
+// TestERDHintsOnStatusBar checks the ERD panel advertises its keybindings on
+// the status bar: the graph view shows the spatial-nav keys (j/k/h/l, space,
+// enter) while the Mermaid source view drops the graph-only keys.
+func TestERDHintsOnStatusBar(t *testing.T) {
+	m := Model{state: stateWorkspace}
+	m.erdPanel.visible = true
+
+	graph := strings.Join(m.hintList(), " ")
+	for _, want := range []string{"j/k/h/l", "space", "enter", "m", "g/G", "ctrl+d/u", "y", "esc"} {
+		if !strings.Contains(graph, want) {
+			t.Errorf("graph hints missing %q: got %v", want, m.hintList())
+		}
+	}
+
+	m.erdPanel.merm = true
+	merm := strings.Join(m.hintList(), " ")
+	for _, want := range []string{"j/k", "enter", "m", "g/G", "ctrl+d/u", "y", "esc"} {
+		if !strings.Contains(merm, want) {
+			t.Errorf("mermaid hints missing %q: got %v", want, m.hintList())
+		}
+	}
+	// Mermaid view must not advertise the graph-only keys.
+	for _, gone := range []string{"space", "h/l", "j/k/h/l"} {
+		if strings.Contains(merm, gone) {
+			t.Errorf("mermaid hints should not include %q: got %v", gone, m.hintList())
+		}
+	}
+}
+
+// TestERDRegistrySection confirms the ERD section exists in the help-overlay
+// registry (so its keybindings are documented under "?") and that its hint
+// fields yield the graph-view status-bar set.
+func TestERDRegistrySection(t *testing.T) {
+	var sec *Section
+	for i := range registry() {
+		if registry()[i].Title == "ERD" {
+			sec = &registry()[i]
+			break
+		}
+	}
+	if sec == nil {
+		t.Fatal("no ERD section in registry")
+	}
+	displays := map[string]bool{}
+	for _, b := range sec.Items {
+		displays[b.Display] = true
+	}
+	for _, want := range []string{"esc / q / ctrl+c", "j/k/h/l", "space", "enter", "m", "g / G", "ctrl+d / ctrl+u", "y", "s"} {
+		if !displays[want] {
+			t.Errorf("ERD section missing binding %q", want)
+		}
+	}
+	hints := strings.Join(hintsForSection("ERD"), " ")
+	for _, want := range []string{"j/k/h/l", "space", "enter", "m", "g/G", "ctrl+d/u", "y", "esc"} {
+		if !strings.Contains(hints, want) {
+			t.Errorf("ERD hints missing %q: got %v", want, hints)
+		}
 	}
 }
