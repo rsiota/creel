@@ -180,6 +180,9 @@ func (m *Model) openERD(focus string) tea.Cmd {
 		title = "ERD — " + focus + " + neighbours"
 	}
 	layout := computeERDLayout(targets, m.columnCache, m.pkCache, m.fkCache)
+	if layout != nil {
+		layout.focus = focus
+	}
 	mermaid := buildMermaidERD(targets, m.columnCache, m.pkCache, m.fkCache)
 	m.erdPanel.Show(title, layout, mermaid)
 	m.erdPanel.SetSize(m.width, m.height-1)

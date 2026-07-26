@@ -823,6 +823,162 @@ func TestERDHighlightArrowOnTop(t *testing.T) {
 	}
 }
 
+// TestERDFocusIconRender verifies the header drill-in icon (⤢) is painted on
+// every card except the focus root in a focused ERD, and on no cards in the
+// whole-schema view (no focus) or a bare render.
+func TestERDFocusIconRender(t *testing.T) {
+	tables := []string{"users", "orders", "posts"}
+	schemas := map[string][]db.Column{
+		"users":  {{Name: "id", Type: "int"}, {Name: "name", Type: "text"}},
+		"orders": {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+		"posts":  {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+	}
+	pks := map[string][]string{"users": {"id"}, "orders": {"id"}, "posts": {"id"}}
+	fks := map[string][]db.ForeignKey{
+		"orders": {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"posts":  {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+	}
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	if layout == nil {
+		t.Fatal("expected a layout")
+	}
+	iconAt := func(c *gcanvas, card *gcard) rune {
+		g, _, _ := cellGlyph(c.cells[card.y+1][card.x+card.w-3])
+		return g
+	}
+
+	// Whole-schema view (no focus): no icons anywhere.
+	layout.focus = ""
+	whole := layout.render("")
+	for _, card := range layout.cards {
+		if g := iconAt(whole, card); g == erdFocusIcon {
+			t.Errorf("whole-schema: %s header has icon, want none", card.name)
+		}
+	}
+
+	// Focused on users: icon on orders & posts, not on the root users card.
+	layout.focus = "users"
+	foc := layout.render("")
+	users := cardByName(layout.cards, "users")
+	if g := iconAt(foc, users); g == erdFocusIcon {
+		t.Errorf("focus root users header has icon, want none")
+	}
+	for _, name := range []string{"orders", "posts"} {
+		card := cardByName(layout.cards, name)
+		if g := iconAt(foc, card); g != erdFocusIcon {
+			t.Errorf("non-root %s header glyph=%q want %q (drill-in icon)", name, g, erdFocusIcon)
+		}
+	}
+}
+
+// TestERDDrillInHitTest covers the panel's header hit-testing: any canvas cell
+// on a non-root card's title row resolves to that card (the whole header is the
+// target), while the root card's header, a column cell, and the whole-schema
+// view all yield no drill-in.
+func TestERDDrillInHitTest(t *testing.T) {
+	tables := []string{"users", "orders"}
+	schemas := map[string][]db.Column{
+		"users":  {{Name: "id", Type: "int"}},
+		"orders": {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+	}
+	pks := map[string][]string{"users": {"id"}, "orders": {"id"}}
+	fks := map[string][]db.ForeignKey{"orders": {{Column: "user_id", RefTable: "users", RefColumn: "id"}}}
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	users := cardByName(layout.cards, "users")
+	orders := cardByName(layout.cards, "orders")
+
+	// Focused ERD: any header cell of orders (left name area, glyph cell, even
+	// the border cells) returns orders; the root's header and a column cell do
+	// not.
+	layout.focus = "users"
+	e := ERDPanel{cards: layout.cards, layout: layout}
+	for _, sx := range []int{orders.x, orders.x + 2, orders.x + orders.w - 3, orders.x + orders.w - 1} {
+		if got := e.drillInCard(sx, orders.y+1); got == nil || got.name != "orders" {
+			t.Errorf("header cell x=%d: got %v want orders", sx, got)
+		}
+	}
+	if got := e.drillInCard(users.x+2, users.y+1); got != nil {
+		t.Errorf("root header: got %v want nil (no drill-in on root)", got)
+	}
+	if got := e.drillInCard(orders.x+3, orders.y+3); got != nil {
+		t.Errorf("column cell: got %v want nil (not the header)", got)
+	}
+
+	// Whole-schema view: no drill-in anywhere.
+	layout.focus = ""
+	if got := e.drillInCard(orders.x+2, orders.y+1); got != nil {
+		t.Errorf("whole-schema header: got %v want nil (no drill-in)", got)
+	}
+}
+
+// TestERDDrillInClick drives the full click path: opening a focused ERD then
+// clicking a non-root card's header re-focuses the diagram on that table,
+// while a click on the card body still toggles highlight.
+func TestERDDrillInClick(t *testing.T) {
+	tables := []string{"users", "orders", "posts"}
+	schemas := map[string][]db.Column{
+		"users":  {{Name: "id", Type: "int"}, {Name: "name", Type: "text"}},
+		"orders": {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+		"posts":  {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+	}
+	pks := map[string][]string{"users": {"id"}, "orders": {"id"}, "posts": {"id"}}
+	fks := map[string][]db.ForeignKey{
+		"orders": {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"posts":  {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+	}
+	focusOf := func(ep ERDPanel) string {
+		if ep.layout != nil {
+			return ep.layout.focus
+		}
+		return ""
+	}
+
+	m := Model{
+		connection:  &db.Connection{},
+		tables:      tables,
+		columnCache: schemas,
+		pkCache:     pks,
+		fkCache:     fks,
+		width:       80,
+		height:      24,
+	}
+	m.openERD("users")
+	if focusOf(m.erdPanel) != "users" {
+		t.Fatalf("openERD(users): focus=%q want users", focusOf(m.erdPanel))
+	}
+
+	orders := m.erdPanel.cardNamed("orders")
+	if orders == nil {
+		t.Fatal("orders card missing from users-focused ERD")
+	}
+	_, _, offX, offY := m.erdPanel.placedBounds()
+	// A column-row cell of orders is the card body, not the header: it toggles
+	// highlight without changing the focus.
+	bodySX := orders.x+3 - m.erdPanel.scrollX + offX
+	bodySY := orders.y+3 - m.erdPanel.scrollY + offY
+	mb, _ := m.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, X: bodySX, Y: bodySY})
+	pb := mb.(Model).erdPanel
+	if focusOf(pb) != "users" {
+		t.Errorf("body click changed focus to %q; want users (header-only drill-in)", focusOf(pb))
+	}
+	if pb.selected != "orders" {
+		t.Errorf("body click selected=%q want orders (toggle highlight)", pb.selected)
+	}
+
+	// Any header cell of orders (here the title area, well clear of the glyph)
+	// re-focuses the ERD on orders.
+	headSX := orders.x+2 - m.erdPanel.scrollX + offX
+	headSY := orders.y+1 - m.erdPanel.scrollY + offY
+	mi, _ := m.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, X: headSX, Y: headSY})
+	pi := mi.(Model).erdPanel
+	if focusOf(pi) != "orders" {
+		t.Errorf("header click focus=%q want orders", focusOf(pi))
+	}
+	if pi.cardNamed("orders") == nil {
+		t.Error("header click: orders card missing from re-focused ERD")
+	}
+}
+
 // TestERDToggleHighlight covers the select/switch/deselect/clear logic and that
 // each toggle re-renders the canvas: the selected card stays vivid (primary)
 // while the others dim to grey.

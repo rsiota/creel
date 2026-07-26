@@ -311,7 +311,8 @@ func (c *gcard) firstPK() string {
 	return ""
 }
 
-const erdCardRightPad = 1 // space between the type and the right border
+const erdCardRightPad = 1   // space between the type and the right border
+const erdFocusIcon = '◎'    // header glyph: click to re-focus the ERD on this table
 
 // measureCard computes the card's width/height from its columns. Each column
 // row is laid out as: marker + space + name  …gap…  type + right-pad, with the
@@ -447,7 +448,7 @@ func placeCards(cards map[string]*gcard, order []string, rank map[string]int, ma
 // a non-selected card fades out behind the focused one; columns listed in
 // hlCols (the arrow endpoints touching the selection) override the dim, with
 // marker/name in the foreground and type in primary.
-func (c *gcanvas) drawCard(g *gcard, fg string, dim bool, hlCols map[string]bool) {
+func (c *gcanvas) drawCard(g *gcard, fg string, dim bool, hlCols map[string]bool, showIcon, reserveIcon bool) {
 	grey := string(colorBorderUnfocused)
 	border, text, sep, typeC := fg, "", string(colorMuted), string(colorMuted)
 	if dim {
@@ -465,12 +466,24 @@ func (c *gcanvas) drawCard(g *gcard, fg string, dim bool, hlCols map[string]bool
 	c.setCh(g.x, g.y+1, '│', border, false)
 	c.setCh(g.x+g.w-1, g.y+1, '│', border, false)
 	nameW := len([]rune(g.name))
-	inner := g.w - 2
-	leftPad := (inner - nameW) / 2
+	// The drill-in icon sits one cell inside the right border with a gap.
+	// reserveIcon keeps that column clear on every card in a focused ERD —
+	// even the root, which draws no glyph — so titles stay aligned across a
+	// column; the centred name then never reaches the icon's cell.
+	usable := g.w - 2
+	if reserveIcon {
+		usable = g.w - 4
+	}
+	leftPad := (usable - nameW) / 2
 	if leftPad < 0 {
 		leftPad = 0
 	}
 	c.putText(g.x+1+leftPad, g.y+1, g.name, border, true)
+	// Drill-in cue at the header's right end. The whole header row is the click
+	// target (see ERDPanel.drillInCard); this glyph just signals the action.
+	if showIcon {
+		c.setCh(g.x+g.w-3, g.y+1, erdFocusIcon, string(colorFg), false)
+	}
 	// Title→columns separator (dimmed so it reads as a divider, not a border).
 	c.setCh(g.x, g.y+2, '│', border, false)
 	c.setCh(g.x+g.w-1, g.y+2, '│', border, false)
@@ -607,6 +620,11 @@ type erdLayout struct {
 	arrows  []erdArrow
 	canvasW int
 	canvasH int
+	// focus is the root table a focused ERD is centred on ("" = the whole
+	// schema). It drives the per-card drill-in icon (shown on every card but
+	// the root) and is stable across selection re-paints, so render reads it
+	// without breaking the cheap re-paint-on-highlight property.
+	focus string
 }
 
 // erdArrow is one resolved FK→PK connection: the endpoint cards and the column
@@ -756,8 +774,13 @@ func (l *erdLayout) render(selected string) *gcanvas {
 		}
 		canv.drawArrowRouted(a, cardFg)
 	}
+	focused := l.focus != ""
 	for _, c := range l.cards {
-		canv.drawCard(c, cardFg, selected != "" && c.name != selected, hlCols[c.name])
+		// The drill-in glyph shows on every card except the focus root, and only
+		// in a focused ERD (whole-schema view has no root, so no icons). The
+		// icon column is reserved on all cards when focused so titles align.
+		showIcon := focused && c.name != l.focus
+		canv.drawCard(c, cardFg, selected != "" && c.name != selected, hlCols[c.name], showIcon, focused)
 	}
 	return canv
 }

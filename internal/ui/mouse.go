@@ -558,7 +558,10 @@ func (m Model) handleHelpMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // The wheel scrolls the diagram (shift+wheel, or a terminal's native horizontal
 // wheel, pans sideways); a single left-click on a table card toggles a
 // highlight that tints the card's border and its FK arrows, and a double-click
-// recentres the viewport on it (for navigating a crowded diagram).
+// recentres the viewport on it (for navigating a crowded diagram). In a focused
+// ERD clicking a non-root card's header (cued by a ⤢ glyph) re-focuses the
+// diagram on that table's neighbourhood, letting you walk the graph without
+// leaving the panel — it takes precedence over the highlight/recentre clicks.
 func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.MouseWheelUp:
@@ -578,8 +581,23 @@ func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelRight:
 		m.erdPanel = m.erdPanel.Wheel(0, 1)
 	case tea.MouseLeft:
+		cx, cy, ok := m.erdPanel.contentToCanvas(msg.X, msg.Y)
+		// A click on a non-root card's header (the whole title row, cued by the
+		// ⤢ glyph) takes precedence over highlight/recentre: it re-focuses the
+		// ERD on that table's neighbourhood so you can walk the relationships
+		// without leaving the panel. Body clicks still toggle highlight.
+		if ok {
+			if target := m.erdPanel.drillInCard(cx, cy); target != nil {
+				m.lastERDClickTime = time.Time{}
+				cmd := m.openERD(target.name)
+				if root := m.erdPanel.cardNamed(m.erdPanel.layout.focus); root != nil {
+					m.erdPanel = m.erdPanel.centerOnCard(root)
+				}
+				return m, cmd
+			}
+		}
 		var clicked *gcard
-		if cx, cy, ok := m.erdPanel.contentToCanvas(msg.X, msg.Y); ok {
+		if ok {
 			clicked = m.erdPanel.cardAt(cx, cy)
 		}
 		now := time.Now()

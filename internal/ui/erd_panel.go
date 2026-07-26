@@ -193,6 +193,37 @@ func (e ERDPanel) cardAt(cx, cy int) *gcard {
 	return nil
 }
 
+// cardNamed returns the laid-out card with the given table name, or nil.
+func (e ERDPanel) cardNamed(name string) *gcard {
+	for _, c := range e.cards {
+		if c != nil && c.name == name {
+			return c
+		}
+	}
+	return nil
+}
+
+// drillInCard returns the card whose header row covers canvas cell (cx, cy)
+// when that header offers a drill-in action — a non-root card in a focused ERD
+// — or nil. The whole title row is the click target (the ⤢ glyph is just the
+// visual cue), giving a large, easy-to-hit area; the root card and the
+// whole-schema view have no drill-in, so clicks there fall through to
+// highlight/recentre as before.
+func (e ERDPanel) drillInCard(cx, cy int) *gcard {
+	if e.layout == nil || e.layout.focus == "" {
+		return nil
+	}
+	for _, c := range e.cards {
+		if c == nil || c.name == e.layout.focus {
+			continue
+		}
+		if cy == c.y+1 && cx >= c.x && cx < c.x+c.w {
+			return c
+		}
+	}
+	return nil
+}
+
 // columnAt resolves canvas row cy to the column it lands on within card, plus
 // its 0-based index. ok is false on the card's border/title/separator rows or
 // outside the card. Layout: row 0 = top border, 1 = title, 2 = separator,
