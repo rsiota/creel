@@ -37,11 +37,6 @@ remains:
   bend-optimal in pathological layouts); a keyboard equivalent of drag for
   no-mouse/SSH contexts.
 
-### Per-query timing history (#13)
-`Elapsed` is captured per query. Persist it in history to surface slowest
-queries or a sparkline. Small-medium.
-- Files: `internal/history/`, `internal/ui/history_panel.go`.
-
 ### Live `:` command completion (#10 v2)
 Suggestions as you type in the ex line — the biggest "feels polished" payoff
 for `:` mode. A real project, not a follow-up: fuzzy index over `exCommands()`
@@ -197,6 +192,15 @@ palette). Never copy a key handler body into an ex executor. A full unified
     collapsible folder headers (▾/▸), flat when none grouped. Files:
     `config/config.go`, `connection_list.go`, `connection_form.go`, `app.go`,
     `mouse.go`. Tests: `connection_groups_test.go`.
+13. **Per-query timing history** (2026-07-27) — query duration is persisted in
+    each history `Entry` (`Elapsed time.Duration`, JSON-round-tripped) and shown
+    per row in the history panel, coloured red (new padding-less `slowStyle`)
+    when ≥ 1s. Press `s` to toggle between most-recent-first and slowest-first
+    (stable sort, zero-elapsed legacy entries sink); the displayed rank stays
+    the `:rerun` index either way. `history.Record` now takes the elapsed
+    duration; `FormatElapsed` formats it. Files: `internal/history/history.go`,
+    `history_panel.go`, `styles.go`, `registry.go`, `app.go`. Tests:
+    `history_test.go`, `history_panel_test.go`.
 14. **`.sql` file integration** (2026-07-17) — `:e`/`:edit`/`:w`/`:write` +
     `gsql -f` startup flag; shared `expandTilde`/`loadStartupFile`. Files:
     `excmd.go`, `import_prompt.go`, `cmd/gsql/main.go`, `statusbar.go`. Tests:

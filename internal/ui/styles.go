@@ -105,6 +105,7 @@ var (
 	normalStyle        lipgloss.Style
 	mutedStyle         lipgloss.Style
 	errorStyle         lipgloss.Style
+	slowStyle          lipgloss.Style
 	successStyle       lipgloss.Style
 	borderStyle        lipgloss.Style
 )
@@ -172,6 +173,12 @@ func applyPalette(p colorPalette) {
 		Padding(0, 1)
 	mutedStyle = lipgloss.NewStyle().
 		Foreground(colorMuted)
+	// slowStyle highlights notably slow query durations inline. It mirrors
+	// mutedStyle but in the error colour so a slow elapsed stands out in the
+	// history list without the padding normalStyle/errorStyle add (which would
+	// misalign columns).
+	slowStyle = lipgloss.NewStyle().
+		Foreground(colorError)
 	errorStyle = lipgloss.NewStyle().
 		Foreground(colorError).
 		Padding(0, 1)

@@ -1008,7 +1008,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Record to history
 		if m.connection != nil && m.historyStore != nil {
-			m.historyStore.Record(m.connection.Config().Name, msg.query, msg.err == nil)
+			m.historyStore.Record(m.connection.Config().Name, msg.query, m.lastQueryElapsed, msg.err == nil)
 		}
 		var cmd tea.Cmd
 		if msg.err != nil {
@@ -2943,6 +2943,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "down", "j":
 			m.history.CursorDown()
+			return m, nil
+		case "s":
+			m.history.ToggleSort()
 			return m, nil
 		case "D":
 			if m.confirmDestructive() {

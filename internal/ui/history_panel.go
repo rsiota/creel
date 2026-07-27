@@ -2,7 +2,9 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ruben/gsql/internal/history"
@@ -19,6 +21,12 @@ type HistoryPanel struct {
 
 	filter    string
 	filtering bool
+
+	// sortBySlowest reorders the list by Elapsed descending instead of
+	// most-recent-first, so the slowest queries surface to the top. Toggled
+	// with "s"; the displayed rank (origIdx+1) stays the :rerun index either
+	// way, so it is only a view reordering.
+	sortBySlowest bool
 }
 
 // NewHistoryPanel creates a new history panel.
@@ -56,6 +64,18 @@ func (h *HistoryPanel) CancelFilter() {
 	h.filter = ""
 	h.cursor = 0
 	h.scrollRow = 0
+}
+
+// ToggleSort switches between most-recent-first and slowest-first ordering.
+func (h *HistoryPanel) ToggleSort() {
+	h.sortBySlowest = !h.sortBySlowest
+	h.cursor = 0
+	h.scrollRow = 0
+}
+
+// SortBySlowest reports whether the list is ordered by elapsed descending.
+func (h HistoryPanel) SortBySlowest() bool {
+	return h.sortBySlowest
 }
 
 // Toggle shows or hides the panel.
@@ -101,6 +121,9 @@ func (h HistoryPanel) filteredEntries() []filteredEntry {
 		for i, e := range h.entries {
 			out[i] = filteredEntry{entry: e, origIdx: i}
 		}
+		if h.sortBySlowest {
+			sortByElapsedDesc(out)
+		}
 		return out
 	}
 	ranked := fuzzyRank(h.filter, h.entries,
@@ -112,7 +135,19 @@ func (h HistoryPanel) filteredEntries() []filteredEntry {
 		// the displayed number (origIdx+1) stays stable under filtering.
 		out[i] = filteredEntry{entry: r.Item, matchIdx: r.MatchIdx, origIdx: r.Index}
 	}
+	if h.sortBySlowest {
+		sortByElapsedDesc(out)
+	}
 	return out
+}
+
+// sortByElapsedDesc reorders entries (stable) so the longest-running queries
+// come first, preserving matchIdx/origIdx. Zero durations sink to the bottom
+// since they carry no timing information.
+func sortByElapsedDesc(out []filteredEntry) {
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].entry.Elapsed > out[j].entry.Elapsed
+	})
 }
 
 // CursorUp moves the selection up.
@@ -133,7 +168,7 @@ func (h *HistoryPanel) CursorDown() {
 }
 
 func (h *HistoryPanel) adjustScroll() {
-	maxVisible := h.height - 3
+	maxVisible := h.height - 4 // header + filter prompt + 2 borders
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -153,8 +188,8 @@ func (h HistoryPanel) View() string {
 
 	entries := h.filteredEntries()
 
-	// Reserve one row for the filter prompt (always visible).
-	avail := h.height - 3
+	// Reserve rows for the header, the filter prompt, and the borders.
+	avail := h.height - 4
 	if avail < 1 {
 		avail = 1
 	}
@@ -175,18 +210,23 @@ func (h HistoryPanel) View() string {
 	for i := h.scrollRow; i < end; i++ {
 		e := entries[i].entry
 		ts := history.FormatTime(e.RunAt)
-		queryStr := truncateForDisplay(e.Query, h.width-26-numW-2)
+		queryStr := truncateForDisplay(e.Query, h.width-37-numW)
 		matched := highlightMatches(queryStr, entries[i].matchIdx)
 		numStr := fmt.Sprintf("%*d", numW, entries[i].origIdx+1)
+		elapsedStr := fmt.Sprintf("%6s", history.FormatElapsed(e.Elapsed))
+		elapsedCell := mutedStyle.Render(elapsedStr)
+		if e.Elapsed >= time.Second {
+			elapsedCell = slowStyle.Render(elapsedStr)
+		}
 
 		isSelected := i == h.cursor
 		if isSelected {
-			line := fmt.Sprintf("❯ %s  %s  %s", numStr, ts, queryStr)
+			line := fmt.Sprintf("❯ %s  %s  %s  %s", numStr, elapsedStr, ts, queryStr)
 			rows = append(rows, selectedStyle.Render(line))
 		} else {
 			styledNum := mutedStyle.Render(numStr)
 			styledTs := mutedStyle.Render(ts)
-			line := fmt.Sprintf("  %s  %s  %s", styledNum, styledTs, matched)
+			line := fmt.Sprintf("  %s  %s  %s  %s", styledNum, elapsedCell, styledTs, matched)
 			rows = append(rows, normalStyle.Render(line))
 		}
 	}
@@ -195,9 +235,13 @@ func (h HistoryPanel) View() string {
 		rows = append(rows, mutedStyle.Render("  (no matches)"))
 	}
 
-	content := strings.Join(rows, "\n")
+	mode := "recent"
+	if h.sortBySlowest {
+		mode = "slowest"
+	}
+	header := mutedStyle.Render(fmt.Sprintf(" History  %d queries  sort: %s  (s sort, D clear, b bookmark)", len(entries), mode))
 	prompt := " " + renderPalettePrompt(h.filter, true)
-	content = lipgloss.JoinVertical(lipgloss.Left, prompt, content)
+	content := lipgloss.JoinVertical(lipgloss.Left, header, prompt, strings.Join(rows, "\n"))
 
 	panel := lipgloss.NewStyle().
 		Width(h.width - 2).
@@ -210,6 +254,9 @@ func (h HistoryPanel) View() string {
 }
 
 func truncateForDisplay(s string, max int) string {
+	if max < 1 {
+		return ""
+	}
 	s = strings.ReplaceAll(s, "\n", " ")
 	runes := []rune(s)
 	if len(runes) <= max {

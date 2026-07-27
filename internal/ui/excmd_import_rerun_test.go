@@ -69,8 +69,8 @@ func TestExRerunOutOfBounds(t *testing.T) {
 		connection:   &db.Connection{},
 		historyStore: history.NewStore(t.TempDir()),
 	}
-	m.historyStore.Record("", "SELECT 1;", true)
-	m.historyStore.Record("", "SELECT 2;", true)
+	m.historyStore.Record("", "SELECT 1;", 0, true)
+	m.historyStore.Record("", "SELECT 2;", 0, true)
 	m.runExCommand("rerun 5")
 	if !strings.Contains(m.schemaMsg, "only 2 entries") {
 		t.Errorf(":rerun 5 with 2 entries -> %q", m.schemaMsg)
@@ -83,9 +83,9 @@ func TestExRerunLoadsByRank(t *testing.T) {
 		connection:   &db.Connection{},
 		historyStore: history.NewStore(t.TempDir()),
 	}
-	m.historyStore.Record("", "SELECT 1;", true) // oldest
-	m.historyStore.Record("", "SELECT 2;", true)
-	m.historyStore.Record("", "SELECT 3;", true) // most recent
+	m.historyStore.Record("", "SELECT 1;", 0, true) // oldest
+	m.historyStore.Record("", "SELECT 2;", 0, true)
+	m.historyStore.Record("", "SELECT 3;", 0, true) // most recent
 
 	// n=1 -> most recent; n=3 -> oldest. executeQuery's DB access is in the
 	// returned cmd, which we never run, so the editor holds the loaded query.

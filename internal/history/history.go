@@ -13,9 +13,10 @@ const maxHistoryPerConnection = 500
 
 // Entry represents a single query history record.
 type Entry struct {
-	Query   string    `json:"query"`
-	RunAt   time.Time `json:"run_at"`
-	Success bool      `json:"success"`
+	Query   string        `json:"query"`
+	RunAt   time.Time     `json:"run_at"`
+	Elapsed time.Duration `json:"elapsed"`
+	Success bool          `json:"success"`
 }
 
 // Store manages query history per connection, persisted to disk as JSON.
@@ -74,9 +75,11 @@ func (s *Store) save(connection string, entries []Entry) error {
 	return os.WriteFile(s.pathFor(connection), data, 0600)
 }
 
-// Record adds a query to the history for the given connection.
-// Duplicate consecutive queries are skipped.
-func (s *Store) Record(connection, query string, success bool) error {
+// Record adds a query to the history for the given connection. The elapsed
+// duration is persisted so slow queries can be surfaced later; pass 0 when the
+// duration is unknown (e.g. legacy callers). Duplicate consecutive queries are
+// skipped.
+func (s *Store) Record(connection, query string, elapsed time.Duration, success bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -93,6 +96,7 @@ func (s *Store) Record(connection, query string, success bool) error {
 	entries = append(entries, Entry{
 		Query:   query,
 		RunAt:   time.Now(),
+		Elapsed: elapsed,
 		Success: success,
 	})
 
@@ -193,6 +197,27 @@ func sanitizeFilename(s string) string {
 // FormatTime returns a human-readable timestamp for display.
 func FormatTime(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
+}
+
+// FormatElapsed renders a query duration compactly: "12.3ms", "1.23s",
+// "1m02s". A zero duration (entries recorded before timing was tracked, or a
+// caller that passed 0) returns "—" so the column stays aligned.
+func FormatElapsed(d time.Duration) string {
+	if d <= 0 {
+		return "—"
+	}
+	switch {
+	case d < time.Millisecond:
+		return fmt.Sprintf("%dµs", d.Microseconds())
+	case d < time.Second:
+		return fmt.Sprintf("%.1fms", float64(d.Microseconds())/1000)
+	case d < time.Minute:
+		return fmt.Sprintf("%.2fs", d.Seconds())
+	default:
+		m := int(d.Minutes())
+		s := int(d.Seconds()) - m*60
+		return fmt.Sprintf("%dm%02ds", m, s)
+	}
 }
 
 // FormatEntry returns a single-line representation for display.

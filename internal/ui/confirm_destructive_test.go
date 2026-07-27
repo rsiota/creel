@@ -155,7 +155,7 @@ func TestClearHistoryAndBookmarksSkipConfirm(t *testing.T) {
 	m.bookmarkStore = bookmarks.NewStore(t.TempDir())
 
 	// Seed both stores for the connection name.
-	if err := m.historyStore.Record(connName, "SELECT 1", true); err != nil {
+	if err := m.historyStore.Record(connName, "SELECT 1", 0, true); err != nil {
 		t.Fatalf("record history: %v", err)
 	}
 	if err := m.bookmarkStore.Add(connName, "SELECT 2"); err != nil {
