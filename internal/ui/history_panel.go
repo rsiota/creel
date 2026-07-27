@@ -239,7 +239,7 @@ func (h HistoryPanel) View() string {
 	if h.sortBySlowest {
 		mode = "slowest"
 	}
-	header := mutedStyle.Render(fmt.Sprintf(" History  %d queries  sort: %s  (s sort, D clear, b bookmark)", len(entries), mode))
+	header := mutedStyle.Render(fmt.Sprintf(" History  %d queries  sort: %s", len(entries), mode))
 	prompt := " " + renderPalettePrompt(h.filter, true)
 	content := lipgloss.JoinVertical(lipgloss.Left, header, prompt, strings.Join(rows, "\n"))
 
