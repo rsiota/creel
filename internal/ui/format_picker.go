@@ -150,7 +150,7 @@ func (p FormatPicker) View() string {
 
 	return lipgloss.NewStyle().
 		Width(32).
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).
 		Render(content)

@@ -202,7 +202,7 @@ func (b BookmarkPanel) View() string {
 	panel := lipgloss.NewStyle().
 		Width(b.width - 2).
 		Height(b.height - 2).
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Render(content)
 

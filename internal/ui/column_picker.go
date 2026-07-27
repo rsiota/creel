@@ -271,7 +271,7 @@ func (p ColumnPicker) View() string {
 	panel := lipgloss.NewStyle().
 		Width(p.width-2).
 		Height(p.height-2).
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).
 		Render(content)

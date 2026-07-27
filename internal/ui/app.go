@@ -4075,7 +4075,7 @@ func (m Model) viewConnections() string {
 	connPanel := lipgloss.NewStyle().
 		Width(panelW).
 		Height(panelH).
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).
 		Render(
@@ -4137,7 +4137,7 @@ func (m Model) viewAddConnection() string {
 	formPanel := lipgloss.NewStyle().
 		Width(popupW-borderOverhead).
 		Height(popupH-borderOverhead).
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).
 		Render(m.connForm.View())
@@ -4201,7 +4201,7 @@ func (m Model) viewWorkspace() string {
 		contentPanel = lipgloss.NewStyle().
 			Width(rightWidth).
 			Height(designerHeight).
-			Border(lipgloss.RoundedBorder()).
+			Border(panelBorder()).
 			BorderForeground(colorPrimary).
 			Render(m.tableDesigner.View())
 	} else if m.schemaEditor.IsVisible() {
@@ -4210,14 +4210,14 @@ func (m Model) viewWorkspace() string {
 		contentPanel = lipgloss.NewStyle().
 			Width(rightWidth).
 			Height(editorH).
-			Border(lipgloss.RoundedBorder()).
+			Border(panelBorder()).
 			BorderForeground(colorPrimary).
 			Render(m.schemaEditor.View())
 	} else {
 		editorPanel := lipgloss.NewStyle().
 			Width(rightWidth).
 			Height(editorHeight - borderOverhead).
-			Border(lipgloss.RoundedBorder()).
+			Border(panelBorder()).
 			BorderForeground(m.borderForFocus(FocusEditor)).
 			Render(lipgloss.JoinVertical(lipgloss.Left,
 				m.tabBar.View(),
@@ -4237,7 +4237,7 @@ func (m Model) viewWorkspace() string {
 			resultsPanel = lipgloss.NewStyle().
 				Width(rightWidth).
 				Height(resultsHeight).
-				Border(lipgloss.RoundedBorder()).
+				Border(panelBorder()).
 				BorderForeground(m.borderForFocus(FocusResults)).
 				Align(lipgloss.Center, lipgloss.Center).
 				Render(content)
@@ -4257,7 +4257,7 @@ func (m Model) viewWorkspace() string {
 				resultsStyle = lipgloss.NewStyle().
 					Width(rightWidth).
 					Height(resultsHeight).
-					Border(lipgloss.RoundedBorder()).
+					Border(panelBorder()).
 					BorderForeground(m.borderForFocus(FocusResults))
 			}
 			resultsPanel = resultsStyle.Render(func() string {
@@ -4290,7 +4290,7 @@ func (m Model) viewWorkspace() string {
 		slotPanel = lipgloss.NewStyle().
 			Width(inspectorWidth - borderOverhead).
 			Height(slotContentHeight).
-			Border(lipgloss.RoundedBorder()).
+			Border(panelBorder()).
 			BorderForeground(m.borderForFocus(FocusInspector)).
 			Render(m.inspector.View(m.results))
 	} else if m.assistant.IsVisible() {
@@ -4304,7 +4304,7 @@ func (m Model) viewWorkspace() string {
 		slotPanel = lipgloss.NewStyle().
 			Width(AssistantWidth - borderOverhead).
 			Height(slotContentHeight).
-			Border(lipgloss.RoundedBorder()).
+			Border(panelBorder()).
 			BorderForeground(m.borderForFocus(FocusAssistant)).
 			Render(m.assistant.View())
 	} else if m.explorer.IsVisible() && m.explorer.docked {
@@ -4410,7 +4410,7 @@ func (m Model) viewWorkspace() string {
 	sidebar := lipgloss.NewStyle().
 		Width(sidebarWidth - borderOverhead).
 		Height(sidebarContentHeight).
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(m.borderForFocus(FocusConnections)).
 		Render(
 			lipgloss.JoinVertical(lipgloss.Left, tableListStyled, scrollInfo),
@@ -4643,7 +4643,7 @@ func (m Model) viewWorkspace() string {
 		m.addColumnForm.SetMaxWidth(innerW)
 		formPanel := lipgloss.NewStyle().
 			Width(popupW-borderOverhead).
-			Border(lipgloss.RoundedBorder()).
+			Border(panelBorder()).
 			BorderForeground(colorPrimary).
 			Padding(1, 2).
 			Render(m.addColumnForm.View())
@@ -4664,7 +4664,7 @@ func (m Model) viewWorkspace() string {
 		content := m.tableRenameForm.View()
 		formPanel := lipgloss.NewStyle().
 			Width(popupW-borderOverhead).
-			Border(lipgloss.RoundedBorder()).
+			Border(panelBorder()).
 			BorderForeground(colorPrimary).
 			Padding(1, 2).
 			Render(content)
@@ -4684,7 +4684,7 @@ func (m Model) viewWorkspace() string {
 		// top/bottom (2) + outer rounded border top/bottom (2) = 5 rows.
 		m.cellEdit.SetMaxSize(availW, availH-5)
 		panel := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
+			Border(panelBorder()).
 			BorderForeground(colorPrimary).
 			Render(m.cellEdit.View())
 		panelW := lipgloss.Width(panel)
@@ -4777,7 +4777,7 @@ func (m Model) viewWorkspace() string {
 		formPanel := lipgloss.NewStyle().
 			Width(popupW-borderOverhead).
 			Height(m.providerForm.effectiveHeight()).
-			Border(lipgloss.RoundedBorder()).
+			Border(panelBorder()).
 			BorderForeground(colorPrimary).
 			Padding(0, 1).
 			Render(m.providerForm.View())

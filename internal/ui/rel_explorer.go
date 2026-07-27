@@ -384,7 +384,7 @@ func (e RelExplorer) View() string {
 	return lipgloss.NewStyle().
 		Width(e.width - borderOverhead).
 		Height(vh).
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(e.borderColor()).
 		Render(strings.Join(body, "\n"))
 }

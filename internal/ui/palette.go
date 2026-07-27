@@ -250,7 +250,7 @@ func (p palette) View(width, height int) string {
 	panel := lipgloss.NewStyle().
 		Width(width-2).
 		Height(height-2).
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).
 		Render(body)

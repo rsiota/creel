@@ -211,7 +211,7 @@ func (c CrossSearchPanel) View() string {
 	panel := lipgloss.NewStyle().
 		Width(c.width - 2).
 		Height(c.height - 2).
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Render(fullContent)
 

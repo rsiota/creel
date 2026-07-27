@@ -49,7 +49,7 @@ func renderModalList(rows []string, cursor, width, maxRows int) string {
 	}
 	body := strings.Join(out, "\n")
 	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).
 		Width(width).

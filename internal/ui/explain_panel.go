@@ -141,7 +141,7 @@ func (e ExplainPanel) View() string {
 	return lipgloss.NewStyle().
 		Width(e.width).
 		Height(e.height).
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).
 		Render(content)

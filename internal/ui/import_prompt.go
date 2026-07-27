@@ -267,7 +267,7 @@ func (p ImportPrompt) CompletionView() string {
 		return ""
 	}
 	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorBorder).
 		Render(p.renderCompletionItems())
 }
@@ -289,7 +289,7 @@ func (p ImportPrompt) View() string {
 
 	panel := lipgloss.NewStyle().
 		Width(60).
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(1, 2).
 		Render(content)

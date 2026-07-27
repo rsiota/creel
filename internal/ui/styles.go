@@ -6,6 +6,15 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// panelBorder is the single source of truth for every panel's border, so the
+// corner style can be changed app-wide in one place. Square (NormalBorder)
+// gives the terminal-native, data-tool feel and renders consistently across
+// fonts and terminals; swap to lipgloss.RoundedBorder() to try the softer,
+// rounded look.
+func panelBorder() lipgloss.Border {
+	return lipgloss.NormalBorder()
+}
+
 // colorPalette is the full set of colors a theme provides. Every package-level
 // color var and derived style below is (re)built from the active palette via
 // applyPalette, so switching themes is a single call that propagates to every
@@ -255,7 +264,7 @@ func renderConfirmDialogFooter(prompt string, showFooter bool) string {
 				lipgloss.NewStyle().Foreground(colorLabel).Render("n")+mutedStyle.Render(" cancel"))
 	}
 	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(1, 3).
 		Width(46).
@@ -289,7 +298,7 @@ func renderTypedConfirmDialog(prompt, hint, input string, width, height int) str
 		promptBlock, "", hintLine, inputLine,
 	)
 	style := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(1, 3)
 	if width > 0 {
@@ -319,7 +328,7 @@ func renderInputDialogBare(prompt, input, errMsg string) string {
 
 	content := lipgloss.JoinVertical(lipgloss.Center, lines...)
 	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(1, 3).
 		Render(content)
@@ -358,7 +367,7 @@ func renderInputDialog(prompt, input, errMsg string, width, height int) string {
 
 	content := lipgloss.JoinVertical(lipgloss.Center, lines...)
 	style := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(1, 3)
 	if width > 0 {
@@ -388,7 +397,7 @@ func renderTypedConfirmDialogBare(prompt, hint, input string) string {
 		inputLine,
 	)
 	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(1, 3).
 		Render(content)
@@ -398,7 +407,7 @@ func renderTypedConfirmDialogBare(prompt, hint, input string) string {
 func renderSQLConfirmDialog(prompt, sql string) string {
 	sqlStyled := lipgloss.NewStyle().Foreground(colorLabel).Render(sql)
 	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(1, 3).
 		Width(64).

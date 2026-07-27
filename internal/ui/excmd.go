@@ -187,7 +187,7 @@ func (ex exCmd) completionView() string {
 		lines = append(lines, row)
 	}
 	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Render(strings.Join(lines, "\n"))
 }

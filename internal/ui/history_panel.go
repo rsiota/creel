@@ -241,7 +241,7 @@ func (h HistoryPanel) View() string {
 	panel := lipgloss.NewStyle().
 		Width(h.width - 2).
 		Height(h.height - 2).
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Render(content)
 

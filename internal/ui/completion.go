@@ -171,7 +171,7 @@ func (c completion) renderCompletion() string {
 	content = lipgloss.JoinVertical(lipgloss.Left, content, renderPalettePrompt(c.partial, true))
 
 	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 0).
 		Render(content)

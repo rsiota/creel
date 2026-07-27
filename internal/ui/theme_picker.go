@@ -241,7 +241,7 @@ func (p ThemePicker) View() string {
 	return lipgloss.NewStyle().
 		Width(popupW-2).
 		Height(popupH-2).
-		Border(lipgloss.RoundedBorder()).
+		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).
 		Render(content)
