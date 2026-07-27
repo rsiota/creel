@@ -57,7 +57,7 @@ func (m Model) hintList() []string {
 		if m.erdPanel.merm {
 			return []string{"j/k", "enter", "m", "g/G", "ctrl+d/u", "y", "esc"}
 		}
-		return []string{"j/k/h/l", "space", "enter", "/", "p", "m", "g/G", "ctrl+d/u", "y", "esc"}
+		return []string{"j/k/h/l", "space", "enter", "z", "/", "p", "m", "g/G", "ctrl+d/u", "y", "esc"}
 	case m.explorer.IsVisible():
 		return []string{"j/k", "enter", "r", "esc"}
 	case m.providerPicker.IsVisible():

@@ -535,6 +535,58 @@ func (e ERDPanel) centerOnCard(c *gcard) ERDPanel {
 	return e
 }
 
+// fitToScreen scrolls so the bounding box of every card is centred in the
+// viewport (clamped to the scrollable range) — a “zoom to fit” that brings a
+// diagram sprawled by dragging or panning back into view. When the diagram
+// already fits the viewport the scroll zeroes and View's centring takes over.
+// The cursor (the vertical paging anchor) is parked at the bbox centre to keep
+// keyboard paging consistent, mirroring centerOnCard.
+func (e ERDPanel) fitToScreen() ERDPanel {
+	if e.graph == nil {
+		return e
+	}
+	minX, minY, maxX, maxY := 0, 0, 0, 0
+	have := false
+	for _, c := range e.cards {
+		if c == nil {
+			continue
+		}
+		rx2, cy2 := c.x+c.w, c.y+c.h
+		if !have {
+			minX, minY, maxX, maxY = c.x, c.y, rx2, cy2
+			have = true
+			continue
+		}
+		if c.x < minX {
+			minX = c.x
+		}
+		if c.y < minY {
+			minY = c.y
+		}
+		if rx2 > maxX {
+			maxX = rx2
+		}
+		if cy2 > maxY {
+			maxY = cy2
+		}
+	}
+	cw, ch := e.contentWidth(), e.contentHeight()
+	maxSX := e.graph.w - cw
+	if maxSX < 0 {
+		maxSX = 0
+	}
+	maxSY := e.graph.h - ch
+	if maxSY < 0 {
+		maxSY = 0
+	}
+	e.scrollX = clampInt((minX+maxX)/2-cw/2, 0, maxSX)
+	e.scrollY = clampInt((minY+maxY)/2-ch/2, 0, maxSY)
+	if n := e.lineCount(); n > 0 {
+		e.cursor = clampInt((minY+maxY)/2, 0, n-1)
+	}
+	return e
+}
+
 // toggleHighlight selects (or deselects) a card, re-rendering the canvas so the
 // card's border and its FK arrows pick up the accent colour. Clicking the
 // already-selected card, or nil (empty space), clears the selection. The
@@ -729,6 +781,8 @@ func (e ERDPanel) updateGraph(msg tea.KeyMsg) ERDPanel {
 		e = e.moveFocus(erdFocusRight)
 	case " ":
 		e = e.toggleHighlight(e.focusCard())
+	case "z":
+		e = e.fitToScreen()
 	case "/":
 		e = e.startSearch()
 	case "p":

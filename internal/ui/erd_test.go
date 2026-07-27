@@ -1872,3 +1872,47 @@ func TestERDClickViaMouseEvents(t *testing.T) {
 		t.Errorf("plain click: selected=%q want orders (click should toggle highlight)", m.erdPanel.selected)
 	}
 }
+
+// TestERDFitToScreen checks the "z" zoom-to-fit: scroll is set so the bounding
+// box of all cards is centred in the viewport (clamped to the scrollable
+// range), and zeroes when the diagram already fits.
+func TestERDFitToScreen(t *testing.T) {
+	// Diagram larger than the viewport, cards spread to the corners.
+	e := ERDPanel{width: 20, height: 10}
+	e.graph = newGcanvas(60, 40) // maxX=40, maxY=30
+	e.cards = []*gcard{
+		{name: "a", x: 5, y: 5, w: 4, h: 3},
+		{name: "b", x: 40, y: 25, w: 4, h: 3},
+	}
+	// bbox: x[5,44] y[5,28] → centre (24,16); viewport 20×10.
+	e = e.fitToScreen()
+	wantX, wantY := 14, 16-5 // 24-10, 16-5
+	if e.scrollX != wantX || e.scrollY != wantY {
+		t.Errorf("fit (large): scroll=(%d,%d) want (%d,%d)", e.scrollX, e.scrollY, wantX, wantY)
+	}
+
+	// Diagram smaller than the viewport → scroll zeroes (View centres it).
+	e2 := ERDPanel{width: 80, height: 40}
+	e2.graph = newGcanvas(20, 10)
+	e2.cards = []*gcard{{name: "a", x: 2, y: 2, w: 4, h: 3}}
+	e2.scrollX, e2.scrollY = 5, 5
+	e2 = e2.fitToScreen()
+	if e2.scrollX != 0 || e2.scrollY != 0 {
+		t.Errorf("fit (small): scroll=(%d,%d) want (0,0)", e2.scrollX, e2.scrollY)
+	}
+}
+
+// TestERDFitToScreenKey confirms "z" dispatches to fitToScreen via Update.
+func TestERDFitToScreenKey(t *testing.T) {
+	e := ERDPanel{width: 20, height: 10}
+	e.graph = newGcanvas(60, 40)
+	e.cards = []*gcard{
+		{name: "a", x: 5, y: 5, w: 4, h: 3},
+		{name: "b", x: 40, y: 25, w: 4, h: 3},
+	}
+	e.scrollX, e.scrollY = 0, 0
+	e = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("z")})
+	if e.scrollX != 14 || e.scrollY != 11 {
+		t.Errorf("z key: scroll=(%d,%d) want (14,11)", e.scrollX, e.scrollY)
+	}
+}
