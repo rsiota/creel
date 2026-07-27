@@ -168,7 +168,7 @@ func (h *HistoryPanel) CursorDown() {
 }
 
 func (h *HistoryPanel) adjustScroll() {
-	maxVisible := h.height - 4 // header + filter prompt + 2 borders
+	maxVisible := h.height - 3 // filter prompt + 2 borders
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
@@ -188,8 +188,8 @@ func (h HistoryPanel) View() string {
 
 	entries := h.filteredEntries()
 
-	// Reserve rows for the header, the filter prompt, and the borders.
-	avail := h.height - 4
+	// Reserve rows for the filter prompt and the borders.
+	avail := h.height - 3
 	if avail < 1 {
 		avail = 1
 	}
@@ -235,13 +235,8 @@ func (h HistoryPanel) View() string {
 		rows = append(rows, mutedStyle.Render("  (no matches)"))
 	}
 
-	mode := "recent"
-	if h.sortBySlowest {
-		mode = "slowest"
-	}
-	header := mutedStyle.Render(fmt.Sprintf(" History  %d queries  sort: %s", len(entries), mode))
 	prompt := " " + renderPalettePrompt(h.filter, true)
-	content := lipgloss.JoinVertical(lipgloss.Left, header, prompt, strings.Join(rows, "\n"))
+	content := lipgloss.JoinVertical(lipgloss.Left, prompt, strings.Join(rows, "\n"))
 
 	panel := lipgloss.NewStyle().
 		Width(h.width - 2).
