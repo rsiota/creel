@@ -62,12 +62,36 @@ func (m *Model) applyFocus() {
 	}
 }
 
-// moveFocus navigates between panels using vim-style directions.
+// rightSlotFocus returns the focus target for the right-hand slot — the
+// inspector, assistant, or docked explorer, which are mutually exclusive — or
+// ok=false when none is open. Shared across moveFocus so the centre column and
+// the sidebar agree on what "right" means.
+func (m Model) rightSlotFocus() (Focus, bool) {
+	switch {
+	case m.explorer.IsVisible() && m.explorer.docked:
+		return FocusExplorer, true
+	case m.assistant.IsVisible():
+		return FocusAssistant, true
+	case m.inspector.IsVisible():
+		return FocusInspector, true
+	}
+	return 0, false
+}
+
+// moveFocus navigates between panels using vim-style directions, treating the
+// workspace as three columns: the sidebar (Connections), the centre stack
+// (tab bar / editor / results), and the right-hand slot (inspector / assistant
+// / docked explorer). ctrl+l/ctrl+h move between columns; ctrl+j/ctrl/k move
+// within the centre stack. The editor is the centre hub, so a full traverse is
+// Sidebar →(l)→ Editor →(l)→ right slot and the reverse mirrors it —
+// navigation never dead-ends at the editor.
 func (m Model) moveFocus(direction string) Model {
+	right, hasRight := m.rightSlotFocus()
 	switch m.focus {
 	case FocusConnections:
+		// The sidebar spans the full height, so only horizontal moves apply.
 		if direction == "ctrl+l" {
-			m.focus = FocusTabBar
+			m.focus = FocusEditor
 		}
 	case FocusTabBar:
 		switch direction {
@@ -75,6 +99,10 @@ func (m Model) moveFocus(direction string) Model {
 			m.focus = FocusConnections
 		case "ctrl+j":
 			m.focus = FocusEditor
+		case "ctrl+l":
+			if hasRight {
+				m.focus = right
+			}
 		}
 	case FocusEditor:
 		switch direction {
@@ -85,15 +113,8 @@ func (m Model) moveFocus(direction string) Model {
 		case "ctrl+j":
 			m.focus = FocusResults
 		case "ctrl+l":
-			// The right-hand slot holds at most one of inspector / assistant /
-			// docked explorer.
-			switch {
-			case m.explorer.IsVisible() && m.explorer.docked:
-				m.focus = FocusExplorer
-			case m.assistant.IsVisible():
-				m.focus = FocusAssistant
-			case m.inspector.IsVisible():
-				m.focus = FocusInspector
+			if hasRight {
+				m.focus = right
 			}
 		}
 	case FocusResults:
@@ -103,26 +124,15 @@ func (m Model) moveFocus(direction string) Model {
 		case "ctrl+k":
 			m.focus = FocusEditor
 		case "ctrl+l":
-			switch {
-			case m.explorer.IsVisible() && m.explorer.docked:
-				m.focus = FocusExplorer
-			case m.assistant.IsVisible():
-				m.focus = FocusAssistant
-			case m.inspector.IsVisible():
-				m.focus = FocusInspector
+			if hasRight {
+				m.focus = right
 			}
 		}
-	case FocusInspector:
+	case FocusInspector, FocusAssistant, FocusExplorer:
+		// The right slot spans the full height; move back left to the editor
+		// (the centre hub).
 		if direction == "ctrl+h" {
-			m.focus = FocusResults
-		}
-	case FocusAssistant:
-		if direction == "ctrl+h" {
-			m.focus = FocusResults
-		}
-	case FocusExplorer:
-		if direction == "ctrl+h" {
-			m.focus = FocusResults
+			m.focus = FocusEditor
 		}
 	}
 	m.applyFocus()
