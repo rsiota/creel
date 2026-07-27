@@ -147,12 +147,26 @@ func (ex *exCmd) recomputeCompletion() {
 	}
 }
 
+// exCompletionWidth is the fixed content width of the verb-completion popup:
+// descriptions truncate to fit so the box is a stable rectangle that doesn't
+// grow or shrink as the filtered list changes. +2 for the border leaves room
+// on an 80-column terminal. exCompletionUsageW caps the usage column so a few
+// outlier usages (e.g. :addcolumn) don't force the whole popup wide; both are
+// easy knobs to tune.
+const (
+	exCompletionWidth  = 72
+	exCompletionUsageW = 40
+)
+
 // completionView renders the verb-completion popup (one row per candidate)
 // for display directly above the ":" prompt, or "" when nothing applies. The
 // first row is the Tab target. Rendering mirrors the palette (Ctrl+P): blue
 // commands, grey descriptions, and a solid highlight bar on the Tab target.
 // Only the matching and anchoring differ (the command line is a bottom
-// prompt, so the popup sits above it rather than at the editor cursor).
+// prompt, so the popup sits above it rather than at the editor cursor). The
+// popup is a fixed-width rectangle: the usage column is pinned to the global
+// max usage (capped) and descriptions truncate with "…", so neither the box
+// nor the columns jitter as you type.
 func (ex exCmd) completionView() string {
 	if !ex.visible || len(ex.comp) == 0 {
 		return ""
@@ -162,15 +176,31 @@ func (ex exCmd) completionView() string {
 	if len(items) > maxRows {
 		items = items[:maxRows]
 	}
+	// Stable usage column: the global max usage width (capped), computed from
+	// the full command set rather than the current filter so it never shifts.
 	usageW := 0
-	for _, it := range items {
-		if w := runeLen(it.usage); w > usageW {
+	for _, s := range exCommands() {
+		if w := runeLen(s.usage); w > usageW {
 			usageW = w
 		}
 	}
+	if usageW > exCompletionUsageW {
+		usageW = exCompletionUsageW
+	}
+	descW := exCompletionWidth - usageW - 4 // 4 = 2 leading + 2 gap
+	if descW < 8 {
+		descW = 8
+	}
+	// fit truncates s to w (with "…") then right-pads to exactly w, so every
+	// row is the same width.
+	fit := func(s string, w int) string {
+		t := truncateRunes(s, w)
+		return t + strings.Repeat(" ", w-runeLen(t))
+	}
 	var lines []string
 	for i, it := range items {
-		usage := it.usage + strings.Repeat(" ", usageW-runeLen(it.usage))
+		usage := fit(it.usage, usageW)
+		desc := fit(it.desc, descW)
 		var row string
 		if i == 0 {
 			// Tab target: a solid highlight bar, mirroring the palette's
@@ -178,11 +208,11 @@ func (ex exCmd) completionView() string {
 			row = lipgloss.NewStyle().
 				Background(colorPrimary).
 				Foreground(colorBg).
-				Render("❯ " + usage + "  " + it.desc)
+				Render("❯ " + usage + "  " + desc)
 		} else {
 			usageStr := lipgloss.NewStyle().Foreground(colorPrimary).Render(usage)
-			desc := lipgloss.NewStyle().Foreground(colorLabel).Render(it.desc)
-			row = "  " + usageStr + "  " + desc
+			descStr := lipgloss.NewStyle().Foreground(colorLabel).Render(desc)
+			row = "  " + usageStr + "  " + descStr
 		}
 		lines = append(lines, row)
 	}

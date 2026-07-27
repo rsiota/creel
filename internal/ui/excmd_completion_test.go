@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // TestExCompletionShowsAllOnOpen: typing ":" alone lists every command — the
@@ -92,5 +93,46 @@ func TestExCompletionViewRendersUsage(t *testing.T) {
 	out := ex.completionView()
 	if !strings.Contains(out, ":goto <table>") {
 		t.Errorf("completionView missing usage text; got %q", out)
+	}
+}
+
+// TestExCompletionFixedWidth verifies the verb-completion popup renders at a
+// constant width regardless of which commands match: every row (including the
+// highlight bar) is the same width, so the box doesn't jitter as you type.
+func TestExCompletionFixedWidth(t *testing.T) {
+	var ex exCmd
+	ex.Open() // ":" alone -> every command is a candidate
+	out := ex.completionView()
+	if out == "" {
+		t.Fatal("expected a completion popup for \":\"")
+	}
+	// Strip the border to measure content rows: drop the first/last line
+	// (top/bottom border) and the side border chars from each remaining line.
+	lines := strings.Split(out, "\n")
+	if len(lines) < 3 {
+		t.Fatalf("popup too short: %d lines", len(lines))
+	}
+	body := lines[1 : len(lines)-1]
+	wantW := lipgloss.Width(body[0])
+	for i, l := range body {
+		if w := lipgloss.Width(l); w != wantW {
+			t.Errorf("row %d width = %d, want fixed %d", i, w, wantW)
+		}
+	}
+
+	// Narrow the filter to a few short commands and re-render: the width must
+	// not shrink to fit them (the usage column is pinned to the global max).
+	var ex2 exCmd
+	ex2.Open()
+	ex2.input = "co"
+	ex2.recomputeCompletion()
+	out2 := ex2.completionView()
+	if out2 == "" {
+		t.Fatal("expected a completion popup for \"co\"")
+	}
+	lines2 := strings.Split(out2, "\n")
+	body2 := lines2[1 : len(lines2)-1]
+	if w := lipgloss.Width(body2[0]); w != wantW {
+		t.Errorf("narrowed popup width = %d, want fixed %d", w, wantW)
 	}
 }
