@@ -84,15 +84,19 @@ func TestExCompletionViewEmpty(t *testing.T) {
 	}
 }
 
-// TestExCompletionViewRendersUsage: the popup contains the canonical usage
-// text (the blue command column) so the Tab target is readable.
+// TestExCompletionViewRendersUsage: the popup contains the canonical command
+// name (the blue command column) so the Tab target is readable. The full
+// invocation form (with arguments) lives in :help, not the popup.
 func TestExCompletionViewRendersUsage(t *testing.T) {
 	ex := exCmd{visible: true}
 	ex.input = "g"
 	ex.recomputeCompletion()
 	out := ex.completionView()
-	if !strings.Contains(out, ":goto <table>") {
-		t.Errorf("completionView missing usage text; got %q", out)
+	if !strings.Contains(out, ":goto") {
+		t.Errorf("completionView missing command name; got %q", out)
+	}
+	if strings.Contains(out, "<table>") {
+		t.Errorf("completionView should not show arg syntax; got %q", out)
 	}
 }
 

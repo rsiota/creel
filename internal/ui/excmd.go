@@ -149,24 +149,26 @@ func (ex *exCmd) recomputeCompletion() {
 
 // exCompletionWidth is the fixed content width of the verb-completion popup:
 // descriptions truncate to fit so the box is a stable rectangle that doesn't
-// grow or shrink as the filtered list changes. +2 for the border leaves room
-// on an 80-column terminal. exCompletionUsageW caps the usage column so a few
-// outlier usages (e.g. :addcolumn) don't force the whole popup wide; both are
-// easy knobs to tune.
+// grow or shrink as the filtered list changes. exCompletionCmdW caps the
+// command-name column so a future very long verb can't force the popup wide;
+// both are easy knobs to tune. (The full argument syntax lives in :help, not
+// the popup — showing it here padded short commands with a lot of empty
+// space.)
 const (
-	exCompletionWidth  = 72
-	exCompletionUsageW = 40
+	exCompletionWidth = 60
+	exCompletionCmdW  = 16
 )
 
 // completionView renders the verb-completion popup (one row per candidate)
 // for display directly above the ":" prompt, or "" when nothing applies. The
 // first row is the Tab target. Rendering mirrors the palette (Ctrl+P): blue
-// commands, grey descriptions, and a solid highlight bar on the Tab target.
-// Only the matching and anchoring differ (the command line is a bottom
-// prompt, so the popup sits above it rather than at the editor cursor). The
-// popup is a fixed-width rectangle: the usage column is pinned to the global
-// max usage (capped) and descriptions truncate with "…", so neither the box
-// nor the columns jitter as you type.
+// command names, grey descriptions, and a solid highlight bar on the Tab
+// target. Each row shows the command name (":verb") and its short description
+// — the full invocation form (with arguments) is left to :help, so the command
+// column stays narrow and descriptions aren't pushed far to the right. The
+// popup is a fixed-width rectangle: the command column is pinned to the global
+// max command-name width (capped) and descriptions truncate with "…", so
+// neither the box nor the columns jitter as you type.
 func (ex exCmd) completionView() string {
 	if !ex.visible || len(ex.comp) == 0 {
 		return ""
@@ -176,18 +178,19 @@ func (ex exCmd) completionView() string {
 	if len(items) > maxRows {
 		items = items[:maxRows]
 	}
-	// Stable usage column: the global max usage width (capped), computed from
-	// the full command set rather than the current filter so it never shifts.
-	usageW := 0
+	// Stable command column: the global max ":verb" width (capped), computed
+	// from the full command set rather than the current filter so it never
+	// shifts as you type.
+	cmdW := 0
 	for _, s := range exCommands() {
-		if w := runeLen(s.usage); w > usageW {
-			usageW = w
+		if w := runeLen(":" + s.verbs[0]); w > cmdW {
+			cmdW = w
 		}
 	}
-	if usageW > exCompletionUsageW {
-		usageW = exCompletionUsageW
+	if cmdW > exCompletionCmdW {
+		cmdW = exCompletionCmdW
 	}
-	descW := exCompletionWidth - usageW - 4 // 4 = 2 leading + 2 gap
+	descW := exCompletionWidth - cmdW - 4 // 4 = 2 leading + 2 gap
 	if descW < 8 {
 		descW = 8
 	}
@@ -199,7 +202,7 @@ func (ex exCmd) completionView() string {
 	}
 	var lines []string
 	for i, it := range items {
-		usage := fit(it.usage, usageW)
+		cmd := fit(":"+it.verb, cmdW)
 		desc := fit(it.desc, descW)
 		var row string
 		if i == 0 {
@@ -208,11 +211,11 @@ func (ex exCmd) completionView() string {
 			row = lipgloss.NewStyle().
 				Background(colorPrimary).
 				Foreground(colorBg).
-				Render("❯ " + usage + "  " + desc)
+				Render("❯ " + cmd + "  " + desc)
 		} else {
-			usageStr := lipgloss.NewStyle().Foreground(colorPrimary).Render(usage)
+			cmdStr := lipgloss.NewStyle().Foreground(colorPrimary).Render(cmd)
 			descStr := lipgloss.NewStyle().Foreground(colorLabel).Render(desc)
-			row = "  " + usageStr + "  " + descStr
+			row = "  " + cmdStr + "  " + descStr
 		}
 		lines = append(lines, row)
 	}
