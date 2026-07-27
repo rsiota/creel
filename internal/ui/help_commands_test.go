@@ -281,3 +281,20 @@ func TestHelpScrollClampMatchesRender(t *testing.T) {
 		t.Error("view did not change after holding j past the bottom then pressing k once (scroll burn-through)")
 	}
 }
+
+// TestHelpViewFillsScreen verifies the overlay renders edge-to-edge at the full
+// terminal size (minus the status bar): width == h.width, height == h.height.
+// Guards the lipgloss Width/Height-vs-border accounting (border is drawn
+// outside the declared size, so the style is sized term-2 in each axis).
+func TestHelpViewFillsScreen(t *testing.T) {
+	h := NewHelpPanel()
+	h.Show()
+	h.SetSize(80, 23) // 23 == terminal height - 1 (status bar)
+	out := h.View()
+	if w := lipgloss.Width(out); w != 80 {
+		t.Errorf("overlay width = %d, want 80", w)
+	}
+	if hh := lipgloss.Height(out); hh != 23 {
+		t.Errorf("overlay height = %d, want 23", hh)
+	}
+}

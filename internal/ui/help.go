@@ -150,7 +150,7 @@ func (h HelpPanel) maxOff() int {
 
 // scrollPage is the number of lines PgUp/PgDn jump — the viewport height.
 func (h HelpPanel) scrollPage() int {
-	v := h.height - 11
+	v := h.height - 2 - 2*helpPadY - 6
 	if v < 4 {
 		return 4
 	}
@@ -171,10 +171,11 @@ func (h HelpPanel) View() string {
 	}
 
 	// helpContentWidth shares the panel's inner width with the mouse hit-test.
-	// viewportH leaves room for header + blank + tabbar + blank (above the
-	// body) and a blank + pos line (below), plus border + padding.
+	// viewportH leaves room for header + blank + tabbar + blank (above the body)
+	// and a blank + pos line (below), plus the overlay's border and vertical
+	// padding.
 	contentW := helpContentWidth(h.width)
-	viewportH := h.height - 11
+	viewportH := h.height - 2 - 2*helpPadY - 6
 	if viewportH < 4 {
 		viewportH = 4
 	}
@@ -212,30 +213,34 @@ func (h HelpPanel) View() string {
 		pos = mutedStyle.Render("scroll " + itoa(off+1) + "–" + itoa(end) + "/" + itoa(len(bodyAll)) + "  " + itoa(pct) + "%")
 	}
 
-	// Always seven layers (pos is "" when nothing scrolls) so the panel height
+	// Always seven layers (pos is "" when nothing scrolls) so the overlay height
 	// is identical on both pages — the top border stays put when switching tabs.
 	layers := []string{header, "", tabbar, "", body, "", pos}
 	content := lipgloss.JoinVertical(lipgloss.Left, layers...)
 
+	// The overlay fills the screen below the status bar: a full-width/full-
+	// height bordered box (border is drawn outside the Width/Height, so pass the
+	// terminal size minus the border's 2 rows/cols).
 	panel := lipgloss.NewStyle().
-		Width(contentW).
+		Width(h.width-2).
+		Height(h.height-2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorPrimary).
-		Padding(1, 2).
+		Padding(helpPadY, helpPadX).
 		Render(content)
 
-	return lipgloss.Place(h.width, h.height,
-		lipgloss.Center, lipgloss.Center,
-		panel,
-		lipgloss.WithWhitespaceChars(" "),
-	)
+	return panel
 }
 
 // helpTabRow is the screen row (0-indexed, from the top of the overlay area)
-// on which the tab bar renders: border(1) + padding-top(1) + header(1) +
-// blank(1). The panel is centred horizontally but always starts at the top
-// row, so this is constant.
-const helpTabRow = 4
+// on which the tab bar renders: border(1) + padding-top(helpPadY) + header(1)
+// + blank(1). The overlay fills the screen below the status bar and starts at
+// the top row, so this is constant.
+const (
+	helpPadX   = 2 // inner horizontal padding of the overlay
+	helpPadY   = 1 // inner vertical padding
+	helpTabRow = helpPadY + 3
+)
 
 // helpTabLabel is the text of tab i (without the surrounding spaces the
 // renderer adds). Shared by renderTabBar and helpTabAt so mouse clicks track
@@ -270,22 +275,18 @@ func (h HelpPanel) renderTabBar() string {
 // helpContentWidth is the panel's inner content width, shared by View and the
 // mouse hit-test so they agree on the panel's on-screen size.
 func helpContentWidth(termW int) int {
-	w := termW - 8
+	w := termW - 2 - 2*helpPadX // 2 = border, 2*helpPadX = padding
 	if w < 40 {
 		w = 40
 	}
 	return w
 }
 
-// helpPanelLeft is the panel's left screen offset. The panel (content +
-// border + padding) is centred in the terminal width by lipgloss.Place; the
-// mouse hit-test uses this to locate the tabs.
+// helpPanelLeft is the screen column of the overlay's left border. The
+// overlay fills the screen width, so the border starts at column 0; termW is
+// kept for callers/tests but unused.
 func helpPanelLeft(termW int) int {
-	left := (termW - (helpContentWidth(termW) + 6)) / 2 // +6 = border(2) + padding(4)
-	if left < 0 {
-		left = 0
-	}
-	return left
+	return 0
 }
 
 // helpTabAt returns the tab index at screen column x, or -1 if x isn't on a
@@ -293,7 +294,7 @@ func helpPanelLeft(termW int) int {
 // + padding-left and are laid out as " <label> " separated by single spaces
 // (matching renderTabBar).
 func helpTabAt(panelLeft, x int) int {
-	cur := panelLeft + 1 /*border*/ + 2 /*pad-left*/
+	cur := panelLeft + 1 + helpPadX // border + left padding
 	for i := 0; i < helpPageCount; i++ {
 		w := 1 + len(helpTabLabel(i)) + 1
 		if x >= cur && x < cur+w {
