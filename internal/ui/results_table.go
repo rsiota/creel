@@ -1582,7 +1582,7 @@ func (r ResultsTable) View() string {
 		for _, i := range cols {
 			totalW += r.colWidths[i] + 3
 		}
-		b.WriteString(outerStyle.Render("╭" + strings.Repeat("─", totalW-1) + "╮"))
+		b.WriteString(outerStyle.Render("┌" + strings.Repeat("─", totalW-1) + "┐"))
 	}
 	b.WriteString("\n")
 
@@ -1781,7 +1781,7 @@ func (r ResultsTable) View() string {
 		for _, i := range cols {
 			totalW += r.colWidths[i] + 3
 		}
-		b.WriteString(outerStyle.Render("╰" + strings.Repeat("─", totalW-1) + "╯"))
+		b.WriteString(outerStyle.Render("└" + strings.Repeat("─", totalW-1) + "┘"))
 	}
 
 	return b.String()

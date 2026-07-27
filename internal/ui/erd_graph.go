@@ -460,8 +460,8 @@ func (c *gcanvas) drawCard(g *gcard, fg string, dim bool, hlCols map[string]bool
 		text, sep, typeC = grey, grey, grey
 	}
 	// Top border (plain — the title sits on its own row below it).
-	c.setCh(g.x, g.y, '╭', border, false)
-	c.setCh(g.x+g.w-1, g.y, '╮', border, false)
+	c.setCh(g.x, g.y, '┌', border, false)
+	c.setCh(g.x+g.w-1, g.y, '┐', border, false)
 	for x := g.x + 1; x < g.x+g.w-1; x++ {
 		c.setCh(x, g.y, '─', border, false)
 	}
@@ -524,8 +524,8 @@ func (c *gcanvas) drawCard(g *gcard, fg string, dim bool, hlCols map[string]bool
 		c.putText(g.x+g.w-1-erdCardRightPad-len([]rune(typ)), y, typ, tC, false)
 	}
 	// Bottom border.
-	c.setCh(g.x, g.y+g.h-1, '╰', border, false)
-	c.setCh(g.x+g.w-1, g.y+g.h-1, '╯', border, false)
+	c.setCh(g.x, g.y+g.h-1, '└', border, false)
+	c.setCh(g.x+g.w-1, g.y+g.h-1, '┘', border, false)
 	for x := g.x + 1; x < g.x+g.w-1; x++ {
 		c.setCh(x, g.y+g.h-1, '─', border, false)
 	}

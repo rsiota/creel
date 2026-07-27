@@ -145,7 +145,7 @@ func TestRenderGraphERD(t *testing.T) {
 		t.Errorf("canvas too small: %dx%d", c.w, c.h)
 	}
 	// Card borders, PK/FK markers, and an arrow glyph must all be present.
-	for _, want := range []rune{'╭', '╰', '│', '─', '◆', '◇', arrowheadL()} {
+	for _, want := range []rune{'┌', '└', '│', '─', '◆', '◇', arrowheadL()} {
 		if !hasRune(c, want) {
 			t.Errorf("canvas missing glyph %q", string(want))
 		}
