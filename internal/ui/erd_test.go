@@ -636,10 +636,13 @@ func TestHandleERDMouse(t *testing.T) {
 	}
 
 	// Single left-click on a card toggles its highlight (sets selected), no pan.
+	// Body clicks fire on release (press records a pending drag, release commits
+	// the click), so a MouseLeft must be followed by a MouseRelease.
 	m4 := Model{erdPanel: ERDPanel{width: 10, height: 6}}
 	m4.erdPanel.graph = newGcanvas(40, 30)
 	m4.erdPanel.cards = []*gcard{{name: "t", x: 5, y: 4, w: 4, h: 3}}
 	mm4, _ := m4.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, X: 6, Y: 5})
+	mm4, _ = mm4.(Model).handleERDMouse(tea.MouseMsg{Type: tea.MouseRelease, X: 6, Y: 5})
 	if ep := mm4.(Model).erdPanel; ep.selected != "t" {
 		t.Errorf("single-click card: selected=%q want %q", ep.selected, "t")
 	}
@@ -647,13 +650,15 @@ func TestHandleERDMouse(t *testing.T) {
 		t.Errorf("single-click should not pan: scroll=(%d,%d)", ep.scrollX, ep.scrollY)
 	}
 
-	// Double left-click on the same card recentres on it.
+	// Double left-click on the same card recentres on it. The first click
+	// (press+release) seeds lastERDClick; the second release detects the pair.
 	m5 := Model{erdPanel: ERDPanel{width: 10, height: 6}}
 	m5.erdPanel.graph = newGcanvas(40, 30)
 	m5.erdPanel.cards = []*gcard{{name: "t", x: 5, y: 4, w: 4, h: 3}}
 	m5.lastERDClickTime = time.Now()
 	m5.lastERDClickCard = "t"
 	mm5, _ := m5.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, X: 6, Y: 5})
+	mm5, _ = mm5.(Model).handleERDMouse(tea.MouseMsg{Type: tea.MouseRelease, X: 6, Y: 5})
 	if ep := mm5.(Model).erdPanel; ep.scrollX != 2 || ep.scrollY != 2 {
 		t.Errorf("double-click card: scroll=(%d,%d) want (2,2)", ep.scrollX, ep.scrollY)
 	}
@@ -957,6 +962,7 @@ func TestERDDrillInClick(t *testing.T) {
 	bodySX := orders.x + 3 - m.erdPanel.scrollX + offX
 	bodySY := orders.y + 3 - m.erdPanel.scrollY + offY
 	mb, _ := m.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, X: bodySX, Y: bodySY})
+	mb, _ = mb.(Model).handleERDMouse(tea.MouseMsg{Type: tea.MouseRelease, X: bodySX, Y: bodySY})
 	pb := mb.(Model).erdPanel
 	if focusOf(pb) != "users" {
 		t.Errorf("body click changed focus to %q; want users (header-only drill-in)", focusOf(pb))
@@ -1265,7 +1271,9 @@ func TestERDClickViaUpdateSizesPanel(t *testing.T) {
 	}
 
 	// A click routed through Update must size the panel and land on the card.
+	// Body clicks fire on release, so send MouseLeft then MouseRelease.
 	mm, _ := m.Update(tea.MouseMsg{Type: tea.MouseLeft, X: sx, Y: sy})
+	mm, _ = mm.(Model).Update(tea.MouseMsg{Type: tea.MouseRelease, X: sx, Y: sy})
 	got := mm.(Model).erdPanel
 	if got.selected != "orders" {
 		t.Errorf("click via Update: selected=%q want orders (panel not sized → hit-test rejected?)", got.selected)
@@ -1582,5 +1590,285 @@ func TestERDPathClear(t *testing.T) {
 	ep = ep.clearPath()
 	if ep.pathFrom != "" || len(ep.pathCards) != 0 || ep.pathMsg != "" {
 		t.Errorf("clearPath left state: pathFrom=%q pathCards=%v msg=%q", ep.pathFrom, ep.pathCards, ep.pathMsg)
+	}
+}
+
+// --- free-form drag: dynamic routing (Level B) ------------------------------
+
+// mkCard builds a *gcard with named columns so colRowY resolves rows. The first
+// column is treated as the FK for arrow-endpoint purposes in these tests.
+func mkCard(name string, x, y, w, h int, cols ...string) *gcard {
+	c := &gcard{name: name, x: x, y: y, w: w, h: h, pkSet: map[string]bool{}, fkSet: map[string]bool{}}
+	for _, cn := range cols {
+		c.cols = append(c.cols, db.Column{Name: cn, Type: "int"})
+	}
+	if len(cols) > 0 {
+		c.fkSet[cols[0]] = true
+		c.pkSet[cols[len(cols)-1]] = true
+	}
+	return c
+}
+
+// segHitsRect reports whether the orthogonal segment p→q passes through any cell
+// of the rectangle [rx, rx+rw) × [ry, ry+rh).
+func segHitsRect(p, q erdPoint, rx, ry, rw, rh int) bool {
+	if p.y == q.y { // horizontal run
+		x0, x1 := p.x, q.x
+		if x0 > x1 {
+			x0, x1 = x1, x0
+		}
+		if !(ry <= p.y && p.y < ry+rh) {
+			return false
+		}
+		return x0 < rx+rw && rx <= x1
+	}
+	// vertical run (p.x == q.x)
+	y0, y1 := p.y, q.y
+	if y0 > y1 {
+		y0, y1 = y1, y0
+	}
+	if !(rx <= p.x && p.x < rx+rw) {
+		return false
+	}
+	return y0 < ry+rh && ry <= y1
+}
+
+// polylineAvoids reports whether every segment of pts misses the card's
+// rectangle — the Level B invariant that an arrow never passes under a card
+// (cards paint over arrows, so a hidden line reads as a missing relationship).
+func polylineAvoids(pts []erdPoint, c *gcard) bool {
+	for i := 1; i < len(pts); i++ {
+		if segHitsRect(pts[i-1], pts[i], c.x, c.y, c.w, c.h) {
+			return false
+		}
+	}
+	return true
+}
+
+// TestERDRouteSideClear verifies a clean side-channel elbow is found when the
+// child and parent sit in separate X bands with a clear gutter, and that the
+// arrowhead faces the parent.
+func TestERDRouteSideClear(t *testing.T) {
+	child := mkCard("orders", 0, 0, 8, 6, "user_id", "id")
+	parent := mkCard("users", 20, 0, 8, 6, "id")
+	all := []*gcard{child, parent}
+	pts, side := routeArrow(child, parent, "user_id", "id", all, nil)
+	if len(pts) != 4 {
+		t.Fatalf("side route: expected 4 vertices, got %d (%v)", len(pts), pts)
+	}
+	if side != erdRight {
+		t.Errorf("side route: headSide=%v want erdRight (parent is right of child)", side)
+	}
+	// Arrowhead lands just outside the parent's left border.
+	last := pts[len(pts)-1]
+	if last.x != parent.x-1 {
+		t.Errorf("side route: arrowhead x=%d want %d", last.x, parent.x-1)
+	}
+	for _, c := range all {
+		if !polylineAvoids(pts, c) {
+			t.Errorf("side route: polyline enters card %q", c.name)
+		}
+	}
+}
+
+// TestERDRouteArrowAvoidsObstacle is the core Level B behaviour: with a third
+// card blocking the direct horizontal between child and parent, the router
+// routes around it (here, beneath the cards) so no segment passes under any card.
+func TestERDRouteArrowAvoidsObstacle(t *testing.T) {
+	child := mkCard("orders", 0, 0, 8, 6, "user_id", "id")
+	parent := mkCard("users", 20, 0, 8, 6, "id")
+	obstacle := mkCard("products", 10, 2, 6, 4, "id") // blocks row 3 across x[10,15]
+	all := []*gcard{child, parent, obstacle}
+	pts, _ := routeArrow(child, parent, "user_id", "id", all, nil)
+	if len(pts) < 4 {
+		t.Fatalf("obstacle route: expected ≥4 vertices, got %d (%v)", len(pts), pts)
+	}
+	for _, c := range all {
+		if !polylineAvoids(pts, c) {
+			t.Errorf("obstacle route: polyline enters card %q (pts=%v)", c.name, pts)
+		}
+	}
+}
+
+// TestERDRerouteArrows verifies that after a card is moved the layout's arrows
+// are re-resolved to polylines (pts set) that avoid every card, and the canvas
+// is grown to contain the new positions.
+func TestERDRerouteArrows(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	if layout == nil || len(layout.arrows) != 1 {
+		t.Fatalf("precondition: want 1 arrow, got %v", layout)
+	}
+	if layout.arrows[0].pts != nil {
+		t.Fatal("precondition: initial layout arrows should use legacy routing (pts nil)")
+	}
+	beforeW, beforeH := layout.canvasW, layout.canvasH
+
+	// Drag "orders" far to the right, well past users, then re-route.
+	orders := cardByName(layout.cards, "orders")
+	orders.x = beforeW + 30
+	orders.y = 5
+	rerouteArrows(layout)
+
+	if layout.arrows[0].pts == nil {
+		t.Fatal("rerouteArrows: arrow pts still nil")
+	}
+	for _, a := range layout.arrows {
+		for _, c := range layout.cards {
+			if !polylineAvoids(a.pts, c) {
+				t.Errorf("rerouteArrows: arrow %s→%s enters card %q", a.child.name, a.parent.name, c.name)
+			}
+		}
+	}
+	if layout.canvasW <= beforeW {
+		t.Errorf("rerouteArrows: canvasW=%d should grow past %d after a rightward drag", layout.canvasW, beforeW)
+	}
+	if layout.canvasH < beforeH {
+		t.Errorf("rerouteArrows: canvasH=%d shrank below %d", layout.canvasH, beforeH)
+	}
+}
+
+// TestERDDragFlow exercises the full mouse drag on the panel: a press on a card
+// body, motion to a new spot, and release moves the card and leaves arrows
+// re-routed. A press with no motion followed by release is still a click
+// (toggles highlight) — drag never steals a click.
+func TestERDDragFlow(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	ep := ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24, focusName: "orders"}
+	ep.graph = ep.renderedGraph()
+	orders := ep.cardNamed("orders")
+	origX, origY := orders.x, orders.y
+	grabX, grabY := orders.x+3, orders.y+3 // a body cell
+
+	// Press records a pending drag (no move yet, no highlight toggle).
+	ep = ep.dragBeginPress(orders, grabX, grabY)
+	if ep.dragPending != "orders" || ep.dragCard != "" {
+		t.Fatalf("press: dragPending=%q dragCard=%q want orders/empty", ep.dragPending, ep.dragCard)
+	}
+	if ep.selected != "" {
+		t.Errorf("press toggled highlight prematurely: selected=%q", ep.selected)
+	}
+
+	// First motion promotes to an active drag and moves the card.
+	var promoted bool
+	ep, promoted = ep.dragPromote(grabX+12, grabY+8)
+	if !promoted || ep.dragCard != "orders" {
+		t.Fatalf("promote: promoted=%v dragCard=%q want true/orders", promoted, ep.dragCard)
+	}
+	ep = ep.dragMove(grabX+12, grabY+8)
+	if orders.x != origX+12 || orders.y != origY+8 {
+		t.Errorf("move: card at (%d,%d) want (%d,%d)", orders.x, orders.y, origX+12, origY+8)
+	}
+	if len(layout.arrows) > 0 && layout.arrows[0].pts == nil {
+		t.Error("move: arrows not re-routed to polylines during drag")
+	}
+
+	// Release commits and clears drag state; the card stays dropped.
+	ep = ep.dragCommit()
+	if ep.dragCard != "" || ep.dragPending != "" {
+		t.Errorf("commit: dragCard=%q dragPending=%q want empty", ep.dragCard, ep.dragPending)
+	}
+	if orders.x != origX+12 {
+		t.Errorf("commit: card moved from drop position to %d", orders.x)
+	}
+}
+
+// TestERDDragCancel verifies esc restores a dragged card to its pre-drag spot.
+func TestERDDragCancel(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	ep := ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24, focusName: "orders"}
+	ep.graph = ep.renderedGraph()
+	orders := ep.cardNamed("orders")
+	origX, origY := orders.x, orders.y
+	gx, gy := orders.x+3, orders.y+3
+
+	ep = ep.dragBeginPress(orders, gx, gy)
+	ep, _ = ep.dragPromote(gx+10, gy+5)
+	ep = ep.dragMove(gx+10, gy+5)
+	if orders.x == origX {
+		t.Fatal("precondition: card did not move during drag")
+	}
+	ep = ep.dragCancel()
+	if orders.x != origX || orders.y != origY {
+		t.Errorf("cancel: card at (%d,%d) want original (%d,%d)", orders.x, orders.y, origX, origY)
+	}
+	if ep.dragCard != "" {
+		t.Errorf("cancel: dragCard=%q want empty", ep.dragCard)
+	}
+}
+
+// TestERDDragViaMouseEvents drives the full press→motion→release sequence
+// through handleERDMouse with the Action fields bubbletea actually emits. The
+// trap this guards against: left-button drag motion is reported as
+// Type=MouseLeft + Action=MouseActionMotion (NOT Type=MouseMotion), so routing
+// on Type alone makes every motion re-enter the press handler and the drag
+// never starts — the card stays put and the release fires a click instead.
+func TestERDDragViaMouseEvents(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	m := Model{erdPanel: ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24, focusName: "orders"}}
+	m.erdPanel.graph = m.erdPanel.renderedGraph()
+	orders := m.erdPanel.cardNamed("orders")
+	origX, origY := orders.x, orders.y
+	// Press (MouseLeft + Action=Press) records a pending drag, no highlight.
+	// Screen coords are derived from the live centring offset (screen = canvas - scroll + off).
+	screenOf := func(cx, cy int) (int, int) {
+		_, _, ox, oy := m.erdPanel.placedBounds()
+		return cx - m.erdPanel.scrollX + ox, cy - m.erdPanel.scrollY + oy
+	}
+	gx, gy := screenOf(orders.x+3, orders.y+3) // cursor on a body cell
+	mm, _ := m.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, Action: tea.MouseActionPress, X: gx, Y: gy})
+	m = mm.(Model)
+	if m.erdPanel.dragPending != "orders" || m.erdPanel.dragCard != "" {
+		t.Fatalf("press: dragPending=%q dragCard=%q want orders/empty", m.erdPanel.dragPending, m.erdPanel.dragCard)
+	}
+	if m.erdPanel.selected != "" {
+		t.Errorf("press highlighted prematurely: selected=%q", m.erdPanel.selected)
+	}
+
+	// Motion arrives as MouseLeft + Action=Motion — must promote and move.
+	mx, my := screenOf(origX+3+15, origY+3+9)
+	mm, _ = m.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, Action: tea.MouseActionMotion, X: mx, Y: my})
+	m = mm.(Model)
+	if m.erdPanel.dragCard != "orders" {
+		t.Fatalf("motion: dragCard=%q want orders (drag did not start)", m.erdPanel.dragCard)
+	}
+	if orders.x != origX+15 || orders.y != origY+9 {
+		t.Errorf("motion: card at (%d,%d) want (%d,%d)", orders.x, orders.y, origX+15, origY+9)
+	}
+
+	// Release commits; no highlight toggles (it was a drag, not a click).
+	mm, _ = m.handleERDMouse(tea.MouseMsg{Type: tea.MouseRelease, Action: tea.MouseActionRelease, X: mx, Y: my})
+	m = mm.(Model)
+	if m.erdPanel.dragCard != "" {
+		t.Errorf("release: dragCard=%q want empty", m.erdPanel.dragCard)
+	}
+	if m.erdPanel.selected != "" {
+		t.Errorf("release: selected=%q want empty (a drag must not toggle highlight)", m.erdPanel.selected)
+	}
+	if orders.x != origX+15 {
+		t.Errorf("release: card moved from drop position to %d", orders.x)
+	}
+}
+
+// TestERDClickViaMouseEvents confirms a press→release with no motion between
+// them still fires the click (toggle highlight), so the drag path doesn't
+// swallow plain clicks.
+func TestERDClickViaMouseEvents(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	m := Model{erdPanel: ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24, focusName: "orders"}}
+	m.erdPanel.graph = m.erdPanel.renderedGraph()
+	orders := m.erdPanel.cardNamed("orders")
+	_, _, offX, offY := m.erdPanel.placedBounds()
+	gx, gy := orders.x+3+offX, orders.y+3+offY // screen coords of a body cell (scroll 0)
+
+	mm, _ := m.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, Action: tea.MouseActionPress, X: gx, Y: gy})
+	mm, _ = mm.(Model).handleERDMouse(tea.MouseMsg{Type: tea.MouseRelease, Action: tea.MouseActionRelease, X: gx, Y: gy})
+	m = mm.(Model)
+	if m.erdPanel.selected != "orders" {
+		t.Errorf("plain click: selected=%q want orders (click should toggle highlight)", m.erdPanel.selected)
 	}
 }

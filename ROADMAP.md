@@ -320,6 +320,48 @@ navigable and explorable, not just scrollable.
   `computeERDLayout`, which would wipe manual positions unless stored as
   per-table overrides — and a clear grab/drop interaction (TUI mouse is
   cell-coarse; grab on header, drop on release, ghosted at the cursor).
+
+  **✅ IMPLEMENTED (2026-07-27, awaiting test): free-form mouse drag + Level B
+  dynamic routing.** Click-and-drag a card body to move it freely — the card
+  tracks the cursor while every arrow re-routes live around the new layout; a
+  press with no motion is still a click (highlight/recentre), so drag never
+  steals a click; `esc` cancels an in-flight drag. Positions are in-memory
+  (wiped on reconnect / drill-in / panel reopen, by design for the MVP).
+
+  The router is the substantive part. Cards paint over arrows, so an arrow
+  whose path crosses a card body *vanishes* — re-routing around obstacles is
+  mandatory, not cosmetic. The initial ranked layout's proven three-mode
+  routing (side elbow / over-top lane) is left untouched (zero regression); a
+  post-drag path (`rerouteArrows`) recomputes each arrow as an orthogonal
+  polyline stored on `erdArrow` (preferred by the drawer over the legacy
+  fields):
+  - **Side channel (the common case):** when child and parent sit in separate
+    X bands, search the gutters between them nearest-to-parent first for a
+    vertical column whose horizontal run and vertical run are both clear of
+    other cards — a clean single-elbow.
+  - **Over/under lane (the fallback):** when the X ranges overlap or no clear
+    channel exists, route via a horizontal lane above the topmost card (or
+    below the bottommost, growing the canvas down — no coordinate shift), with
+    risers in the nearest clear gutters. A `lanePacker` assigns distinct rows
+    so overlapping arrows don't pile on one lane.
+  Riser columns are checked against the *full* card set (including the
+  endpoints) so a riser never lands inside an overlapping card. This always
+  produces a visible, correct arrow; it is not bend-optimal in pathological
+  layouts, which is the Level C (A*) territory the roadmap explicitly defers.
+  - Files: `internal/ui/erd_graph.go` (`erdPoint`, `erdArrow.pts/headSide`,
+    `routeArrow`/`routeSide`/`routeLane`, `segClearH`/`segClearV`,
+    `nearestClearRiser`, `lanePacker`, `rerouteArrows`, `drawArrowPoly`,
+    `clampInt`), `internal/ui/erd_panel.go` (drag state + `dragBeginPress`/
+    `dragPromote`/`dragMove`/`dragCommit`/`dragCancel`/`dragStatusLine`,
+    `statusHeight`/`View` wiring), `internal/ui/mouse.go`
+    (`MouseMotion`/`MouseRelease` handling, deferred body-click via
+    `runERDCardClick`), `internal/ui/app.go` (esc cancels an in-flight drag).
+    Tests: `internal/ui/erd_test.go` (`TestERDRouteSideClear`,
+    `TestERDRouteArrowAvoidsObstacle`, `TestERDRerouteArrows`,
+    `TestERDDragFlow`, `TestERDDragCancel`).
+  - **Deferred follow-ups:** persisted positions across sessions (the in-memory
+    MVP is intentional); snap-to-grid on drop (free cell today); Level C
+    bend-optimal routing; keyboard equivalent of drag for no-mouse contexts.
 - **Collapse/expand cards** (`zc`/`zo` vim-style) — fold a card to header-only
   to declutter dense schemas; pairs well with drag (collapsed cards are easier
   to shove around). Medium effort.

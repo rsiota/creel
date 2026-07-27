@@ -531,10 +531,15 @@ func (c *gcanvas) drawCard(g *gcard, fg string, dim bool, hlCols map[string]bool
 	}
 }
 
-// drawArrowRouted paints one laid-out FK arrow in colour fg. Adjacent-column
-// pairs get a clean elbow in the gutter between them; everything else routes
-// over the top margin in the lane assigned at layout time.
+// drawArrowRouted paints one resolved FK arrow in colour fg. A dynamic polyline
+// (set after a free-form drag) is painted by drawArrowPoly; otherwise the legacy
+// three-mode routing (side elbow for adjacent columns, over-top lane otherwise)
+// resolved at layout time is used, unchanged from the initial ranked layout.
 func (c *gcanvas) drawArrowRouted(a erdArrow, fg string) {
+	if len(a.pts) > 0 {
+		c.drawArrowPoly(a.pts, a.headSide, fg)
+		return
+	}
 	if a.isMargin {
 		c.drawMarginArrow(a.child, a.parent, a.childCol, a.parentCol, a.laneY, fg)
 		return
@@ -549,6 +554,32 @@ func (c *gcanvas) drawArrowRouted(a erdArrow, fg string) {
 	}
 	// Adjacent rank but horizontally overlapping: route over the top margin.
 	c.drawMarginArrow(a.child, a.parent, a.childCol, a.parentCol, a.laneY, fg)
+}
+
+// drawArrowPoly paints a dynamically-routed arrow as an orthogonal polyline:
+// consecutive vertices are joined by horizontal/vertical runs (shared vertices
+// self-merge into elbow glyphs via the connection masks), and the final vertex
+// carries the arrowhead. The path is colour-agnostic; render() picks fg.
+func (c *gcanvas) drawArrowPoly(pts []erdPoint, headSide erdDir, fg string) {
+	n := len(pts)
+	if n < 2 {
+		return
+	}
+	for i := 1; i < n; i++ {
+		p, q := pts[i-1], pts[i]
+		switch {
+		case p.y == q.y:
+			c.hline(p.x, q.x, p.y, fg)
+		case p.x == q.x:
+			c.vline(p.x, p.y, q.y, fg)
+		}
+	}
+	last := pts[n-1]
+	head := arrowheadR()
+	if headSide == erdLeft {
+		head = arrowheadL()
+	}
+	c.setCh(last.x, last.y, head, fg, true)
 }
 
 // drawSideArrowLeft: parent sits to the left of child. The vertical runs one
@@ -616,6 +647,9 @@ func (c *gcanvas) drawMarginArrow(child, parent *gcard, childCol, parentCol stri
 
 // --- entry point ------------------------------------------------------------
 
+// erdPoint is one vertex of an arrow's polyline path on the canvas.
+type erdPoint struct{ x, y int }
+
 // erdLayout is the positioned, route-resolved blueprint of a diagram: the
 // laid-out cards plus the resolved FK arrows (endpoints + route + lane). It is
 // independent of colour/highlight, so render() can re-paint it for any
@@ -632,14 +666,22 @@ type erdLayout struct {
 	focus string
 }
 
-// erdArrow is one resolved FK→PK connection: the endpoint cards and the column
-// rows the line attaches to, whether it routes over the top margin, and (if so)
-// its assigned lane row.
+// erdArrow is one resolved FK→PK connection. The initial ranked layout resolves
+// the three-mode legacy fields (isMargin/laneY) once at layout time; a free-form
+// card drag re-routes dynamically, storing a colour-agnostic polyline in pts
+// (which the drawer prefers over the legacy fields when set). This keeps the
+// proven initial layout untouched while letting arrows avoid cards the user has
+// moved into their path.
 type erdArrow struct {
 	child, parent       *gcard
 	childCol, parentCol string
 	isMargin            bool
 	laneY               int
+	// pts is the dynamically-routed polyline (endpoints inclusive; the final
+	// vertex carries the arrowhead). Nil for the initial ranked layout, set by
+	// rerouteArrows after a card moves. headSide is the arrowhead's facing side.
+	pts      []erdPoint
+	headSide erdDir
 }
 
 // computeERDLayout measures and positions the cards and resolves every FK
@@ -724,6 +766,257 @@ func computeERDLayout(tables []string, schemas map[string][]db.Column, pks map[s
 		out = append(out, cards[t])
 	}
 	return &erdLayout{cards: out, arrows: arrows, canvasW: canvasW, canvasH: canvasH}
+}
+
+// --- dynamic routing (free-form card drag) ---------------------------------
+//
+// After a card is moved with the mouse, the layout-time routing assumptions
+// (ranked columns, clear gutters, an over-the-top margin) no longer hold. The
+// dynamic router recomputes each arrow's polyline from the cards' live
+// positions so a moved card never erases an arrow that used to cross its new
+// rectangle (cards paint over arrows — a hidden line reads as a missing
+// relationship, so routing around obstacles is mandatory, not cosmetic).
+//
+// Strategy (Level B): for each FK, first try a clean single-elbow side channel
+// — horizontal out of the child, a vertical run through a free column between
+// the two cards, and a stub into the arrowhead at the parent. When the cards'
+// X ranges overlap or no clear channel exists, fall back to an over/under lane
+// (a horizontal row outside every card's vertical extent, with risers in the
+// nearest clear gutters). This always produces a visible, correct arrow; it is
+// not bend-optimal in pathological layouts, which is the Level C (A*) territory
+// the roadmap explicitly defers.
+
+// routeArrow resolves a polyline from child's FK row to the arrowhead at the
+// parent's PK row, avoiding every card in `all` except child and parent. The
+// returned pts are endpoints-inclusive; the final vertex is the arrowhead cell.
+func routeArrow(child, parent *gcard, childCol, parentCol string, all []*gcard, lanes *lanePacker) ([]erdPoint, erdDir) {
+	cy := child.colRowY(childCol)
+	py := parent.colRowY(parentCol)
+	others := make([]*gcard, 0, len(all))
+	for _, c := range all {
+		if c != nil && c != child && c != parent {
+			others = append(others, c)
+		}
+	}
+	if pts, side, ok := routeSide(child, parent, cy, py, others); ok {
+		return pts, side
+	}
+	return routeLane(child, parent, cy, py, all, lanes)
+}
+
+// routeSide tries a four-vertex elbow through a free vertical channel between
+// the child and parent. ok is false when their X ranges overlap or no clear
+// channel exists. Channels are searched nearest-to-parent first so arrows stay
+// tight against the referenced table, matching the ranked-layout gutters.
+func routeSide(child, parent *gcard, cy, py int, others []*gcard) ([]erdPoint, erdDir, bool) {
+	switch {
+	case parent.x+parent.w <= child.x: // parent sits fully left of child
+		exitX := child.x - 1            // gutter cell touching the child's left border
+		headX := parent.x + parent.w    // arrowhead tip touches the parent's right border
+		for vertX := headX + 1; vertX <= exitX; vertX++ {
+			if segClearH(others, exitX, vertX, cy) &&
+				segClearV(others, vertX, cy, py) &&
+				segClearH(others, vertX, headX, py) {
+				return []erdPoint{{exitX, cy}, {vertX, cy}, {vertX, py}, {headX, py}}, erdLeft, true
+			}
+		}
+	case child.x+child.w <= parent.x: // parent sits fully right of child
+		exitX := child.x + child.w
+		headX := parent.x - 1
+		for vertX := headX - 1; vertX >= exitX; vertX-- {
+			if segClearH(others, exitX, vertX, cy) &&
+				segClearV(others, vertX, cy, py) &&
+				segClearH(others, vertX, headX, py) {
+				return []erdPoint{{exitX, cy}, {vertX, cy}, {vertX, py}, {headX, py}}, erdRight, true
+			}
+		}
+	}
+	return nil, 0, false
+}
+
+// routeLane routes over (or, when there is no headroom above, under) a free
+// horizontal lane: each card rises through the nearest clear gutter to the
+// lane, the line crosses it, and the parent's riser bends into the arrowhead.
+// The lanePacker assigns distinct rows to arrows whose spans would otherwise
+// collide on the same lane. Riser columns are checked against the full card set
+// (including child and parent) so a riser never lands inside an overlapping
+// card — the case that forces lane routing in the first place.
+func routeLane(child, parent *gcard, cy, py int, all []*gcard, lanes *lanePacker) ([]erdPoint, erdDir) {
+	if lanes == nil {
+		lanes = newLanePacker(all...)
+	}
+	parentLeft := parent.x+parent.w/2 <= child.x+child.w/2
+	childRiserX := child.x + child.w
+	if parentLeft {
+		childRiserX = child.x - 1
+	}
+	// Parent arrowhead sits at the border gutter facing the child; its riser runs
+	// one cell outside that. The stub between them is short and clear in the
+	// common case; if the riser had to move outward (blocked gutter), the stub
+	// may lengthen but stays attached to the head.
+	headX := parent.x - 1
+	headSide := erdRight
+	parentVertX0 := headX - 1
+	if parentLeft {
+		headX = parent.x + parent.w
+		headSide = erdLeft
+		parentVertX0 = headX + 1
+	}
+	// Claim a lane row, then settle each riser in the nearest clear column for
+	// the span from its card's row to the lane. Because the lane lies entirely
+	// above (or below) every card, the riser columns don't affect lane validity,
+	// so one claim suffices regardless of how far the risers move outward.
+	laneY := lanes.claim(childRiserX, parentVertX0)
+	childRiserX = nearestClearRiser(childRiserX, all, cy, laneY)
+	parentVertX := nearestClearRiser(parentVertX0, all, py, laneY)
+	return []erdPoint{
+		{childRiserX, cy},
+		{childRiserX, laneY},
+		{parentVertX, laneY},
+		{parentVertX, py},
+		{headX, py},
+	}, headSide
+}
+
+// segClearH reports whether row y across [x0,x1] (inclusive) is free of every
+// card in cards (none occupies any cell on that span).
+func segClearH(cards []*gcard, x0, x1, y int) bool {
+	if x0 > x1 {
+		x0, x1 = x1, x0
+	}
+	for _, c := range cards {
+		if c.y <= y && y < c.y+c.h && c.x <= x1 && x0 < c.x+c.w {
+			return false
+		}
+	}
+	return true
+}
+
+// segClearV reports whether column x across [y0,y1] (inclusive) is free of
+// every card in cards.
+func segClearV(cards []*gcard, x int, y0, y1 int) bool {
+	if y0 > y1 {
+		y0, y1 = y1, y0
+	}
+	for _, c := range cards {
+		if c.x <= x && x < c.x+c.w && c.y <= y1 && y0 < c.y+c.h {
+			return false
+		}
+	}
+	return true
+}
+
+// erdMaxRiserReach bounds the outward search for a clear riser column, keeping
+// the router bounded on pathological layouts (it gives up rather than loops).
+const erdMaxRiserReach = 64
+
+// nearestClearRiser returns the column nearest to start whose vertical run over
+// [y0,y1] is clear of every card in others, searching start, start±1, start±2,
+// …. If none is clear within erdMaxRiserReach, start is returned (the route may
+// then overlap a card — a rare, dense-layout fallback).
+func nearestClearRiser(start int, others []*gcard, y0, y1 int) int {
+	if segClearV(others, start, y0, y1) {
+		return start
+	}
+	for d := 1; d <= erdMaxRiserReach; d++ {
+		if segClearV(others, start-d, y0, y1) {
+			return start - d
+		}
+		if segClearV(others, start+d, y0, y1) {
+			return start + d
+		}
+	}
+	return start
+}
+
+// lanePacker assigns distinct horizontal rows to over/under lane routes so
+// arrows whose lane spans overlap don't pile on the same row. Above-lanes (in
+// the headroom above the topmost card) are preferred — they read as natural
+// arcs and need no canvas growth; once they're exhausted, below-lanes stack
+// beneath the bottommost card, growing the canvas downward (scrollable, no
+// coordinate shift). One row per arrow is reserved (conservative; post-drag
+// few arrows need a lane, so the over-reservation is negligible).
+type lanePacker struct {
+	aboveBusy   map[int]bool
+	belowNext   int
+	topMost     int
+	bottomMost  int
+}
+
+func newLanePacker(cards ...*gcard) *lanePacker {
+	lp := &lanePacker{aboveBusy: map[int]bool{}, topMost: -1}
+	for _, c := range cards {
+		if c == nil {
+			continue
+		}
+		if lp.topMost < 0 || c.y < lp.topMost {
+				lp.topMost = c.y
+		}
+		if c.y+c.h > lp.bottomMost {
+			lp.bottomMost = c.y + c.h
+		}
+	}
+	if lp.topMost < 0 {
+		lp.topMost = 0
+	}
+	return lp
+}
+
+// claim returns a row for an over/under lane: the nearest free above-row to
+// the cards (so arcs stay close) when headroom exists, otherwise the next free
+// below-row (which grows the canvas; the caller sizes the layout to fit).
+func (lp *lanePacker) claim(_, _ int) int {
+	for r := lp.topMost - 1; r >= 0; r-- {
+		if !lp.aboveBusy[r] {
+			lp.aboveBusy[r] = true
+			return r
+		}
+	}
+	r := lp.bottomMost + lp.belowNext
+	lp.belowNext++
+	return r
+}
+
+// rerouteArrows recomputes every arrow's polyline from the cards' live
+// positions (used after a free-form drag) and resizes the canvas to fit both
+// the moved cards and any lane rows the router added. The initial layout's
+// legacy routing is left intact until this is called.
+func rerouteArrows(l *erdLayout) {
+	if l == nil {
+		return
+	}
+	lanes := newLanePacker(l.cards...)
+	maxW, maxH := l.canvasW, l.canvasH
+	for _, c := range l.cards {
+		if c == nil {
+			continue
+		}
+		if c.x+c.w > maxW {
+			maxW = c.x + c.w
+		}
+		if c.y+c.h > maxH {
+			maxH = c.y + c.h
+		}
+	}
+	for i := range l.arrows {
+		a := &l.arrows[i]
+		if a.child == nil || a.parent == nil {
+			continue
+		}
+		pts, side := routeArrow(a.child, a.parent, a.childCol, a.parentCol, l.cards, lanes)
+		a.pts = pts
+		a.headSide = side
+		for _, p := range pts {
+			if p.x >= maxW {
+				maxW = p.x + 1
+			}
+			if p.y >= maxH {
+				maxH = p.y + 1
+			}
+		}
+	}
+	l.canvasW = maxW
+	l.canvasH = maxH
 }
 
 // addCol records that column col of card is a connection endpoint, so it can be
@@ -925,6 +1218,17 @@ func renderGraphERD(tables []string, schemas map[string][]db.Column, pks map[str
 func abs[T int](x T) T {
 	if x < 0 {
 		return -x
+	}
+	return x
+}
+
+// clampInt pins x to the closed range [lo, hi].
+func clampInt(x, lo, hi int) int {
+	if x < lo {
+		return lo
+	}
+	if x > hi {
+		return hi
 	}
 	return x
 }

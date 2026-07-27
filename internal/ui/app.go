@@ -2634,6 +2634,14 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// ERD panel is modal — j/k scroll, y copy, s save, esc/q close.
 	if m.erdPanel.IsVisible() {
+		// A mouse drag is modal: esc cancels it (restoring the card), and every
+		// other key is swallowed so keyboard focus can't race the in-flight move.
+		if m.erdPanel.dragCard != "" {
+			if msg.String() == "esc" {
+				m.erdPanel = m.erdPanel.dragCancel()
+			}
+			return m, nil
+		}
 		// While the panel's "/" jump bar is open it consumes all keys
 		// (including esc/enter, which the app would otherwise grab).
 		if !m.erdPanel.searching {

@@ -56,6 +56,21 @@ type ERDPanel struct {
 	pathFrom  string
 	pathCards []string
 	pathMsg   string
+
+	// Free-form card drag (mouse). A MouseLeft on a card body is recorded as a
+	// pending drag; the first MouseMotion promotes it to an active drag and the
+	// card follows the cursor (arrows re-route live around it), and MouseRelease
+	// commits. A press with no motion is still a click — it runs the existing
+	// highlight/recentre logic on release, so drag never steals a click. Esc
+	// cancels an in-flight drag, restoring the card's pre-drag position.
+	dragPending string // card name under a press not yet promoted ("" = none)
+	dragCard    string // card name being dragged ("" = none)
+	dragPressX  int    // canvas cell of the press (threshold + offset reference)
+	dragPressY  int
+	dragOffX    int // cursor-to-card-origin offset at grab (card stays under cursor)
+	dragOffY    int
+	dragOrigX   int // card position at press (esc-cancel restores it)
+	dragOrigY   int
 }
 
 func (e ERDPanel) IsVisible() bool { return e.visible }
@@ -84,6 +99,8 @@ func (e *ERDPanel) Show(title string, layout *erdLayout, mermaid []string) {
 	e.pathFrom = ""
 	e.pathCards = nil
 	e.pathMsg = ""
+	e.dragPending = ""
+	e.dragCard = ""
 }
 
 // MermaidLines returns the Mermaid source (used by the app's copy/save handlers
@@ -91,7 +108,11 @@ func (e *ERDPanel) Show(title string, layout *erdLayout, mermaid []string) {
 func (e ERDPanel) MermaidLines() []string { return e.mermaid }
 
 // Hide hides the panel.
-func (e *ERDPanel) Hide() { e.visible = false }
+func (e *ERDPanel) Hide() {
+	e.visible = false
+	e.dragPending = ""
+	e.dragCard = ""
+}
 
 // SetSize sets the outer dimensions of the panel (including border).
 func (e *ERDPanel) SetSize(width, height int) {
@@ -141,7 +162,7 @@ func (e *ERDPanel) clampScroll() {
 // derived from contentHeight shrink by this so the line never overlaps the
 // diagram.
 func (e ERDPanel) statusHeight() int {
-	if e.searching || e.pathFrom != "" || len(e.pathCards) > 0 {
+	if e.dragCard != "" || e.searching || e.pathFrom != "" || len(e.pathCards) > 0 {
 		return 1
 	}
 	return 0
@@ -214,6 +235,30 @@ func (e ERDPanel) contentToCanvas(sx, sy int) (cx, cy int, ok bool) {
 	// Reject the centred margin around a diagram smaller than the viewport.
 	if cx < e.scrollX || cx >= e.scrollX+bodyW || cy < e.scrollY || cy >= e.scrollY+bodyH {
 		return 0, 0, false
+	}
+	return cx, cy, true
+}
+
+// contentToCanvasUnbounded maps a screen cell to a canvas cell without rejecting
+// points beyond the current canvas bounds — used during a card drag, where the
+// cursor legitimately targets cells outside the diagram (the card is dragged
+// out there and the canvas grows to contain it). It still rejects points
+// outside the panel's content area or off the centred body (empty margin), and
+// clamps the result to non-negative so the card can't be dragged above/left of
+// the canvas origin.
+func (e ERDPanel) contentToCanvasUnbounded(sx, sy int) (cx, cy int, ok bool) {
+	cw, ch := e.contentWidth(), e.contentHeight()
+	if e.graph == nil || e.merm || sx < 0 || sx >= cw || sy < 0 || sy >= ch {
+		return 0, 0, false
+	}
+	_, _, offX, offY := e.placedBounds()
+	cx = sx - offX + e.scrollX
+	cy = sy - offY + e.scrollY
+	if cx < 0 {
+		cx = 0
+	}
+	if cy < 0 {
+		cy = 0
 	}
 	return cx, cy, true
 }
@@ -515,6 +560,111 @@ func (e ERDPanel) toggleHighlight(c *gcard) ERDPanel {
 		e.graph = e.renderedGraph()
 	}
 	return e
+}
+
+// --- free-form card drag (mouse) ------------------------------------------
+
+// erdDragMaxBound clamps a dragged card's origin so it can't be flung far off
+// the diagram (the canvas still grows to contain it). Generous enough that the
+// user can spread a schema across a wide canvas.
+const erdDragMaxBound = 1000
+
+// dragBeginPress records a pending drag when a MouseLeft lands on a card body.// The card's live position is snapshotted (for esc-cancel) and the cursor's
+// offset from the card origin is captured so the card tracks the cursor
+// without jumping its top-left under the pointer. No move happens yet — the
+// press promotes to a drag only on the first MouseMotion, leaving a plain
+// click (release with no motion) to the existing highlight/recentre logic.
+func (e ERDPanel) dragBeginPress(card *gcard, cx, cy int) ERDPanel {
+	if card == nil {
+		return e
+	}
+	e.dragPending = card.name
+	e.dragPressX = cx
+	e.dragPressY = cy
+	e.dragOrigX = card.x
+	e.dragOrigY = card.y
+	e.dragOffX = cx - card.x
+	e.dragOffY = cy - card.y
+	return e
+}
+
+// dragPromote starts an active drag if a pending press has moved at least one
+// cell from its press point. Returns the (possibly updated) panel and whether a
+// drag is now active (the caller follows up with dragMove). Any motion promotes:
+// MouseMotion fires on a cell change, so even one event means the user is
+// dragging, not clicking.
+func (e ERDPanel) dragPromote(cx, cy int) (ERDPanel, bool) {
+	if e.dragCard != "" {
+		return e, true
+	}
+	if e.dragPending == "" {
+		return e, false
+	}
+	if abs(cx-e.dragPressX)+abs(cy-e.dragPressY) < 1 {
+		return e, false
+	}
+	e.dragCard = e.dragPending
+	return e, true
+}
+
+// dragMove updates the dragged card's position from the cursor, clamped to a
+// generous bound so the card stays reachable (the canvas grows to fit). Every
+// arrow is then re-routed around the new layout and the graph re-rendered, so
+// relationships re-route live as the card moves — the “drawing” feel.
+func (e ERDPanel) dragMove(cx, cy int) ERDPanel {
+	c := e.cardNamed(e.dragCard)
+	if c == nil {
+		return e
+	}
+	c.x = clampInt(cx-e.dragOffX, 0, erdDragMaxBound)
+	c.y = clampInt(cy-e.dragOffY, 0, erdDragMaxBound)
+	if e.layout != nil {
+		rerouteArrows(e.layout)
+		e.graph = e.renderedGraph()
+	}
+	return e
+}
+
+// dragCommit finalizes a drag on MouseRelease: the card stays where it was
+// dropped (arrows were re-routed live during the move) and drag state clears.
+// A final re-route keeps the result consistent if the terminal skipped any
+// intermediate motion events.
+func (e ERDPanel) dragCommit() ERDPanel {
+	if e.dragCard == "" {
+		e.dragPending = ""
+		return e
+	}
+	e.dragCard = ""
+	e.dragPending = ""
+	if e.layout != nil {
+		rerouteArrows(e.layout)
+		e.graph = e.renderedGraph()
+	}
+	return e
+}
+
+// dragCancel aborts an in-flight drag (esc), restoring the dragged card to its
+// pre-drag position and re-routing arrows back to the original layout.
+func (e ERDPanel) dragCancel() ERDPanel {
+	if c := e.cardNamed(e.dragCard); c != nil {
+		c.x = e.dragOrigX
+		c.y = e.dragOrigY
+		if e.layout != nil {
+			rerouteArrows(e.layout)
+			e.graph = e.renderedGraph()
+		}
+	}
+	e.dragCard = ""
+	e.dragPending = ""
+	return e
+}
+
+// dragStatusLine renders the one-line drag status shown at the bottom of the
+// graph while a card is being dragged.
+func (e ERDPanel) dragStatusLine(width int) string {
+	msg := lipgloss.NewStyle().Foreground(colorAccent).Render("◇ dragging " + e.dragCard) +
+		" " + mutedStyle.Render("(release to drop, esc to cancel)")
+	return lipgloss.NewStyle().Width(width).Render(" " + msg)
 }
 
 // lineCount is the number of scrollable rows in the active view.
@@ -987,6 +1137,9 @@ func (e ERDPanel) View() string {
 		// or exceeds the viewport, Place is a no-op and scroll/pan applies.
 		body := e.graph.Window(e.scrollX, cw, e.scrollY, ch)
 		body = lipgloss.Place(cw, ch, lipgloss.Center, lipgloss.Center, body)
+		if e.dragCard != "" {
+			return lipgloss.JoinVertical(lipgloss.Left, body, e.dragStatusLine(cw))
+		}
 		if e.searching {
 			return lipgloss.JoinVertical(lipgloss.Left, body, e.searchPrompt(cw))
 		}

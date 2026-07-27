@@ -556,13 +556,39 @@ func (m Model) handleHelpMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // Coordinate translation (screen → canvas) and hit-testing live on ERDPanel.
 //
 // The wheel scrolls the diagram (shift+wheel, or a terminal's native horizontal
-// wheel, pans sideways); a single left-click on a table card toggles a
-// highlight that tints the card's border and its FK arrows, and a double-click
-// recentres the viewport on it (for navigating a crowded diagram). In a focused
-// ERD clicking a non-root card's header (cued by a ⤢ glyph) re-focuses the
-// diagram on that table's neighbourhood, letting you walk the graph without
-// leaving the panel — it takes precedence over the highlight/recentre clicks.
+// wheel, pans sideways). Left-clicks on cards toggle a highlight (or, on a
+// non-root card's header — cued by ⤢ — re-focus the ERD on that table's
+// neighbourhood), and a double-click recentres the viewport. A click-and-drag
+// on a card body moves the card freely: the press is recorded as pending, the
+// first motion event promotes it to a drag (the card tracks the cursor while
+// arrows re-route around it live), and release drops it. A press with no motion
+// is still a click, so drag never steals a click. Esc cancels an in-flight drag.
 func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// Left-button drag motion is reported as Type=MouseLeft + Action=Motion
+	// (bubbletea's backward-compat mapping; Type=MouseMotion is button-less
+	// hover, which needs WithMouseAllMotion). Route on Action first, otherwise
+	// every drag motion re-enters the MouseLeft press handler and the drag
+	// never starts.
+	if msg.Action == tea.MouseActionMotion {
+		if m.erdPanel.dragPending == "" && m.erdPanel.dragCard == "" {
+			return m, nil
+		}
+		cx, cy, ok := m.erdPanel.contentToCanvasUnbounded(msg.X, msg.Y)
+		if !ok {
+			return m, nil
+		}
+		if m.erdPanel.dragCard == "" {
+			var promoted bool
+			m.erdPanel, promoted = m.erdPanel.dragPromote(cx, cy)
+			if !promoted {
+				return m, nil
+			}
+			m.lastERDClickTime = time.Time{}
+			m.lastERDClickCard = ""
+		}
+		m.erdPanel = m.erdPanel.dragMove(cx, cy)
+		return m, nil
+	}
 	switch msg.Type {
 	case tea.MouseWheelUp:
 		if msg.Shift {
@@ -580,12 +606,23 @@ func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.erdPanel = m.erdPanel.Wheel(0, -1)
 	case tea.MouseWheelRight:
 		m.erdPanel = m.erdPanel.Wheel(0, 1)
+	case tea.MouseRelease:
+		// Drop an active drag; or, if a press never promoted, run the deferred
+		// click logic (double-click re-centre / single-click highlight).
+		if m.erdPanel.dragCard != "" {
+			m.erdPanel = m.erdPanel.dragCommit()
+			return m, nil
+		}
+		if m.erdPanel.dragPending != "" {
+			clicked := m.erdPanel.cardNamed(m.erdPanel.dragPending)
+			m.erdPanel.dragPending = ""
+			m = m.runERDCardClick(clicked)
+		}
 	case tea.MouseLeft:
 		cx, cy, ok := m.erdPanel.contentToCanvas(msg.X, msg.Y)
 		// A click on a non-root card's header (the whole title row, cued by the
-		// ⤢ glyph) takes precedence over highlight/recentre: it re-focuses the
-		// ERD on that table's neighbourhood so you can walk the relationships
-		// without leaving the panel. Body clicks still toggle highlight.
+		// ⤢ glyph) takes precedence and re-focuses the ERD on that table's
+		// neighbourhood. It acts on press (headers are not draggable).
 		if ok {
 			if target := m.erdPanel.drillInCard(cx, cy); target != nil {
 				m.lastERDClickTime = time.Time{}
@@ -600,24 +637,44 @@ func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if ok {
 			clicked = m.erdPanel.cardAt(cx, cy)
 		}
-		now := time.Now()
-		if clicked != nil && !m.lastERDClickTime.IsZero() &&
-			now.Sub(m.lastERDClickTime) <= doubleClickInterval &&
-			m.lastERDClickCard == clicked.name {
-			// Double-click on a card → re-centre the viewport on it (and move the
-			// keyboard focus to it, matching a single click).
+		// Empty space: clear the highlight on press (unchanged).
+		if clicked == nil {
 			m.lastERDClickTime = time.Time{}
-			m.erdPanel = m.erdPanel.setFocus(clicked.name)
-			m.erdPanel = m.erdPanel.centerOnCard(clicked)
-		} else {
-			// Single-click → toggle highlight (nil clears it, e.g. empty space).
-			m.lastERDClickTime = now
 			m.lastERDClickCard = ""
-			if clicked != nil {
-				m.lastERDClickCard = clicked.name
-			}
-			m.erdPanel = m.erdPanel.toggleHighlight(clicked)
+			m.erdPanel = m.erdPanel.toggleHighlight(nil)
+			return m, nil
 		}
+		// Card body: record a pending drag. The click (highlight/recentre) is
+		// deferred to release so a drag doesn't toggle highlight mid-move.
+		m.erdPanel = m.erdPanel.dragBeginPress(clicked, cx, cy)
 	}
 	return m, nil
+}
+
+// runERDCardClick runs the deferred body-click logic for an ERD card on mouse
+// release: a double-click (same card within doubleClickInterval) recentres the
+// viewport on it; otherwise a single click toggles its highlight. Extracted
+// from the MouseRelease path so the press→drag→release flow can call it for a
+// click that never promoted to a drag. clicked may be nil (then nothing fires —
+// the empty-space clear already happened on press).
+func (m Model) runERDCardClick(clicked *gcard) Model {
+	if clicked == nil {
+		return m
+	}
+	now := time.Now()
+	if !m.lastERDClickTime.IsZero() &&
+		now.Sub(m.lastERDClickTime) <= doubleClickInterval &&
+		m.lastERDClickCard == clicked.name {
+		// Double-click on a card → re-centre the viewport on it (and move the
+		// keyboard focus to it, matching a single click).
+		m.lastERDClickTime = time.Time{}
+		m.erdPanel = m.erdPanel.setFocus(clicked.name)
+		m.erdPanel = m.erdPanel.centerOnCard(clicked)
+		return m
+	}
+	// Single-click → toggle highlight.
+	m.lastERDClickTime = now
+	m.lastERDClickCard = clicked.name
+	m.erdPanel = m.erdPanel.toggleHighlight(clicked)
+	return m
 }
