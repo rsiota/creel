@@ -134,6 +134,55 @@ func TestParseSQLiteTriggerTiming(t *testing.T) {
 	}
 }
 
+func TestSQLitePartialIndex(t *testing.T) {
+	s := setupSQLiteTestDB(t)
+	// A partial index with a WHERE predicate.
+	if _, err := s.Exec(`CREATE INDEX idx_users_email_partial ON users(email) WHERE email IS NOT NULL`); err != nil {
+		t.Fatalf("create partial index: %v", err)
+	}
+	// A regular index has no predicate.
+	if _, err := s.Exec(`CREATE INDEX idx_users_name ON users(name)`); err != nil {
+		t.Fatalf("create index: %v", err)
+	}
+
+	idxs, err := s.Indexes("users")
+	if err != nil {
+		t.Fatalf("Indexes: %v", err)
+	}
+	got := map[string]Index{}
+	for _, ix := range idxs {
+		got[ix.Name] = ix
+	}
+	if ix := got["idx_users_email_partial"]; ix.Partial != "email IS NOT NULL" {
+		t.Errorf("partial index predicate = %q, want %q", ix.Partial, "email IS NOT NULL")
+	}
+	if ix := got["idx_users_name"]; ix.Partial != "" {
+		t.Errorf("non-partial index predicate = %q, want empty", ix.Partial)
+	}
+}
+
+func TestSplitIndexWhere(t *testing.T) {
+	cases := []struct {
+		name string
+		sql  string
+		want string
+	}{
+		{"plain", "CREATE INDEX i ON t (a) WHERE a > 0", "a > 0"},
+		{"lowercase", "create index i on t (a) where a > 0", "a > 0"},
+		{"none", "CREATE INDEX i ON t (a)", ""},
+		{"expression index with parens", "CREATE INDEX i ON t ((a + b)) WHERE a + b > 0", "a + b > 0"},
+		{"where-like token inside column list", "CREATE INDEX i ON t (wherever) WHERE x = 1", "x = 1"},
+		{"where inside a string literal in predicate", "CREATE INDEX i ON t (a) WHERE col = 'WHERE'", "col = 'WHERE'"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := splitIndexWhere(c.sql); got != c.want {
+				t.Errorf("splitIndexWhere(%q) = %q, want %q", c.sql, got, c.want)
+			}
+		})
+	}
+}
+
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

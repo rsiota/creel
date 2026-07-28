@@ -42,11 +42,6 @@ Suggestions as you type in the ex line — the biggest "feels polished" payoff
 for `:` mode. A real project, not a follow-up: fuzzy index over `exCommands()`
 + a render layer in the ex line + ranking. Scope it deliberately.
 
-### SQLite partial-index predicate (#4 follow-up)
-The Structure view's index list shows only a 0/1 "partial" flag on SQLite
-(PRAGMA limitation). Surface the actual predicate by parsing
-`sqlite_master.sql`. Small.
-
 ### `cursor_style` setting (#7 follow-up)
 Reserved field in `Settings`; needs results-cursor rendering work. Parked
 until someone wants configurable cursor shapes.
@@ -139,6 +134,10 @@ palette). Never copy a key handler body into an ex executor. A full unified
 4. **Indexes, triggers, views, constraints** (2026-07-10) — across all three
    drivers + read-only **Structure** view (`d`). Check constraints (2026-07-14,
    `CheckConstraints` + Checks tab). `view`/`table` sidebar badge (2026-07-24).
+   SQLite partial-index predicate (2026-07-28) — `PRAGMA index_list` only
+   reports a 0/1 flag, so the WHERE is parsed from `sqlite_master.sql`
+   (`indexPartialPredicate` + `splitIndexWhere`, mirroring `ViewDefinition`);
+   `Index.Partial` was already rendered by the Structure tab and PostgreSQL.
 
 ### 🟡 Medium-value improvements
 

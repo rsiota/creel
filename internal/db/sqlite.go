@@ -361,16 +361,19 @@ func (s *SQLite) Indexes(table string) ([]Index, error) {
 	}
 
 	type rawIndex struct {
-		name   string
-		unique bool
-		origin string
+		name    string
+		unique  bool
+		origin  string
+		partial bool
 	}
 	var raw []rawIndex
 	for rows.Next() {
 		var seq, unique int
 		var name, origin string
 		var partial int
-		// PRAGMA index_list columns: seq, name, unique, origin, partial
+		// PRAGMA index_list columns: seq, name, unique, origin, partial.
+		// PRAGMA only reports a 0/1 partial flag; the actual predicate is
+		// parsed from sqlite_master.sql below (see indexPartialPredicate).
 		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
 			rows.Close()
 			return nil, err
@@ -378,7 +381,7 @@ func (s *SQLite) Indexes(table string) ([]Index, error) {
 		if origin == "pk" {
 			continue
 		}
-		raw = append(raw, rawIndex{name: name, unique: unique != 0, origin: origin})
+		raw = append(raw, rawIndex{name: name, unique: unique != 0, origin: origin, partial: partial != 0})
 	}
 	if cerr := rows.Close(); cerr != nil {
 		return nil, cerr
@@ -393,13 +396,75 @@ func (s *SQLite) Indexes(table string) ([]Index, error) {
 		if err != nil {
 			return nil, err
 		}
-		idxs = append(idxs, Index{
+		ix := Index{
 			Name:    r.name,
 			Columns: cols,
 			Unique:  r.unique,
-		})
+		}
+		if r.partial {
+			pred, err := s.indexPartialPredicate(r.name)
+			if err != nil {
+				return nil, err
+			}
+			ix.Partial = pred
+		}
+		idxs = append(idxs, ix)
 	}
 	return idxs, nil
+}
+
+// indexPartialPredicate returns the WHERE predicate of a partial index by
+// parsing its CREATE INDEX text from sqlite_master. It mirrors ViewDefinition;
+// the caller only invokes this when PRAGMA index_list reports partial=1, which
+// implies a user-created partial index. Auto-indexes (origin "u"/"pk") have
+// NULL sql, so they are never queried here.
+func (s *SQLite) indexPartialPredicate(indexName string) (string, error) {
+	var sqlStr sql.NullString
+	err := s.db.QueryRow(
+		`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`,
+		indexName,
+	).Scan(&sqlStr)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return splitIndexWhere(sqlStr.String), nil
+}
+
+// splitIndexWhere extracts the partial-index predicate (the text after a
+// top-level WHERE keyword) from a CREATE INDEX statement, or "" when it has
+// none. Parentheses are balanced so a WHERE-like token inside an expression
+// index's column list is not mistaken for the predicate separator, and word
+// boundaries on both sides keep the keyword out of identifiers.
+func splitIndexWhere(createIndex string) string {
+	const kw = "WHERE"
+	depth := 0
+	for i := 0; i+len(kw) <= len(createIndex); i++ {
+		switch createIndex[i] {
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		}
+		if depth != 0 {
+			continue
+		}
+		if !strings.EqualFold(createIndex[i:i+len(kw)], kw) {
+			continue
+		}
+		if i > 0 && isLetterDigit(createIndex[i-1]) {
+			continue
+		}
+		if i+len(kw) < len(createIndex) && isLetterDigit(createIndex[i+len(kw)]) {
+			continue
+		}
+		return strings.TrimSpace(createIndex[i+len(kw):])
+	}
+	return ""
 }
 
 // indexColumns returns the column names for a SQLite index.
