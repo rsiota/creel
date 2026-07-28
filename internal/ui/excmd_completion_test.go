@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/ruben/gsql/internal/config"
 )
 
 // TestExCompletionShowsAllOnOpen: typing ":" alone lists every command — the
@@ -138,5 +140,192 @@ func TestExCompletionFixedWidth(t *testing.T) {
 	body2 := lines2[1 : len(lines2)-1]
 	if w := lipgloss.Width(body2[0]); w != wantW {
 		t.Errorf("narrowed popup width = %d, want fixed %d", w, wantW)
+	}
+}
+
+// --- argument completion ---------------------------------------------------
+
+// sameStrings reports whether two slices hold the same strings in order.
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// exCandidates extracts the candidate strings from a comp slice.
+func exCandidates(items []exCompItem) []string {
+	out := make([]string, len(items))
+	for i, c := range items {
+		out[i] = c.candidate
+	}
+	return out
+}
+
+// TestExArgCompletionTables: past the verb, table-name commands offer the
+// connection's tables. Empty partial -> alphabetical.
+func TestExArgCompletionTables(t *testing.T) {
+	m := &Model{tables: []string{"users", "orders", "events"}}
+	m.ex.input = "goto "
+	m.recomputeExCompletion()
+	if !m.ex.argMode {
+		t.Fatal("expected arg mode after the verb")
+	}
+	got := exCandidates(m.ex.comp)
+	want := []string{"events", "orders", "users"}
+	if !sameStrings(got, want) {
+		t.Errorf("goto candidates = %v, want %v", got, want)
+	}
+}
+
+// TestExArgCompletionTablesWithPartial: a partial token fuzzy-filters.
+func TestExArgCompletionTablesWithPartial(t *testing.T) {
+	m := &Model{tables: []string{"users", "orders", "events"}}
+	m.ex.input = "goto us"
+	m.recomputeExCompletion()
+	got := exCandidates(m.ex.comp)
+	// "us" fuzzy-matches only "users".
+	if !sameStrings(got, []string{"users"}) {
+		t.Errorf("partial %q candidates = %v, want [users]", "us", got)
+	}
+}
+
+// TestExArgCompletionHiddenPastFirstArg: a table command offers nothing once
+// the table argument is already supplied (the rest is free-form).
+func TestExArgCompletionHiddenPastFirstArg(t *testing.T) {
+	m := &Model{tables: []string{"users", "orders"}}
+	m.ex.input = "goto users "
+	m.recomputeExCompletion()
+	if len(m.ex.comp) != 0 {
+		t.Errorf("expected no candidates past the table arg, got %+v", m.ex.comp)
+	}
+	if m.ex.completionView() != "" {
+		t.Error("expected empty popup past the table arg")
+	}
+}
+
+// TestExArgCompletionConnection: :connect offers configured connection names.
+func TestExArgCompletionConnection(t *testing.T) {
+	m := &Model{config: &config.Config{Connections: []config.ConnectionConfig{
+		{Name: "prod"}, {Name: "dev"},
+	}}}
+	m.ex.input = "connect "
+	m.recomputeExCompletion()
+	got := exCandidates(m.ex.comp)
+	want := []string{"dev", "prod"} // empty partial -> alphabetical
+	if !sameStrings(got, want) {
+		t.Errorf("connect candidates = %v, want %v", got, want)
+	}
+}
+
+// TestExArgCompletionTheme: :theme offers every theme name.
+func TestExArgCompletionTheme(t *testing.T) {
+	m := &Model{}
+	m.ex.input = "theme "
+	m.recomputeExCompletion()
+	if !m.ex.argMode {
+		t.Fatal("expected arg mode")
+	}
+	want := rankStrings("", themeNames())
+	got := exCandidates(m.ex.comp)
+	if !sameStrings(got, want) {
+		t.Errorf("theme candidates mismatch: got %d, want %d", len(got), len(want))
+	}
+}
+
+// TestExArgCompletionExport: :export offers the fixed format set, sorted.
+func TestExArgCompletionExport(t *testing.T) {
+	m := &Model{}
+	m.ex.input = "export "
+	m.recomputeExCompletion()
+	got := exCandidates(m.ex.comp)
+	want := []string{"csv", "json", "jsonl", "md", "sql", "tsv"}
+	if !sameStrings(got, want) {
+		t.Errorf("export candidates = %v, want %v", got, want)
+	}
+}
+
+// TestExArgCompletionIcons: a partial ranks a boundary match first.
+func TestExArgCompletionIcons(t *testing.T) {
+	m := &Model{}
+	m.ex.input = "icons n"
+	m.recomputeExCompletion()
+	got := exCandidates(m.ex.comp)
+	// "n" matches both, but "nerdfont" (leading n) outranks "unicode".
+	if len(got) == 0 || got[0] != "nerdfont" {
+		t.Errorf("icons %q top candidate = %v, want nerdfont first", "n", got)
+	}
+}
+
+// TestExArgCompletionTab: Tab replaces the partial token with the top match.
+func TestExArgCompletionTab(t *testing.T) {
+	m := &Model{tables: []string{"users", "orders"}}
+	m.ex.Open()
+	m.ex.input = "goto us"
+	m.recomputeExCompletion()
+	if len(m.ex.comp) == 0 || m.ex.comp[0].candidate != "users" {
+		t.Fatalf("before Tab, comp = %+v, want [users]", m.ex.comp)
+	}
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyTab})
+	if m.ex.input != "goto users" {
+		t.Errorf("after Tab, input = %q, want %q", m.ex.input, "goto users")
+	}
+}
+
+// TestExArgCompletionVerbModeWhenNoSpace: before any space it stays verb mode.
+func TestExArgCompletionVerbModeWhenNoSpace(t *testing.T) {
+	m := &Model{tables: []string{"users"}}
+	m.ex.input = "go"
+	m.recomputeExCompletion()
+	if m.ex.argMode {
+		t.Error("expected verb mode (argMode=false) before any space")
+	}
+	if len(m.ex.comp) != 1 || m.ex.comp[0].verb != "goto" {
+		t.Errorf("expected verb [goto], got %+v", m.ex.comp)
+	}
+}
+
+// TestSplitArgsPartial covers the arg/partial split, including the trailing-
+// space case (partial empty, args include the finished token).
+func TestSplitArgsPartial(t *testing.T) {
+	cases := []struct {
+		rest        string
+		wantArgs    []string
+		wantPartial string
+	}{
+		{"", nil, ""},
+		{"users", nil, "users"},
+		{"users ", []string{"users"}, ""},
+		{"users em", []string{"users"}, "em"},
+		{"users em ", []string{"users", "em"}, ""},
+	}
+	for _, c := range cases {
+		args, partial := splitArgsPartial(c.rest)
+		if !sameStrings(args, c.wantArgs) || partial != c.wantPartial {
+			t.Errorf("splitArgsPartial(%q) = (%v, %q), want (%v, %q)",
+				c.rest, args, partial, c.wantArgs, c.wantPartial)
+		}
+	}
+}
+
+// TestApplyArgCompletion covers Tab's token replacement.
+func TestApplyArgCompletion(t *testing.T) {
+	cases := []struct {
+		input, candidate, want string
+	}{
+		{"goto us", "users", "goto users"},
+		{"goto users ", "50", "goto users 50"},
+		{"goto", "users", "users"},
+	}
+	for _, c := range cases {
+		if got := applyArgCompletion(c.input, c.candidate); got != c.want {
+			t.Errorf("applyArgCompletion(%q, %q) = %q, want %q",
+				c.input, c.candidate, got, c.want)
+		}
 	}
 }

@@ -27,14 +27,18 @@ type exCmd struct {
 	input   string
 	hist    []string     // command history, most-recent last
 	histIdx int          // recall cursor; len(hist) == "fresh input"
-	comp    []exCompItem // verb-completion candidates; empty = no popup
+	comp    []exCompItem // popup candidates; empty = no popup
+	argMode bool         // true: comp holds argument candidates (Tab completes last token)
 }
 
-// exCompItem is one row in the ":" verb-completion popup.
+// exCompItem is one row in the ":" completion popup. In verb mode verb/desc
+// are set (the command being completed); in argument mode candidate is set
+// (the argument value being completed).
 type exCompItem struct {
-	verb  string // canonical verb inserted by Tab
-	usage string // invocation form, e.g. ":w [file]"
-	desc  string
+	verb      string // verb mode: canonical verb inserted by Tab
+	candidate string // arg mode: argument value inserted by Tab
+	usage     string // invocation form, e.g. ":w [file]"
+	desc      string
 }
 
 // handleExKey routes keys to the open ":" command line. It is modal: every
@@ -50,6 +54,7 @@ func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.ex.input = ""
 		m.ex.visible = false
 		m.ex.comp = nil
+		m.ex.argMode = false
 		if input == "" {
 			return *m, nil
 		}
@@ -58,31 +63,36 @@ func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return *m, m.runExCommand(input)
 	case "up":
 		m.ex.recall(-1)
-		m.ex.recomputeCompletion()
+		m.recomputeExCompletion()
 		return *m, nil
 	case "down":
 		m.ex.recall(1)
-		m.ex.recomputeCompletion()
+		m.recomputeExCompletion()
 		return *m, nil
 	case "tab":
-		// Complete the verb to the top match (its canonical name). recompute
-		// then hides the popup, since the verb is now an exact match.
+		// Complete the top match: the verb in verb mode (its canonical name)
+		// or the last argument token in argument mode. recompute then hides
+		// the popup once the match is exact.
 		if len(m.ex.comp) > 0 {
-			m.ex.input = m.ex.comp[0].verb
-			m.ex.recomputeCompletion()
+			if m.ex.argMode {
+				m.ex.input = applyArgCompletion(m.ex.input, m.ex.comp[0].candidate)
+			} else {
+				m.ex.input = m.ex.comp[0].verb
+			}
+			m.recomputeExCompletion()
 		}
 		return *m, nil
 	case "backspace":
 		if len(m.ex.input) > 0 {
 			r := []rune(m.ex.input)
 			m.ex.input = string(r[:len(r)-1])
-			m.ex.recomputeCompletion()
+			m.recomputeExCompletion()
 		}
 		return *m, nil
 	}
 	if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
 		m.ex.input += msg.String()
-		m.ex.recomputeCompletion()
+		m.recomputeExCompletion()
 	}
 	return *m, nil
 }
@@ -100,6 +110,7 @@ func (ex *exCmd) Open() {
 func (ex *exCmd) Hide() {
 	ex.visible = false
 	ex.comp = nil
+	ex.argMode = false
 }
 
 // IsVisible reports whether the ex command line is shown.
@@ -125,6 +136,7 @@ func verbPrefix(input string) (verb string, hasSpace bool) {
 // unambiguous canonical match (the user has fully specified the command).
 func (ex *exCmd) recomputeCompletion() {
 	ex.comp = ex.comp[:0]
+	ex.argMode = false // verb mode
 	verb, hasSpace := verbPrefix(ex.input)
 	if hasSpace {
 		return
@@ -145,6 +157,81 @@ func (ex *exCmd) recomputeCompletion() {
 	if len(ex.comp) == 1 && ex.comp[0].verb == needle && needle != "" {
 		ex.comp = nil
 	}
+}
+
+// recomputeExCompletion is the Model-level entry point for the ":" popup. Verb
+// completion (before any space) is delegated to recomputeCompletion; argument
+// completion (once the cursor is past the verb) needs Model data, so it runs
+// here. The two modes set exCmd.argMode so rendering and Tab know what a row
+// represents.
+func (m *Model) recomputeExCompletion() {
+	verb, hasSpace := verbPrefix(m.ex.input)
+	if !hasSpace {
+		m.ex.recomputeCompletion()
+		return
+	}
+	m.ex.comp = m.ex.comp[:0]
+	m.ex.argMode = true
+	// A trailing "!" (force) on the verb must be stripped, mirroring parseExLine.
+	lookup := strings.TrimSuffix(verb, "!")
+	spec := exLookup(lookup)
+	if spec == nil || spec.complete == nil {
+		return
+	}
+	rest := strings.TrimLeft(m.ex.input[len(verb):], " \t")
+	args, partial := splitArgsPartial(rest)
+	cands := spec.complete(m, args, partial)
+	for _, c := range rankStrings(partial, cands) {
+		m.ex.comp = append(m.ex.comp, exCompItem{candidate: c})
+	}
+}
+
+// splitArgsPartial splits the text after the verb into completed arguments and
+// the token currently being typed (partial, "" when the cursor sits in the gap
+// between arguments). Quoting follows splitShellFields; a partially-typed
+// quoted argument yields its raw content, which is fine in practice since
+// table/theme names are single words.
+func splitArgsPartial(rest string) (args []string, partial string) {
+	if rest == "" {
+		return nil, ""
+	}
+	fields := splitShellFields(rest)
+	last := rest[len(rest)-1]
+	if last == ' ' || last == '\t' {
+		return fields, ""
+	}
+	if len(fields) == 0 {
+		return nil, ""
+	}
+	return fields[:len(fields)-1], fields[len(fields)-1]
+}
+
+// rankStrings fuzzy-ranks items by query (best match first); an empty query
+// returns all items sorted alphabetically for stable display.
+func rankStrings(query string, items []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	if query == "" {
+		out := append([]string(nil), items...)
+		sort.Strings(out)
+		return out
+	}
+	ranked := fuzzyRank(query, items, func(s string) string { return s }, nil)
+	out := make([]string, len(ranked))
+	for i, r := range ranked {
+		out[i] = r.Item
+	}
+	return out
+}
+
+// applyArgCompletion returns input with its last whitespace-delimited token
+// replaced by candidate — what Tab does in argument mode.
+func applyArgCompletion(input, candidate string) string {
+	if idx := strings.LastIndex(input, " "); idx >= 0 {
+		return input[:idx+1] + candidate
+	}
+	return candidate
 }
 
 // exCompletionWidth is the fixed content width of the verb-completion popup:
@@ -172,6 +259,9 @@ const (
 func (ex exCmd) completionView() string {
 	if !ex.visible || len(ex.comp) == 0 {
 		return ""
+	}
+	if ex.argMode {
+		return ex.argCompletionView()
 	}
 	const maxRows = 9
 	items := ex.comp
@@ -218,6 +308,46 @@ func (ex exCmd) completionView() string {
 			row = "  " + cmdStr + "  " + descStr
 		}
 		lines = append(lines, row)
+	}
+	return lipgloss.NewStyle().
+		Border(panelBorder()).
+		BorderForeground(colorPrimary).
+		Render(strings.Join(lines, "\n"))
+}
+
+// argCompletionView renders the argument-candidate popup: a single column of
+// candidate names with the Tab target highlighted (row 0), mirroring the verb
+// popup's styling. One column is enough — the candidate is the whole value.
+func (ex exCmd) argCompletionView() string {
+	const maxRows = 9
+	items := ex.comp
+	if len(items) > maxRows {
+		items = items[:maxRows]
+	}
+	colW := 0
+	for _, it := range items {
+		if w := runeLen(it.candidate); w > colW {
+			colW = w
+		}
+	}
+	if colW > exCompletionCmdW {
+		colW = exCompletionCmdW
+	}
+	fit := func(s string, w int) string {
+		t := truncateRunes(s, w)
+		return t + strings.Repeat(" ", w-runeLen(t))
+	}
+	var lines []string
+	for i, it := range items {
+		cell := fit(it.candidate, colW)
+		if i == 0 {
+			lines = append(lines, lipgloss.NewStyle().
+				Background(colorPrimary).Foreground(colorBg).
+				Render("❯ "+cell))
+		} else {
+			lines = append(lines, lipgloss.NewStyle().
+				Foreground(colorPrimary).Render("  "+cell))
+		}
 	}
 	return lipgloss.NewStyle().
 		Border(panelBorder()).

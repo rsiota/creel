@@ -20,6 +20,11 @@ type exCmdSpec struct {
 	usage   string   // usage shown in help/autocomplete, e.g. ":w [file]"
 	argKind exArgKind
 	run     func(m *Model, args []string, force bool) tea.Cmd
+	// complete returns argument candidates for the token currently being
+	// typed (partial may be ""); args holds the already-typed preceding
+	// arguments. nil means no argument completion (verb-only). Used by the
+	// ":" popup once the cursor moves past the verb.
+	complete func(m *Model, args []string, partial string) []string
 }
 
 // exArgKind classifies a command's arguments, used by autocomplete hints and
@@ -163,6 +168,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exGoto(args[0])
 			},
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"export"},
@@ -176,6 +182,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exExport(arg)
 			},
+			complete: completeEnum("csv", "json", "jsonl", "md", "tsv", "sql"),
 		},
 		{
 			verbs:   []string{"copy"},
@@ -274,6 +281,7 @@ func exCommands() []exCmdSpec {
 			usage:   ":connect [name]",
 			argKind: exArgOptional,
 			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exConnect(args) },
+			complete: completeConnection,
 		},
 		{
 			verbs:   []string{"connections"},
@@ -321,6 +329,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exRefs(arg)
 			},
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"explore", "explorer", "er"},
@@ -348,6 +357,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exUses(arg)
 			},
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"begin", "transaction"},
@@ -424,6 +434,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exTruncate(name, force)
 			},
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"drop"},
@@ -437,6 +448,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exDrop(name, force)
 			},
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"rename"},
@@ -458,6 +470,7 @@ func exCommands() []exCmdSpec {
 			usage:   ":addcolumn [table] <name> <type> [\u2026]",
 			argKind: exArgOptional,
 			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exAddColumn(args) },
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"createdb"},
@@ -531,6 +544,7 @@ func exCommands() []exCmdSpec {
 			usage:   ":tail [table] [n]",
 			argKind: exArgTable,
 			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exTail(args) },
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"limit"},
@@ -564,6 +578,7 @@ func exCommands() []exCmdSpec {
 			usage:   ":peek [table]",
 			argKind: exArgTable,
 			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exPeek(args) },
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"filter"},
@@ -631,6 +646,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exDescribe(name)
 			},
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"columns"},
@@ -644,6 +660,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exOpenStructureTab(name, seTabColumns)
 			},
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"indexes"},
@@ -657,6 +674,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exOpenStructureTab(name, seTabIndexes)
 			},
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"constraints"},
@@ -670,6 +688,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exOpenStructureTab(name, seTabChecks)
 			},
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"fk"},
@@ -683,6 +702,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exOpenStructureTab(name, seTabFK)
 			},
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"tables", "dt"},
@@ -743,6 +763,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exCount(name)
 			},
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"sample", "head"},
@@ -756,6 +777,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exSample(name)
 			},
+			complete: completeTable,
 		},
 		{
 			verbs:   []string{"format"},
@@ -779,6 +801,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exTheme(args[0])
 			},
+			complete: completeTheme,
 		},
 		{
 			verbs:   []string{"icons"},
@@ -792,6 +815,7 @@ func exCommands() []exCmdSpec {
 				}
 				return m.exIcons(args[0])
 			},
+			complete: completeEnum("unicode", "nerdfont"),
 		},
 		{
 			verbs:   []string{"ai"},
@@ -810,6 +834,59 @@ func exCommands() []exCmdSpec {
 // small and lookup happens once per executed command, so a map cache isn't
 // worth the global state. The returned pointer is only valid for the duration
 // of the call (it points into a freshly built local slice).
+// --- argument completers --------------------------------------------------
+//
+// Each returns candidate strings for one command's first argument; ranking by
+// the partial token and popup rendering happen in recomputeExCompletion. They
+// return nil past the argument they own, so a popup simply hides there.
+
+// completeTable offers the current connection's table/view names as the first
+// argument (the table most ":" commands operate on). Past the first argument
+// there is nothing useful to suggest (counts, names, types are free-form).
+func completeTable(m *Model, args []string, _ string) []string {
+	if len(args) > 0 {
+		return nil
+	}
+	var names []string
+	for _, it := range m.sidebarItems() {
+		if !it.isColumn {
+			names = append(names, it.text)
+		}
+	}
+	return names
+}
+
+// completeConnection offers configured connection names as the sole argument.
+func completeConnection(m *Model, args []string, _ string) []string {
+	if len(args) > 0 || m.config == nil {
+		return nil
+	}
+	names := make([]string, 0, len(m.config.Connections))
+	for _, c := range m.config.Connections {
+		names = append(names, c.Name)
+	}
+	return names
+}
+
+// completeTheme offers every available theme name as the sole argument.
+func completeTheme(_ *Model, args []string, _ string) []string {
+	if len(args) > 0 {
+		return nil
+	}
+	return themeNames()
+}
+
+// completeEnum builds a completer for a fixed set of literal values (e.g.
+// ":export" formats, ":icons" glyph sets).
+func completeEnum(options ...string) func(*Model, []string, string) []string {
+	return func(_ *Model, args []string, _ string) []string {
+		if len(args) > 0 {
+			return nil
+		}
+		return options
+	}
+}
+
 func exLookup(verb string) *exCmdSpec {
 	specs := exCommands()
 	for i := range specs {

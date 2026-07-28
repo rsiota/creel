@@ -37,10 +37,21 @@ remains:
   bend-optimal in pathological layouts); a keyboard equivalent of drag for
   no-mouse/SSH contexts.
 
-### Live `:` command completion (#10 v2)
-Suggestions as you type in the ex line — the biggest "feels polished" payoff
-for `:` mode. A real project, not a follow-up: fuzzy index over `exCommands()`
-+ a render layer in the ex line + ranking. Scope it deliberately.
+### `:` argument completion — wave 2 (#10 v2)
+Wave 1 shipped (2026-07-28): each `exCmdSpec` gained an optional `complete`
+closure, and `Model.recomputeExCompletion` drives the popup past the verb.
+`completeTable` (15 table commands: `:goto`/`:describe`/`:columns`/`:indexes`/…),
+`completeConnection`, `completeTheme`, and `completeEnum` (`:export`, `:icons`)
+are wired; Tab completes the top match into the last token. Files:
+`excmd_registry.go`, `excmd.go`. Tests: `excmd_completion_test.go`. Remaining:
+- **Column names** (`:sort`, `:hidecolumn`, `:stats`, `:filter`) — needs the
+  focused table's columns; a touch more plumbing.
+- **File paths** (`:e`, `:w`, `:import`, `:open`, `:save`) — reuse the engine in
+  `import_prompt.go` rather than reimplement.
+- **`up`/`down` popup selection** — currently only Tab→top match; up/down still
+  recall history, so this needs a popup-visible guard.
+- **Fuzzy (vs strict prefix) verb matching** — bundled freebie deferred to avoid
+  changing the "g→goto only" behaviour the verb tests assert.
 
 ### `cursor_style` setting (#7 follow-up)
 Reserved field in `Settings`; needs results-cursor rendering work. Parked
