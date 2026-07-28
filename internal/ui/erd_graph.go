@@ -75,8 +75,14 @@ type gcell struct {
 }
 
 type gcanvas struct {
-	w, h  int
-	cells [][]gcell
+	w, h int
+	// ox, oy is the logical coordinate of the canvas's top-left cell. The drawing
+	// primitives take logical (card-space) coordinates and shift by (ox, oy) to
+	// land in the cell grid, so a card dragged up/left of the (0,0) origin —
+	// which makes the diagram's bounding box start at a negative logical coord —
+	// still renders instead of being clipped. (0,0) means logical == rendered.
+	ox, oy int
+	cells   [][]gcell
 }
 
 func newGcanvas(w, h int) *gcanvas {
@@ -96,12 +102,13 @@ func newGcanvas(w, h int) *gcanvas {
 func (c *gcanvas) inBounds(x, y int) bool { return x >= 0 && y >= 0 && x < c.w && y < c.h }
 
 func (c *gcanvas) setCh(x, y int, r rune, fg string, bold bool) {
-	if !c.inBounds(x, y) {
+	rx, ry := x-c.ox, y-c.oy
+	if !c.inBounds(rx, ry) {
 		return
 	}
-	c.cells[y][x].ch = r
-	c.cells[y][x].fg = fg
-	c.cells[y][x].bold = bold
+	c.cells[ry][rx].ch = r
+	c.cells[ry][rx].fg = fg
+	c.cells[ry][rx].bold = bold
 }
 
 func (c *gcanvas) putText(x, y int, s, fg string, bold bool) {
@@ -122,9 +129,11 @@ func (c *gcanvas) putText(x, y int, s, fg string, bold bool) {
 // any cell's glyph/fg — used for subtle row tints like the card header. Safe to
 // call before drawing text/borders: setCh/putText preserve an existing bg.
 func (c *gcanvas) fillBg(x1, x2, y int, bg string) {
+	ry := y - c.oy
 	for x := x1; x <= x2; x++ {
-		if c.inBounds(x, y) {
-			c.cells[y][x].bg = bg
+		rx := x - c.ox
+		if c.inBounds(rx, ry) {
+			c.cells[ry][rx].bg = bg
 		}
 	}
 }
@@ -133,17 +142,19 @@ func (c *gcanvas) hline(x1, x2, y int, fg string) {
 	if x1 > x2 {
 		x1, x2 = x2, x1
 	}
+	ry := y - c.oy
 	for x := x1; x <= x2; x++ {
-		if !c.inBounds(x, y) {
+		rx := x - c.ox
+		if !c.inBounds(rx, ry) {
 			continue
 		}
 		if x > x1 {
-			c.cells[y][x].con |= erdLeft
+			c.cells[ry][rx].con |= erdLeft
 		}
 		if x < x2 {
-			c.cells[y][x].con |= erdRight
+			c.cells[ry][rx].con |= erdRight
 		}
-		c.cells[y][x].fg = fg
+		c.cells[ry][rx].fg = fg
 	}
 }
 
@@ -151,17 +162,19 @@ func (c *gcanvas) vline(x, y1, y2 int, fg string) {
 	if y1 > y2 {
 		y1, y2 = y2, y1
 	}
+	rx := x - c.ox
 	for y := y1; y <= y2; y++ {
-		if !c.inBounds(x, y) {
+		ry := y - c.oy
+		if !c.inBounds(rx, ry) {
 			continue
 		}
 		if y > y1 {
-			c.cells[y][x].con |= erdUp
+			c.cells[ry][rx].con |= erdUp
 		}
 		if y < y2 {
-			c.cells[y][x].con |= erdDown
+			c.cells[ry][rx].con |= erdDown
 		}
-		c.cells[y][x].fg = fg
+		c.cells[ry][rx].fg = fg
 	}
 }
 
@@ -170,8 +183,9 @@ func (c *gcanvas) vline(x, y1, y2 int, fg string) {
 // arrow's vertical run into the corner that feeds its arrowhead, so the line
 // meets the triangle's base at a 90° angle instead of a dangling stub.
 func (c *gcanvas) addConn(x, y int, d erdDir) {
-	if c.inBounds(x, y) {
-		c.cells[y][x].con |= d
+	rx, ry := x-c.ox, y-c.oy
+	if c.inBounds(rx, ry) {
+		c.cells[ry][rx].con |= d
 	}
 }
 
@@ -659,6 +673,14 @@ type erdLayout struct {
 	arrows  []erdArrow
 	canvasW int
 	canvasH int
+	// originX, originY is the logical coordinate of the rendered canvas's
+	// top-left cell. The initial ranked layout places every card at
+	// non-negative coords, so this stays (0,0) until a free-form drag pushes a
+	// card up/left of the origin — then it goes negative and the canvas grows
+	// (and render shifts its cell grid) to contain the moved card. Mouse
+	// hit-testing shifts back by the origin so card positions stay logical.
+	originX int
+	originY int
 	// focus is the root table a focused ERD is centred on ("" = the whole
 	// schema). It drives the per-card drill-in icon (shown on every card but
 	// the root) and is stable across selection re-paints, so render reads it
@@ -980,13 +1002,25 @@ func (lp *lanePacker) claim(_, _ int) int {
 // rerouteArrows recomputes every arrow's polyline from the cards' live
 // positions (used after a free-form drag) and resizes the canvas to fit both
 // the moved cards and any lane rows the router added. The initial layout's
-// legacy routing is left intact until this is called.
+// legacy routing is left intact until this is called. The canvas may now extend
+// up/left of the (0,0) origin when a card is dragged there: originX/originY
+// record that negative extent (clamped to 0 when nothing reaches past it), the
+// canvas dimensions become (max - origin), and render shifts its cell grid by
+// the origin — so a card roaming in any direction stays on-canvas instead of
+// the leftmost/topmost one being trapped against the border.
 func rerouteArrows(l *erdLayout) {
 	if l == nil {
 		return
 	}
 	lanes := newLanePacker(l.cards...)
-	maxW, maxH := l.canvasW, l.canvasH
+	// Bounding box in logical (card-space) coords. The max grows from the
+	// canvas's existing logical extent (rendered size + origin) so a partial
+	// re-route such as esc-cancel never shrinks the diagram below what's laid
+	// out; the min (the origin) only drops below 0 when a card or route reaches
+	// past the top/left edge.
+	maxW := l.canvasW + l.originX
+	maxH := l.canvasH + l.originY
+	minX, minY := 0, 0
 	for _, c := range l.cards {
 		if c == nil {
 			continue
@@ -996,6 +1030,12 @@ func rerouteArrows(l *erdLayout) {
 		}
 		if c.y+c.h > maxH {
 			maxH = c.y + c.h
+		}
+		if c.x < minX {
+			minX = c.x
+		}
+		if c.y < minY {
+			minY = c.y
 		}
 	}
 	for i := range l.arrows {
@@ -1013,10 +1053,27 @@ func rerouteArrows(l *erdLayout) {
 			if p.y >= maxH {
 				maxH = p.y + 1
 			}
+			if p.x < minX {
+				minX = p.x
+			}
+			if p.y < minY {
+				minY = p.y
+			}
 		}
 	}
-	l.canvasW = maxW
-	l.canvasH = maxH
+	// The origin never moves right/down of (0,0): the initial ranked layout
+	// places every card at non-negative coords, so the canvas only extends
+	// beyond it as a card is dragged up/left.
+	if minX > 0 {
+		minX = 0
+	}
+	if minY > 0 {
+		minY = 0
+	}
+	l.originX = minX
+	l.originY = minY
+	l.canvasW = maxW - minX
+	l.canvasH = maxH - minY
 }
 
 // addCol records that column col of card is a connection endpoint, so it can be
@@ -1133,6 +1190,8 @@ func erdShortestPath(l *erdLayout, from, to string) []string {
 // dimmed card — without dimming or recolouring anything else.
 func (l *erdLayout) render(selected, focusName string, p erdPath) *gcanvas {
 	canv := newGcanvas(l.canvasW, l.canvasH)
+	canv.ox = l.originX
+	canv.oy = l.originY
 	conn := string(colorBorderUnfocused)
 	cardFg := string(colorPrimary)
 	accent := string(colorAccent)

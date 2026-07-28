@@ -220,47 +220,59 @@ func (e ERDPanel) placedBounds() (bodyW, bodyH, offX, offY int) {
 	return bodyW, bodyH, offX, offY
 }
 
+// canvasOrigin returns the logical coordinate of the rendered canvas's
+// top-left cell — how far the diagram extends up/left of the (0,0) origin after
+// a card is dragged there. It is (0,0) until such a drag, and lets the
+// mouse↔canvas transforms and scroll maths stay aligned with render's shift.
+func (e ERDPanel) canvasOrigin() (int, int) {
+	if e.layout != nil {
+		return e.layout.originX, e.layout.originY
+	}
+	return 0, 0
+}
+
 // contentToCanvas maps a screen cell (sx, sy) within the panel's content area
 // to the canvas cell it covers, inverting the scroll + centring from View().
 // ok is false when there is no graph, the Mermaid view is showing, or the point
-// lands in the empty centred margin rather than over the diagram.
+// lands in the empty centred margin rather than over the diagram. The returned
+// coordinate is logical (card-space), so it matches the cards' stored x/y even
+// when a drag has shifted the canvas origin below (0,0).
 func (e ERDPanel) contentToCanvas(sx, sy int) (cx, cy int, ok bool) {
 	cw, ch := e.contentWidth(), e.contentHeight()
 	if e.graph == nil || e.merm || sx < 0 || sx >= cw || sy < 0 || sy >= ch {
 		return 0, 0, false
 	}
 	bodyW, bodyH, offX, offY := e.placedBounds()
-	cx = sx - offX + e.scrollX
-	cy = sy - offY + e.scrollY
+	// Rendered cell under the pointer…
+	rx := sx - offX + e.scrollX
+	ry := sy - offY + e.scrollY
 	// Reject the centred margin around a diagram smaller than the viewport.
-	if cx < e.scrollX || cx >= e.scrollX+bodyW || cy < e.scrollY || cy >= e.scrollY+bodyH {
+	if rx < e.scrollX || rx >= e.scrollX+bodyW || ry < e.scrollY || ry >= e.scrollY+bodyH {
 		return 0, 0, false
 	}
-	return cx, cy, true
+	// …then shift into logical (card) space.
+	ox, oy := e.canvasOrigin()
+	return rx + ox, ry + oy, true
 }
 
-// contentToCanvasUnbounded maps a screen cell to a canvas cell without rejecting
-// points beyond the current canvas bounds — used during a card drag, where the
-// cursor legitimately targets cells outside the diagram (the card is dragged
-// out there and the canvas grows to contain it). It still rejects points
-// outside the panel's content area or off the centred body (empty margin), and
-// clamps the result to non-negative so the card can't be dragged above/left of
-// the canvas origin.
+// contentToCanvasUnbounded maps a screen cell to a logical canvas cell without
+// rejecting points beyond the current canvas bounds — used during a card drag,
+// where the cursor legitimately targets cells outside the diagram (the card is
+// dragged out there and the canvas grows, shifting its origin, to contain it).
+// It still rejects points outside the panel's content area. Unlike the bounded
+// mapping it does not clamp to the origin: a card can be dragged freely in any
+// direction, including up/left past the (0,0) edge — the case that used to clamp
+// at 0 and trap the leftmost/topmost card against the border.
 func (e ERDPanel) contentToCanvasUnbounded(sx, sy int) (cx, cy int, ok bool) {
 	cw, ch := e.contentWidth(), e.contentHeight()
 	if e.graph == nil || e.merm || sx < 0 || sx >= cw || sy < 0 || sy >= ch {
 		return 0, 0, false
 	}
 	_, _, offX, offY := e.placedBounds()
-	cx = sx - offX + e.scrollX
-	cy = sy - offY + e.scrollY
-	if cx < 0 {
-		cx = 0
-	}
-	if cy < 0 {
-		cy = 0
-	}
-	return cx, cy, true
+	rx := sx - offX + e.scrollX
+	ry := sy - offY + e.scrollY
+	ox, oy := e.canvasOrigin()
+	return rx + ox, ry + oy, true
 }
 
 // cardAt returns the card covering canvas cell (cx, cy), or nil. Cards never
@@ -350,17 +362,18 @@ func (e ERDPanel) ensureVisible(c *gcard) ERDPanel {
 	if maxY < 0 {
 		maxY = 0
 	}
-	if c.x < e.scrollX {
-		e.scrollX = c.x
+	ox, oy := e.canvasOrigin()
+	if c.x-ox < e.scrollX {
+		e.scrollX = c.x - ox
 	}
-	if c.x+c.w > e.scrollX+cw {
-		e.scrollX = c.x + c.w - cw
+	if c.x+c.w-ox > e.scrollX+cw {
+		e.scrollX = c.x + c.w - ox - cw
 	}
-	if c.y < e.scrollY {
-		e.scrollY = c.y
+	if c.y-oy < e.scrollY {
+		e.scrollY = c.y - oy
 	}
-	if c.y+c.h > e.scrollY+ch {
-		e.scrollY = c.y + c.h - ch
+	if c.y+c.h-oy > e.scrollY+ch {
+		e.scrollY = c.y + c.h - oy - ch
 	}
 	if e.scrollX > maxX {
 		e.scrollX = maxX
@@ -507,13 +520,18 @@ func (e ERDPanel) centerOnCard(c *gcard) ERDPanel {
 	if maxY < 0 {
 		maxY = 0
 	}
-	sx := c.x + c.w/2 - cw/2
+	// The card's rendered centre is its logical centre shifted by the canvas
+	// origin, and scrollX/Y are rendered offsets, so subtract the origin before
+	// clamping to the scrollable range (otherwise a card dragged up/left of the
+	// (0,0) origin would re-centre to the wrong spot).
+	ox, oy := e.canvasOrigin()
+	sx := c.x + c.w/2 - ox - cw/2
 	if sx < 0 {
 		sx = 0
 	} else if sx > maxX {
 		sx = maxX
 	}
-	sy := c.y + c.h/2 - ch/2
+	sy := c.y + c.h/2 - oy - ch/2
 	if sy < 0 {
 		sy = 0
 	} else if sy > maxY {
@@ -521,10 +539,11 @@ func (e ERDPanel) centerOnCard(c *gcard) ERDPanel {
 	}
 	e.scrollX = sx
 	e.scrollY = sy
-	// Park the cursor (vertical paging anchor) on the card; adjustScroll won't
-	// fight it on the next keypress since the row is inside the view.
+	// Park the cursor (vertical paging anchor) on the card's rendered row;
+	// adjustScroll won't fight it on the next keypress since the row is inside
+	// the view.
 	if n := e.lineCount(); n > 0 {
-		e.cursor = c.y + c.h/2
+		e.cursor = c.y + c.h/2 - oy
 		if e.cursor > n-1 {
 			e.cursor = n - 1
 		}
@@ -579,10 +598,13 @@ func (e ERDPanel) fitToScreen() ERDPanel {
 	if maxSY < 0 {
 		maxSY = 0
 	}
-	e.scrollX = clampInt((minX+maxX)/2-cw/2, 0, maxSX)
-	e.scrollY = clampInt((minY+maxY)/2-ch/2, 0, maxSY)
+	// Centre the bounding box in the viewport. minX/maxX are logical card coords;
+	// shift by the origin to get rendered scroll targets (see centerOnCard).
+	ox, oy := e.canvasOrigin()
+	e.scrollX = clampInt((minX+maxX)/2-ox-cw/2, 0, maxSX)
+	e.scrollY = clampInt((minY+maxY)/2-oy-ch/2, 0, maxSY)
 	if n := e.lineCount(); n > 0 {
-		e.cursor = clampInt((minY+maxY)/2, 0, n-1)
+		e.cursor = clampInt((minY+maxY)/2-oy, 0, n-1)
 	}
 	return e
 }
@@ -668,8 +690,8 @@ func (e ERDPanel) dragMove(cx, cy int) ERDPanel {
 	if c == nil {
 		return e
 	}
-	c.x = clampInt(cx-e.dragOffX, 0, erdDragMaxBound)
-	c.y = clampInt(cy-e.dragOffY, 0, erdDragMaxBound)
+	c.x = clampInt(cx-e.dragOffX, -erdDragMaxBound, erdDragMaxBound)
+	c.y = clampInt(cy-e.dragOffY, -erdDragMaxBound, erdDragMaxBound)
 	if e.layout != nil {
 		rerouteArrows(e.layout)
 		e.graph = e.renderedGraph()

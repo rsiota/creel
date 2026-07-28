@@ -1916,3 +1916,175 @@ func TestERDFitToScreenKey(t *testing.T) {
 		t.Errorf("z key: scroll=(%d,%d) want (14,11)", e.scrollX, e.scrollY)
 	}
 }
+
+// --- free-form drag: canvas grows up/left of the origin ---------------------
+
+// TestERDDragLeftmostCardLeft is the regression test for the bug where the
+// leftmost card (sitting at the canvas origin x=0) could not be dragged left
+// while every other card roamed freely. The card's position was clamped to a
+// minimum of 0 and the canvas origin was fixed at (0,0), so the leftmost card
+// was trapped against the border. Now the card moves into negative logical
+// space, the layout's origin shifts to contain it, the canvas grows leftward,
+// and render paints it at the new (shifted) cell.
+func TestERDDragLeftmostCardLeft(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture() // users (rank 0) is the leftmost card
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	ep := ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24, focusName: "users"}
+	ep.graph = ep.renderedGraph()
+	users := ep.cardNamed("users")
+	if users.x != 0 {
+		t.Fatalf("precondition: leftmost users.x=%d want 0", users.x)
+	}
+	beforeW, beforeOriginX := layout.canvasW, layout.originX
+
+	// Grab a body cell and drag it 5 cells left, past the origin.
+	grabX, grabY := users.x+3, users.y+3
+	ep = ep.dragBeginPress(users, grabX, grabY)
+	ep, promoted := ep.dragPromote(grabX-5, grabY)
+	if !promoted {
+		t.Fatal("drag did not promote on leftward motion")
+	}
+	ep = ep.dragMove(grabX-5, grabY)
+
+	// dragOffX = grabX - users.x(0) = 3, so the new origin is (grabX-5) - 3 = -5.
+	// Before the fix this clamped to 0 and the card stayed pinned.
+	if users.x != -5 {
+		t.Errorf("leftmost card x=%d want -5 (should move left past the origin)", users.x)
+	}
+	// The layout origin shifts left to contain the moved card, and the canvas
+	// grows leftward to match — it does not stay pinned at (0,0)/beforeW.
+	if layout.originX >= beforeOriginX || layout.originX > 0 {
+		t.Errorf("originX=%d should be < %d and <= 0 (canvas must grow left)", layout.originX, beforeOriginX)
+	}
+	if layout.canvasW <= beforeW {
+		t.Errorf("canvasW=%d should grow past %d after a leftward drag", layout.canvasW, beforeW)
+	}
+
+	// Re-rendering must not panic on the negative coordinate, and the moved card
+	// must still appear (its origin-shifted cells land inside the canvas).
+	g := ep.renderedGraph()
+	if g == nil {
+		t.Fatal("renderedGraph returned nil after a leftward drag")
+	}
+	if !containsText(g, "users") {
+		t.Error("users card not rendered after being dragged left of the origin")
+	}
+	// The leftmost card's top-left corner now sits at rendered column 0 (logical
+	// x == originX), proving the cell-grid shift keeps it on-canvas.
+	cornerX, cornerY := users.x-layout.originX, users.y-layout.originY
+	if cornerX != 0 {
+		t.Errorf("leftmost card rendered x=%d want 0 (origin shift)", cornerX)
+	}
+	if gr, _, _ := cellGlyph(g.cells[cornerY][cornerX]); gr != '┌' {
+		t.Errorf("rendered (%d,%d) = %q want ┌ (card top-left corner)", cornerX, cornerY, gr)
+	}
+
+	// Commit keeps the drop; the card stays at its negative coordinate.
+	ep = ep.dragCommit()
+	if users.x != -5 {
+		t.Errorf("after commit users.x=%d want -5", users.x)
+	}
+}
+
+// TestERDDragTopmostCardUp mirrors the leftward case for the vertical axis: the
+// topmost card (y=0) can be dragged up into negative space and the canvas grows
+// upward to contain it.
+func TestERDDragTopmostCardUp(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	ep := ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24}
+	ep.graph = ep.renderedGraph()
+	// Pick whichever card sits highest (smallest y) — that's the topmost one.
+	top := layout.cards[0]
+	for _, c := range layout.cards {
+		if c != nil && c.y < top.y {
+			top = c
+		}
+	}
+	if top.y != 0 {
+		t.Fatalf("precondition: topmost card y=%d want 0", top.y)
+	}
+	grabX, grabY := top.x+3, top.y+3
+	ep = ep.dragBeginPress(top, grabX, grabY)
+	ep, _ = ep.dragPromote(grabX, grabY-4)
+	ep = ep.dragMove(grabX, grabY-4)
+	if top.y >= 0 {
+		t.Errorf("topmost card y=%d want < 0 (should move up past the origin)", top.y)
+	}
+	if layout.originY > 0 {
+		t.Errorf("originY=%d should be <= 0 (canvas must grow up)", layout.originY)
+	}
+	if ep.renderedGraph() == nil {
+		t.Fatal("renderedGraph returned nil after an upward drag")
+	}
+}
+
+// TestERDGcanvasOrigin verifies the drawing primitives shift logical coordinates
+// by the canvas origin (ox, oy) before writing cells, so a card routed into
+// negative logical space still lands inside the cell grid instead of being
+// clipped or wrapping to a negative index.
+func TestERDGcanvasOrigin(t *testing.T) {
+	c := newGcanvas(3, 3)
+	c.ox, c.oy = -2, -1
+	// Logical (0,0) maps to rendered (2,1): the origin sits left/up of (0,0),
+	// so logical coords shift right/down in the cell grid.
+	c.setCh(0, 0, 'A', "", false)
+	if gr, _, _ := cellGlyph(c.cells[1][2]); gr != 'A' {
+		t.Errorf("logical (0,0) wrote %q at rendered (2,1), want A", gr)
+	}
+	// The origin cell itself: logical (-2,-1) maps to rendered (0,0).
+	c.setCh(-2, -1, 'B', "", false)
+	if gr, _, _ := cellGlyph(c.cells[0][0]); gr != 'B' {
+		t.Errorf("logical (-2,-1) wrote %q at rendered (0,0), want B", gr)
+	}
+	// A logical coord below the origin maps before rendered 0 → silently dropped.
+	c.setCh(-3, -1, 'X', "", false) // rendered (-1, 0) → out of bounds
+	for y := 0; y < c.h; y++ {
+		for x := 0; x < c.w; x++ {
+			if gr, _, _ := cellGlyph(c.cells[y][x]); gr == 'X' {
+				t.Errorf("below-origin logical (-3,-1) wrote X at rendered (%d,%d)", x, y)
+			}
+		}
+	}
+	// hline honours the shift: a logical span lands in the shifted columns and
+	// nowhere else.
+	c2 := newGcanvas(5, 1)
+	c2.ox = -2
+	c2.hline(0, 2, 0, "") // logical x[0,2] → rendered x[2,4]
+	for x := 2; x <= 4; x++ {
+		if c2.cells[0][x].con == 0 {
+			t.Errorf("hline logical [0,2] missing connection at rendered x=%d", x)
+		}
+	}
+	for x := 0; x < 2; x++ {
+		if c2.cells[0][x].con != 0 {
+			t.Errorf("hline leaked into rendered x=%d (before the shifted span)", x)
+		}
+	}
+}
+
+// TestERDContentToCanvasUnboundedAllowsNegative confirms the drag-time
+// screen→canvas transform no longer clamps to 0: a cursor in the centred left
+// margin of a small diagram maps to a negative logical coordinate, which is
+// what lets the leftmost card be dragged left of the origin.
+func TestERDContentToCanvasUnboundedAllowsNegative(t *testing.T) {
+	// A 6×3 canvas centred in a 40×10 viewport: body starts at offX=17.
+	e := ERDPanel{width: 40, height: 10}
+	e.graph = newGcanvas(6, 3)
+	_, _, offX, offY := e.placedBounds()
+	if offX <= 0 {
+		t.Fatalf("precondition: need a centred margin, got offX=%d", offX)
+	}
+	// A point in the left margin (sx=0) maps to a negative logical x.
+	cx, cy, ok := e.contentToCanvasUnbounded(0, offY)
+	if !ok {
+		t.Fatal("contentToCanvasUnbounded rejected the left margin during a drag")
+	}
+	if cx >= 0 {
+		t.Errorf("left margin cx=%d want < 0 (transform must not clamp to 0)", cx)
+	}
+	if cy != 0 {
+		t.Errorf("margin row cy=%d want 0", cy)
+	}
+}
+
