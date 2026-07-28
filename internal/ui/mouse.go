@@ -303,6 +303,16 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		rowIdx := m.results.ScrollRow() + dataRow
 		colIdx := m.results.ColumnAtX(msg.X - sidebarWidth)
 		if rowIdx >= 0 && rowIdx < m.results.NumRows() && colIdx >= 0 {
+			// Resolve an in-flight inline edit before moving the cursor. Without
+			// this, clicking another cell while editing left edit mode active
+			// with the original cell's text buffer, which then rendered (in the
+			// edit colour) over the newly clicked cell. Commit the edit — mirroring
+			// Enter — so it's staged on its own cell, then move. Clicking the cell
+			// already being edited is left alone so a stray click there doesn't
+			// drop out of the textinput.
+			if m.results.IsEditing() && (rowIdx != m.results.CursorRow() || colIdx != m.results.CursorCol()) {
+				m.results.CommitEdit()
+			}
 			m.results.SetCursor(rowIdx, colIdx)
 
 			// Double-click on the same cell within doubleClickInterval →

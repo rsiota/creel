@@ -248,3 +248,79 @@ func TestResultsDoubleClickKeepsInspectorWhenInserting(t *testing.T) {
 		t.Errorf("should not enter grid edit mode while inspector is inserting")
 	}
 }
+
+// TestResultsClickAnotherCellCommitsEdit is a regression test: clicking a
+// different cell while inline-editing another used to leave edit mode active
+// with the original cell's text buffer, so the clicked cell then rendered that
+// text in the edit colour. The click now commits the in-flight edit (mirroring
+// Enter) onto its own cell and moves the cursor, leaving the clicked cell a
+// plain selection.
+func TestResultsClickAnotherCellCommitsEdit(t *testing.T) {
+	m := newResultsMouseModel()
+	m.results.SetEditable("users", []string{"id"})
+
+	yAlice := workspaceLineY(t, m, "alice")
+	yBob := workspaceLineY(t, m, "bob")
+	x, col := findResultsColumnX(t, m, yAlice)
+	if col < 0 {
+		t.Fatalf("no column under click")
+	}
+	editedRow, editedCol := 0, col // alice is data row 0
+
+	// Enter inline edit on alice via a double-click.
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yAlice})
+	m = out.(Model)
+	out, _ = m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yAlice})
+	m = out.(Model)
+	if !m.results.IsEditing() {
+		t.Fatal("precondition: double-click should enter edit mode")
+	}
+
+	// Simulate typing a new value into the cell being edited.
+	m.results.editInput.SetValue("edited-value")
+
+	// Click a different cell (bob's row). This must commit the edit on alice,
+	// not carry the edit buffer over to bob.
+	out, _ = m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yBob})
+	m = out.(Model)
+	if m.results.IsEditing() {
+		t.Errorf("clicking another cell should exit edit mode (still editing)")
+	}
+	if m.results.CursorRow() != 1 {
+		t.Errorf("cursor row=%d want 1 (bob)", m.results.CursorRow())
+	}
+	// The edit is staged on the original cell (alice), not lost or mis-placed.
+	if got := m.results.RowValue(editedRow, editedCol); got != "edited-value" {
+		t.Errorf("edited cell value=%q want %q (edit should be staged on its own cell)", got, "edited-value")
+	}
+	// The clicked cell (bob) is a plain selection, not an edit buffer.
+	if got := m.results.RowValue(1, col); got == "edited-value" {
+		t.Errorf("clicked cell holds the edited value — edit buffer leaked onto the new cell")
+	}
+}
+
+// TestResultsClickSameCellKeepsEditing verifies that clicking the cell already
+// being edited does not drop out of the textinput (only a different cell
+// commits), so a stray click inside the editing cell doesn't discard work.
+func TestResultsClickSameCellKeepsEditing(t *testing.T) {
+	m := newResultsMouseModel()
+	m.results.SetEditable("users", []string{"id"})
+
+	yAlice := workspaceLineY(t, m, "alice")
+	x, _ := findResultsColumnX(t, m, yAlice)
+
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yAlice})
+	m = out.(Model)
+	out, _ = m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yAlice})
+	m = out.(Model)
+	if !m.results.IsEditing() {
+		t.Fatal("precondition: double-click should enter edit mode")
+	}
+
+	// A further click on the same cell keeps the textinput focused.
+	out, _ = m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: yAlice})
+	m = out.(Model)
+	if !m.results.IsEditing() {
+		t.Errorf("clicking the cell being edited should keep edit mode active")
+	}
+}
