@@ -71,6 +71,13 @@ type ERDPanel struct {
 	dragOffY    int
 	dragOrigX   int // card position at press (esc-cancel restores it)
 	dragOrigY   int
+
+	// z-prefix fold/fit family. `z` is a vim-style prefix: `zz` fits the
+	// diagram, `zc`/`zo`/`za` collapse/expand/toggle the focused card. The flag
+	// is set on a bare `z` and consumed by the next key; an unrecognized second
+	// key clears it and falls through to its normal action (so `zj` isn't
+	// eaten). Reset on Show/Hide.
+	zPrefix bool
 }
 
 func (e ERDPanel) IsVisible() bool { return e.visible }
@@ -101,6 +108,7 @@ func (e *ERDPanel) Show(title string, layout *erdLayout, mermaid []string) {
 	e.pathMsg = ""
 	e.dragPending = ""
 	e.dragCard = ""
+	e.zPrefix = false
 }
 
 // MermaidLines returns the Mermaid source (used by the app's copy/save handlers
@@ -112,6 +120,7 @@ func (e *ERDPanel) Hide() {
 	e.visible = false
 	e.dragPending = ""
 	e.dragCard = ""
+	e.zPrefix = false
 }
 
 // SetSize sets the outer dimensions of the panel (including border).
@@ -741,6 +750,76 @@ func (e ERDPanel) dragStatusLine(width int) string {
 	return lipgloss.NewStyle().Width(width).Render(" " + msg)
 }
 
+// --- card collapse/expand ("zc"/"zo"/"za") --------------------------------
+
+// setCollapsed folds (or unfolds) the named card to a header-only bar and
+// re-routes every arrow around the changed box. The card keeps its columns and
+// its (x,y) position — collapse is an in-place shrink, so it composes with a
+// free-form drag and never fights a card the user has moved; `zz` (fit) or a
+// drag can tighten a layout left sparse by folding. No-op when there is no
+// such card or it is already in the requested state.
+func (e ERDPanel) setCollapsed(name string, collapsed bool) ERDPanel {
+	card := e.cardNamed(name)
+	if card == nil || card.collapsed == collapsed {
+		return e
+	}
+	card.collapsed = collapsed
+	if collapsed {
+		card.h = erdCollapsedH
+	} else {
+		card.h = card.fullH
+	}
+	if e.layout != nil {
+		rerouteArrows(e.layout)
+		e.graph = e.renderedGraph()
+		if fc := e.focusCard(); fc != nil {
+			e = e.ensureVisible(fc)
+		}
+	}
+	return e
+}
+
+// toggleCollapsed flips the named card's fold state.
+func (e ERDPanel) toggleCollapsed(name string) ERDPanel {
+	card := e.cardNamed(name)
+	if card == nil {
+		return e
+	}
+	return e.setCollapsed(name, !card.collapsed)
+}
+
+// setAllCollapsed folds (or unfolds) every card at once, re-runs the ranked
+// layout so the columns contract to reclaim the space the folded bodies freed
+// (arrows re-route around the new boxes), and reframes the viewport so the
+// compact result stays visible — the "collapse all / expand all" counterpart
+// to the per-card zc/zo/za. A no-op when there are no cards or nothing changes.
+// Free-form drag positions are reset to the ranked columns (a bulk fold is a
+// re-organize); the sticky per-card folds are unaffected.
+func (e ERDPanel) setAllCollapsed(collapsed bool) ERDPanel {
+	if e.layout == nil || len(e.cards) == 0 {
+		return e
+	}
+	changed := false
+	for _, c := range e.cards {
+		if c == nil || c.collapsed == collapsed {
+			continue
+		}
+		c.collapsed = collapsed
+		if collapsed {
+			c.h = erdCollapsedH
+		} else {
+			c.h = c.fullH
+		}
+		changed = true
+	}
+	if changed {
+		relayout(e.layout)
+		e.graph = e.renderedGraph()
+		e = e.fitToScreen()
+	}
+	return e
+}
+
 // lineCount is the number of scrollable rows in the active view.
 func (e ERDPanel) lineCount() int {
 	if e.merm {
@@ -789,10 +868,33 @@ func (e ERDPanel) Update(msg tea.KeyMsg) ERDPanel {
 // updateGraph handles keys in the graph view: j/k/h/l focus the nearest card in
 // that direction, Space toggles highlight on the focused card, and g/G and
 // ctrl+d/ctrl+u page the viewport (the focus stays put and the next j/k/h/l
-// pulls it back into view).
+// pulls it back into view). `z` is a vim-style prefix: `zz` fits the diagram,
+// `zc`/`zo`/`za` collapse/expand/toggle the focused card, `zM`/`zR` collapse/
+// expand all cards (re-routing arrows and reframing); `z` + an unrecognized
+// key clears the prefix and falls through to that key's normal action.
 func (e ERDPanel) updateGraph(msg tea.KeyMsg) ERDPanel {
+	// Resolve a pending z-prefix. An unrecognized second key clears it and falls
+	// through to the switch below, so `zj` still moves focus down.
+	s := msg.String()
+	if e.zPrefix {
+		e.zPrefix = false
+		switch s {
+		case "z":
+			return e.fitToScreen()
+		case "c":
+			return e.setCollapsed(e.focusName, true)
+		case "o":
+			return e.setCollapsed(e.focusName, false)
+		case "a":
+			return e.toggleCollapsed(e.focusName)
+		case "M":
+			return e.setAllCollapsed(true)
+		case "R":
+			return e.setAllCollapsed(false)
+		}
+	}
 	vh := e.contentHeight()
-	switch msg.String() {
+	switch s {
 	case "j", "down":
 		e = e.moveFocus(erdFocusDown)
 	case "k", "up":
@@ -804,7 +906,7 @@ func (e ERDPanel) updateGraph(msg tea.KeyMsg) ERDPanel {
 	case " ":
 		e = e.toggleHighlight(e.focusCard())
 	case "z":
-		e = e.fitToScreen()
+		e.zPrefix = true
 	case "/":
 		e = e.startSearch()
 	case "p":

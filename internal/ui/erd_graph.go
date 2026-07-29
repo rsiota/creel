@@ -289,12 +289,27 @@ type gcard struct {
 	rank  int
 	x, y  int
 	w, h  int
+	// collapsed folds the card to a header-only bar (top border + title +
+	// bottom border). The columns stay in cols so an expand restores them and
+	// the FK/PK endpoints still resolve; h shrinks to erdCollapsedH while
+	// fullH remembers the measured height for the restore.
+	collapsed bool
+	fullH     int
 }
 
+// erdCollapsedH is the height of a folded card: top border + title + bottom
+// border (no separator, no column rows).
+const erdCollapsedH = 3
+
 // colRowY returns the canvas y of a column's text row, or the card's vertical
-// centre if the column is absent. Layout: row 0 = top border, row 1 = title,
+// centre if the column is absent. A collapsed card has no column rows, so every
+// arrow endpoint falls back to the title row's centre — the router must not
+// assume the column rows exist. Layout: row 0 = top border, row 1 = title,
 // row 2 = separator, rows 3.. = columns.
 func (c *gcard) colRowY(col string) int {
+	if c.collapsed {
+		return c.y + c.h/2 // header-only: arrows attach at the title row's centre
+	}
 	for i, cc := range c.cols {
 		if cc.Name == col {
 			return c.y + 3 + i
@@ -347,7 +362,7 @@ func measureCard(name string, cols []db.Column, pkSet, fkSet map[string]bool) gc
 		w = 10
 	}
 	h := len(cols) + 4 // top border + title + separator + columns + bottom border
-	return gcard{name: name, cols: cols, pkSet: pkSet, fkSet: fkSet, w: w, h: h}
+	return gcard{name: name, cols: cols, pkSet: pkSet, fkSet: fkSet, w: w, h: h, fullH: h}
 }
 
 // --- layout -----------------------------------------------------------------
@@ -484,6 +499,11 @@ func (c *gcanvas) drawCard(g *gcard, fg string, dim bool, hlCols map[string]bool
 	c.fillBg(g.x+1, g.x+g.w-2, g.y+1, string(colorStripe))
 	c.setCh(g.x, g.y+1, '│', border, false)
 	c.setCh(g.x+g.w-1, g.y+1, '│', border, false)
+	// A muted ▸ at the title's left edge flags a folded card (painted before the
+	// centred name so a wide name wins the cell instead of being clipped).
+	if g.collapsed {
+		c.setCh(g.x+1, g.y+1, '▸', string(colorMuted), false)
+	}
 	nameW := len([]rune(g.name))
 	// The drill-in icon sits one cell inside the right border with a gap.
 	// reserveIcon keeps that column clear on every card in a focused ERD —
@@ -502,6 +522,16 @@ func (c *gcanvas) drawCard(g *gcard, fg string, dim bool, hlCols map[string]bool
 	// target (see ERDPanel.drillInCard); this glyph just signals the action.
 	if showIcon {
 		c.setCh(g.x+g.w-3, g.y+1, erdFocusIcon, string(colorFg), false)
+	}
+	// A collapsed card stops at the title: its bottom border sits directly
+	// under the title (no separator, no column rows), so h == erdCollapsedH.
+	if g.collapsed {
+		c.setCh(g.x, g.y+g.h-1, '└', border, false)
+		c.setCh(g.x+g.w-1, g.y+g.h-1, '┘', border, false)
+		for x := g.x + 1; x < g.x+g.w-1; x++ {
+			c.setCh(x, g.y+g.h-1, '─', border, false)
+		}
+		return
 	}
 	// Title→columns separator (dimmed so it reads as a divider, not a border).
 	c.setCh(g.x, g.y+2, '│', border, false)
@@ -1074,6 +1104,56 @@ func rerouteArrows(l *erdLayout) {
 	l.originY = minY
 	l.canvasW = maxW - minX
 	l.canvasH = maxH - minY
+}
+
+// relayout re-runs the dependency-ranked layout (placeCards) on the cards'
+// current sizes — contracting each column to reclaim the vertical space a
+// folded card's body freed — then re-routes every arrow around the new boxes.
+// It is the "contract the diagram" step behind zM/zR (and any future bulk
+// resize), reusing the proven initial-layout maths on the live collapse
+// states. Free-form drag positions are reset to the ranked columns: a bulk
+// fold is a re-organize, not a per-card nudge, so a card the user dragged is
+// snapped back into its rank column to keep the contraction predictable. The
+// per-card zc/zo/za stay sticky (in-place) so they keep composing with drag.
+func relayout(l *erdLayout) {
+	if l == nil || len(l.cards) == 0 {
+		return
+	}
+	cards := map[string]*gcard{}
+	order := make([]string, 0, len(l.cards))
+	rank := map[string]int{}
+	maxRank := 0
+	for _, c := range l.cards {
+		if c == nil {
+			continue
+		}
+		cards[c.name] = c
+		order = append(order, c.name)
+		rank[c.name] = c.rank
+		if c.rank > maxRank {
+			maxRank = c.rank
+		}
+	}
+	// Reserve a top-margin lane per non-adjacent FK (matching the initial
+	// layout) so over-the-top routes stay above the cards and the origin stays
+	// (0,0) instead of growing upward.
+	topMargin := 0
+	for _, a := range l.arrows {
+		if a.child == nil || a.parent == nil {
+			continue
+		}
+		if abs(a.child.rank-a.parent.rank) != 1 {
+			topMargin++
+		}
+	}
+	// placeCards produces non-negative coords; reset the origin so rerouteArrows
+	// recomputes the canvas bounds from the fresh positions (a stale negative
+	// origin from a prior drag would otherwise keep the canvas oversized).
+	l.originX, l.originY = 0, 0
+	canvasW, canvasH := placeCards(cards, order, rank, maxRank, topMargin)
+	l.canvasW = canvasW
+	l.canvasH = canvasH
+	rerouteArrows(l)
 }
 
 // addCol records that column col of card is a connection endpoint, so it can be

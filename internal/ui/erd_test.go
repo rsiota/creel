@@ -1902,7 +1902,8 @@ func TestERDFitToScreen(t *testing.T) {
 	}
 }
 
-// TestERDFitToScreenKey confirms "z" dispatches to fitToScreen via Update.
+// TestERDFitToScreenKey confirms "zz" dispatches to fitToScreen via Update
+// (z is now a prefix: the first z arms it, the second resolves zz → fit).
 func TestERDFitToScreenKey(t *testing.T) {
 	e := ERDPanel{width: 20, height: 10}
 	e.graph = newGcanvas(60, 40)
@@ -1911,9 +1912,22 @@ func TestERDFitToScreenKey(t *testing.T) {
 		{name: "b", x: 40, y: 25, w: 4, h: 3},
 	}
 	e.scrollX, e.scrollY = 0, 0
-	e = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("z")})
+	zKey := func() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("z")} }
+	// First z arms the prefix without fitting.
+	e = e.Update(zKey())
+	if !e.zPrefix {
+		t.Fatalf("first z: zPrefix=false, want true (prefix armed)")
+	}
+	if e.scrollX != 0 || e.scrollY != 0 {
+		t.Errorf("first z should not fit yet: scroll=(%d,%d)", e.scrollX, e.scrollY)
+	}
+	// zz resolves to fit-to-screen.
+	e = e.Update(zKey())
+	if e.zPrefix {
+		t.Errorf("zz: zPrefix=true, want false (consumed)")
+	}
 	if e.scrollX != 14 || e.scrollY != 11 {
-		t.Errorf("z key: scroll=(%d,%d) want (14,11)", e.scrollX, e.scrollY)
+		t.Errorf("zz: scroll=(%d,%d) want (14,11)", e.scrollX, e.scrollY)
 	}
 }
 
@@ -2088,3 +2102,453 @@ func TestERDContentToCanvasUnboundedAllowsNegative(t *testing.T) {
 	}
 }
 
+
+// --- card collapse/expand ("zc"/"zo"/"za") ---------------------------------
+
+// TestERDColRowYCollapsed verifies colRowY falls back to the header-row centre
+// for a collapsed card regardless of which column is asked for — the router
+// must not assume the column rows exist on a header-only card.
+func TestERDColRowYCollapsed(t *testing.T) {
+	c := &gcard{name: "t", cols: []db.Column{{Name: "id"}, {Name: "x"}}, y: 10, h: 7, fullH: 7}
+	// Expanded: id lives on row y+3 = 13.
+	if got := c.colRowY("id"); got != 13 {
+		t.Errorf("expanded colRowY(id)=%d want 13", got)
+	}
+	// Collapsed: h=3, every column (and absent ones) → title centre y+1 = 11.
+	c.collapsed = true
+	c.h = erdCollapsedH
+	for _, col := range []string{"id", "x", "absent"} {
+		if got := c.colRowY(col); got != 11 {
+			t.Errorf("collapsed colRowY(%q)=%d want 11 (header centre)", col, got)
+		}
+	}
+}
+
+// TestERDCollapseKeys drives the full z-prefix through Update: zc collapses the
+// focused card (h→erdCollapsedH, fullH preserved), zo expands it back, and za
+// toggles both ways. Each chord consumes the z-prefix.
+func TestERDCollapseKeys(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	layout.focus = ""
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "orders"}
+	ep.graph = ep.renderedGraph()
+	orders := ep.cardNamed("orders")
+	fullH := orders.h
+	if orders.collapsed {
+		t.Fatal("precondition: orders should start expanded")
+	}
+
+	// zc → collapse.
+	ep = ep.Update(key("z"))
+	ep = ep.Update(key("c"))
+	if ep.zPrefix {
+		t.Error("zc: zPrefix should be consumed")
+	}
+	if !orders.collapsed || orders.h != erdCollapsedH {
+		t.Errorf("zc: orders collapsed=%v h=%d want true/%d", orders.collapsed, orders.h, erdCollapsedH)
+	}
+	if orders.fullH != fullH {
+		t.Errorf("zc: fullH=%d want %d (preserved for expand)", orders.fullH, fullH)
+	}
+
+	// zo → expand back to full height.
+	ep = ep.Update(key("z"))
+	ep = ep.Update(key("o"))
+	if orders.collapsed || orders.h != fullH {
+		t.Errorf("zo: orders collapsed=%v h=%d want false/%d", orders.collapsed, orders.h, fullH)
+	}
+
+	// za toggles both ways.
+	ep = ep.Update(key("z"))
+	ep = ep.Update(key("a"))
+	if !orders.collapsed || orders.h != erdCollapsedH {
+		t.Errorf("za→collapse: orders collapsed=%v h=%d", orders.collapsed, orders.h)
+	}
+	ep = ep.Update(key("z"))
+	ep = ep.Update(key("a"))
+	if orders.collapsed || orders.h != fullH {
+		t.Errorf("za→expand: orders collapsed=%v h=%d", orders.collapsed, orders.h)
+	}
+}
+
+// TestERDCollapseNoFocus is a no-op guard: with no focused card, zc/zo/za do
+// nothing (and still consume the prefix).
+func TestERDCollapseNoFocus(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	layout.focus = ""
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: ""}
+	ep.graph = ep.renderedGraph()
+	before := ep.cardNamed("orders").h
+	ep = ep.Update(key("z"))
+	ep = ep.Update(key("c"))
+	if ep.zPrefix {
+		t.Error("zc with no focus: zPrefix should still be consumed")
+	}
+	if h := ep.cardNamed("orders").h; h != before {
+		t.Errorf("zc with no focus changed a card height: %d want %d", h, before)
+	}
+}
+
+// TestERDCollapseRender checks a collapsed card paints header-only: the fold
+// marker ▸ at the title's left edge, the bottom border directly under the title
+// (no separator row), and no column text.
+func TestERDCollapseRender(t *testing.T) {
+	schemas := map[string][]db.Column{
+		"t": {{Name: "id", Type: "int"}, {Name: "name", Type: "text"}, {Name: "x", Type: "int"}},
+	}
+	pks := map[string][]string{"t": {"id"}}
+	layout := computeERDLayout([]string{"t"}, schemas, pks, nil)
+	t1 := cardByName(layout.cards, "t")
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "t"}
+	ep.graph = ep.renderedGraph()
+	ep = ep.setCollapsed("t", true)
+	c := ep.graph
+	if t1.h != erdCollapsedH {
+		t.Fatalf("setCollapsed: h=%d want %d", t1.h, erdCollapsedH)
+	}
+	// Fold marker ▸ at the title row's left content cell.
+	if g, _, _ := cellGlyph(c.cells[t1.y+1][t1.x+1]); g != '▸' {
+		t.Errorf("collapsed title left cell=%q want ▸", g)
+	}
+	// Row y+2 is the bottom border └, not a ─ separator (no separator row).
+	if g, _, _ := cellGlyph(c.cells[t1.y+2][t1.x]); g != '└' {
+		t.Errorf("row y+2 left edge=%q want └ (bottom border; no separator)", g)
+	}
+	// Column text must not appear in the header-only render.
+	if containsText(c, "name") {
+		t.Error("collapsed card should not render column 'name'")
+	}
+	if containsText(c, "INT") {
+		t.Error("collapsed card should not render any column type")
+	}
+}
+
+// TestERDCollapseArrowAtHeader verifies that after a card collapses, its FK
+// arrow re-routes so the arrowhead lands on the header-row centre (colRowY on a
+// collapsed card), proving the router copes with a header-only endpoint.
+func TestERDCollapseArrowAtHeader(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture() // orders.user_id → users.id (users is the parent, left of orders)
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "users"}
+	ep.graph = ep.renderedGraph()
+	users := ep.cardNamed("users")
+	ep = ep.setCollapsed("users", true)
+	py := users.colRowY("id")
+	if py != users.y+1 {
+		t.Fatalf("collapsed colRowY(id)=%d want %d (title row)", py, users.y+1)
+	}
+	if len(layout.arrows) != 1 || layout.arrows[0].pts == nil {
+		t.Fatal("collapse did not re-route the arrow to a polyline")
+	}
+	last := layout.arrows[0].pts[len(layout.arrows[0].pts)-1]
+	if last.y != py {
+		t.Errorf("arrowhead y=%d want %d (collapsed parent header centre)", last.y, py)
+	}
+}
+
+// TestERDZPrefixFallthrough confirms `z` + an unrecognized key clears the
+// prefix and lets the second key act normally (zj still moves focus) instead of
+// swallowing it.
+func TestERDZPrefixFallthrough(t *testing.T) {
+	tables := []string{"users", "orders", "posts"}
+	schemas := map[string][]db.Column{
+		"users":  {{Name: "id", Type: "int"}},
+		"orders": {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+		"posts":  {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+	}
+	pks := map[string][]string{"users": {"id"}, "orders": {"id"}, "posts": {"id"}}
+	fks := map[string][]db.ForeignKey{
+		"orders": {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"posts":  {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+	}
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	layout.focus = ""
+	orders := cardByName(layout.cards, "orders")
+	posts := cardByName(layout.cards, "posts")
+	if !(orders.y < posts.y) {
+		t.Fatalf("precondition: orders must sit above posts (orders.y=%d posts.y=%d)", orders.y, posts.y)
+	}
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "orders"}
+	ep.graph = layout.render("", "orders", erdPath{})
+
+	ep = ep.Update(key("z"))
+	if !ep.zPrefix {
+		t.Fatal("z did not arm the prefix")
+	}
+	ep = ep.Update(key("j"))
+	if ep.zPrefix {
+		t.Error("zj: zPrefix should be cleared after fallthrough")
+	}
+	if ep.focusName != "posts" {
+		t.Errorf("zj: focus=%q want posts (j must fall through, not be eaten)", ep.focusName)
+	}
+}
+
+// TestERDCollapseThenDrag checks collapse composes with free-form drag:
+// collapsing a card and then dragging it moves the (still-folded) card, keeps
+// its collapsed state, and re-routes arrows around the new box.
+func TestERDCollapseThenDrag(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	ep := ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24, focusName: "orders"}
+	ep.graph = ep.renderedGraph()
+	orders := ep.cardNamed("orders")
+	origX, origY := orders.x, orders.y
+
+	// Fold first.
+	ep = ep.setCollapsed("orders", true)
+	if !orders.collapsed {
+		t.Fatal("precondition: orders not collapsed")
+	}
+	// Drag the folded card by a title-row cell.
+	grabX, grabY := orders.x+1, orders.y+1
+	ep = ep.dragBeginPress(orders, grabX, grabY)
+	ep, promoted := ep.dragPromote(grabX+8, grabY+4)
+	if !promoted {
+		t.Fatal("drag did not promote on a collapsed card")
+	}
+	ep = ep.dragMove(grabX+8, grabY+4)
+	if orders.x != origX+8 || orders.y != origY+4 {
+		t.Errorf("drag move: card at (%d,%d) want (%d,%d)", orders.x, orders.y, origX+8, origY+4)
+	}
+	if !orders.collapsed {
+		t.Error("drag lost the collapsed state")
+	}
+	if len(layout.arrows) > 0 && layout.arrows[0].pts == nil {
+		t.Error("drag after collapse: arrows not re-routed to polylines")
+	}
+	// Commit keeps both the drop and the fold.
+	ep = ep.dragCommit()
+	if orders.x != origX+8 || !orders.collapsed {
+		t.Errorf("commit: card x=%d collapsed=%v want %d/true", orders.x, orders.collapsed, origX+8)
+	}
+}
+
+// TestERDCollapseAllKeys drives zM/zR through Update: zM folds every card (each
+// h→erdCollapsedH, fullH preserved) and re-routes every arrow; zR unfolds them
+// all back to full height. Both consume the z-prefix.
+func TestERDCollapseAllKeys(t *testing.T) {
+	tables := []string{"users", "orders", "posts"}
+	schemas := map[string][]db.Column{
+		"users":  {{Name: "id", Type: "int"}, {Name: "name", Type: "text"}},
+		"orders": {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+		"posts":  {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+	}
+	pks := map[string][]string{"users": {"id"}, "orders": {"id"}, "posts": {"id"}}
+	fks := map[string][]db.ForeignKey{
+		"orders": {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"posts":  {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+	}
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	layout.focus = ""
+	fullH := map[string]int{}
+	for _, c := range layout.cards {
+		fullH[c.name] = c.h
+	}
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "users"}
+	ep.graph = ep.renderedGraph()
+
+	// zM collapses every card; arrows become dynamic polylines routed around the
+	// folded boxes.
+	ep = ep.Update(key("z"))
+	ep = ep.Update(key("M"))
+	if ep.zPrefix {
+		t.Error("zM: zPrefix should be consumed")
+	}
+	for _, c := range layout.cards {
+		if !c.collapsed || c.h != erdCollapsedH {
+			t.Errorf("zM: %s collapsed=%v h=%d want true/%d", c.name, c.collapsed, c.h, erdCollapsedH)
+		}
+		if c.fullH != fullH[c.name] {
+			t.Errorf("zM: %s fullH=%d want %d (preserved)", c.name, c.fullH, fullH[c.name])
+		}
+	}
+	for i := range layout.arrows {
+		if layout.arrows[i].pts == nil {
+			t.Errorf("zM: arrow %d not re-routed to a polyline", i)
+		}
+	}
+
+	// zR expands every card back to its full height.
+	ep = ep.Update(key("z"))
+	ep = ep.Update(key("R"))
+	if ep.zPrefix {
+		t.Error("zR: zPrefix should be consumed")
+	}
+	for _, c := range layout.cards {
+		if c.collapsed || c.h != fullH[c.name] {
+			t.Errorf("zR: %s collapsed=%v h=%d want false/%d", c.name, c.collapsed, c.h, fullH[c.name])
+		}
+	}
+}
+
+// TestERDCollapseAllMixedState confirms zM/zR are absolute (not toggles): zM
+// folds every card even if some were already folded, and zR unfolds every card
+// even if some were already open.
+func TestERDCollapseAllMixedState(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	layout.focus = ""
+	users := cardByName(layout.cards, "users")
+	orders := cardByName(layout.cards, "orders")
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "orders"}
+	ep.graph = ep.renderedGraph()
+
+	// Start mixed: users folded, orders open.
+	ep = ep.setCollapsed("users", true)
+	if !users.collapsed || orders.collapsed {
+		t.Fatal("precondition: mixed state not set")
+	}
+
+	// zM folds all → both folded.
+	ep = ep.Update(key("z"))
+	ep = ep.Update(key("M"))
+	if !users.collapsed || !orders.collapsed {
+		t.Errorf("zM from mixed: users=%v orders=%v want both folded", users.collapsed, orders.collapsed)
+	}
+
+	// Fold one back manually, then zR unfolds all → both open.
+	ep = ep.setCollapsed("orders", true)
+	ep = ep.Update(key("z"))
+	ep = ep.Update(key("R"))
+	if users.collapsed || orders.collapsed {
+		t.Errorf("zR from mixed: users=%v orders=%v want both open", users.collapsed, orders.collapsed)
+	}
+}
+
+// TestERDCollapseAllReframes checks the bulk fold reframes the viewport: after
+// zM the (now much shorter) diagram is fit to the viewport, so it doesn't sit
+// shrunken in a corner with stale scroll offsets.
+func TestERDCollapseAllReframes(t *testing.T) {
+	tables := []string{"users", "orders", "posts"}
+	schemas := map[string][]db.Column{
+		"users":  {{Name: "id", Type: "int"}, {Name: "name", Type: "text"}},
+		"orders": {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+		"posts":  {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}, {Name: "body", Type: "text"}},
+	}
+	pks := map[string][]string{"users": {"id"}, "orders": {"id"}, "posts": {"id"}}
+	fks := map[string][]db.ForeignKey{
+		"orders": {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"posts":  {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+	}
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	layout.focus = ""
+	// A tall diagram in a short viewport so the bulk fold shrinks it to fit.
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 30, height: 5, focusName: "users"}
+	ep.graph = ep.renderedGraph()
+	// Scroll to the bottom before folding, so a stale offset would misframe.
+	ep.scrollY = 999
+	ep = ep.setAllCollapsed(true)
+	// After folding + reframe the diagram (3 short cards) fits a 5-row viewport,
+	// so the vertical scroll zeroes (View centres a diagram that fits).
+	if ep.graph != nil && ep.graph.h <= ep.contentHeight() && ep.scrollY != 0 {
+		t.Errorf("zM reframe: folded diagram fits viewport but scrollY=%d want 0", ep.scrollY)
+	}
+}
+
+// TestERDCollapseAllContracts verifies zM contracts the layout: cards in the
+// same rank column are re-stacked tightly (a 1-row gap, not the gap the folded
+// bodies left behind) and the canvas shrinks. This is the "reclaim the space"
+// behaviour — zM re-runs the ranked layout on the new card sizes.
+func TestERDCollapseAllContracts(t *testing.T) {
+	tables := []string{"users", "orders", "posts"}
+	schemas := map[string][]db.Column{
+		"users":  {{Name: "id", Type: "int"}, {Name: "name", Type: "text"}},
+		"orders": {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+		"posts":  {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}, {Name: "body", Type: "text"}},
+	}
+	pks := map[string][]string{"users": {"id"}, "orders": {"id"}, "posts": {"id"}}
+	fks := map[string][]db.ForeignKey{
+		"orders": {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"posts":  {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+	}
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	layout.focus = ""
+	orders := cardByName(layout.cards, "orders")
+	posts := cardByName(layout.cards, "posts")
+	// orders & posts share rank 1; orders sorts above posts.
+	if orders.rank != posts.rank {
+		t.Fatalf("precondition: orders.rank=%d posts.rank=%d want equal", orders.rank, posts.rank)
+	}
+	if !(orders.y < posts.y) {
+		t.Fatalf("precondition: orders (%d) should sit above posts (%d)", orders.y, posts.y)
+	}
+	expandedH := layout.canvasH
+	// Expanded, the gap between them is orders.h + 1 (a 1-row gutter), but
+	// orders.h is the full card height — so the bodies are tight already in the
+	// fresh layout. The point of zM is that after folding, they STAY tight
+	// (the column re-stacks) rather than leaving orders' old body as a gap.
+	expandedGap := posts.y - orders.y // == orders.h + 1
+	if expandedGap != orders.h+1 {
+		t.Fatalf("precondition: expanded gap=%d want %d (orders.h+1)", expandedGap, orders.h+1)
+	}
+
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "users"}
+	ep.graph = ep.renderedGraph()
+	ep = ep.Update(key("z"))
+	ep = ep.Update(key("M"))
+
+	// Both folded, and re-stacked tightly: posts sits one row below orders'
+	// (now 3-row) body, not one row below orders' old full body.
+	if orders.h != erdCollapsedH || posts.h != erdCollapsedH {
+		t.Fatalf("zM: orders.h=%d posts.h=%d want %d", orders.h, posts.h, erdCollapsedH)
+	}
+	if got := posts.y - orders.y; got != orders.h+1 {
+		t.Errorf("zM did not contract: gap orders→posts=%d want %d (orders.h+1, tight stack)", got, orders.h+1)
+	}
+	if layout.canvasH >= expandedH {
+		t.Errorf("zM: canvasH=%d should be < expanded %d (layout did not contract)", layout.canvasH, expandedH)
+	}
+}
+
+// TestERDCollapseSticky confirms the per-card zc is an in-place shrink (the
+// layout does NOT contract): a card folded with zc leaves its old body as a
+// gap, so cards below it stay put — keeping fold composable with free-form
+// drag. (zM/zR are the contracting operations; zc/zo/za are not.)
+func TestERDCollapseSticky(t *testing.T) {
+	tables := []string{"users", "orders", "posts"}
+	schemas := map[string][]db.Column{
+		"users":  {{Name: "id", Type: "int"}, {Name: "name", Type: "text"}},
+		"orders": {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+		"posts":  {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}, {Name: "body", Type: "text"}},
+	}
+	pks := map[string][]string{"users": {"id"}, "orders": {"id"}, "posts": {"id"}}
+	fks := map[string][]db.ForeignKey{
+		"orders": {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"posts":  {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+	}
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	layout.focus = ""
+	orders := cardByName(layout.cards, "orders")
+	posts := cardByName(layout.cards, "posts")
+	users := cardByName(layout.cards, "users")
+	ordersY, postsY, usersY := orders.y, posts.y, users.y
+
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "orders"}
+	ep.graph = ep.renderedGraph()
+	ep = ep.Update(key("z"))
+	ep = ep.Update(key("c"))
+
+	if !orders.collapsed || orders.h != erdCollapsedH {
+		t.Fatalf("zc: orders collapsed=%v h=%d want true/%d", orders.collapsed, orders.h, erdCollapsedH)
+	}
+	// Sticky: no card moved (the folded body is left as a gap, not reclaimed).
+	if orders.y != ordersY {
+		t.Errorf("zc moved orders: y=%d want %d (sticky)", orders.y, ordersY)
+	}
+	if posts.y != postsY {
+		t.Errorf("zc moved posts: y=%d want %d (sticky — should not contract)", posts.y, postsY)
+	}
+	if users.y != usersY {
+		t.Errorf("zc moved users: y=%d want %d (sticky)", users.y, usersY)
+	}
+}

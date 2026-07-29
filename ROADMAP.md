@@ -16,10 +16,16 @@ lists the files most likely to change.
 ### ERD (`g R` / `:erd`) — drag + fit-to-screen shipped; interactivity remains
 
 The static ERD, its interactive tier (focus/highlight/path/search), free-form
-mouse drag (2026-07-27), and fit-to-screen `z` (2026-07-27) are all done. What
-remains:
+mouse drag (2026-07-27), fit-to-screen `zz` (2026-07-27), and card
+collapse/expand `zc`/`zo`/`za` (2026-07-29) are all done. What remains:
 
 - **Collapse/expand cards** (`zc`/`zo` vim-style) — fold a card to header-only
+  to declutter dense schemas; pairs well with drag. **Caveat:** bare `z` is now
+  fit-to-screen, so collapse needs a non-conflicting chord (or `z` becomes a
+  prefix with `zz`/`zc`/`zo`). Decide the key scheme before implementing.
+  Medium effort; the router must handle arrow endpoints on a header-only card
+  (`colRowY` currently assumes column rows exist).
+- **Collapse/expand cards** (`zc`/`zo`/`za` vim-style) — fold a card to header-only
   to declutter dense schemas; pairs well with drag. **Caveat:** bare `z` is now
   fit-to-screen, so collapse needs a non-conflicting chord (or `z` becomes a
   prefix with `zz`/`zc`/`zo`). Decide the key scheme before implementing.
@@ -198,6 +204,18 @@ palette). Never copy a key handler body into an ex executor. A full unified
       `app.go`. Tests: `erd_test.go`.
     - Fit-to-screen `z` (2026-07-27) — scrolls the cards' bounding box to the
       viewport centre (`fitToScreen`).
+    - Collapse/expand cards `zc`/`zo`/`za` + `zM`/`zR` (2026-07-29) — `z` is now a
+      vim-style prefix: `zz` fits (was bare `z`), `zc`/`zo`/`za` collapse/
+      expand/toggle the focused card (a sticky in-place shrink so fold composes
+      with free-form drag), and `zM`/`zR` collapse/expand every card at once by
+      re-running the ranked layout (`relayout`) — the columns contract to
+      reclaim the space the folded bodies freed, arrows re-route, and the
+      viewport reframes. `colRowY` returns the header centre for a folded card
+      so the router copes with a header-only endpoint; `relayout` reconstructs
+      the rank order + top-margin from the laid-out cards so a bulk fold is a
+      clean re-organize (drag positions snap back to rank columns). Files:
+      `erd_graph.go`, `erd_panel.go`, `app.go`, `registry.go`, `hints.go`.
+      Tests: `erd_test.go`.
 12. **Connection groups / folders** (2026-07-12) — optional `group` field;
     collapsible folder headers (▾/▸), flat when none grouped. Files:
     `config/config.go`, `connection_list.go`, `connection_form.go`, `app.go`,

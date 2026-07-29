@@ -2649,6 +2649,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case "esc":
 				// Esc steps back: clear an active FK path before closing the panel.
 				if m.erdPanel.pathFrom != "" || len(m.erdPanel.pathCards) > 0 {
+					m.erdPanel.zPrefix = false
 					m.erdPanel = m.erdPanel.clearPath()
 					return m, nil
 				}
@@ -2658,10 +2659,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.erdPanel.Hide()
 				return m, nil
 			case "y", "Y":
+				m.erdPanel.zPrefix = false // these app-level actions aren't fold
 				_ = clipboard.WriteAll(joinERDLines(m.erdPanel.MermaidLines()))
 				m.schemaMsg = "erd copied to clipboard"
 				return m, nil
 			case "s":
+				m.erdPanel.zPrefix = false // family second keys, so drop a pending `z`
 				m.saveERDToFile("erd.mmd", m.erdPanel.MermaidLines())
 				return m, nil
 			case "enter":
