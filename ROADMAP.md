@@ -19,18 +19,6 @@ The static ERD, its interactive tier (focus/highlight/path/search), free-form
 mouse drag (2026-07-27), fit-to-screen `zz` (2026-07-27), and card
 collapse/expand `zc`/`zo`/`za` (2026-07-29) are all done. What remains:
 
-- **Collapse/expand cards** (`zc`/`zo` vim-style) — fold a card to header-only
-  to declutter dense schemas; pairs well with drag. **Caveat:** bare `z` is now
-  fit-to-screen, so collapse needs a non-conflicting chord (or `z` becomes a
-  prefix with `zz`/`zc`/`zo`). Decide the key scheme before implementing.
-  Medium effort; the router must handle arrow endpoints on a header-only card
-  (`colRowY` currently assumes column rows exist).
-- **Collapse/expand cards** (`zc`/`zo`/`za` vim-style) — fold a card to header-only
-  to declutter dense schemas; pairs well with drag. **Caveat:** bare `z` is now
-  fit-to-screen, so collapse needs a non-conflicting chord (or `z` becomes a
-  prefix with `zz`/`zc`/`zo`). Decide the key scheme before implementing.
-  Medium effort; the router must handle arrow endpoints on a header-only card
-  (`colRowY` currently assumes column rows exist).
 - **Hover tooltips** (mouse-motion) — full column type/comments on hover.
   Medium; needs `WithMouseAllMotion` (button-less motion) and throttling. See
   the TUI-mouse-notes tech-debt item — it hits the same event-mapping area.
