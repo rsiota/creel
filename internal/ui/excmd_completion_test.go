@@ -329,3 +329,101 @@ func TestApplyArgCompletion(t *testing.T) {
 		}
 	}
 }
+
+// TestExArgCompletionColumns: past the verb, column-name commands (:sort,
+// :hidecolumn, :stats, :filter) offer the result set's columns. Empty partial
+// -> alphabetical. The source is the results grid, not the schema cache, so a
+// custom query's columns are offered too.
+func TestExArgCompletionColumns(t *testing.T) {
+	m := &Model{}
+	m.results.SetResult([]string{"id", "name", "email"}, nil, "")
+	m.ex.input = "sort "
+	m.recomputeExCompletion()
+	if !m.ex.argMode {
+		t.Fatal("expected arg mode after the verb")
+	}
+	got := exCandidates(m.ex.comp)
+	want := []string{"email", "id", "name"} // empty partial -> alphabetical
+	if !sameStrings(got, want) {
+		t.Errorf("sort candidates = %v, want %v", got, want)
+	}
+}
+
+// TestExArgCompletionColumnsPartial: a partial token fuzzy-filters columns.
+func TestExArgCompletionColumnsPartial(t *testing.T) {
+	m := &Model{}
+	m.results.SetResult([]string{"id", "name", "email", "user_id"}, nil, "")
+	m.ex.input = "sort em"
+	m.recomputeExCompletion()
+	got := exCandidates(m.ex.comp)
+	if !sameStrings(got, []string{"email"}) {
+		t.Errorf("partial %q candidates = %v, want [email]", "em", got)
+	}
+}
+
+// TestExArgCompletionColumnsHiddenPastFirstArg: a column command offers nothing
+// once the column argument is already supplied.
+func TestExArgCompletionColumnsHiddenPastFirstArg(t *testing.T) {
+	m := &Model{}
+	m.results.SetResult([]string{"id", "name"}, nil, "")
+	m.ex.input = "sort id "
+	m.recomputeExCompletion()
+	if len(m.ex.comp) != 0 {
+		t.Errorf("expected no candidates past the column arg, got %+v", m.ex.comp)
+	}
+	if m.ex.completionView() != "" {
+		t.Error("expected empty popup past the column arg")
+	}
+}
+
+// TestExArgCompletionColumnsNoResults: with no result set there is nothing to
+// offer (and the commands would refuse anyway).
+func TestExArgCompletionColumnsNoResults(t *testing.T) {
+	m := &Model{}
+	m.ex.input = "sort "
+	m.recomputeExCompletion()
+	if len(m.ex.comp) != 0 {
+		t.Errorf("expected no candidates with no results, got %+v", m.ex.comp)
+	}
+}
+
+// TestExArgCompletionColumnsAllVerbs: each of the column-name commands is wired
+// to completeColumn (so a typo in the registry can't silently drop one).
+func TestExArgCompletionColumnsAllVerbs(t *testing.T) {
+	for _, verb := range []string{"sort", "hidecolumn", "stats", "filter"} {
+		spec := exLookup(verb)
+		if spec == nil {
+			t.Errorf("missing spec for :%s", verb)
+			continue
+		}
+		if spec.complete == nil {
+			t.Errorf(":%s has no completer, want completeColumn", verb)
+			continue
+		}
+		m := &Model{}
+		m.results.SetResult([]string{"id", "name"}, nil, "")
+		m.ex.input = verb + " "
+		m.recomputeExCompletion()
+		got := exCandidates(m.ex.comp)
+		if !sameStrings(got, []string{"id", "name"}) {
+			t.Errorf(":%s candidates = %v, want [id name]", verb, got)
+		}
+	}
+}
+
+// TestExArgCompletionColumnTab: Tab replaces the partial column token with the
+// top match.
+func TestExArgCompletionColumnTab(t *testing.T) {
+	m := &Model{}
+	m.results.SetResult([]string{"id", "name", "email"}, nil, "")
+	m.ex.Open()
+	m.ex.input = "sort em"
+	m.recomputeExCompletion()
+	if len(m.ex.comp) == 0 || m.ex.comp[0].candidate != "email" {
+		t.Fatalf("before Tab, comp = %+v, want [email]", m.ex.comp)
+	}
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyTab})
+	if m.ex.input != "sort email" {
+		t.Errorf("after Tab, input = %q, want %q", m.ex.input, "sort email")
+	}
+}

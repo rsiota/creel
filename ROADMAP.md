@@ -36,10 +36,11 @@ Wave 1 shipped (2026-07-28): each `exCmdSpec` gained an optional `complete`
 closure, and `Model.recomputeExCompletion` drives the popup past the verb.
 `completeTable` (15 table commands: `:goto`/`:describe`/`:columns`/`:indexes`/…),
 `completeConnection`, `completeTheme`, and `completeEnum` (`:export`, `:icons`)
-are wired; Tab completes the top match into the last token. Files:
-`excmd_registry.go`, `excmd.go`. Tests: `excmd_completion_test.go`. Remaining:
-- **Column names** (`:sort`, `:hidecolumn`, `:stats`, `:filter`) — needs the
-  focused table's columns; a touch more plumbing.
+are wired; Tab completes the top match into the last token. Wave 2 column
+completion shipped (2026-07-29): `completeColumn` (`:sort`/`:hidecolumn`/
+`:stats`/`:filter`) reads the results grid so it stays correct for custom
+queries. Files: `excmd_registry.go`, `excmd.go`. Tests:
+`excmd_completion_test.go`. Remaining:
 - **File paths** (`:e`, `:w`, `:import`, `:open`, `:save`) — reuse the engine in
   `import_prompt.go` rather than reimplement.
 - **`up`/`down` popup selection** — currently only Tab→top match; up/down still

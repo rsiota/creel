@@ -144,10 +144,11 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exTabs() },
 		},
 		{
-			verbs:   []string{"sort"},
-			desc:    "sort results by a column",
-			usage:   ":sort <column>",
-			argKind: exArgRequired,
+			verbs:    []string{"sort"},
+			desc:     "sort results by a column",
+			usage:    ":sort <column>",
+			argKind:  exArgRequired,
+			complete: completeColumn,
 			run: func(m *Model, args []string, _ bool) tea.Cmd {
 				if len(args) == 0 {
 					m.schemaMsg = ":sort needs a column name"
@@ -262,11 +263,12 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exRegex(args) },
 		},
 		{
-			verbs:   []string{"hidecolumn"},
-			desc:    "hide a column (cursor or named)",
-			usage:   ":hidecolumn [col]",
-			argKind: exArgOptional,
-			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exHideColumn(args) },
+			verbs:    []string{"hidecolumn"},
+			desc:     "hide a column (cursor or named)",
+			usage:    ":hidecolumn [col]",
+			argKind:  exArgOptional,
+			complete: completeColumn,
+			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exHideColumn(args) },
 		},
 		{
 			verbs:   []string{"showcolumns"},
@@ -276,11 +278,11 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exShowColumns() },
 		},
 		{
-			verbs:   []string{"connect", "c"},
-			desc:    "switch connection by name, or open the connection list",
-			usage:   ":connect [name]",
-			argKind: exArgOptional,
-			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exConnect(args) },
+			verbs:    []string{"connect", "c"},
+			desc:     "switch connection by name, or open the connection list",
+			usage:    ":connect [name]",
+			argKind:  exArgOptional,
+			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exConnect(args) },
 			complete: completeConnection,
 		},
 		{
@@ -465,11 +467,11 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exCreate() },
 		},
 		{
-			verbs:   []string{"addcolumn"},
-			desc:    "add a column to a table (form, or direct)",
-			usage:   ":addcolumn [table] <name> <type> [\u2026]",
-			argKind: exArgOptional,
-			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exAddColumn(args) },
+			verbs:    []string{"addcolumn"},
+			desc:     "add a column to a table (form, or direct)",
+			usage:    ":addcolumn [table] <name> <type> [\u2026]",
+			argKind:  exArgOptional,
+			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exAddColumn(args) },
 			complete: completeTable,
 		},
 		{
@@ -539,11 +541,11 @@ func exCommands() []exCmdSpec {
 			},
 		},
 		{
-			verbs:   []string{"tail"},
-			desc:    "stream the newest rows of a table on a timer",
-			usage:   ":tail [table] [n]",
-			argKind: exArgTable,
-			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exTail(args) },
+			verbs:    []string{"tail"},
+			desc:     "stream the newest rows of a table on a timer",
+			usage:    ":tail [table] [n]",
+			argKind:  exArgTable,
+			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exTail(args) },
 			complete: completeTable,
 		},
 		{
@@ -573,19 +575,20 @@ func exCommands() []exCmdSpec {
 			},
 		},
 		{
-			verbs:   []string{"peek"},
-			desc:    "one-glance summary of a table",
-			usage:   ":peek [table]",
-			argKind: exArgTable,
-			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exPeek(args) },
+			verbs:    []string{"peek"},
+			desc:     "one-glance summary of a table",
+			usage:    ":peek [table]",
+			argKind:  exArgTable,
+			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exPeek(args) },
 			complete: completeTable,
 		},
 		{
-			verbs:   []string{"filter"},
-			desc:    "add a WHERE filter (col op value)",
-			usage:   ":filter <col><op><value>|off",
-			argKind: exArgRequired,
-			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exFilter(args) },
+			verbs:    []string{"filter"},
+			desc:     "add a WHERE filter (col op value)",
+			usage:    ":filter <col><op><value>|off",
+			argKind:  exArgRequired,
+			complete: completeColumn,
+			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exFilter(args) },
 		},
 		{
 			verbs:   []string{"open", "o"},
@@ -739,10 +742,11 @@ func exCommands() []exCmdSpec {
 			},
 		},
 		{
-			verbs:   []string{"stats"},
-			desc:    "summary stats for a column (min/max/avg/…)",
-			usage:   ":stats [column]",
-			argKind: exArgOptional,
+			verbs:    []string{"stats"},
+			desc:     "summary stats for a column (min/max/avg/…)",
+			usage:    ":stats [column]",
+			argKind:  exArgOptional,
+			complete: completeColumn,
 			run: func(m *Model, args []string, _ bool) tea.Cmd {
 				arg := ""
 				if len(args) > 0 {
@@ -852,6 +856,23 @@ func completeTable(m *Model, args []string, _ string) []string {
 		if !it.isColumn {
 			names = append(names, it.text)
 		}
+	}
+	return names
+}
+
+// completeColumn offers the current result set's column names as the first
+// argument — the columns :sort/:hidecolumn/:stats/:filter operate on (each
+// resolves the name case-insensitively against the results grid). It reads the
+// results grid rather than the schema cache so it stays correct for a custom
+// query whose columns differ from the focused table's schema. Past the first
+// argument there is nothing useful to suggest; with no results there are none.
+func completeColumn(m *Model, args []string, _ string) []string {
+	if len(args) > 0 || m.results.NumCols() == 0 {
+		return nil
+	}
+	names := make([]string, 0, m.results.NumCols())
+	for i := 0; i < m.results.NumCols(); i++ {
+		names = append(names, m.results.ColumnName(i))
 	}
 	return names
 }
