@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -425,5 +428,147 @@ func TestExArgCompletionColumnTab(t *testing.T) {
 	m.handleExKey(tea.KeyMsg{Type: tea.KeyTab})
 	if m.ex.input != "sort email" {
 		t.Errorf("after Tab, input = %q, want %q", m.ex.input, "sort email")
+	}
+}
+
+// --- file-path completion --------------------------------------------------
+
+// setupPathFixture makes a temp directory with a known set of entries for
+// path-completion tests, returning its path (no trailing slash):
+//
+//	alpha.sql  beta.txt  sub/  .secret
+func setupPathFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	must := func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(os.WriteFile(filepath.Join(dir, "alpha.sql"), nil, 0o644))
+	must(os.WriteFile(filepath.Join(dir, "beta.txt"), nil, 0o644))
+	must(os.Mkdir(filepath.Join(dir, "sub"), 0o755))
+	must(os.WriteFile(filepath.Join(dir, ".secret"), nil, 0o644))
+	return dir
+}
+
+// TestCompleteFilePath covers the shared engine directly: prefix filtering,
+// directories get a trailing "/", hidden entries are omitted unless the partial
+// itself starts with ".", an unmatched prefix yields nothing, and a value with
+// no directory prefix yields nothing.
+func TestCompleteFilePath(t *testing.T) {
+	dir := setupPathFixture(t)
+
+	// Whole dir (trailing slash): non-hidden entries, dirs suffixed, sorted.
+	got := completeFilePath(dir + "/")
+	want := []string{"alpha.sql", "beta.txt", "sub/"}
+	if !sameStrings(got, want) {
+		t.Errorf("completeFilePath(%q) = %v, want %v", dir+"/", got, want)
+	}
+
+	// Partial filename filters.
+	if got := completeFilePath(dir + "/a"); !sameStrings(got, []string{"alpha.sql"}) {
+		t.Errorf("partial 'a' = %v, want [alpha.sql]", got)
+	}
+	if got := completeFilePath(dir + "/su"); !sameStrings(got, []string{"sub/"}) {
+		t.Errorf("partial 'su' = %v, want [sub/]", got)
+	}
+
+	// Hidden entries appear only when the partial starts with ".".
+	if got := completeFilePath(dir + "/."); !sameStrings(got, []string{".secret"}) {
+		t.Errorf("partial '.' = %v, want [.secret]", got)
+	}
+
+	// Unmatched prefix → nothing.
+	if got := completeFilePath(dir + "/z"); got != nil {
+		t.Errorf("partial 'z' = %v, want nil", got)
+	}
+
+	// No directory prefix → nothing (callers start with ~/, ./, or /).
+	if got := completeFilePath("foo"); got != nil {
+		t.Errorf("no-dir-prefix = %v, want nil", got)
+	}
+}
+
+// TestExArgCompletionPaths: :e offers full-path candidates from the filesystem
+// (dir + name), so the popup's fuzzy ranker keeps them and Tab fills the path.
+func TestExArgCompletionPaths(t *testing.T) {
+	dir := setupPathFixture(t)
+	m := &Model{}
+	m.ex.input = "e " + dir + "/"
+	m.recomputeExCompletion()
+	if !m.ex.argMode {
+		t.Fatal("expected arg mode after the verb")
+	}
+	got := exCandidates(m.ex.comp)
+	sort.Strings(got)
+	want := []string{dir + "/alpha.sql", dir + "/beta.txt", dir + "/sub/"}
+	sort.Strings(want)
+	if !sameStrings(got, want) {
+		t.Errorf(":e candidates = %v, want %v", got, want)
+	}
+}
+
+// TestExArgCompletionPathsPartial: a partial filename filters to one match.
+func TestExArgCompletionPathsPartial(t *testing.T) {
+	dir := setupPathFixture(t)
+	m := &Model{}
+	m.ex.input = "w " + dir + "/be"
+	m.recomputeExCompletion()
+	got := exCandidates(m.ex.comp)
+	if !sameStrings(got, []string{dir + "/beta.txt"}) {
+		t.Errorf(":w partial 'be' = %v, want [%q]", got, dir+"/beta.txt")
+	}
+}
+
+// TestExArgCompletionPathTab: Tab replaces the partial path token with the top
+// match (a full path).
+func TestExArgCompletionPathTab(t *testing.T) {
+	dir := setupPathFixture(t)
+	m := &Model{}
+	m.ex.Open()
+	m.ex.input = "e " + dir + "/be"
+	m.recomputeExCompletion()
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyTab})
+	if want := "e " + dir + "/beta.txt"; m.ex.input != want {
+		t.Errorf("after Tab, input = %q, want %q", m.ex.input, want)
+	}
+}
+
+// TestExArgCompletionPathsAllVerbs: each file command (and its alias) is wired
+// to completePath, so a registry typo can't silently drop one.
+func TestExArgCompletionPathsAllVerbs(t *testing.T) {
+	for _, verb := range []string{"edit", "write", "import", "open", "save"} {
+		spec := exLookup(verb)
+		if spec == nil {
+			t.Errorf("missing spec for :%s", verb)
+			continue
+		}
+		if spec.complete == nil {
+			t.Errorf(":%s has no completer, want completePath", verb)
+		}
+	}
+	dir := setupPathFixture(t)
+	for _, verb := range []string{"e", "w", "import", "open", "save"} {
+		m := &Model{}
+		m.ex.input = verb + " " + dir + "/su"
+		m.recomputeExCompletion()
+		got := exCandidates(m.ex.comp)
+		if !sameStrings(got, []string{dir + "/sub/"}) {
+			t.Errorf(":%s partial 'su' = %v, want [%q]", verb, got, dir+"/sub/")
+		}
+	}
+}
+
+// TestExArgCompletionPathNoDirPrefix: without a directory prefix there is
+// nothing to offer (the engine has no directory to list).
+func TestExArgCompletionPathNoDirPrefix(t *testing.T) {
+	for _, in := range []string{"e ", "e foo"} {
+		m := &Model{}
+		m.ex.input = in
+		m.recomputeExCompletion()
+		if len(m.ex.comp) != 0 {
+			t.Errorf("%q: expected no candidates, got %v", in, exCandidates(m.ex.comp))
+		}
 	}
 }

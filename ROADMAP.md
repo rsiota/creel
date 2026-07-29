@@ -39,10 +39,11 @@ closure, and `Model.recomputeExCompletion` drives the popup past the verb.
 are wired; Tab completes the top match into the last token. Wave 2 column
 completion shipped (2026-07-29): `completeColumn` (`:sort`/`:hidecolumn`/
 `:stats`/`:filter`) reads the results grid so it stays correct for custom
-queries. Files: `excmd_registry.go`, `excmd.go`. Tests:
+queries; `completePath` (`:e`/`:w`/`:import`/`:open`/`:save`) reuses the
+import prompt's filesystem engine, returning full-path candidates so the
+fuzzy ranker keeps them and Tab fills the whole path. Files:
+`excmd_registry.go`, `excmd.go`, `import_prompt.go`. Tests:
 `excmd_completion_test.go`. Remaining:
-- **File paths** (`:e`, `:w`, `:import`, `:open`, `:save`) — reuse the engine in
-  `import_prompt.go` rather than reimplement.
 - **`up`/`down` popup selection** — currently only Tab→top match; up/down still
   recall history, so this needs a popup-visible guard.
 - **Fuzzy (vs strict prefix) verb matching** — bundled freebie deferred to avoid

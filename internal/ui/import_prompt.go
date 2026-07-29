@@ -128,27 +128,23 @@ func resolveDir(dir string) string {
 	return dir
 }
 
-// refreshCompletions reads the directory implied by the current input and
-// populates the completion list with entries whose names start with the
-// partial prefix.
-func (p *ImportPrompt) refreshCompletions() {
-	val := p.input.Value()
-	dir, partial := splitPathVal(val)
-
+// completeFilePath returns the directory entries matching a path prefix — the
+// shared engine behind both the import prompt's live completion and the ":"
+// file-argument completers (:e/:w/:import/:open/:save). It splits the input
+// at the last "/", lists that directory (expanding ~), and returns the
+// matching entry basenames — appending "/" to directories, sorting, and
+// omitting hidden entries unless the partial itself starts with ".". Returns
+// nil when the input has no directory prefix or the directory can't be read.
+func completeFilePath(input string) []string {
+	dir, partial := splitPathVal(input)
 	if dir == "" {
-		p.completions = nil
-		p.compVisible = false
-		return
+		return nil
 	}
-
 	resolved := resolveDir(dir)
 	entries, err := os.ReadDir(resolved)
 	if err != nil {
-		p.completions = nil
-		p.compVisible = false
-		return
+		return nil
 	}
-
 	var matches []string
 	for _, e := range entries {
 		name := e.Name()
@@ -163,11 +159,17 @@ func (p *ImportPrompt) refreshCompletions() {
 		}
 		matches = append(matches, name)
 	}
-
 	sort.Strings(matches)
-	p.completions = matches
+	return matches
+}
+
+// refreshCompletions reads the directory implied by the current input and
+// populates the completion list with entries whose names start with the
+// partial prefix.
+func (p *ImportPrompt) refreshCompletions() {
+	p.completions = completeFilePath(p.input.Value())
 	p.compSelected = 0
-	p.compVisible = len(matches) > 0
+	p.compVisible = len(p.completions) > 0
 }
 
 // acceptCompletion replaces the partial portion of the input with the

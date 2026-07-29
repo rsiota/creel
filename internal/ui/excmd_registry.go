@@ -47,10 +47,11 @@ const (
 func exCommands() []exCmdSpec {
 	return []exCmdSpec{
 		{
-			verbs:   []string{"edit", "e"},
-			desc:    "load a file into the editor",
-			usage:   ":e <file>",
-			argKind: exArgRequired,
+			verbs:    []string{"edit", "e"},
+			desc:     "load a file into the editor",
+			usage:    ":e <file>",
+			argKind:  exArgRequired,
+			complete: completePath,
 			run: func(m *Model, args []string, _ bool) tea.Cmd {
 				if len(args) == 0 {
 					m.schemaMsg = ":e needs a file path"
@@ -60,10 +61,11 @@ func exCommands() []exCmdSpec {
 			},
 		},
 		{
-			verbs:   []string{"write", "w"},
-			desc:    "save edits, or write the editor buffer to a file",
-			usage:   ":w [file]",
-			argKind: exArgOptional,
+			verbs:    []string{"write", "w"},
+			desc:     "save edits, or write the editor buffer to a file",
+			usage:    ":w [file]",
+			argKind:  exArgOptional,
+			complete: completePath,
 			run: func(m *Model, args []string, force bool) tea.Cmd {
 				// With a file argument, write the editor buffer to disk
 				// (vim :w file); without one, :w saves staged cell edits
@@ -307,10 +309,11 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exSchema(args) },
 		},
 		{
-			verbs:   []string{"import"},
-			desc:    "import a SQL dump file into the database",
-			usage:   ":import <file>",
-			argKind: exArgRequired,
+			verbs:    []string{"import"},
+			desc:     "import a SQL dump file into the database",
+			usage:    ":import <file>",
+			argKind:  exArgRequired,
+			complete: completePath,
 			run: func(m *Model, args []string, _ bool) tea.Cmd {
 				if len(args) == 0 {
 					m.schemaMsg = ":import needs a file path"
@@ -591,10 +594,11 @@ func exCommands() []exCmdSpec {
 			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exFilter(args) },
 		},
 		{
-			verbs:   []string{"open", "o"},
-			desc:    "load a file into the editor (alias of :e)",
-			usage:   ":open <file>",
-			argKind: exArgRequired,
+			verbs:    []string{"open", "o"},
+			desc:     "load a file into the editor (alias of :e)",
+			usage:    ":open <file>",
+			argKind:  exArgRequired,
+			complete: completePath,
 			run: func(m *Model, args []string, _ bool) tea.Cmd {
 				if len(args) == 0 {
 					m.schemaMsg = ":open needs a file path"
@@ -604,10 +608,11 @@ func exCommands() []exCmdSpec {
 			},
 		},
 		{
-			verbs:   []string{"save"},
-			desc:    "write the editor buffer to a file (alias of :w)",
-			usage:   ":save <file>",
-			argKind: exArgRequired,
+			verbs:    []string{"save"},
+			desc:     "write the editor buffer to a file (alias of :w)",
+			usage:    ":save <file>",
+			argKind:  exArgRequired,
+			complete: completePath,
 			run: func(m *Model, args []string, _ bool) tea.Cmd {
 				if len(args) == 0 {
 					m.schemaMsg = ":save needs a file path"
@@ -906,6 +911,31 @@ func completeEnum(options ...string) func(*Model, []string, string) []string {
 		}
 		return options
 	}
+}
+
+// completePath offers filesystem entries matching the typed path prefix as the
+// first argument of the file commands (:e/:w/:import/:open/:save). It reuses
+// the import prompt's path engine (completeFilePath) but returns full-path
+// candidates (dir + name) rather than bare entry names, so the ":" popup's
+// fuzzy ranker — which matches the typed prefix against each candidate —
+// keeps them (the prefix is a subsequence of the full path, not of the bare
+// name), and Tab fills the whole path. Past the first argument there is
+// nothing useful to suggest; with no directory prefix typed there is nothing
+// (start with ~/, ./, or /).
+func completePath(_ *Model, args []string, partial string) []string {
+	if len(args) > 0 {
+		return nil
+	}
+	dir, _ := splitPathVal(partial)
+	base := completeFilePath(partial)
+	if len(base) == 0 {
+		return nil
+	}
+	out := make([]string, len(base))
+	for i, name := range base {
+		out[i] = dir + name
+	}
+	return out
 }
 
 func exLookup(verb string) *exCmdSpec {
