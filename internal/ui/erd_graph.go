@@ -82,7 +82,7 @@ type gcanvas struct {
 	// which makes the diagram's bounding box start at a negative logical coord —
 	// still renders instead of being clipped. (0,0) means logical == rendered.
 	ox, oy int
-	cells   [][]gcell
+	cells  [][]gcell
 }
 
 func newGcanvas(w, h int) *gcanvas {
@@ -863,8 +863,8 @@ func routeArrow(child, parent *gcard, childCol, parentCol string, all []*gcard, 
 func routeSide(child, parent *gcard, cy, py int, others []*gcard) ([]erdPoint, erdDir, bool) {
 	switch {
 	case parent.x+parent.w <= child.x: // parent sits fully left of child
-		exitX := child.x - 1            // gutter cell touching the child's left border
-		headX := parent.x + parent.w    // arrowhead tip touches the parent's right border
+		exitX := child.x - 1         // gutter cell touching the child's left border
+		headX := parent.x + parent.w // arrowhead tip touches the parent's right border
 		for vertX := headX + 1; vertX <= exitX; vertX++ {
 			if segClearH(others, exitX, vertX, cy) &&
 				segClearV(others, vertX, cy, py) &&
@@ -989,10 +989,10 @@ func nearestClearRiser(start int, others []*gcard, y0, y1 int) int {
 // coordinate shift). One row per arrow is reserved (conservative; post-drag
 // few arrows need a lane, so the over-reservation is negligible).
 type lanePacker struct {
-	aboveBusy   map[int]bool
-	belowNext   int
-	topMost     int
-	bottomMost  int
+	aboveBusy  map[int]bool
+	belowNext  int
+	topMost    int
+	bottomMost int
 }
 
 func newLanePacker(cards ...*gcard) *lanePacker {
@@ -1002,7 +1002,7 @@ func newLanePacker(cards ...*gcard) *lanePacker {
 			continue
 		}
 		if lp.topMost < 0 || c.y < lp.topMost {
-				lp.topMost = c.y
+			lp.topMost = c.y
 		}
 		if c.y+c.h > lp.bottomMost {
 			lp.bottomMost = c.y + c.h

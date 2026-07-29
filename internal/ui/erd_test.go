@@ -2102,7 +2102,6 @@ func TestERDContentToCanvasUnboundedAllowsNegative(t *testing.T) {
 	}
 }
 
-
 // --- card collapse/expand ("zc"/"zo"/"za") ---------------------------------
 
 // TestERDColRowYCollapsed verifies colRowY falls back to the header-row centre

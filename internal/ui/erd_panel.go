@@ -745,7 +745,7 @@ func (e ERDPanel) dragCancel() ERDPanel {
 // dragStatusLine renders the one-line drag status shown at the bottom of the
 // graph while a card is being dragged.
 func (e ERDPanel) dragStatusLine(width int) string {
-	msg := lipgloss.NewStyle().Foreground(colorAccent).Render("◇ dragging " + e.dragCard) +
+	msg := lipgloss.NewStyle().Foreground(colorAccent).Render("◇ dragging "+e.dragCard) +
 		" " + mutedStyle.Render("(release to drop, esc to cancel)")
 	return lipgloss.NewStyle().Width(width).Render(" " + msg)
 }
