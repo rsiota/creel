@@ -256,12 +256,12 @@ const (
 // popup is a fixed-width rectangle: the command column is pinned to the global
 // max command-name width (capped) and descriptions truncate with "…", so
 // neither the box nor the columns jitter as you type.
-func (ex exCmd) completionView() string {
+func (ex exCmd) completionView(maxW int) string {
 	if !ex.visible || len(ex.comp) == 0 {
 		return ""
 	}
 	if ex.argMode {
-		return ex.argCompletionView()
+		return ex.argCompletionView(maxW)
 	}
 	const maxRows = 9
 	items := ex.comp
@@ -318,7 +318,11 @@ func (ex exCmd) completionView() string {
 // argCompletionView renders the argument-candidate popup: a single column of
 // candidate names with the Tab target highlighted (row 0), mirroring the verb
 // popup's styling. One column is enough — the candidate is the whole value.
-func (ex exCmd) argCompletionView() string {
+// Unlike the verb popup (a fixed rectangle), the column sizes to its content
+// and is capped only by the available terminal width (maxW): a long file path
+// is the useful information, so it gets as much room as the terminal allows
+// instead of being cropped to a fixed 16 cells.
+func (ex exCmd) argCompletionView(maxW int) string {
 	const maxRows = 9
 	items := ex.comp
 	if len(items) > maxRows {
@@ -330,8 +334,21 @@ func (ex exCmd) argCompletionView() string {
 			colW = w
 		}
 	}
-	if colW > exCompletionCmdW {
-		colW = exCompletionCmdW
+	// The popup sits at column 1; each row is a 2-cell prefix ("❯ " or "  ")
+	// plus the candidate, wrapped by a 2-cell border, so the candidate column
+	// reaches the right edge at width-5 (one more kept as a margin). Unknown
+	// width (0, e.g. unsized) falls back to a default; a pathologically narrow
+	// terminal still shows a few characters.
+	const overhead = 6
+	avail := 60
+	if maxW > 0 {
+		avail = maxW - overhead
+		if avail < 8 {
+			avail = 8
+		}
+	}
+	if colW > avail {
+		colW = avail
 	}
 	fit := func(s string, w int) string {
 		t := truncateRunes(s, w)

@@ -79,12 +79,12 @@ func TestExCompletionTabCompletes(t *testing.T) {
 
 func TestExCompletionViewEmpty(t *testing.T) {
 	var ex exCmd
-	if ex.completionView() != "" {
+	if ex.completionView(120) != "" {
 		t.Error("completionView should be empty when not visible")
 	}
 	ex.visible = true
 	ex.comp = nil
-	if ex.completionView() != "" {
+	if ex.completionView(120) != "" {
 		t.Error("completionView should be empty with no candidates")
 	}
 }
@@ -96,7 +96,7 @@ func TestExCompletionViewRendersUsage(t *testing.T) {
 	ex := exCmd{visible: true}
 	ex.input = "g"
 	ex.recomputeCompletion()
-	out := ex.completionView()
+	out := ex.completionView(120)
 	if !strings.Contains(out, ":goto") {
 		t.Errorf("completionView missing command name; got %q", out)
 	}
@@ -111,7 +111,7 @@ func TestExCompletionViewRendersUsage(t *testing.T) {
 func TestExCompletionFixedWidth(t *testing.T) {
 	var ex exCmd
 	ex.Open() // ":" alone -> every command is a candidate
-	out := ex.completionView()
+	out := ex.completionView(120)
 	if out == "" {
 		t.Fatal("expected a completion popup for \":\"")
 	}
@@ -135,7 +135,7 @@ func TestExCompletionFixedWidth(t *testing.T) {
 	ex2.Open()
 	ex2.input = "co"
 	ex2.recomputeCompletion()
-	out2 := ex2.completionView()
+	out2 := ex2.completionView(120)
 	if out2 == "" {
 		t.Fatal("expected a completion popup for \"co\"")
 	}
@@ -207,7 +207,7 @@ func TestExArgCompletionHiddenPastFirstArg(t *testing.T) {
 	if len(m.ex.comp) != 0 {
 		t.Errorf("expected no candidates past the table arg, got %+v", m.ex.comp)
 	}
-	if m.ex.completionView() != "" {
+	if m.ex.completionView(120) != "" {
 		t.Error("expected empty popup past the table arg")
 	}
 }
@@ -374,7 +374,7 @@ func TestExArgCompletionColumnsHiddenPastFirstArg(t *testing.T) {
 	if len(m.ex.comp) != 0 {
 		t.Errorf("expected no candidates past the column arg, got %+v", m.ex.comp)
 	}
-	if m.ex.completionView() != "" {
+	if m.ex.completionView(120) != "" {
 		t.Error("expected empty popup past the column arg")
 	}
 }
@@ -570,5 +570,35 @@ func TestExArgCompletionPathNoDirPrefix(t *testing.T) {
 		if len(m.ex.comp) != 0 {
 			t.Errorf("%q: expected no candidates, got %v", in, exCandidates(m.ex.comp))
 		}
+	}
+}
+
+// TestExArgCompletionPathWidthAdaptive: the argument popup sizes to its content
+// (capped by terminal width), not a fixed 16 cells — so a long file path shows
+// in full when the terminal is wide and is cropped only when it is genuinely
+// too narrow to hold it.
+func TestExArgCompletionPathWidthAdaptive(t *testing.T) {
+	dir := t.TempDir()
+	longName := strings.Repeat("x", 40) + ".sql" // 44 runes, well past the old 16-cell cap
+	if err := os.WriteFile(filepath.Join(dir, longName), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	full := dir + "/" + longName
+	fullLen := runeLen(full)
+
+	m := &Model{}
+	m.ex.Open()
+	m.ex.input = "e " + dir + "/"
+	m.recomputeExCompletion()
+
+	// Wide terminal (a little more than the path needs): the full path fits
+	// uncropped — which the old fixed 16-cell cap would never have allowed.
+	if out := m.ex.completionView(fullLen + 10); !strings.Contains(out, full) {
+		t.Errorf("wide terminal cropped the path; popup=%q", out)
+	}
+
+	// Narrow terminal: the path is cropped (no longer contains the full name).
+	if out := m.ex.completionView(25); strings.Contains(out, full) {
+		t.Errorf("narrow terminal should crop the path; popup=%q", out)
 	}
 }

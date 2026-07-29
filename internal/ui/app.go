@@ -4821,7 +4821,7 @@ func (m Model) viewWorkspace() string {
 
 	// Overlay ":" verb-completion popup directly above the command line.
 	if m.ex.visible {
-		if popup := m.ex.completionView(); popup != "" {
+		if popup := m.ex.completionView(m.width); popup != "" {
 			ph := lipgloss.Height(popup)
 			view = placeOverlay(view, popup, 1, m.height-1-ph)
 		}
