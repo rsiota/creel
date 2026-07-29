@@ -44,10 +44,17 @@ import prompt's filesystem engine, returning full-path candidates so the
 fuzzy ranker keeps them and Tab fills the whole path. Files:
 `excmd_registry.go`, `excmd.go`, `import_prompt.go`. Tests:
 `excmd_completion_test.go`. Remaining:
-- **`up`/`down` popup selection** — currently only Tab→top match; up/down still
-  recall history, so this needs a popup-visible guard.
 - **Fuzzy (vs strict prefix) verb matching** — bundled freebie deferred to avoid
   changing the "g→goto only" behaviour the verb tests assert.
+
+`up`/`down` popup selection shipped (2026-07-30): when the popup is visible,
+  up/down move its selection (wrapping, mirroring the command palette) and Tab
+  completes the highlighted row; the popup window scrolls once the cursor
+  reaches its edge. A `recalling` flag keeps a history walk going even when a
+  recalled value would itself show a popup, and typing clears it — so
+  `:`+`up` still replays the last command, vim-style, and `up`/`up`/`down`
+  walks history uninterrupted. Files: `excmd.go`. Tests:
+  `excmd_completion_test.go`.
 
 ### `cursor_style` setting (#7 follow-up)
 Reserved field in `Settings`; needs results-cursor rendering work. Parked

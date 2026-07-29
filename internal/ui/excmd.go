@@ -23,12 +23,14 @@ import (
 // cancels, ↑/↓ recalls history. Unknown input in the results view falls back
 // to a column jump, preserving the legacy ":" behaviour.
 type exCmd struct {
-	visible bool
-	input   string
-	hist    []string     // command history, most-recent last
-	histIdx int          // recall cursor; len(hist) == "fresh input"
-	comp    []exCompItem // popup candidates; empty = no popup
-	argMode bool         // true: comp holds argument candidates (Tab completes last token)
+	visible   bool
+	input     string
+	hist      []string     // command history, most-recent last
+	histIdx   int          // recall cursor; len(hist) == "fresh input"
+	comp      []exCompItem // popup candidates; empty = no popup
+	argMode   bool         // true: comp holds argument candidates (Tab completes last token)
+	selIdx    int          // popup selection cursor (0 = top/Tab target); valid when len(comp) > 0
+	recalling bool         // up/down is walking history; cleared by typing so it returns to popup nav
 }
 
 // exCompItem is one row in the ":" completion popup. In verb mode verb/desc
@@ -61,24 +63,44 @@ func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.ex.hist = append(m.ex.hist, input)
 		m.ex.histIdx = len(m.ex.hist)
 		return *m, m.runExCommand(input)
-	case "up":
-		m.ex.recall(-1)
-		m.recomputeExCompletion()
-		return *m, nil
-	case "down":
-		m.ex.recall(1)
+	case "up", "down":
+		// With the popup visible and not mid-history, up/down move its
+		// selection (mirroring the command palette). Otherwise they walk
+		// history. A "recalling" flag keeps a history walk going even when a
+		// recalled value would itself show a popup, and typing clears it so
+		// up/down returns to popup navigation. The input!="" check keeps
+		// ":<up>" (fresh prompt) recalling the last command, vim-style.
+		if !m.ex.recalling && len(m.ex.comp) > 0 && m.ex.input != "" {
+			if msg.String() == "up" {
+				m.ex.moveSel(-1)
+			} else {
+				m.ex.moveSel(1)
+			}
+			return *m, nil
+		}
+		m.ex.recalling = true
+		if msg.String() == "up" {
+			m.ex.recall(-1)
+		} else {
+			m.ex.recall(1)
+		}
 		m.recomputeExCompletion()
 		return *m, nil
 	case "tab":
-		// Complete the top match: the verb in verb mode (its canonical name)
-		// or the last argument token in argument mode. recompute then hides
-		// the popup once the match is exact.
+		// Complete the selected match: the verb in verb mode (its canonical
+		// name) or the last argument token in argument mode. recompute then
+		// hides the popup once the match is exact.
 		if len(m.ex.comp) > 0 {
-			if m.ex.argMode {
-				m.ex.input = applyArgCompletion(m.ex.input, m.ex.comp[0].candidate)
-			} else {
-				m.ex.input = m.ex.comp[0].verb
+			sel := m.ex.selIdx
+			if sel < 0 || sel >= len(m.ex.comp) {
+				sel = 0
 			}
+			if m.ex.argMode {
+				m.ex.input = applyArgCompletion(m.ex.input, m.ex.comp[sel].candidate)
+			} else {
+				m.ex.input = m.ex.comp[sel].verb
+			}
+			m.ex.recalling = false
 			m.recomputeExCompletion()
 		}
 		return *m, nil
@@ -86,12 +108,14 @@ func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.ex.input) > 0 {
 			r := []rune(m.ex.input)
 			m.ex.input = string(r[:len(r)-1])
+			m.ex.recalling = false
 			m.recomputeExCompletion()
 		}
 		return *m, nil
 	}
 	if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
 		m.ex.input += msg.String()
+		m.ex.recalling = false
 		m.recomputeExCompletion()
 	}
 	return *m, nil
@@ -103,6 +127,7 @@ func (ex *exCmd) Open() {
 	ex.visible = true
 	ex.input = ""
 	ex.histIdx = len(ex.hist)
+	ex.recalling = false
 	ex.recomputeCompletion()
 }
 
@@ -111,6 +136,8 @@ func (ex *exCmd) Hide() {
 	ex.visible = false
 	ex.comp = nil
 	ex.argMode = false
+	ex.selIdx = 0
+	ex.recalling = false
 }
 
 // IsVisible reports whether the ex command line is shown.
@@ -137,6 +164,7 @@ func verbPrefix(input string) (verb string, hasSpace bool) {
 func (ex *exCmd) recomputeCompletion() {
 	ex.comp = ex.comp[:0]
 	ex.argMode = false // verb mode
+	ex.selIdx = 0
 	verb, hasSpace := verbPrefix(ex.input)
 	if hasSpace {
 		return
@@ -172,6 +200,7 @@ func (m *Model) recomputeExCompletion() {
 	}
 	m.ex.comp = m.ex.comp[:0]
 	m.ex.argMode = true
+	m.ex.selIdx = 0
 	// A trailing "!" (force) on the verb must be stripped, mirroring parseExLine.
 	lookup := strings.TrimSuffix(verb, "!")
 	spec := exLookup(lookup)
@@ -248,7 +277,8 @@ const (
 
 // completionView renders the verb-completion popup (one row per candidate)
 // for display directly above the ":" prompt, or "" when nothing applies. The
-// first row is the Tab target. Rendering mirrors the palette (Ctrl+P): blue
+// selected row (initially the top match) is the Tab target. Rendering mirrors
+// the palette (Ctrl+P): blue
 // command names, grey descriptions, and a solid highlight bar on the Tab
 // target. Each row shows the command name (":verb") and its short description
 // — the full invocation form (with arguments) is left to :help, so the command
@@ -264,10 +294,7 @@ func (ex exCmd) completionView(maxW int) string {
 		return ex.argCompletionView(maxW)
 	}
 	const maxRows = 9
-	items := ex.comp
-	if len(items) > maxRows {
-		items = items[:maxRows]
-	}
+	items, localSel := exPopupWindow(ex.comp, ex.selIdx, maxRows)
 	// Stable command column: the global max ":verb" width (capped), computed
 	// from the full command set rather than the current filter so it never
 	// shifts as you type.
@@ -295,7 +322,7 @@ func (ex exCmd) completionView(maxW int) string {
 		cmd := fit(":"+it.verb, cmdW)
 		desc := fit(it.desc, descW)
 		var row string
-		if i == 0 {
+		if i == localSel {
 			// Tab target: a solid highlight bar, mirroring the palette's
 			// selected row (bg colorPrimary, fg colorBg, "❯" marker).
 			row = lipgloss.NewStyle().
@@ -316,7 +343,7 @@ func (ex exCmd) completionView(maxW int) string {
 }
 
 // argCompletionView renders the argument-candidate popup: a single column of
-// candidate names with the Tab target highlighted (row 0), mirroring the verb
+// candidate names with the selected row highlighted (the Tab target), mirroring the verb
 // popup's styling. One column is enough — the candidate is the whole value.
 // Unlike the verb popup (a fixed rectangle), the column sizes to its content
 // and is capped only by the available terminal width (maxW): a long file path
@@ -324,12 +351,11 @@ func (ex exCmd) completionView(maxW int) string {
 // instead of being cropped to a fixed 16 cells.
 func (ex exCmd) argCompletionView(maxW int) string {
 	const maxRows = 9
-	items := ex.comp
-	if len(items) > maxRows {
-		items = items[:maxRows]
-	}
+	items, localSel := exPopupWindow(ex.comp, ex.selIdx, maxRows)
+	// Column width is the max over ALL candidates (not just the visible
+	// window) so the box width stays stable as the window scrolls.
 	colW := 0
-	for _, it := range items {
+	for _, it := range ex.comp {
 		if w := runeLen(it.candidate); w > colW {
 			colW = w
 		}
@@ -357,7 +383,7 @@ func (ex exCmd) argCompletionView(maxW int) string {
 	var lines []string
 	for i, it := range items {
 		cell := fit(it.candidate, colW)
-		if i == 0 {
+		if i == localSel {
 			lines = append(lines, lipgloss.NewStyle().
 				Background(colorPrimary).Foreground(colorBg).
 				Render("❯ "+cell))
@@ -370,6 +396,43 @@ func (ex exCmd) argCompletionView(maxW int) string {
 		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Render(strings.Join(lines, "\n"))
+}
+
+// moveSel moves the popup selection cursor by delta, wrapping around
+// (mirroring the command palette). Callers guard len(comp) > 0.
+func (ex *exCmd) moveSel(delta int) {
+	n := len(ex.comp)
+	if n == 0 {
+		ex.selIdx = 0
+		return
+	}
+	ex.selIdx = (ex.selIdx + delta + n) % n
+}
+
+// exPopupWindow returns the slice of popup rows to render and the index of the
+// selected row within that slice, keeping selIdx visible with a sliding window
+// when there are more candidates than maxRows (mirroring the command palette:
+// the window advances only once the cursor reaches its bottom edge).
+func exPopupWindow(comp []exCompItem, selIdx, maxRows int) (items []exCompItem, localSel int) {
+	n := len(comp)
+	if n == 0 {
+		return nil, 0
+	}
+	if selIdx < 0 {
+		selIdx = 0
+	}
+	if selIdx >= n {
+		selIdx = n - 1
+	}
+	start := 0
+	if selIdx >= maxRows {
+		start = selIdx - maxRows + 1
+	}
+	end := start + maxRows
+	if end > n {
+		end = n
+	}
+	return comp[start:end], selIdx - start
 }
 
 // recall steps through command history (delta < 0 = older, > 0 = newer).

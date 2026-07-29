@@ -161,6 +161,25 @@ func sameStrings(a, b []string) bool {
 	return true
 }
 
+// sameStringsSet compares two slices ignoring order (for completion candidates
+// whose ranked order isn't stable across rankers/machines).
+func sameStringsSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	saw := make(map[string]int, len(a))
+	for _, s := range a {
+		saw[s]++
+	}
+	for _, s := range b {
+		saw[s]--
+		if saw[s] < 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // exCandidates extracts the candidate strings from a comp slice.
 func exCandidates(items []exCompItem) []string {
 	out := make([]string, len(items))
@@ -600,5 +619,166 @@ func TestExArgCompletionPathWidthAdaptive(t *testing.T) {
 	// Narrow terminal: the path is cropped (no longer contains the full name).
 	if out := m.ex.completionView(25); strings.Contains(out, full) {
 		t.Errorf("narrow terminal should crop the path; popup=%q", out)
+	}
+}
+
+// --- popup selection (up/down) ---------------------------------------------
+
+// TestExCompletionPopupUpDownSelects: when the popup is visible, up/down move
+// the selection (wrapping, like the command palette) and Tab completes the
+// highlighted row rather than always the top match.
+func TestExCompletionPopupUpDownSelects(t *testing.T) {
+	dir := setupPathFixture(t) // candidates: alpha.sql, beta.txt, sub/
+	alpha := dir + "/alpha.sql"
+	beta := dir + "/beta.txt"
+	sub := dir + "/sub/"
+
+	m := &Model{}
+	m.ex.Open()
+	m.ex.input = "e " + dir + "/"
+	m.recomputeExCompletion()
+	if len(m.ex.comp) != 3 {
+		t.Fatalf("expected 3 candidates, got %d: %v", len(m.ex.comp), exCandidates(m.ex.comp))
+	}
+	// The partial (dir+"/") is non-empty, so rankStrings fuzzy-ranks the rows;
+	// snapshot that order rather than assuming alphabetical.
+	cands := exCandidates(m.ex.comp)
+	if !sameStringsSet(cands, []string{alpha, beta, sub}) {
+		t.Fatalf("candidate set = %v, want {%s,%s,%s}", cands, alpha, beta, sub)
+	}
+	c1 := m.ex.comp[1].candidate // row down lands on
+	c2 := m.ex.comp[2].candidate // row up-from-top wraps to
+	if m.ex.selIdx != 0 {
+		t.Fatalf("initial selIdx = %d, want 0", m.ex.selIdx)
+	}
+
+	// down → index 1; Tab completes it.
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyDown})
+	if m.ex.selIdx != 1 {
+		t.Errorf("after down, selIdx = %d, want 1", m.ex.selIdx)
+	}
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyTab})
+	if want := "e " + c1; m.ex.input != want {
+		t.Errorf("after down+tab, input = %q, want %q", m.ex.input, want)
+	}
+
+	// up from the top wraps to the last row; Tab completes it.
+	m.ex.input = "e " + dir + "/"
+	m.recomputeExCompletion()
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyUp}) // wrap 0 → 2
+	if m.ex.selIdx != 2 {
+		t.Errorf("after up from 0, selIdx = %d, want 2 (wrap)", m.ex.selIdx)
+	}
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyTab})
+	if want := "e " + c2; m.ex.input != want {
+		t.Errorf("after up+tab, input = %q, want %q", m.ex.input, want)
+	}
+}
+
+// TestExCompletionUpDownRecallsHistoryWhenPopupHidden: with no popup visible,
+// up/down recall command history (their pre-popup behaviour).
+func TestExCompletionUpDownRecallsHistoryWhenPopupHidden(t *testing.T) {
+	m := &Model{}
+	m.ex.hist = []string{"select 1", "select 2"}
+	m.ex.Open()
+	m.ex.input = "select *" // no ":select" command → empty popup
+	m.recomputeExCompletion()
+	if len(m.ex.comp) != 0 {
+		t.Fatalf("expected empty popup, got %v", exCandidates(m.ex.comp))
+	}
+
+	// up recalls the most-recent entry (histIdx starts at len → newest).
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyUp})
+	if m.ex.input != "select 2" {
+		t.Errorf("after up, input = %q, want %q", m.ex.input, "select 2")
+	}
+	// down steps back toward fresh input.
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyDown})
+	if m.ex.input != "" {
+		t.Errorf("after down, input = %q, want empty", m.ex.input)
+	}
+}
+
+// TestExCompletionRecallPersistsAcrossPopup: once up/down starts walking
+// history it keeps walking even when a recalled value would itself show a
+// popup (the "recalling" flag); typing clears the flag so up/down returns to
+// popup navigation. This preserves the vim-style ":<up><up><down>" history walk.
+func TestExCompletionRecallPersistsAcrossPopup(t *testing.T) {
+	dir := setupPathFixture(t)
+	recent := "e " + dir + "/alpha.sql" // recalled value that has its own popup
+	older := "e " + dir + "/"
+
+	m := &Model{}
+	m.ex.hist = []string{older, recent}
+	m.ex.Open() // input empty → first up recalls rather than navigating
+
+	// up → most recent (which itself would show a path popup).
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyUp})
+	if m.ex.input != recent {
+		t.Fatalf("first up: input = %q, want %q", m.ex.input, recent)
+	}
+	if len(m.ex.comp) == 0 {
+		t.Fatal("recalled value should show a popup, but comp is empty")
+	}
+	// up again → keeps walking history despite the popup (recalling flag).
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyUp})
+	if m.ex.input != older {
+		t.Errorf("second up: input = %q, want %q (walk should continue)", m.ex.input, older)
+	}
+	// down → back toward the most recent.
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyDown})
+	if m.ex.input != recent {
+		t.Errorf("down: input = %q, want %q", m.ex.input, recent)
+	}
+}
+
+// TestExCompletionPopupSelResetsOnType: moving the selection is forgotten once
+// the list changes (typing recomputes and resets selIdx to the top match).
+func TestExCompletionPopupSelResetsOnType(t *testing.T) {
+	dir := setupPathFixture(t)
+	m := &Model{}
+	m.ex.Open()
+	m.ex.input = "e " + dir + "/"
+	m.recomputeExCompletion()
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyDown}) // selIdx → 1
+	if m.ex.selIdx != 1 {
+		t.Fatalf("selIdx = %d, want 1", m.ex.selIdx)
+	}
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	if m.ex.selIdx != 0 {
+		t.Errorf("after typing, selIdx = %d, want 0 (reset)", m.ex.selIdx)
+	}
+}
+
+// TestExPopupWindow covers the sliding window: it keeps selIdx visible without
+// running past the slice ends, and shows the whole list when it fits.
+func TestExPopupWindow(t *testing.T) {
+	const maxRows = 9
+	comp := make([]exCompItem, 12) // content irrelevant; only length matters
+
+	items, sel := exPopupWindow(comp, 0, maxRows)
+	if len(items) != maxRows || sel != 0 {
+		t.Errorf("selIdx=0: len=%d sel=%d, want %d/0", len(items), sel, maxRows)
+	}
+	items, sel = exPopupWindow(comp, 9, maxRows)
+	if len(items) != maxRows || sel != maxRows-1 {
+		t.Errorf("selIdx=9: len=%d sel=%d, want %d/%d", len(items), sel, maxRows, maxRows-1)
+	}
+	items, sel = exPopupWindow(comp, 11, maxRows)
+	if len(items) != maxRows || sel != maxRows-1 {
+		t.Errorf("selIdx=11: len=%d sel=%d, want %d/%d", len(items), sel, maxRows, maxRows-1)
+	}
+	items, sel = exPopupWindow(comp, -1, maxRows) // negative clamps to 0
+	if sel != 0 {
+		t.Errorf("selIdx=-1: sel=%d, want 0", sel)
+	}
+	short := make([]exCompItem, 3)
+	items, sel = exPopupWindow(short, 2, maxRows)
+	if len(items) != 3 || sel != 2 {
+		t.Errorf("short list: len=%d sel=%d, want 3/2", len(items), sel)
+	}
+	items, sel = exPopupWindow(nil, 0, maxRows)
+	if items != nil || sel != 0 {
+		t.Errorf("empty: items=%v sel=%d, want nil/0", items, sel)
 	}
 }
