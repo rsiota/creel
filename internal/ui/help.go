@@ -548,12 +548,12 @@ func (r helpRow) searchText() string {
 // the styles colourless (the same reason styles.go rebuilds its sb*/shared
 // styles inside applyPalette).
 //
-// Highlight is applied to the matched SUBSTRING only, never the rest of the
-// line: non-current matches get a subtle search tint; the current match gets a
-// strong primary background (bold, inverted) so it stands out from the others
-// without needing a full-line bar.
+// Every match shares the same primary-blue background, applied to the matched
+// SUBSTRING only (never the rest of the line). The current match inverts the
+// text to dark + bold; the other matches use white text, so the current one
+// stands out sharply while the rest read as softer highlights.
 func helpSearchStyles() (match, curMatch lipgloss.Style) {
-	return lipgloss.NewStyle().Background(colorSearch).Foreground(colorFg),
+	return lipgloss.NewStyle().Background(colorPrimary).Foreground(colorFg),
 		lipgloss.NewStyle().Background(colorPrimary).Foreground(colorBg).Bold(true)
 }
 
