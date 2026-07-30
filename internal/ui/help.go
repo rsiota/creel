@@ -372,7 +372,7 @@ func (h HelpPanel) View() string {
 
 	var bodyVisible []string
 	for i := off; i < end; i++ {
-		bodyVisible = append(bodyVisible, renderHelpRow(rows[i], h.matchRe, i == curMatch, contentW))
+		bodyVisible = append(bodyVisible, renderHelpRow(rows[i], h.matchRe, i == curMatch))
 	}
 	for len(bodyVisible) < viewportH {
 		bodyVisible = append(bodyVisible, "")
@@ -542,49 +542,42 @@ func (r helpRow) searchText() string {
 	return b.String()
 }
 
-// helpSearchStyles builds the search highlight styles fresh on each render.
-// They must NOT be package-level vars: those would capture the color vars at
+// helpSearchStyles builds the two highlight styles fresh on each render. They
+// must NOT be package-level vars: those would capture the color vars at
 // package-load time, before applyPalette() (in init()) sets them — leaving
 // the styles colourless (the same reason styles.go rebuilds its sb*/shared
 // styles inside applyPalette).
 //
-// Non-current matches get a subtle search tint; the current match's whole
-// line gets a solid primary bar (mirroring the palette/export-overlay cursor)
-// with the matched substring inverted so it still stands out on the bar.
-func helpSearchStyles() (match, curLine, curMatch lipgloss.Style) {
+// Highlight is applied to the matched SUBSTRING only, never the rest of the
+// line: non-current matches get a subtle search tint; the current match gets a
+// strong primary background (bold, inverted) so it stands out from the others
+// without needing a full-line bar.
+func helpSearchStyles() (match, curMatch lipgloss.Style) {
 	return lipgloss.NewStyle().Background(colorSearch).Foreground(colorFg),
-		lipgloss.NewStyle().Background(colorPrimary).Foreground(colorBg),
-		lipgloss.NewStyle().Background(colorBg).Foreground(colorPrimary)
+		lipgloss.NewStyle().Background(colorPrimary).Foreground(colorBg).Bold(true)
 }
 
 // renderHelpRow renders a row, optionally highlighting query matches. With no
-// regex it renders each segment in its own style. When isCurrent is true the
-// whole line gets the current-match bar and the matched substring is inverted;
-// the line is padded to contentW so the bar fills the row.
-func renderHelpRow(row helpRow, re *regexp.Regexp, isCurrent bool, contentW int) string {
-	matchStyle, curLine, curMatch := helpSearchStyles()
+// regex it renders each segment in its own style. When searching, each matched
+// substring gets a background (subtle for non-current matches, strong for the
+// current match); the rest of the line keeps its normal styling.
+func renderHelpRow(row helpRow, re *regexp.Regexp, isCurrent bool) string {
+	match, curMatch := helpSearchStyles()
 	var b strings.Builder
 	for _, seg := range row {
-		b.WriteString(renderHelpSegment(seg, re, isCurrent, matchStyle, curLine, curMatch))
+		b.WriteString(renderHelpSegment(seg, re, isCurrent, match, curMatch))
 	}
-	s := b.String()
-	if isCurrent {
-		if pad := contentW - lipgloss.Width(s); pad > 0 {
-			s += curLine.Render(strings.Repeat(" ", pad))
-		}
-	}
-	return s
+	return b.String()
 }
 
-// renderHelpSegment renders one segment. base is the segment's own style unless
-// isCurrent (then the current-line bar style overrides it); matched substrings
-// use the match style. FindAllStringIndex returns byte offsets into the
-// original (un-lowered) text, so this is correct for non-ASCII descriptions.
-func renderHelpSegment(seg helpSegment, re *regexp.Regexp, isCurrent bool, match, curLine, curMatch lipgloss.Style) string {
+// renderHelpSegment renders one segment. The segment keeps its own style for
+// all non-matched text; matched substrings use the match style (or curMatch
+// when isCurrent). FindAllStringIndex returns byte offsets into the original
+// (un-lowered) text, so this is correct for non-ASCII descriptions.
+func renderHelpSegment(seg helpSegment, re *regexp.Regexp, isCurrent bool, match, curMatch lipgloss.Style) string {
 	base := seg.style
 	m := match
 	if isCurrent {
-		base = curLine
 		m = curMatch
 	}
 	if re == nil {

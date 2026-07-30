@@ -187,18 +187,23 @@ func TestHelpSearchCurrentPageOnly(t *testing.T) {
 	}
 }
 
-// Highlighting preserves the underlying text, and the current-match line fills
-// the content width (the solid bar).
+// Highlighting preserves the underlying text, and backgrounds only the
+// matched substring — never the rest of the line (no full-line bar).
 func TestHelpRenderHighlightPreservesText(t *testing.T) {
 	row := helpRow{{text: "export to CSV", style: lipgloss.NewStyle().Foreground(colorFg)}}
 	re := regexp.MustCompile("(?i)export")
 
-	if got := stripAnsi(renderHelpRow(row, re, false, 40)); !strings.Contains(got, "export to CSV") {
+	if got := stripAnsi(renderHelpRow(row, re, false)); !strings.Contains(got, "export to CSV") {
 		t.Errorf("highlight lost text: %q", got)
 	}
-	full := renderHelpRow(row, re, true, 40)
-	if w := lipgloss.Width(full); w != 40 {
-		t.Errorf("current-match line width=%d, want 40 (bar should fill row)", w)
+	// The current match does NOT paint the rest of the line: visible width is
+	// just the text's (13), not padded out to fill the row.
+	cur := renderHelpRow(row, re, true)
+	if w := lipgloss.Width(cur); w != 13 {
+		t.Errorf("current-match line width=%d, want 13 (no full-line bar)", w)
+	}
+	if got := stripAnsi(cur); !strings.Contains(got, "export to CSV") {
+		t.Errorf("highlight lost text on current match: %q", got)
 	}
 }
 
