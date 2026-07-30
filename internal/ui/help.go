@@ -35,9 +35,9 @@ type HelpPanel struct {
 	// true while the / prompt has focus. matchRe is the compiled case-
 	// insensitive regex (nil when query is ""). matchIdx is the cursor into
 	// the match list (recomputed on demand from the current page's rows).
-	query   string
-	typing  bool
-	matchRe *regexp.Regexp
+	query    string
+	typing   bool
+	matchRe  *regexp.Regexp
 	matchIdx int
 }
 
@@ -552,11 +552,13 @@ func (r helpRow) searchText() string {
 // line. Both styles put light text on a blue background (a Doom/Nord-style
 // search highlight), but at different intensities for contrast:
 //   - current match: bright primary blue + dark bold text (sharp, ~6:1);
-//   - other matches: dark search blue + white text (softer, still ~5:1).
-// Using colorPrimary for the others too made white-on-light-blue unreadable
-// (~1.6:1), so the non-current background stays on the darker colorSearch.
+//   - other matches: punchy mid-blue (colorSearchMatch, Nord nord10) + white
+//     text — visible at a glance while still softer than the active match.
+//
+// colorSearch was too dark/muted to notice; colorPrimary was too light for
+// white text (~1.6:1).
 func helpSearchStyles() (match, curMatch lipgloss.Style) {
-	return lipgloss.NewStyle().Background(colorSearch).Foreground(colorFg),
+	return lipgloss.NewStyle().Background(colorSearchMatch).Foreground(colorFg),
 		lipgloss.NewStyle().Background(colorPrimary).Foreground(colorBg).Bold(true)
 }
 

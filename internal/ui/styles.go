@@ -25,6 +25,7 @@ type colorPalette struct {
 	success         lipgloss.Color
 	mark            lipgloss.Color
 	search          lipgloss.Color
+	searchMatch     lipgloss.Color
 	visual          lipgloss.Color
 	cursorRow       lipgloss.Color
 	edit            lipgloss.Color
@@ -50,6 +51,7 @@ var defaultPalette = colorPalette{
 	success:         lipgloss.Color("#9ece6a"),
 	mark:            lipgloss.Color("#73daca"),
 	search:          lipgloss.Color("#4c4c6e"),
+	searchMatch:     lipgloss.Color("#5e81ac"), // Nord nord10 — punchy mid-blue for non-current search matches
 	visual:          lipgloss.Color("#283457"),
 	cursorRow:       lipgloss.Color("#3B4252"), // Nord nord1 — ambient cursor-row tint
 	edit:            lipgloss.Color("#ff9e64"),
@@ -75,6 +77,7 @@ var (
 	colorSuccess         lipgloss.Color
 	colorMark            lipgloss.Color
 	colorSearch          lipgloss.Color
+	colorSearchMatch     lipgloss.Color
 	colorVisual          lipgloss.Color
 	colorCursorRow       lipgloss.Color
 	colorEdit            lipgloss.Color
@@ -137,6 +140,7 @@ func applyPalette(p colorPalette) {
 	colorSuccess = p.success
 	colorMark = p.mark
 	colorSearch = p.search
+	colorSearchMatch = p.searchMatch
 	colorVisual = p.visual
 	colorCursorRow = p.cursorRow
 	colorEdit = p.edit
