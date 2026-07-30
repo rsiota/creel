@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"regexp"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,9 +17,12 @@ import (
 //     with descriptions wrapped, so nothing is truncated.
 //
 // Both pages scroll vertically (↑/↓ or j/k, PgUp/PgDn, g/G). Tab / shift+tab
-// switch pages; ? or esc (or any unmapped key) closes it. Scrolling is the
-// overflow safety net: offsets are clamped at render time, so the panel never
-// overflows its borders regardless of terminal size.
+// switch pages; ? or esc (or any unmapped key) closes it.
+//
+// Search (/): typing `/query` live-highlights matches on the current page and
+// scrolls the first match into view; n / N cycle matches; esc clears. Scrolling
+// is the overflow safety net: offsets are clamped at render time, so the panel
+// never overflows its borders regardless of terminal size.
 type HelpPanel struct {
 	visible bool
 	page    int // helpPageKeys | helpPageCommands
@@ -26,6 +30,15 @@ type HelpPanel struct {
 	cmdsOff int // scroll offset (lines) for the Commands page
 	width   int
 	height  int
+
+	// Search state. query is the active pattern ("" = no search); typing is
+	// true while the / prompt has focus. matchRe is the compiled case-
+	// insensitive regex (nil when query is ""). matchIdx is the cursor into
+	// the match list (recomputed on demand from the current page's rows).
+	query   string
+	typing  bool
+	matchRe *regexp.Regexp
+	matchIdx int
 }
 
 const (
@@ -55,6 +68,7 @@ func (h *HelpPanel) Show() {
 	h.page = helpPageKeys
 	h.keysOff = 0
 	h.cmdsOff = 0
+	h.clearSearch()
 }
 
 // Hide forces the panel hidden.
@@ -70,21 +84,73 @@ func (h *HelpPanel) SetSize(width, height int) {
 	h.height = height
 }
 
+// Typing reports whether the / search prompt has focus (so the caller can keep
+// the help overlay open even on keys it would otherwise dismiss).
+func (h HelpPanel) Typing() bool { return h.typing }
+
 // HandleKey routes a keypress to the open help overlay. It returns true for
-// navigation keys (scroll / page-switch), which the caller treats as consumed
-// (the overlay stays open). It returns false for close keys (esc, ?, q) AND for
-// any unmapped key — the caller then hides the overlay, preserving the old
-// "any key dismisses" feel while adding navigation.
+// navigation keys (scroll / page-switch / search), which the caller treats as
+// consumed (the overlay stays open). It returns false for close keys (esc, ?,
+// q) AND for any unmapped key — the caller then hides the overlay, preserving
+// the old "any key dismisses" feel while adding navigation.
 func (h *HelpPanel) HandleKey(msg tea.KeyMsg) bool {
+	// While the / prompt is focused, every key is consumed by the search.
+	if h.typing {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			h.clearSearch()
+			return true
+		case "enter":
+			h.typing = false
+			h.scrollToCurrentMatch()
+			return true
+		case "backspace":
+			if len(h.query) > 0 {
+				h.query = h.query[:len(h.query)-1]
+				h.afterQueryChange()
+			}
+			return true
+		case "up", "down", "left", "right", "pgup", "pgdown", "home", "end":
+			return true // swallow navigation while typing
+		}
+		if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
+			h.query += msg.String()
+			h.afterQueryChange()
+			return true
+		}
+		return true
+	}
+
 	switch msg.String() {
 	case "esc", "?", "q", "ctrl+c":
 		return false
+	case "/":
+		// Start a fresh search (vim clears the pattern on a new /).
+		h.typing = true
+		h.query = ""
+		h.matchRe = nil
+		h.matchIdx = 0
+		return true
 	case "tab":
 		h.page = (h.page + 1) % helpPageCount
+		h.afterPageChange()
 		return true
 	case "shift+tab":
 		h.page = (h.page - 1 + helpPageCount) % helpPageCount
+		h.afterPageChange()
 		return true
+	case "n":
+		// Only consumed when a search is active; otherwise falls through to
+		// "unmapped → dismiss" (the old behaviour).
+		if h.matchRe != nil {
+			h.advanceMatch(1)
+			return true
+		}
+	case "N":
+		if h.matchRe != nil {
+			h.advanceMatch(-1)
+			return true
+		}
 	case "j", "down":
 		h.setCurOff(h.curOff() + 1)
 		return true
@@ -141,7 +207,7 @@ func (h *HelpPanel) setCurOff(v int) {
 // and jump handlers keep the stored offset in range rather than deferring it
 // to render time.
 func (h HelpPanel) maxOff() int {
-	off := len(h.pageLines(helpContentWidth(h.width))) - h.scrollPage()
+	off := len(h.pageRows(helpContentWidth(h.width))) - h.scrollPage()
 	if off < 0 {
 		return 0
 	}
@@ -164,26 +230,134 @@ func (h *HelpPanel) ScrollBy(delta int) {
 	h.setCurOff(h.curOff() + delta)
 }
 
+// rebuildMatchRe compiles the active query into a case-insensitive regex. An
+// empty/whitespace query clears the regex (no search). regexp.QuoteMeta keeps
+// it a literal substring match (no accidental regex metacharacters).
+func (h *HelpPanel) rebuildMatchRe() {
+	q := strings.TrimSpace(h.query)
+	if q == "" {
+		h.matchRe = nil
+		return
+	}
+	h.matchRe = regexp.MustCompile("(?i)" + regexp.QuoteMeta(q))
+}
+
+// afterQueryChange is called whenever the query text changes (typing or
+// backspace): recompile the regex, reset the cursor to the first match, and
+// scroll it into view.
+func (h *HelpPanel) afterQueryChange() {
+	h.rebuildMatchRe()
+	h.matchIdx = 0
+	h.scrollToCurrentMatch()
+}
+
+// afterPageChange is called when switching tabs: the match list is page-
+// specific, so reset the cursor and recenter on the first match of the new
+// page (the query itself stays active).
+func (h *HelpPanel) afterPageChange() {
+	h.matchIdx = 0
+	h.scrollToCurrentMatch()
+}
+
+func (h *HelpPanel) clearSearch() {
+	h.query = ""
+	h.typing = false
+	h.matchRe = nil
+	h.matchIdx = 0
+}
+
+// currentRows returns the rows of the active page at the stored width.
+func (h HelpPanel) currentRows() []helpRow {
+	return h.pageRows(helpContentWidth(h.width))
+}
+
+// pageRows returns every row of the requested page's body (before slicing to
+// the viewport). Both pages are single full-width columns: the Keys page is a
+// cheat sheet (one row per binding), the Commands page wraps long descriptions.
+func (h HelpPanel) pageRows(contentW int) []helpRow {
+	if h.page == helpPageCommands {
+		return renderCommandsRows(contentW)
+	}
+	return renderKeysRows(contentW)
+}
+
+// matches returns the line indices on the current page whose searchable text
+// matches the active query (empty when there is no query or no hits).
+func (h HelpPanel) matches() []int {
+	if h.matchRe == nil {
+		return nil
+	}
+	rows := h.currentRows()
+	var out []int
+	for i, r := range rows {
+		if h.matchRe.MatchString(r.searchText()) {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// currentMatchLine returns the absolute line index of the current match, or -1.
+func (h HelpPanel) currentMatchLine() int {
+	ms := h.matches()
+	if len(ms) == 0 {
+		return -1
+	}
+	idx := h.matchIdx
+	if idx < 0 || idx >= len(ms) {
+		idx = 0
+	}
+	return ms[idx]
+}
+
+// advanceMatch moves the match cursor by dir (+1 = next, -1 = prev), wrapping
+// around, and scrolls the new match into view.
+func (h *HelpPanel) advanceMatch(dir int) {
+	ms := h.matches()
+	if len(ms) == 0 {
+		return
+	}
+	if h.matchIdx < 0 || h.matchIdx >= len(ms) {
+		h.matchIdx = 0
+	}
+	n := len(ms)
+	h.matchIdx = ((h.matchIdx+dir)%n + n) % n
+	h.scrollToCurrentMatch()
+}
+
+// scrollToCurrentMatch scrolls the active page so the current match is in the
+// upper third of the viewport (a little context above, most below). No-op when
+// there is no match.
+func (h *HelpPanel) scrollToCurrentMatch() {
+	target := h.currentMatchLine()
+	if target < 0 {
+		return
+	}
+	vp := h.scrollPage()
+	off := target - vp/3
+	if off < 0 {
+		off = 0
+	}
+	h.setCurOff(off)
+}
+
 // View renders the help overlay, sized to fit the terminal.
 func (h HelpPanel) View() string {
 	if !h.visible {
 		return ""
 	}
 
-	// helpContentWidth shares the panel's inner width with the mouse hit-test.
-	// viewportH leaves room for header + blank + tabbar + blank (above the body)
-	// and a blank + pos line (below), plus the overlay's border and vertical
-	// padding.
 	contentW := helpContentWidth(h.width)
 	viewportH := h.height - 2 - 2*helpPadY - 6
 	if viewportH < 4 {
 		viewportH = 4
 	}
 
-	bodyAll := h.pageLines(contentW)
+	rows := h.pageRows(contentW)
+	curMatch := h.currentMatchLine()
 
 	// Clamp the offset now that the content length is known, then slice.
-	maxOff := len(bodyAll) - viewportH
+	maxOff := len(rows) - viewportH
 	if maxOff < 0 {
 		maxOff = 0
 	}
@@ -192,10 +366,14 @@ func (h HelpPanel) View() string {
 		off = maxOff
 	}
 	end := off + viewportH
-	if end > len(bodyAll) {
-		end = len(bodyAll)
+	if end > len(rows) {
+		end = len(rows)
 	}
-	bodyVisible := bodyAll[off:end]
+
+	var bodyVisible []string
+	for i := off; i < end; i++ {
+		bodyVisible = append(bodyVisible, renderHelpRow(rows[i], h.matchRe, i == curMatch, contentW))
+	}
 	for len(bodyVisible) < viewportH {
 		bodyVisible = append(bodyVisible, "")
 	}
@@ -207,14 +385,11 @@ func (h HelpPanel) View() string {
 	}
 	header := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(title)
 	tabbar := h.renderTabBar()
-	pos := ""
-	if maxOff > 0 {
-		pct := off * 100 / maxOff
-		pos = mutedStyle.Render("scroll " + itoa(off+1) + "–" + itoa(end) + "/" + itoa(len(bodyAll)) + "  " + itoa(pct) + "%")
-	}
+	pos := h.renderStatusLine(off, end, len(rows), maxOff)
 
-	// Always seven layers (pos is "" when nothing scrolls) so the overlay height
-	// is identical on both pages — the top border stays put when switching tabs.
+	// Always seven layers (pos is "" when nothing scrolls and there's no
+	// search) so the overlay height is identical on both pages — the top
+	// border stays put when switching tabs.
 	layers := []string{header, "", tabbar, "", body, "", pos}
 	content := lipgloss.JoinVertical(lipgloss.Left, layers...)
 
@@ -230,6 +405,35 @@ func (h HelpPanel) View() string {
 		Render(content)
 
 	return panel
+}
+
+// renderStatusLine renders the bottom-of-overlay line: the / search prompt
+// while typing, the match readout while a search is active, otherwise the
+// scroll-position readout.
+func (h HelpPanel) renderStatusLine(off, end, total, maxOff int) string {
+	switch {
+	case h.typing:
+		// Mirror the ":" ex-line prompt: primary "/" + the query + an accent
+		// underline cursor.
+		return lipgloss.NewStyle().Foreground(colorPrimary).Render("/"+h.query) +
+			lipgloss.NewStyle().Foreground(colorAccent).Underline(true).Render(" ")
+	case h.matchRe != nil:
+		ms := h.matches()
+		if len(ms) == 0 {
+			return mutedStyle.Render("/" + h.query + "  no matches")
+		}
+		idx := h.matchIdx + 1
+		if idx < 1 || idx > len(ms) {
+			idx = 1
+		}
+		return mutedStyle.Render("/" + h.query + "  match " + itoa(idx) + "/" + itoa(len(ms)) + "  (n/N)")
+	default:
+		if maxOff > 0 {
+			pct := off * 100 / maxOff
+			return mutedStyle.Render("scroll " + itoa(off+1) + "–" + itoa(end) + "/" + itoa(total) + "  " + itoa(pct) + "%")
+		}
+		return ""
+	}
 }
 
 // helpTabRow is the screen row (0-indexed, from the top of the overlay area)
@@ -310,27 +514,107 @@ func helpTabAt(panelLeft, x int) int {
 func (h *HelpPanel) SetPage(p int) {
 	if p >= 0 && p < helpPageCount {
 		h.page = p
+		h.afterPageChange()
 	}
 }
 
-// pageLines returns every line of the active page's body (before slicing to the
-// viewport). Both pages are single full-width columns: the Keys page is a
-// cheat sheet (one line per binding, descriptions truncated only on very
-// narrow terminals), the Commands page wraps long descriptions.
+// ── Row model ──────────────────────────────────────────────────────────────
 
-func (h HelpPanel) pageLines(contentW int) []string {
-	if h.page == helpPageCommands {
-		return renderCommandsLines(contentW)
-	}
-	return renderKeysLines(contentW)
+// helpSegment is one styled run of text within a help row. style is the
+// lipgloss style to render it with (a zero-value style renders as plain text).
+type helpSegment struct {
+	text  string
+	style lipgloss.Style
 }
 
-// renderKeysLines lays the keybinding sections out as a single full-width
-// column: title, one line per binding (key padded to the global key width,
+// helpRow is one rendered line, as a sequence of segments. Splitting a line
+// into segments lets search match on the concatenated plain text and highlight
+// matched substrings per-segment (so it lands on the actual characters, not on
+// ANSI escapes) without losing each part's colour.
+type helpRow []helpSegment
+
+// searchText returns the concatenated plain text of a row, for matching.
+func (r helpRow) searchText() string {
+	var b strings.Builder
+	for _, s := range r {
+		b.WriteString(s.text)
+	}
+	return b.String()
+}
+
+// helpSearchStyles builds the search highlight styles fresh on each render.
+// They must NOT be package-level vars: those would capture the color vars at
+// package-load time, before applyPalette() (in init()) sets them — leaving
+// the styles colourless (the same reason styles.go rebuilds its sb*/shared
+// styles inside applyPalette).
+//
+// Non-current matches get a subtle search tint; the current match's whole
+// line gets a solid primary bar (mirroring the palette/export-overlay cursor)
+// with the matched substring inverted so it still stands out on the bar.
+func helpSearchStyles() (match, curLine, curMatch lipgloss.Style) {
+	return lipgloss.NewStyle().Background(colorSearch).Foreground(colorFg),
+		lipgloss.NewStyle().Background(colorPrimary).Foreground(colorBg),
+		lipgloss.NewStyle().Background(colorBg).Foreground(colorPrimary)
+}
+
+// renderHelpRow renders a row, optionally highlighting query matches. With no
+// regex it renders each segment in its own style. When isCurrent is true the
+// whole line gets the current-match bar and the matched substring is inverted;
+// the line is padded to contentW so the bar fills the row.
+func renderHelpRow(row helpRow, re *regexp.Regexp, isCurrent bool, contentW int) string {
+	matchStyle, curLine, curMatch := helpSearchStyles()
+	var b strings.Builder
+	for _, seg := range row {
+		b.WriteString(renderHelpSegment(seg, re, isCurrent, matchStyle, curLine, curMatch))
+	}
+	s := b.String()
+	if isCurrent {
+		if pad := contentW - lipgloss.Width(s); pad > 0 {
+			s += curLine.Render(strings.Repeat(" ", pad))
+		}
+	}
+	return s
+}
+
+// renderHelpSegment renders one segment. base is the segment's own style unless
+// isCurrent (then the current-line bar style overrides it); matched substrings
+// use the match style. FindAllStringIndex returns byte offsets into the
+// original (un-lowered) text, so this is correct for non-ASCII descriptions.
+func renderHelpSegment(seg helpSegment, re *regexp.Regexp, isCurrent bool, match, curLine, curMatch lipgloss.Style) string {
+	base := seg.style
+	m := match
+	if isCurrent {
+		base = curLine
+		m = curMatch
+	}
+	if re == nil {
+		return base.Render(seg.text)
+	}
+	locs := re.FindAllStringIndex(seg.text, -1)
+	if len(locs) == 0 {
+		return base.Render(seg.text)
+	}
+	var b strings.Builder
+	prev := 0
+	for _, loc := range locs {
+		if loc[0] > prev {
+			b.WriteString(base.Render(seg.text[prev:loc[0]]))
+		}
+		b.WriteString(m.Render(seg.text[loc[0]:loc[1]]))
+		prev = loc[1]
+	}
+	if prev < len(seg.text) {
+		b.WriteString(base.Render(seg.text[prev:]))
+	}
+	return b.String()
+}
+
+// renderKeysRows lays the keybinding sections out as a single full-width
+// column: title, one row per binding (key padded to the global key width,
 // description filling the rest), blank separator. Single-column keeps
 // descriptions readable (they're truncated only on very narrow terminals) and
 // lets scrolling — not cramped columns — absorb the length.
-func renderKeysLines(contentW int) []string {
+func renderKeysRows(contentW int) []helpRow {
 	sections := registry()
 	keyW := 0
 	for _, s := range sections {
@@ -345,24 +629,31 @@ func renderKeysLines(contentW int) []string {
 	if descW < 8 {
 		descW = 8
 	}
-	var out []string
+	labelStyle := lipgloss.NewStyle().Foreground(colorLabel)
+	fgStyle := lipgloss.NewStyle().Foreground(colorFg)
+	plain := lipgloss.NewStyle()
+	var out []helpRow
 	for _, s := range sections {
-		out = append(out, titleStyle.Render(s.Title))
+		out = append(out, helpRow{{text: s.Title, style: titleStyle}})
 		for _, bd := range s.Items {
 			key := bd.Display + strings.Repeat(" ", max(0, keyW-runeLen(bd.Display)))
-			keyStr := lipgloss.NewStyle().Foreground(colorLabel).Render(key)
-			descStr := lipgloss.NewStyle().Foreground(colorFg).Render(truncateRunes(bd.Desc, descW))
-			out = append(out, "  "+keyStr+strings.Repeat(" ", gap)+descStr)
+			desc := truncateRunes(bd.Desc, descW)
+			out = append(out, helpRow{
+				{text: "  ", style: plain},
+				{text: key, style: labelStyle},
+				{text: strings.Repeat(" ", gap), style: plain},
+				{text: desc, style: fgStyle},
+			})
 		}
-		out = append(out, "")
+		out = append(out, helpRow{}) // blank separator
 	}
 	return out
 }
 
-// renderCommandsLines renders the ":" commands one per line at full width. The
+// renderCommandsRows renders the ":" commands one per line at full width. The
 // usage column is sized to the longest usage; descriptions wrap to the remaining
 // width (rather than being hard-truncated), so long descriptions stay readable.
-func renderCommandsLines(contentW int) []string {
+func renderCommandsRows(contentW int) []helpRow {
 	cmds := exCommands()
 	usageW := 0
 	for _, c := range cmds {
@@ -376,18 +667,27 @@ func renderCommandsLines(contentW int) []string {
 		descW = 8
 	}
 	indent := strings.Repeat(" ", 2+usageW+gap)
+	labelStyle := lipgloss.NewStyle().Foreground(colorLabel)
+	fgStyle := lipgloss.NewStyle().Foreground(colorFg)
+	plain := lipgloss.NewStyle()
 
-	var out []string
+	var out []helpRow
 	for _, c := range cmds {
 		usage := c.usage + strings.Repeat(" ", max(0, usageW-runeLen(c.usage)))
-		usageStr := lipgloss.NewStyle().Foreground(colorLabel).Render(usage)
 		wrapped := wrapRunes(c.desc, descW)
 		for i, w := range wrapped {
-			descStr := lipgloss.NewStyle().Foreground(colorFg).Render(w)
 			if i == 0 {
-				out = append(out, "  "+usageStr+strings.Repeat(" ", gap)+descStr)
+				out = append(out, helpRow{
+					{text: "  ", style: plain},
+					{text: usage, style: labelStyle},
+					{text: strings.Repeat(" ", gap), style: plain},
+					{text: w, style: fgStyle},
+				})
 			} else {
-				out = append(out, indent+descStr)
+				out = append(out, helpRow{
+					{text: indent, style: plain},
+					{text: w, style: fgStyle},
+				})
 			}
 		}
 	}

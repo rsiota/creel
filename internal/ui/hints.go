@@ -14,7 +14,7 @@ func (m Model) hintList() []string {
 	switch {
 	// Help overlay is the most modal surface — check first.
 	case m.help.IsVisible():
-		return []string{"tab", "j/k", "g/G", "?"}
+		return []string{"tab", "j/k", "/", "n/N", "g/G", "?"}
 
 	// Dialogs stacked on top of pickers — check next.
 	case m.createDBActive:
