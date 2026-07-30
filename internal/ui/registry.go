@@ -113,6 +113,19 @@ func registry() []Section {
 			},
 		},
 		{
+			Title:  "Relationship Explorer",
+			Source: "app.go rel_explorer.go",
+			Items: []Binding{
+				{"j/k, ↑/↓", []string{"j", "k", "up", "down"}, "move", "j/k"},
+				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
+				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/u"},
+				{"h/l, ←/→", []string{"h", "l", "left", "right"}, "collapse / expand", "h/l"},
+				{"enter", []string{"enter"}, "re-root grid on node", "enter"},
+				{"r", []string{"r"}, "retarget / refresh", "r"},
+				{"esc / q", []string{"esc", "q"}, "close", "esc"},
+			},
+		},
+		{
 			Title:  "Schema Editor",
 			Source: "schema_editor.go app.go",
 			Items: []Binding{

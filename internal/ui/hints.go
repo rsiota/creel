@@ -104,7 +104,7 @@ func (m Model) resolveHints() (section string, hints []string) {
 		}
 		return "ERD", []string{"j/k/h/l", "space", "enter", "zz", "zc/zo/za", "zM/zR", "/", "p", "m", "g/G", "ctrl+d/u", "y", "esc"}
 	case m.explorer.IsVisible():
-		return "", []string{"j/k", "enter", "r", "esc"}
+		return "Relationship Explorer", hintsForSection("Relationship Explorer")
 	case m.providerPicker.IsVisible():
 		return "AI Provider", hintsForSection("AI Provider")
 	case m.providerForm.IsVisible():
