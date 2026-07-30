@@ -122,7 +122,16 @@ func (h *HelpPanel) HandleKey(msg tea.KeyMsg) bool {
 	}
 
 	switch msg.String() {
-	case "esc", "?", "q", "ctrl+c":
+	case "esc":
+		// With an active (committed) search, esc deactivates it but keeps the
+		// panel open — a second esc (no search) closes it. Typing-mode esc is
+		// handled above and also clears the search.
+		if h.matchRe != nil {
+			h.clearSearch()
+			return true
+		}
+		return false
+	case "?", "q", "ctrl+c":
 		return false
 	case "/":
 		// Start a fresh search (vim clears the pattern on a new /).

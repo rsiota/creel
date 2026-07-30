@@ -140,6 +140,38 @@ func TestHelpSearchEscClearsThenCloses(t *testing.T) {
 	}
 }
 
+// After committing a search with enter (typing off, query still active), the
+// first esc deactivates the search but keeps the panel open; only a second esc
+// (no active search) closes it.
+func TestHelpSearchCommittedEscClearsThenCloses(t *testing.T) {
+	h := NewHelpPanel()
+	h.Show()
+	h.SetSize(120, 40)
+	h.HandleKey(keyMsg("/"))
+	for _, r := range "export" {
+		h.HandleKey(keyMsg(string(r)))
+	}
+	if !h.HandleKey(keyMsg("enter")) {
+		t.Fatal("enter should be consumed")
+	}
+	if h.Typing() || h.matchRe == nil {
+		t.Fatal("enter should leave a committed (non-typing) search active")
+	}
+
+	// First esc: committed search active → clear it, keep the panel open.
+	if !h.HandleKey(tea.KeyMsg{Type: tea.KeyEsc}) {
+		t.Error("esc with an active search should be consumed (panel stays open)")
+	}
+	if h.matchRe != nil || h.query != "" {
+		t.Errorf("esc did not clear committed search: query=%q", h.query)
+	}
+
+	// Second esc: no active search → not consumed (caller closes the panel).
+	if h.HandleKey(tea.KeyMsg{Type: tea.KeyEsc}) {
+		t.Error("esc with no search should not be consumed (caller closes)")
+	}
+}
+
 // enter leaves typing mode but keeps the query active so n/N keep working.
 func TestHelpSearchEnterKeepsQuery(t *testing.T) {
 	h := NewHelpPanel()
