@@ -1291,7 +1291,7 @@ func TestERDHintsOnStatusBar(t *testing.T) {
 	m.erdPanel.visible = true
 
 	graph := strings.Join(m.hintList(), " ")
-	for _, want := range []string{"j/k/h/l", "space", "enter", "m", "g/G", "ctrl+d/u", "y", "esc"} {
+	for _, want := range []string{"j/k/h/l", "space", "enter", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"} {
 		if !strings.Contains(graph, want) {
 			t.Errorf("graph hints missing %q: got %v", want, m.hintList())
 		}
@@ -1299,7 +1299,7 @@ func TestERDHintsOnStatusBar(t *testing.T) {
 
 	m.erdPanel.merm = true
 	merm := strings.Join(m.hintList(), " ")
-	for _, want := range []string{"j/k", "enter", "m", "g/G", "ctrl+d/u", "y", "esc"} {
+	for _, want := range []string{"j/k", "enter", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"} {
 		if !strings.Contains(merm, want) {
 			t.Errorf("mermaid hints missing %q: got %v", want, m.hintList())
 		}
@@ -1336,7 +1336,7 @@ func TestERDRegistrySection(t *testing.T) {
 		}
 	}
 	hints := strings.Join(hintsForSection("ERD"), " ")
-	for _, want := range []string{"j/k/h/l", "space", "enter", "m", "g/G", "ctrl+d/u", "y", "esc"} {
+	for _, want := range []string{"j/k/h/l", "space", "enter", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"} {
 		if !strings.Contains(hints, want) {
 			t.Errorf("ERD hints missing %q: got %v", want, hints)
 		}

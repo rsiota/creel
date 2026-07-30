@@ -23,8 +23,10 @@ func (m Model) hintSection() string {
 // hintDescription returns the registry description for a matched hint key in
 // the current context, or "" if the active panel/modal has no registry section
 // or the key isn't documented there. matchedKey is the individual key string
-// returned by matchHint (e.g. "j", "ctrl+s"); it is matched against each
-// binding's Hint tokens.
+// returned by matchHint (e.g. "j", "ctrl+s"). It is matched against each
+// binding's Tokens rather than its Hint string: the Hint is a display
+// abbreviation whose "/" split is ambiguous (e.g. "/" splits to ["",""]),
+// whereas Tokens are the actual dispatch keys.
 func (m Model) hintDescription(matchedKey string) string {
 	section := m.hintSection()
 	if section == "" {
@@ -35,8 +37,8 @@ func (m Model) hintDescription(matchedKey string) string {
 			continue
 		}
 		for _, b := range sec.Items {
-			for _, k := range strings.Split(b.Hint, "/") {
-				if k == matchedKey {
+			for _, t := range b.Tokens {
+				if t == matchedKey {
 					return b.Desc
 				}
 			}
@@ -57,7 +59,7 @@ func (m Model) resolveHints() (section string, hints []string) {
 	switch {
 	// Help overlay is the most modal surface — check first.
 	case m.help.IsVisible():
-		return "", []string{"tab", "j/k", "/", "n/N", "g/G", "?"}
+		return "Help", hintsForSection("Help")
 
 	// Dialogs stacked on top of pickers — check next.
 	case m.createDBActive:
@@ -88,11 +90,11 @@ func (m Model) resolveHints() (section string, hints []string) {
 	case m.bookmarks.IsVisible():
 		return "Bookmarks Panel", hintsForSection("Bookmarks Panel")
 	case m.crossSearch.IsVisible():
-		return "", []string{"enter", "j/k", "esc"}
+		return "Cross-Table Search", hintsForSection("Cross-Table Search")
 	case m.explainPanel.IsVisible():
-		return "", []string{"j/k", "esc"}
+		return "Explain Panel", hintsForSection("Explain Panel")
 	case m.lookupPanel.IsVisible():
-		return "", []string{"j/k", "esc"}
+		return "Lookup Panel", hintsForSection("Lookup Panel")
 	case m.erdPanel.searching:
 		return "", []string{"tab", "enter", "esc"}
 	case m.erdPanel.IsVisible():
@@ -100,9 +102,9 @@ func (m Model) resolveHints() (section string, hints []string) {
 		// "/" jump-to-table search; the Mermaid source view only scrolls with
 		// j/k, so its hint set is smaller.
 		if m.erdPanel.merm {
-			return "ERD", []string{"j/k", "enter", "m", "g/G", "ctrl+d/u", "y", "esc"}
+			return "ERD", []string{"j/k", "enter", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"}
 		}
-		return "ERD", []string{"j/k/h/l", "space", "enter", "zz", "zc/zo/za", "zM/zR", "/", "p", "m", "g/G", "ctrl+d/u", "y", "esc"}
+		return "ERD", []string{"j/k/h/l", "space", "enter", "zz", "zc/zo/za", "zM/zR", "/", "p", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"}
 	case m.explorer.IsVisible():
 		return "Relationship Explorer", hintsForSection("Relationship Explorer")
 	case m.providerPicker.IsVisible():
@@ -146,7 +148,7 @@ func (m Model) resolveHints() (section string, hints []string) {
 			if m.connList.IsFiltering() {
 				return "", []string{"j/k", "enter", "esc"}
 			}
-			return "", []string{"j/k", "enter", "n", "e", "d", "/", "esc"}
+			return "Connections", hintsForSection("Connections")
 		case m.focus == FocusEditor:
 			return "Editor (Vim)", hintsForSection("Editor (Vim)")
 		case m.focus == FocusResults:
@@ -163,7 +165,7 @@ func (m Model) resolveHints() (section string, hints []string) {
 			}
 			return "Assistant", hintsForSection("Assistant")
 		case m.focus == FocusTabBar:
-			return "", []string{"h/l", "t", "enter"}
+			return "Tab Bar", hintsForSection("Tab Bar")
 		}
 	}
 	return "", nil

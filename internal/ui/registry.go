@@ -73,6 +73,28 @@ func registry() []Section {
 			},
 		},
 		{
+			Title:  "Connections",
+			Source: "app.go",
+			Items: []Binding{
+				{"j/k, ↑/↓", []string{"j", "k", "up", "down"}, "move", "j/k"},
+				{"enter", []string{"enter"}, "connect", "enter"},
+				{"n", []string{"n"}, "new connection", "n"},
+				{"e", []string{"e"}, "edit connection", "e"},
+				{"d", []string{"d"}, "delete connection", "d"},
+				{"/", []string{"/"}, "filter connections", "/"},
+				{"esc / q", []string{"esc", "q"}, "quit", "esc"},
+			},
+		},
+		{
+			Title:  "Tab Bar",
+			Source: "app.go",
+			Items: []Binding{
+				{"h/l, ←/→", []string{"h", "l", "left", "right"}, "switch tab", "h/l"},
+				{"t", []string{"t"}, "new tab", "t"},
+				{"enter / j", []string{"enter", "j", "down"}, "focus editor", "enter"},
+			},
+		},
+		{
 			Title:  "Sidebar (Tables)",
 			Source: "app.go",
 			Items: []Binding{
@@ -107,7 +129,7 @@ func registry() []Section {
 				{"p", []string{"p"}, "trace the FK path between two tables", "p"},
 				{"m", []string{"m"}, "toggle Mermaid erDiagram source", "m"},
 				{"g / G", []string{"g", "G"}, "top / bottom of diagram", "g/G"},
-				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/u"},
+				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/ctrl+u"},
 				{"y", []string{"y", "Y"}, "copy Mermaid source to clipboard", "y"},
 				{"s", []string{"s"}, "save Mermaid source to file", "s"},
 			},
@@ -118,7 +140,7 @@ func registry() []Section {
 			Items: []Binding{
 				{"j/k, ↑/↓", []string{"j", "k", "up", "down"}, "move", "j/k"},
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
-				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/u"},
+				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/ctrl+u"},
 				{"h/l, ←/→", []string{"h", "l", "left", "right"}, "collapse / expand", "h/l"},
 				{"enter", []string{"enter"}, "re-root grid on node", "enter"},
 				{"r", []string{"r"}, "retarget / refresh", "r"},
@@ -286,6 +308,47 @@ func registry() []Section {
 				{"E", []string{"E"}, "expand field (large values)", "E"},
 				{"ctrl+s", []string{"ctrl+s"}, "save", "ctrl+s"},
 				{"ctrl+o", []string{"ctrl+o"}, "close", ""},
+			},
+		},
+		{
+			Title:  "Help",
+			Source: "help.go",
+			Items: []Binding{
+				{"tab", []string{"tab"}, "switch page", "tab"},
+				{"j/k", []string{"j", "k", "up", "down"}, "scroll", "j/k"},
+				{"/", []string{"/"}, "search", "/"},
+				{"n / N", []string{"n", "N"}, "next / prev match", "n/N"},
+				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
+				{"?", []string{"?"}, "close", "?"},
+			},
+		},
+		{
+			Title:  "Cross-Table Search",
+			Source: "app.go",
+			Items: []Binding{
+				{"↑/↓", []string{"up", "down"}, "move result", "↑/↓"},
+				{"enter", []string{"enter"}, "search / open result", "enter"},
+				{"esc", []string{"esc", "ctrl+c"}, "close", "esc"},
+			},
+		},
+		{
+			Title:  "Lookup Panel",
+			Source: "lookup_panel.go app.go",
+			Items: []Binding{
+				{"j/k", []string{"j", "k", "up", "down"}, "scroll", "j/k"},
+				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
+				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/ctrl+u"},
+				{"esc", []string{"esc"}, "close", "esc"},
+			},
+		},
+		{
+			Title:  "Explain Panel",
+			Source: "explain_panel.go app.go",
+			Items: []Binding{
+				{"j/k", []string{"j", "k", "up", "down"}, "scroll", "j/k"},
+				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
+				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/ctrl+u"},
+				{"esc", []string{"esc"}, "close", "esc"},
 			},
 		},
 		{
