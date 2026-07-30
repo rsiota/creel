@@ -1558,18 +1558,34 @@ func (m *Model) exWriteFile(path string) tea.Cmd {
 }
 
 // exExport writes the current result set to ~/Downloads in the given format
-// (:export <fmt>) — a non-interactive shortcut over the g X export picker.
-// <fmt> is one of csv, json, jsonl, md, tsv (case-insensitive; "markdown" and
-// "json lines" are accepted). It reuses exportResults, so marked rows are
-// re-queried for complete data exactly as the picker does, and feedback flows
-// through the same export status message.
-func (m *Model) exExport(arg string) tea.Cmd {
-	format, ok := parseExportFormat(arg)
+// (:export <fmt> [cols...]) — a non-interactive shortcut over the g X export
+// dialog. <fmt> is one of csv, json, jsonl, md, tsv (case-insensitive; "markdown"
+// and "json lines" are accepted). Optional trailing arguments name the columns
+// to export (comma-separated within one arg or across args, e.g.
+// `:export csv name,email`); when omitted, all columns are exported. The row
+// scope defaults sensibly (marked rows if any, else whole table, else page);
+// use the g X dialog to choose scope explicitly. It reuses exportResults, so
+// feedback flows through the same export status message.
+func (m *Model) exExport(args []string) tea.Cmd {
+	if len(args) == 0 {
+		m.schemaMsg = ":export needs a format: csv, json, jsonl, md, tsv"
+		return nil
+	}
+	format, ok := parseExportFormat(args[0])
 	if !ok {
 		m.schemaMsg = ":export needs a format: csv, json, jsonl, md, tsv"
 		return nil
 	}
-	return m.exportResults(format)
+	var cols []string
+	for _, a := range args[1:] {
+		for _, c := range strings.Split(a, ",") {
+			c = strings.TrimSpace(c)
+			if c != "" {
+				cols = append(cols, c)
+			}
+		}
+	}
+	return m.exportResults(format, cols, m.defaultExportScope())
 }
 
 // resolveTableName finds the canonical (sidebar) name for a table the user

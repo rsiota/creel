@@ -138,6 +138,18 @@ func registry() []Section {
 			},
 		},
 		{
+			Title:  "Export Dialog",
+			Source: "app.go export_overlay.go",
+			Items: []Binding{
+				{"j/k, ↑/↓", []string{"j", "k", "up", "down"}, "move (format / columns / scope)", "j/k"},
+				{"space", []string{" "}, "select format / toggle column / select scope", "space"},
+				{"a", []string{"a"}, "all columns", "a"},
+				{"n", []string{"n"}, "no columns (keep one)", "n"},
+				{"enter", []string{"enter"}, "export", "enter"},
+				{"esc", []string{"esc"}, "cancel", "esc"},
+			},
+		},
+		{
 			Title:  "Theme Picker",
 			Source: "app.go",
 			Items: []Binding{
@@ -240,8 +252,8 @@ func registry() []Section {
 				{"v", []string{"v"}, "column visibility", "v"},
 				{"g /", []string{"g", "/"}, "regex search", "g/"},
 				{"n / N", []string{"n", "N"}, "next / prev match", "n"},
-				{"x", []string{"x"}, "export to CSV", "x"},
-				{"g X", []string{"g", "X"}, "export as…", ""},
+				{"x", []string{"x"}, "export current page to CSV", "x"},
+				{"g X", []string{"g", "X"}, "export as… (format, columns, scope)", ""},
 				{"Y", []string{"Y"}, "copy rows as INSERT", "Y"},
 				{"P", []string{"P"}, "clone marked/cursor row", "P"},
 				{"e", []string{"e"}, "edit cell", "e"},

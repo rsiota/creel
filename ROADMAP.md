@@ -164,6 +164,14 @@ palette). Never copy a key handler body into an ex executor. A full unified
 6. **More export formats** (2026-07-11) — `g X` picker: CSV, JSON, JSONL,
    Markdown, TSV, SQL INSERT dump, sharing `serializeFormat`. Legacy `x` keeps
    CSV. Files: `export_import.go`, `format_picker.go`, `export_format_test.go`.
+   Reworked (2026-07-29): `g X` is now an **export dialog** (format · columns ·
+   scope) replacing the format-only picker. Column selection projects the
+   export; **scope** adds *Whole table* (`SELECT cols FROM t`, no LIMIT — fixes
+   the page-size cap), *Marked rows*, and *Current page*. `x` stays an instant
+   current-page CSV; `:export <fmt> [cols...]` is the non-interactive path.
+   Files: `export_overlay.go`, `export_format.go`, `export_import.go`,
+   `excmd.go`, `app.go`. Tests: `export_overlay` (+`export_format_test.go`,
+   `export_results_test.go`).
 7. **App-level settings** (2026-07-12) — `Settings` block + YAML `Duration`.
    Wired: `page_size`, `query_timeout`, `default_driver`. Follow-ups done:
    `confirm_destructive` (2026-07-14), `theme` (2026-07-13, 5 hand-tuned +

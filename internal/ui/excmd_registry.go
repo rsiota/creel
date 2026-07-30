@@ -175,17 +175,13 @@ func exCommands() []exCmdSpec {
 		},
 		{
 			verbs:   []string{"export"},
-			desc:    "export the current result set to ~/Downloads",
-			usage:   ":export <csv|json|jsonl|md|tsv>",
+			desc:    "export result rows to ~/Downloads (optional column list)",
+			usage:   ":export <csv|json|jsonl|md|tsv> [col,...]",
 			argKind: exArgOptional,
 			run: func(m *Model, args []string, _ bool) tea.Cmd {
-				arg := ""
-				if len(args) > 0 {
-					arg = args[0]
-				}
-				return m.exExport(arg)
+				return m.exExport(args)
 			},
-			complete: completeEnum("csv", "json", "jsonl", "md", "tsv", "sql"),
+			complete: completeExport,
 		},
 		{
 			verbs:   []string{"copy"},
@@ -911,6 +907,20 @@ func completeEnum(options ...string) func(*Model, []string, string) []string {
 		}
 		return options
 	}
+}
+
+// completeExport completes :export arguments: the format for the first arg,
+// then result-set column names for subsequent args (so `:export csv na<Tab>`
+// completes to a matching column). Columns come from the live results grid.
+func completeExport(m *Model, args []string, partial string) []string {
+	if len(args) == 0 {
+		return rankStrings(partial, []string{"csv", "json", "jsonl", "md", "tsv"})
+	}
+	cols := make([]string, m.results.NumCols())
+	for i := 0; i < m.results.NumCols(); i++ {
+		cols[i] = m.results.ColumnName(i)
+	}
+	return rankStrings(partial, cols)
 }
 
 // completePath offers filesystem entries matching the typed path prefix as the

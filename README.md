@@ -21,7 +21,7 @@ Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `gsql`
 - **Schema editing** — add columns, rename tables, create/drop/truncate tables, and a grid-based table designer (`N`)
 - **Table structure view** (`d`) — a tabbed structure editor: columns (editable grid), foreign keys, indexes, check constraints, and triggers in one view, plus a definition tab for views
 - **Read-only mode** — a per-connection `readonly: true` flag or a global `--readonly` CLI flag that rejects writes (INSERT/UPDATE/DELETE/DDL), blocks transactions and imports, and opens the connection read-only at the engine level (SQLite `query_only`, Postgres `default_transaction_read_only`); a `READ-ONLY` indicator shows in the status bar
-- **Import / export** — streaming SQL dump importer (`I`) and a pure-Go `mysqldump`-compatible exporter (`X`); CSV export (`x`) for result sets
+- **Import / export** — streaming SQL dump importer (`I`) and a pure-Go `mysqldump`-compatible exporter (`X`); result-set export via the `g X` dialog (format, columns, and whole-table/marked/page scope) or instant CSV (`x`)
 - **Cross-table search** (`S`) and **column statistics** (`g s`)
 - **Command palette** (`Ctrl+P`) and a full **help overlay** (`?`)
 - **Pagination** — large result sets are paged (LIMIT/OFFSET) for speed and low memory
@@ -348,7 +348,8 @@ In the add/edit form:
 | `y` / `p`  | Copy cell / paste to cell                    |
 | `Y`        | Copy rows as INSERT statements               |
 | `P`        | Clone marked/cursor row                      |
-| `x`        | Export results to CSV                        |
+| `x`        | Export current page to CSV                 |
+| `g X`      | Export dialog (format · columns · scope)   |
 
 ## Architecture
 

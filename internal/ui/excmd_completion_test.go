@@ -260,13 +260,16 @@ func TestExArgCompletionTheme(t *testing.T) {
 	}
 }
 
-// TestExArgCompletionExport: :export offers the fixed format set, sorted.
+// TestExArgCompletionExport: :export offers the results-export format set
+// for the first argument. ("sql" is intentionally absent — it is the
+// whole-database dump format driven by the sidebar X picker, not a results
+// export, and parseExportFormat would reject it.)
 func TestExArgCompletionExport(t *testing.T) {
 	m := &Model{}
 	m.ex.input = "export "
 	m.recomputeExCompletion()
 	got := exCandidates(m.ex.comp)
-	want := []string{"csv", "json", "jsonl", "md", "sql", "tsv"}
+	want := []string{"csv", "json", "jsonl", "md", "tsv"}
 	if !sameStrings(got, want) {
 		t.Errorf("export candidates = %v, want %v", got, want)
 	}

@@ -280,6 +280,13 @@ func (r ResultsTable) ColumnName(col int) string {
 	return r.columns[col]
 }
 
+// ColumnNames returns a copy of all column names in the result set.
+func (r ResultsTable) ColumnNames() []string {
+	out := make([]string, len(r.columns))
+	copy(out, r.columns)
+	return out
+}
+
 // RowValue returns the current value at (row, col), accounting for dirty edits.
 func (r ResultsTable) RowValue(row, col int) string {
 	ref := cellRef{row: row, col: col}

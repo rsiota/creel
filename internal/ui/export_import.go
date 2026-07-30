@@ -15,61 +15,230 @@ import (
 	"github.com/ruben/gsql/internal/db"
 )
 
-// exportToCSV writes result rows to a CSV file in ~/Downloads. It is the
-// fast path for the `x` key (instant CSV). The format-aware path is
-// exportResults, opened with `g x`.
+// exportToCSV writes the current page to a CSV file in ~/Downloads. It is the
+// fast path for the `x` key: instant, all columns, current page only (never a
+// re-query). The configured dialog is exportResults via `g X`, which adds
+// format, column, and whole-table scope options.
 func (m *Model) exportToCSV() tea.Cmd {
-	return m.exportResults(fmtCSV)
+	return m.exportResults(fmtCSV, nil, scopePage)
 }
 
-// exportResults writes the current result set to ~/Downloads in the given
-// format. If rows are marked on an editable table, it re-queries the full set
-// of marked rows by primary key (which may span multiple pages) and exports
-// those asynchronously; otherwise it exports the current page from memory.
-// Returns a command that delivers exportDoneMsg (nil for the in-memory path,
-// which sets exportMsg directly).
-func (m *Model) exportResults(format exportFormat) tea.Cmd {
+// exportResults writes rows to ~/Downloads in the given format.
+//
+// cols selects the column projection: nil means all columns (no projection,
+// preserving column order); a non-empty list projects to those columns in the
+// given order (names not in the result set are dropped). scope selects the row
+// source:
+//
+//   - scopePage:   the rows currently in memory (the visible page).
+//   - scopeAll:    re-query the source table with no LIMIT (whole table), or
+//                  re-run the user's query for custom (non-table) result sets.
+//   - scopeMarked: re-query the marked rows by primary key (may span pages).
+//
+// The re-query paths run asynchronously and deliver exportDoneMsg; the
+// in-memory path sets exportMsg directly and returns nil.
+//
+// The requested scope is normalized against what is actually available (e.g.
+// scopeMarked with no marks falls back to scopePage), so callers can pass a
+// default scope without checking preconditions themselves.
+func (m *Model) exportResults(format exportFormat, cols []string, scope exportScope) tea.Cmd {
 	if m.results.NumRows() == 0 {
 		m.exportMsg = "nothing to export"
 		return nil
 	}
+	if m.connection == nil {
+		m.exportMsg = "not connected"
+		return nil
+	}
 
-	cols := m.results.columns
+	allCols := m.results.columns
 	table := m.results.SourceTable()
+	selIdx, selNames := resolveExportColumns(allCols, cols)
+	if len(selIdx) == 0 {
+		m.exportMsg = "no matching columns to export"
+		return nil
+	}
 
-	// Marked rows: re-query for complete data (may span multiple pages).
-	if m.results.IsEditable() && m.results.MarkCount() > 0 {
+	hasMarks := m.results.IsEditable() && m.results.MarkCount() > 0
+	if scope == scopeMarked && !hasMarks {
+		scope = scopePage
+	}
+	if scope == scopeAll && table == "" && strings.TrimSpace(m.lastQuery) == "" {
+		scope = scopePage
+	}
+
+	timestamp := time.Now().Format("20060102_150405")
+	filename := exportFilename(table, timestamp, format)
+	driver := m.connection.Config().Driver
+
+	// Marked rows: SELECT <cols> FROM t WHERE pk IN (...).
+	if scope == scopeMarked {
 		tuples := m.results.MarkedPKs()
 		pkNames := m.results.PKColumns()
 		pkTypes := m.results.PKTypes()
 		clause := buildPKInClause(pkNames, pkTypes, tuples)
-
+		query := fmt.Sprintf("SELECT %s FROM %s WHERE %s",
+			buildSelectClause(driver, selNames, allCols), table, clause)
 		conn := m.connection
-		query := fmt.Sprintf("SELECT * FROM %s WHERE %s", table, clause)
-		timestamp := time.Now().Format("20060102_150405")
-		filename := exportFilename(table, timestamp, format)
-
 		return func() tea.Msg {
 			result, err := conn.DB().Execute(query)
 			if err != nil {
 				return exportDoneMsg{err: err}
 			}
-			exportCols := make([]string, len(result.Columns))
-			for i, c := range result.Columns {
-				exportCols[i] = c.Name
-			}
-			path, count, err := writeExport(format, exportCols, result.Rows, filename)
+			path, count, err := writeExport(format, columnNamesFromResult(result), result.Rows, filename)
 			return exportDoneMsg{path: path, count: count, err: err}
 		}
 	}
 
-	// No marks: export current page in memory.
-	timestamp := time.Now().Format("20060102_150405")
-	filename := exportFilename(table, timestamp, format)
-	rows := m.results.rows
-	path, count, err := writeExport(format, cols, rows, filename)
+	// Whole table: SELECT <cols> FROM t (no LIMIT) — not capped at page size.
+	if scope == scopeAll && table != "" {
+		query := fmt.Sprintf("SELECT %s FROM %s",
+			buildSelectClause(driver, selNames, allCols), table)
+		conn := m.connection
+		return func() tea.Msg {
+			result, err := conn.DB().Execute(query)
+			if err != nil {
+				return exportDoneMsg{err: err}
+			}
+			path, count, err := writeExport(format, columnNamesFromResult(result), result.Rows, filename)
+			return exportDoneMsg{path: path, count: count, err: err}
+		}
+	}
+
+	// Whole result (custom query, no backing table): re-run the user's query
+	// and project columns in Go. Running it directly (no subquery wrap) avoids
+	// the JOIN/derived-table caveats that paging relies on.
+	if scope == scopeAll {
+		query := strings.TrimRight(m.lastQuery, ";")
+		conn := m.connection
+		return func() tea.Msg {
+			result, err := conn.DB().Execute(query)
+			if err != nil {
+				return exportDoneMsg{err: err}
+			}
+			pcols, prows := projectResult(result, selIdx)
+			path, count, err := writeExport(format, pcols, prows, filename)
+			return exportDoneMsg{path: path, count: count, err: err}
+		}
+	}
+
+	// Current page: project the in-memory rows.
+	prows := projectRows(m.results.rows, selIdx)
+	path, count, err := writeExport(format, selNames, prows, filename)
 	m.exportMsg = exportStatusMessage(path, count, err)
 	return nil
+}
+
+// defaultExportScope picks the most useful scope when one is not specified
+// explicitly (the `x` key pins scopePage; the overlay and :export use this).
+// Marked rows win, then whole table, then the current page.
+func (m *Model) defaultExportScope() exportScope {
+	if m.results.IsEditable() && m.results.MarkCount() > 0 {
+		return scopeMarked
+	}
+	if m.results.SourceTable() != "" {
+		return scopeAll
+	}
+	return scopePage
+}
+
+// resolveExportColumns maps requested column names to indices in the result
+// set. A nil/empty requested list means all columns (in result order). A
+// non-empty list is resolved in request order so `:export csv email,id` yields
+// those columns in that order; unknown names are dropped. The returned index
+// slice aligns 1:1 with names.
+func resolveExportColumns(allCols, requested []string) (idx []int, names []string) {
+	if len(requested) == 0 {
+		idx = make([]int, len(allCols))
+		names = allCols
+		for i := range allCols {
+			idx[i] = i
+		}
+		return
+	}
+	lower := make(map[string]int, len(allCols))
+	for i, c := range allCols {
+		lower[strings.ToLower(c)] = i
+	}
+	for _, r := range requested {
+		if i, ok := lower[strings.ToLower(r)]; ok {
+			idx = append(idx, i)
+			names = append(names, allCols[i])
+		}
+	}
+	return
+}
+
+// buildSelectClause renders the SELECT column list for a re-query. When the
+// selected columns are exactly the full set in natural order it returns "*"
+// (matching the previous behaviour and the DB's natural ordering); otherwise
+// it lists the columns, driver-quoted, preserving the requested order.
+func buildSelectClause(driver db.Driver, selNames, allCols []string) string {
+	if stringSliceEqual(selNames, allCols) {
+		return "*"
+	}
+	parts := make([]string, len(selNames))
+	for i, n := range selNames {
+		parts[i] = quoteIdentD(driver, n)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// stringSliceEqual reports whether two string slices are element-wise equal.
+func stringSliceEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func columnNamesFromResult(r db.Result) []string {
+	out := make([]string, len(r.Columns))
+	for i, c := range r.Columns {
+		out[i] = c.Name
+	}
+	return out
+}
+
+// projectResult projects a re-queried result set to the selected column
+// indices (used for the custom-query whole-result path).
+func projectResult(r db.Result, idx []int) ([]string, [][]string) {
+	cols := make([]string, len(idx))
+	for j, i := range idx {
+		cols[j] = r.Columns[i].Name
+	}
+	rows := make([][]string, len(r.Rows))
+	for ri, row := range r.Rows {
+		nr := make([]string, len(idx))
+		for j, i := range idx {
+			if i < len(row) {
+				nr[j] = row[i]
+			}
+		}
+		rows[ri] = nr
+	}
+	return cols, rows
+}
+
+// projectRows projects in-memory rows to the selected column indices (used for
+// the current-page path).
+func projectRows(rows [][]string, idx []int) [][]string {
+	out := make([][]string, len(rows))
+	for ri, row := range rows {
+		nr := make([]string, len(idx))
+		for j, i := range idx {
+			if i < len(row) {
+				nr[j] = row[i]
+			}
+		}
+		out[ri] = nr
+	}
+	return out
 }
 
 // exportFilename builds a safe filename for an export in the given format.

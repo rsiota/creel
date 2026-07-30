@@ -142,51 +142,94 @@ func TestExportFilenamePerFormat(t *testing.T) {
 	}
 }
 
-// The format picker opens on the last-used format and Commit records the choice.
-func TestFormatPickerLastUsed(t *testing.T) {
-	p := NewFormatPicker()
-	p.Show()
-	// Default is CSV.
-	if p.Selected() != fmtCSV {
-		t.Fatalf("default selected=%v, want csv", p.Selected())
+// The overlay opens with all columns checked, defaulting to CSV and a
+// whole-table scope; Commit returns the selection and remembers the format.
+func TestExportOverlayDefaults(t *testing.T) {
+	o := NewExportOverlay()
+	o.Show([]string{"id", "name", "email"}, true, 0, 200, 5234, true)
+
+	// Down moves the cursor off the format rows without changing the selection.
+	o.CursorDown() // onto JSON row, but selection stays CSV until activated
+	if o.selectedFmt != fmtCSV {
+		t.Errorf("traversing format rows changed selection to %v", o.selectedFmt)
 	}
-	// Move to JSON and commit.
-	p.Down() // csv -> json
-	if p.Selected() != fmtJSON {
-		t.Fatalf("after Down, selected=%v, want json", p.Selected())
+	// Activate selects JSON.
+	o.Activate()
+	if o.selectedFmt != fmtJSON {
+		t.Fatalf("Activate: selectedFmt=%v, want json", o.selectedFmt)
 	}
-	if got := p.Commit(); got != fmtJSON {
-		t.Fatalf("Commit=%v, want json", got)
+
+	format, cols, scope := o.Commit()
+	if format != fmtJSON {
+		t.Fatalf("Commit format=%v, want json", format)
 	}
-	// Reopening should start on JSON (last-used).
-	p.Show()
-	if p.Selected() != fmtJSON {
-		t.Errorf("last-used should be json, got %v", p.Selected())
+	if cols != nil {
+		t.Errorf("all columns checked should yield nil cols, got %v", cols)
+	}
+	if scope != scopeAll {
+		t.Errorf("default scope=%v, want scopeAll (whole table)", scope)
+	}
+
+	// Reopening remembers the last-used format (JSON).
+	o.Show([]string{"id"}, true, 0, 1, 0, false)
+	if o.selectedFmt != fmtJSON {
+		t.Errorf("last-used format should be json, got %v", o.selectedFmt)
 	}
 }
 
-// Up/Down clamp at the ends.
-func TestFormatPickerClamp(t *testing.T) {
-	p := NewFormatPicker()
-	p.Show()
-	p.Up() // already at top
-	if p.cursor != 0 {
-		t.Errorf("Up at top moved cursor to %d", p.cursor)
-	}
-	// Move to bottom.
+// Column toggles project the export; the last checked column is protected.
+func TestExportOverlayColumnToggle(t *testing.T) {
+	o := NewExportOverlay()
+	o.Show([]string{"id", "name", "email"}, false, 0, 2, 0, false)
+
+	// Cursor starts at format row 0. Walk down to the first column (id):
+	// formats (5) then column 0.
 	for i := 0; i < len(exportFormats); i++ {
-		p.Down()
+		o.CursorDown()
 	}
-	last := len(exportFormats) - 1
-	if p.cursor != last {
-		t.Errorf("expected cursor clamped at %d, got %d", last, p.cursor)
+	// id is checked; toggling it off leaves name+email.
+	o.Activate()
+	_, cols, _ := o.Commit()
+	if len(cols) != 2 || cols[0] != "name" || cols[1] != "email" {
+		t.Fatalf("after unchecking id, cols=%v, want [name email]", cols)
+	}
+
+	// Uncheck down to a single column; further unchecks are refused.
+	o.Show([]string{"id", "name", "email"}, false, 0, 2, 0, false)
+	o.SelectNoneCols() // keeps the first column (id)
+	// Move to column 1 (name) and try to toggle it off — should be refused.
+	for i := 0; i < len(exportFormats)+1; i++ {
+		o.CursorDown()
+	}
+	o.Activate()
+	o.Activate() // toggling again would turn it on; leave it
+	_, cols, _ = o.Commit()
+	if len(cols) != 1 {
+		t.Fatalf("expected exactly one column kept, got %v", cols)
 	}
 }
 
-// g X in the results panel opens the format picker. (g x is close-tab, so the
+// Cursor navigation clamps at the top and bottom of the flat entry list.
+func TestExportOverlayNavClamp(t *testing.T) {
+	o := NewExportOverlay()
+	o.Show([]string{"a", "b"}, true, 0, 1, 0, false)
+	total := len(o.entries)
+	o.CursorUp() // already at top
+	if o.cursor != 0 {
+		t.Errorf("CursorUp at top moved cursor to %d", o.cursor)
+	}
+	for i := 0; i < total; i++ {
+		o.CursorDown()
+	}
+	if o.cursor != total-1 {
+		t.Errorf("expected cursor clamped at %d, got %d", total-1, o.cursor)
+	}
+}
+
+// g X in the results panel opens the export dialog. (g x is close-tab, so the
 // export-as binding uses capital X — this guards against regressing back to a
 // clash with the tab-management prefix.)
-func TestGXOpensFormatPicker(t *testing.T) {
+func TestGXOpensExportDialog(t *testing.T) {
 	dir := t.TempDir()
 	conn, err := db.New(db.ConnectionConfig{Driver: db.DriverSQLite, Database: filepath.Join(dir, "t.db")})
 	if err != nil {
@@ -212,18 +255,20 @@ func TestGXOpensFormatPicker(t *testing.T) {
 	if !m.resultsPendingG {
 		t.Fatal("g should arm the g-prefix")
 	}
-	// X opens the picker.
+	// X opens the dialog.
 	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'X'}})
 	m = res.(Model)
-	if !m.formatPicker.IsVisible() {
-		t.Errorf("format picker should be visible after g X")
+	if !m.exportOverlay.IsVisible() {
+		t.Errorf("export dialog should be visible after g X")
 	}
 }
 
-// With the picker open, j moves the cursor and enter exports (and closes it).
-func TestFormatPickerNavAndExport(t *testing.T) {
+// With the dialog open, the default selection (whole-table CSV, all columns)
+// exports immediately on enter. This is the headline two-keystroke flow.
+func TestExportDialogEnterDefaults(t *testing.T) {
 	dir := t.TempDir()
-	conn, err := db.New(db.ConnectionConfig{Driver: db.DriverSQLite, Database: filepath.Join(dir, "t.db")})
+	dbPath := filepath.Join(dir, "t.db")
+	conn, err := db.New(db.ConnectionConfig{Driver: db.DriverSQLite, Database: dbPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,6 +276,13 @@ func TestFormatPickerNavAndExport(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close() })
+	// Seed a table with more than one row so whole-table export is meaningful.
+	if _, err := conn.DB().Execute(`CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.DB().Execute(`INSERT INTO users (id, name, email) VALUES (1,'a','a@x'), (2,'b','b@x')`); err != nil {
+		t.Fatal(err)
+	}
 
 	m := NewModel(&config.Config{})
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -239,25 +291,94 @@ func TestFormatPickerNavAndExport(t *testing.T) {
 	m.focus = FocusResults
 	m.results = NewResultsTable()
 	m.results.SetSize(100, 20)
-	m.results.SetResult([]string{"id"}, [][]string{{"1"}}, "1 row")
+	m.results.SetEditable("users", []string{"id"})
+	m.results.SetResult([]string{"id", "name", "email"}, [][]string{{"1", "a", "a@x"}}, "1 row")
 
-	// Open the picker and move to JSON (csv -> json).
-	m.formatPicker.Show()
-	res, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	// Open the dialog (g X) and immediately commit.
+	res, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 	m = res.(Model)
-	if m.formatPicker.Selected() != fmtJSON {
-		t.Fatalf("cursor on %v, want json", m.formatPicker.Selected())
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'X'}})
+	m = res.(Model)
+	if !m.exportOverlay.IsVisible() {
+		t.Fatal("dialog should be open after g X")
 	}
-	// Enter exports in JSON and hides the picker.
+	// Enter triggers an async whole-table export; it returns a command, so
+	// exportMsg is empty until exportDoneMsg lands. Verify the dialog closed.
+	res, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = res.(Model)
+	if m.exportOverlay.IsVisible() {
+		t.Error("dialog should hide after enter")
+	}
+	if cmd == nil {
+		t.Fatal("whole-table export should return an async command")
+	}
+}
+
+// With a couple of columns unchecked, enter exports the projected set to a CSV.
+func TestExportDialogColumnProjection(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "t.db")
+	conn, err := db.New(db.ConnectionConfig{Driver: db.DriverSQLite, Database: dbPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	if _, err := conn.DB().Execute(`CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.DB().Execute(`INSERT INTO users (id, name, email) VALUES (1,'a','a@x')`); err != nil {
+		t.Fatal(err)
+	}
+
+	m := NewModel(&config.Config{})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.connection = conn
+	m.state = stateWorkspace
+	m.focus = FocusResults
+	m.results = NewResultsTable()
+	m.results.SetSize(100, 20)
+	m.results.SetEditable("users", []string{"id"})
+	m.results.SetResult([]string{"id", "name", "email"}, [][]string{{"1", "a", "a@x"}}, "1 row")
+
+	// Open the dialog and switch scope to Current page (so the export is the
+	// in-memory, synchronous path and sets exportMsg directly).
+	res, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	m = res.(Model)
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'X'}})
+	m = res.(Model)
+
+	// Cursor starts at format row 0 (CSV). Walk down past the formats and the
+	// three columns to land on the Scope section, then to the Current page row
+	// (the last scope option).
+	steps := len(exportFormats) /*formats*/ + 3 /*columns*/ + 1 /*first scope*/
+	for i := 0; i < steps; i++ {
+		res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		m = res.(Model)
+	}
+	// Select the Current-page scope.
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = res.(Model)
+
+	// Now uncheck the "name" column: move up into the columns section. Cursor
+	// is on the first scope row; the columns are directly above. Move up to the
+	// third column (email), then to the second (name).
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}) // email
+	m = res.(Model)
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}) // name
+	m = res.(Model)
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace}) // uncheck name
+	m = res.(Model)
+
+	// Enter exports the current page (id, email) to CSV.
 	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = res.(Model)
-	if m.formatPicker.IsVisible() {
-		t.Error("picker should hide after enter")
-	}
 	if !strings.Contains(m.exportMsg, "exported") {
-		t.Errorf("expected an export status message, got %q", m.exportMsg)
+		t.Fatalf("expected an export status message, got %q", m.exportMsg)
 	}
-	if !strings.Contains(m.exportMsg, ".json") {
-		t.Errorf("expected a .json file in %q", m.exportMsg)
+	if !strings.Contains(m.exportMsg, ".csv") {
+		t.Errorf("expected a .csv file in %q", m.exportMsg)
 	}
 }

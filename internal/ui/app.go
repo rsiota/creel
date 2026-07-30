@@ -315,7 +315,7 @@ type Model struct {
 	filterPicker        FilterPicker
 	columnPicker        ColumnPicker
 	exportPicker        ExportPicker
-	formatPicker        FormatPicker
+	exportOverlay       ExportOverlay
 	themePicker         ThemePicker
 	providerPicker      ProviderPicker
 	modelBrowser        ModelBrowser
@@ -551,7 +551,7 @@ func NewModel(cfg *config.Config) Model {
 		filterPicker:    NewFilterPicker(),
 		columnPicker:    NewColumnPicker(),
 		exportPicker:    NewExportPicker(),
-		formatPicker:    NewFormatPicker(),
+		exportOverlay:   NewExportOverlay(),
 		themePicker:     NewThemePicker(),
 		providerPicker:  NewProviderPicker(),
 		modelBrowser:    NewModelBrowser(),
@@ -2159,20 +2159,29 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Format picker (g x) is modal — intercept all keys.
-	if m.formatPicker.IsVisible() {
+	// Export dialog (g X) is modal — intercept all keys.
+	if m.exportOverlay.IsVisible() {
 		switch msg.String() {
 		case "esc", "ctrl+c":
-			m.formatPicker.Hide()
+			m.exportOverlay.Hide()
 			return m, nil
 		case "enter":
-			format := m.formatPicker.Commit()
-			return m, m.exportResults(format)
+			format, cols, scope := m.exportOverlay.Commit()
+			return m, m.exportResults(format, cols, scope)
+		case " ":
+			m.exportOverlay.Activate()
+			return m, nil
+		case "a":
+			m.exportOverlay.SelectAllCols()
+			return m, nil
+		case "n":
+			m.exportOverlay.SelectNoneCols()
+			return m, nil
 		case "up", "k":
-			m.formatPicker.Up()
+			m.exportOverlay.CursorUp()
 			return m, nil
 		case "down", "j":
-			m.formatPicker.Down()
+			m.exportOverlay.CursorDown()
 			return m, nil
 		}
 		return m, nil
@@ -3298,13 +3307,19 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.explainQuery()
 		}
 
-		// g X — export current results in a chosen format (opens format picker).
-		// Capital X avoids the g x (close tab) tab-management prefix.
+		// g X — open the export dialog (format + columns + scope). Capital X
+		// avoids the g x (close tab) tab-management prefix.
 		if msg.String() == "X" && m.resultsPendingG {
 			m.resultsPendingG = false
 			m.resultsPendingY = false
 			if m.results.NumRows() > 0 {
-				m.formatPicker.Show()
+				m.exportOverlay.Show(
+					m.results.ColumnNames(),
+					m.results.SourceTable() != "",
+					m.results.MarkCount(),
+					m.results.NumRows(),
+					m.totalRows, m.totalRowsSet,
+				)
 			}
 			return m, nil
 		}
@@ -4718,14 +4733,23 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, exportPanel, panelX, panelY)
 	}
 
-	// Overlay format picker (g x) if visible
-	if m.formatPicker.IsVisible() {
-		formatPanel := m.formatPicker.View()
-		panelW := lipgloss.Width(formatPanel)
-		panelH := lipgloss.Height(formatPanel)
+	// Overlay export dialog (g X) if visible
+	if m.exportOverlay.IsVisible() {
+		pw := 72
+		if pw > m.width-4 {
+			pw = m.width - 4
+		}
+		ph := m.height - 2
+		if ph > 26 {
+			ph = 26
+		}
+		m.exportOverlay.SetSize(pw, ph)
+		exportPanel := m.exportOverlay.View()
+		panelW := lipgloss.Width(exportPanel)
+		panelH := lipgloss.Height(exportPanel)
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
-		view = placeOverlay(view, formatPanel, panelX, panelY)
+		view = placeOverlay(view, exportPanel, panelX, panelY)
 	}
 
 	// Overlay theme picker (g c) if visible

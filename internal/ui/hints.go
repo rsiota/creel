@@ -29,6 +29,8 @@ func (m Model) hintList() []string {
 		return hintsForSection("Import Prompt")
 	case m.exportPicker.IsVisible():
 		return hintsForSection("Export Picker")
+	case m.exportOverlay.IsVisible():
+		return hintsForSection("Export Dialog")
 	case m.columnPicker.IsVisible():
 		return hintsForSection("Column Picker")
 	case m.filterPicker.IsVisible():
