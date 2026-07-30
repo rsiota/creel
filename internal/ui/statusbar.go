@@ -265,11 +265,23 @@ func (m Model) statusBar(connName string) string {
 				}
 			}
 		}
-		gapW := m.width - 1 - lipgloss.Width(left) - lipgloss.Width(hintsStyled)
+		// When a key was just pressed, show its registry description briefly,
+		// tucked just left of the hints (so it reads next to the keys). It is
+		// truncated to whatever room remains after the left block + hints,
+		// keeping at least a 1-col gap and a 2-col separator before the hints.
+		// Expiry is render-time (like the key flash), so no timer is needed.
+		var descStyled string
+		if m.hintDesc != "" && time.Since(m.hintDescAt) < hintDescDuration {
+			avail := m.width - 1 - lipgloss.Width(left) - lipgloss.Width(hintsStyled) - 2 - 1
+			if avail >= 3 {
+				descStyled = sbFg.Render(truncateRunes(m.hintDesc, avail)) + sbMuted.Render("  ")
+			}
+		}
+		gapW := m.width - 1 - lipgloss.Width(left) - lipgloss.Width(descStyled) - lipgloss.Width(hintsStyled)
 		if gapW < 1 {
 			gapW = 1
 		}
-		line := left + sbMuted.Render(strings.Repeat(" ", gapW)) + hintsStyled
+		line := left + sbMuted.Render(strings.Repeat(" ", gapW)) + descStyled + hintsStyled
 		if lipgloss.Width(line) > m.width {
 			line = lipgloss.NewStyle().MaxWidth(m.width).Background(colorStatusBarBg).Render(line)
 		}

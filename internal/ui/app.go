@@ -279,6 +279,11 @@ const flashExpiry = 5 * time.Second
 // hintFlashDuration is how long a hint group stays highlighted white.
 const hintFlashDuration = 300 * time.Millisecond
 
+// hintDescDuration is how long a pressed key's description is shown inline on
+// the status bar after the key is pressed (a touch longer than the key flash,
+// so it can actually be read).
+const hintDescDuration = 1500 * time.Millisecond
+
 // queryStackEntry stores navigation state for returning after following a FK.
 type queryStackEntry struct {
 	query     string
@@ -472,6 +477,12 @@ type Model struct {
 	// hintFlash is the individual key currently highlighted white on the status bar.
 	hintFlash   string
 	hintFlashAt time.Time
+
+	// hintDesc is the pressed key's registry description shown briefly next to
+	// the hint line. It expires on the next render after hintDescDuration
+	// (matching how hintFlash expires), so no timer command is needed.
+	hintDesc    string
+	hintDescAt  time.Time
 
 	// Async query execution state
 	queryRunning   bool               // true while a query is in flight
@@ -928,12 +939,18 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Flash the matching hint group on the status bar (set before
-		// dispatch so the value survives the value-receiver copy).
+		// dispatch so the value survives the value-receiver copy), and stage
+		// the pressed key's description to show inline for a moment.
 		if matched := matchHint(m.hintList(), msg.String()); matched != "" {
 			m.hintFlash = matched
 			m.hintFlashAt = time.Now()
+			if d := m.hintDescription(matched); d != "" {
+				m.hintDesc = d
+				m.hintDescAt = time.Now()
+			}
 		} else {
 			m.hintFlash = ""
+			m.hintDesc = ""
 		}
 
 		if m.state == stateConnections {

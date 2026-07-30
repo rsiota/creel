@@ -2,128 +2,171 @@ package ui
 
 import "strings"
 
-// hintList returns the list of compact hint strings for the current panel or
-// active modal overlay. Each element is a single hint group (e.g. "h/j/k/l",
-// "enter", "ctrl+s"). The hints are derived from the registry (single source
-// of truth) for sections that have one; pickers without a registry section
-// fall back to inline hint lists.
+// hintList returns the compact hint strings for the current panel or active
+// modal overlay. Each element is a single hint group (e.g. "h/j/k/l",
+// "enter", "ctrl+s"). It is a thin wrapper over resolveHints, which also
+// exposes the registry section so a pressed key's description can be looked
+// up (see hintDescription).
+func (m Model) hintList() []string {
+	_, hints := m.resolveHints()
+	return hints
+}
+
+// hintSection returns the registry section title backing the current panel or
+// modal's hints, or "" for inline-only states (the hint still shows, but the
+// pressed key has no description to display).
+func (m Model) hintSection() string {
+	section, _ := m.resolveHints()
+	return section
+}
+
+// hintDescription returns the registry description for a matched hint key in
+// the current context, or "" if the active panel/modal has no registry section
+// or the key isn't documented there. matchedKey is the individual key string
+// returned by matchHint (e.g. "j", "ctrl+s"); it is matched against each
+// binding's Hint tokens.
+func (m Model) hintDescription(matchedKey string) string {
+	section := m.hintSection()
+	if section == "" {
+		return ""
+	}
+	for _, sec := range registry() {
+		if sec.Title != section {
+			continue
+		}
+		for _, b := range sec.Items {
+			for _, k := range strings.Split(b.Hint, "/") {
+				if k == matchedKey {
+					return b.Desc
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// resolveHints returns the registry section title and the hint list for the
+// current panel or active modal overlay. section is "" for inline-only states.
+// Each hint element is a single hint group (e.g. "h/j/k/l", "enter", "ctrl+s");
+// hints for section-backed states come from the registry (single source of
+// truth).
 //
 // The order matters: most specific/modal states are checked first, since they
 // stack on top of other overlays (e.g. createDBActive on top of dbPicker).
-func (m Model) hintList() []string {
+func (m Model) resolveHints() (section string, hints []string) {
 	switch {
 	// Help overlay is the most modal surface — check first.
 	case m.help.IsVisible():
-		return []string{"tab", "j/k", "/", "n/N", "g/G", "?"}
+		return "", []string{"tab", "j/k", "/", "n/N", "g/G", "?"}
 
 	// Dialogs stacked on top of pickers — check next.
 	case m.createDBActive:
-		return []string{"enter", "esc"}
+		return "", []string{"enter", "esc"}
 	case m.dropDBConfirm != "" || m.dropTableConfirm != "":
-		return []string{"enter", "esc"}
+		return "", []string{"enter", "esc"}
 	case m.deleteConnConfirm != "" || m.deleteProviderConfirm != "":
-		return []string{"y", "n", "esc"}
+		return "", []string{"y", "n", "esc"}
 
 	// Full-screen overlays.
 	case m.importPrompt.IsVisible():
-		return hintsForSection("Import Prompt")
+		return "Import Prompt", hintsForSection("Import Prompt")
 	case m.exportPicker.IsVisible():
-		return hintsForSection("Export Picker")
+		return "Export Picker", hintsForSection("Export Picker")
 	case m.exportOverlay.IsVisible():
-		return hintsForSection("Export Dialog")
+		return "Export Dialog", hintsForSection("Export Dialog")
 	case m.columnPicker.IsVisible():
-		return hintsForSection("Column Picker")
+		return "Column Picker", hintsForSection("Column Picker")
 	case m.filterPicker.IsVisible():
-		return hintsForSection("Filter Picker")
+		return "Filter Picker", hintsForSection("Filter Picker")
 	case m.dbPicker.IsVisible():
 		if m.dbPicker.Filtering() {
-			return []string{"j/k", "enter", "esc"}
+			return "", []string{"j/k", "enter", "esc"}
 		}
-		return hintsForSection("Database Picker")
+		return "Database Picker", hintsForSection("Database Picker")
 	case m.history.IsVisible():
-		return hintsForSection("History Panel")
+		return "History Panel", hintsForSection("History Panel")
 	case m.bookmarks.IsVisible():
-		return hintsForSection("Bookmarks Panel")
+		return "Bookmarks Panel", hintsForSection("Bookmarks Panel")
 	case m.crossSearch.IsVisible():
-		return []string{"enter", "j/k", "esc"}
+		return "", []string{"enter", "j/k", "esc"}
 	case m.explainPanel.IsVisible():
-		return []string{"j/k", "esc"}
+		return "", []string{"j/k", "esc"}
 	case m.lookupPanel.IsVisible():
-		return []string{"j/k", "esc"}
+		return "", []string{"j/k", "esc"}
 	case m.erdPanel.searching:
-		return []string{"tab", "enter", "esc"}
+		return "", []string{"tab", "enter", "esc"}
 	case m.erdPanel.IsVisible():
 		// Graph view shows the spatial-nav keys (j/k/h/l, space, enter) plus the
 		// "/" jump-to-table search; the Mermaid source view only scrolls with
 		// j/k, so its hint set is smaller.
 		if m.erdPanel.merm {
-			return []string{"j/k", "enter", "m", "g/G", "ctrl+d/u", "y", "esc"}
+			return "ERD", []string{"j/k", "enter", "m", "g/G", "ctrl+d/u", "y", "esc"}
 		}
-		return []string{"j/k/h/l", "space", "enter", "zz", "zc/zo/za", "zM/zR", "/", "p", "m", "g/G", "ctrl+d/u", "y", "esc"}
+		return "ERD", []string{"j/k/h/l", "space", "enter", "zz", "zc/zo/za", "zM/zR", "/", "p", "m", "g/G", "ctrl+d/u", "y", "esc"}
 	case m.explorer.IsVisible():
-		return []string{"j/k", "enter", "r", "esc"}
+		return "", []string{"j/k", "enter", "r", "esc"}
 	case m.providerPicker.IsVisible():
-		return hintsForSection("AI Provider")
+		return "AI Provider", hintsForSection("AI Provider")
 	case m.providerForm.IsVisible():
 		if m.providerForm.IsEditing() {
-			return []string{"enter", "esc"}
+			return "", []string{"enter", "esc"}
 		}
 		if m.providerForm.ActiveIsChoice() {
-			return []string{"j/k", "h/l", "enter", "ctrl+t", "esc"}
+			return "", []string{"j/k", "h/l", "enter", "ctrl+t", "esc"}
 		}
-		return []string{"j/k", "e", "enter", "ctrl+t", "esc"}
+		return "", []string{"j/k", "e", "enter", "ctrl+t", "esc"}
 	case m.modelBrowser.IsVisible():
-		return hintsForSection("Model Browser")
+		return "Model Browser", hintsForSection("Model Browser")
 	case m.tableDesigner.IsVisible():
-		return hintsForSection("Table Designer")
+		return "Table Designer", hintsForSection("Table Designer")
 	case m.schemaEditor.IsVisible():
-		return hintsForSection("Schema Editor")
+		return "Schema Editor", hintsForSection("Schema Editor")
 	case m.cellEdit.IsVisible():
-		return hintsForSection("Cell Editor")
+		return "Cell Editor", hintsForSection("Cell Editor")
 	case m.addColumnForm.IsVisible() || m.tableRenameForm.IsVisible():
-		return hintsForSection("Add Column / Rename Table")
+		return "Add Column / Rename Table", hintsForSection("Add Column / Rename Table")
 	case m.searching:
-		return []string{"enter", "esc"}
+		return "", []string{"enter", "esc"}
 
 	// Inspector sub-states.
 	case m.focus == FocusInspector && (m.inspector.IsEditing() || m.inspector.IsInserting()):
-		return []string{"enter", "esc"}
+		return "", []string{"enter", "esc"}
 
 	default:
 		switch {
 		case m.state == stateAddConnection:
 			if m.connForm.editing {
-				return []string{"enter", "esc"}
+				return "", []string{"enter", "esc"}
 			}
 			if m.connForm.ActiveIsChoice() {
-				return []string{"j/k", "h/l", "enter", "ctrl+t", "esc"}
+				return "", []string{"j/k", "h/l", "enter", "ctrl+t", "esc"}
 			}
-			return []string{"j/k", "e", "enter", "ctrl+t", "esc"}
+			return "", []string{"j/k", "e", "enter", "ctrl+t", "esc"}
 		case m.state == stateConnections:
 			if m.connList.IsFiltering() {
-				return []string{"j/k", "enter", "esc"}
+				return "", []string{"j/k", "enter", "esc"}
 			}
-			return []string{"j/k", "enter", "n", "e", "d", "/", "esc"}
+			return "", []string{"j/k", "enter", "n", "e", "d", "/", "esc"}
 		case m.focus == FocusEditor:
-			return hintsForSection("Editor (Vim)")
+			return "Editor (Vim)", hintsForSection("Editor (Vim)")
 		case m.focus == FocusResults:
-			return hintsForSection("Results")
+			return "Results", hintsForSection("Results")
 		case m.focus == FocusConnections:
-			return hintsForSection("Sidebar (Tables)")
+			return "Sidebar (Tables)", hintsForSection("Sidebar (Tables)")
 		case m.focus == FocusInspector:
-			return hintsForSection("Inspector")
+			return "Inspector", hintsForSection("Inspector")
 		case m.focus == FocusAssistant:
 			// Compose (insert) mode has a small, distinct key set; browse mode
 			// uses the full assistant hint set (i/a/o, M, c, j/k, esc…).
 			if m.assistant.IsComposing() {
-				return []string{"enter", "esc"}
+				return "", []string{"enter", "esc"}
 			}
-			return hintsForSection("Assistant")
+			return "Assistant", hintsForSection("Assistant")
 		case m.focus == FocusTabBar:
-			return []string{"h/l", "t", "enter"}
+			return "", []string{"h/l", "t", "enter"}
 		}
 	}
-	return nil
+	return "", nil
 }
 
 // contextHints returns the hint list joined with "/" for display.
