@@ -21,7 +21,8 @@ collapse/expand `zc`/`zo`/`za` (2026-07-29) are all done. What remains:
 
 - **Hover tooltips** (mouse-motion) — full column type/comments on hover.
   Medium; needs `WithMouseAllMotion` (button-less motion) and throttling. See
-  the TUI-mouse-notes tech-debt item — it hits the same event-mapping area.
+  `docs/tui-mouse.md` (the now-shipped TUI-mouse-notes doc) — its "Forward-
+  looking: hover tooltips" section is the implementation sketch for this.
 - **Mini-map** — a tiny overview with a viewport rectangle for very large
   schemas. Medium-high effort.
 - **Drag deferred follow-ups:** persisted positions across sessions (the
@@ -75,11 +76,15 @@ users ask; don't speculatively.
   dynamic polyline router (`routeArrow`/`rerouteArrows`) for post-drag. Not
   urgent (the legacy path is proven and untouched), but consolidate onto the
   dynamic router next time the router is touched, so there's one path.
-- **TUI mouse notes doc.** bubbletea reports left-button drag motion as
-  `Type=MouseLeft` + `Action=MouseActionMotion` (not `Type=MouseMotion` — that
-  is button-less hover needing `WithMouseAllMotion`). This cost a round-trip
-  during drag development; document it (and terminal mouse-support variance)
-  before hover-tooltips re-enter the same area.
+- **TUI mouse notes doc.** ✅ DONE (2026-07-30) — `docs/tui-mouse.md`
+  captures the bubbletea mouse model end to end: the `Type` (deprecated) vs
+  `Action`+`Button` two-field model; the drag-motion gotcha
+  (`Type=MouseLeft`+`Action=MouseActionMotion`, **not** `Type=MouseMotion` —
+  that's button-less hover needing `WithMouseAllMotion`); `WithMouseCellMotion`
+  vs `WithMouseAllMotion` + terminal variance; the Action-first routing pattern,
+  the press→drag→release state machine, double-click detection, wheel/Shift
+  semantics, the size-the-panel-before-hit-testing trap, and a hover-tooltips
+  implementation sketch for the next ERD item. See it before touching mouse code.
 
 ---
 
