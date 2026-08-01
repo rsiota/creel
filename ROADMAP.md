@@ -19,10 +19,18 @@ The static ERD, its interactive tier (focus/highlight/path/search), free-form
 mouse drag (2026-07-27), fit-to-screen `zz` (2026-07-27), and card
 collapse/expand `zc`/`zo`/`za` (2026-07-29) are all done. What remains:
 
-- **Hover tooltips** (mouse-motion) — full column type/comments on hover.
-  Medium; needs `WithMouseAllMotion` (button-less motion) and throttling. See
-  `docs/tui-mouse.md` (the now-shipped TUI-mouse-notes doc) — its "Forward-
-  looking: hover tooltips" section is the implementation sketch for this.
+- **Hover tooltips** ✅ DONE (2026-07-30) — hovering an ERD card overlays a
+  bordered tooltip listing its columns with PK/FK markers + types, placed
+  beside the card (flips left / clamps to stay on-screen). The big win is
+  collapsed cards (`zc`): hovering reveals their columns without expanding.
+  Required flipping the program to `WithMouseAllMotion` (button-less motion,
+  app-wide — safe because every other mouse handler no-ops on `MouseMotion`);
+  hover is throttled by card identity, routed on `Type` within the
+  `MouseActionMotion` block, and cleared on any key/wheel/drag. See
+  `docs/tui-mouse.md` (Hover tooltips section) for the realized design. Note:
+  the data model (`db.Column`) carries only name + type, so nullability/
+  default/comments aren't shown — that needs a per-table `TableColumnInfo`
+  fetch and is deferred.
 - **Mini-map** — a tiny overview with a viewport rectangle for very large
   schemas. Medium-high effort.
 - **Drag deferred follow-ups:** persisted positions across sessions (the

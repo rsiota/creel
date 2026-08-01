@@ -580,6 +580,13 @@ func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// every drag motion re-enters the MouseLeft press handler and the drag
 	// never starts.
 	if msg.Action == tea.MouseActionMotion {
+		// Button-less motion is hover (Type=MouseMotion); button-held motion is
+		// a drag (Type keeps the button, e.g. MouseLeft). Split them here — see
+		// docs/tui-mouse.md — so hover drives the tooltip and drag drives the
+		// card move, neither disturbing the other.
+		if msg.Type == tea.MouseMotion {
+			return m.handleERDMouseHover(msg)
+		}
 		if m.erdPanel.dragPending == "" && m.erdPanel.dragCard == "" {
 			return m, nil
 		}
@@ -657,6 +664,28 @@ func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		// Card body: record a pending drag. The click (highlight/recentre) is
 		// deferred to release so a drag doesn't toggle highlight mid-move.
 		m.erdPanel = m.erdPanel.dragBeginPress(clicked, cx, cy)
+	}
+	return m, nil
+}
+
+// handleERDMouseHover handles button-less mouse motion (hover) over the ERD:
+// it sets hoverCard to the table under the cursor ("" over empty space or in
+// the Mermaid view) so View overlays its tooltip. The set is throttled by card
+// identity — when the cursor stays over the same card, nothing changes and the
+// diff renderer skips — and is cleared on any viewport-changing input elsewhere
+// (key, wheel, drag). This is the only handler that distinguishes button-less
+// motion from drag motion; see docs/tui-mouse.md.
+func (m Model) handleERDMouseHover(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	var hovered string
+	if !m.erdPanel.merm {
+		if cx, cy, ok := m.erdPanel.contentToCanvas(msg.X, msg.Y); ok {
+			if c := m.erdPanel.cardAt(cx, cy); c != nil {
+				hovered = c.name
+			}
+		}
+	}
+	if m.erdPanel.hoverCard != hovered {
+		m.erdPanel.hoverCard = hovered
 	}
 	return m, nil
 }

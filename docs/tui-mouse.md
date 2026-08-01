@@ -259,40 +259,50 @@ do the same**, or click mapping drifts after a resize.
 
 ---
 
-## Forward-looking: hover tooltips
+## Hover tooltips (implemented 2026-07-30)
 
-The ERD hover-tooltip item (ROADMAP ERD section) is the immediate
-consumer of everything above. Sketch of what it takes:
+The ERD hover-tooltip item (ROADMAP ERD section) was the immediate consumer
+of the notes above; it's now shipped. How each sketch step landed, and where
+it deviated:
 
-1. **Enable button-less motion.** Flip `statusbar.go:372` to
-   `tea.WithMouseAllMotion()`. Re-run across your terminal matrix — this
-   is the risky part; some terminals flood motion events, some ignore it,
-   some report it but then break click/release ordering. Plan a
-   "hover works if your terminal supports it" stance, never hard-fail.
-2. **Throttle.** All-motion fires on *every* cell the cursor crosses. A
-   naive `Update` that recomputes/render a tooltip per event will jank.
-   Debounce in the handler (last-seen cell + a small `time.Since` gate),
-   or stash the hovered target and only re-render when it changes —
-   bubbletea's diff renderer already makes "same model → no flicker"
-   cheap, so the win is in *not mutating* on unchanged hover.
-3. **Route motion before everything else.** Hover is exactly the case the
-   gotcha warns about: under all-motion, a button-less motion event is
-   `Type == MouseMotion` (finally). But a *left-button* motion event is
-   still `Type == MouseLeft` — so a hover branch keyed on `Type ==
-   MouseMotion` would correctly ignore drags, but you still want hover to
-   lose to an active drag. Easiest: keep the ERD's `Action`-first
-   ordering, and within `MouseActionMotion` check `Button`: `None` →
-   hover, `Left` → drag.
-4. **Don't steal the press/click/release flow.** Hover is non-modal; it
-   must never `return` a model change that breaks a subsequent click.
-   Best to keep hovered-state purely presentational (a field the renderer
-   reads) and not part of the drag/click state machine.
-5. **Esc/clear path.** When the panel scrolls, the cursor leaves the
-   panel, or a drag starts, clear the hovered target so a stale tooltip
-   doesn't paint over the new frame.
+1. **Enable button-less motion.** ✅ Flipped `statusbar.go`'s `tea.NewProgram`
+   to `WithMouseAllMotion()`. App-wide (not ERD-scoped) as warned, but safe:
+   every other mouse handler routes on `msg.Type` with no `default` arm and
+   early-returns on anything that isn't `MouseLeft`/a wheel, so the new
+   `MouseMotion` events no-op everywhere except the ERD. **Caveat still open:**
+   terminal support for all-motion varies; treat hover as best-effort. If a
+   terminal floods/breaks on it, this is the line to revisit (a per-feature
+   enable would need an upstream `EnableMouseAllMotion` cmd toggle).
+2. **Throttle.** ✅ Done exactly as sketched — `handleERDMouseHover` only
+   writes `hoverCard` when the card under the cursor changes, so an unchanged
+   hover produces a byte-identical model and the diff renderer skips. No
+   time-based debounce turned out to be needed; identity-based mutation is
+   enough.
+3. **Route motion before everything else.** ✅ The `Action`-first block in
+   `handleERDMouse` now splits `MouseActionMotion` on `Type`: `MouseMotion`
+   (button-less) → hover; `MouseLeft`/… (held) → drag. The test that pins this
+   is `TestERDHoverViaMouseEvents` (hover counterpart of
+   `TestERDDragViaMouseEvents`).
+4. **Don't steal the press/click/release flow.** ✅ `hoverCard` is purely
+   presentational — `View` reads it; nothing in the drag/click state machine
+   touches it except to clear it.
+5. **Clear path.** ✅ `hoverCard` is cleared on any viewport-changing input:
+   `Update` (every key — focus move/fold/scroll/mermaid toggle), `Wheel`, and
+   `dragPromote`. The rule is "hover yields to any interaction and is
+   re-established on the next mouse motion," which avoids per-handler clearing
+   sprawl. `Show`/`Hide` reset it too.
 
-There's no throttle helper in the tree today; this is where one gets
-introduced.
+**What it shows:** the hovered card's columns with PK/FK markers and types,
+overlaid beside the card (right side preferred, flips left / clamps to stay
+on-screen) via the existing `placeOverlay` compositing helper. The big win is
+collapsed cards (`zc`) — hovering reveals their columns without expanding.
+
+**Known limitation (data model):** the sketch mentioned "comments," but
+`db.Column` carries only `Name` + `Type` — there is no comment/nullable/default
+field anywhere in the schema extraction (`TableColumnInfo` has NotNull/Default
+but the ERD cards only load `[]db.Column`). Showing those would need a
+per-table async `TableColumnInfo` fetch; deferred — the type + PK/FK markers
+are the available detail today.
 
 ---
 

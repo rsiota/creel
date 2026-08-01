@@ -2551,3 +2551,177 @@ func TestERDCollapseSticky(t *testing.T) {
 		t.Errorf("zc moved users: y=%d want %d (sticky)", users.y, usersY)
 	}
 }
+
+// TestERDHoverViaMouseEvents pins the button-less-motion gotcha: hover events
+// arrive as Type=MouseMotion + Action=MouseActionMotion (NOT Type=MouseLeft,
+// which is a left-drag), and handleERDMouse routes them to the hover path that
+// sets hoverCard to the table under the cursor (or "" over empty space). See
+// docs/tui-mouse.md — this is the hover counterpart of TestERDDragViaMouseEvents.
+func TestERDHoverViaMouseEvents(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	m := Model{erdPanel: ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24, focusName: "orders"}}
+	m.erdPanel.graph = m.erdPanel.renderedGraph()
+	orders := m.erdPanel.cardNamed("orders")
+	users := m.erdPanel.cardNamed("users")
+
+	screenOf := func(cx, cy int) (int, int) { return m.erdPanel.canvasToScreen(cx, cy) }
+
+	// Button-less motion over a body cell of "orders" → hoverCard set.
+	sx, sy := screenOf(orders.x+3, orders.y+4)
+	mm, _ := m.handleERDMouse(tea.MouseMsg{Type: tea.MouseMotion, Action: tea.MouseActionMotion, X: sx, Y: sy})
+	m = mm.(Model)
+	if m.erdPanel.hoverCard != "orders" {
+		t.Fatalf("hover over orders: hoverCard=%q want orders", m.erdPanel.hoverCard)
+	}
+
+	// Motion over a different card updates hoverCard (not stuck on the first).
+	ux, uy := screenOf(users.x+2, users.y+3)
+	mm, _ = m.handleERDMouse(tea.MouseMsg{Type: tea.MouseMotion, Action: tea.MouseActionMotion, X: ux, Y: uy})
+	m = mm.(Model)
+	if m.erdPanel.hoverCard != "users" {
+		t.Fatalf("hover over users: hoverCard=%q want users", m.erdPanel.hoverCard)
+	}
+
+	// Motion over empty space (content corner sits in the centred margin) → cleared.
+	mm, _ = m.handleERDMouse(tea.MouseMsg{Type: tea.MouseMotion, Action: tea.MouseActionMotion, X: 0, Y: 0})
+	m = mm.(Model)
+	if m.erdPanel.hoverCard != "" {
+		t.Fatalf("hover over empty space: hoverCard=%q want empty", m.erdPanel.hoverCard)
+	}
+
+	// A left-drag motion (Type=MouseLeft, the gotcha) must NOT be treated as
+	// hover: it carries a held button and belongs to the drag path. With no
+	// press pending it should leave hoverCard untouched (empty here).
+	dx, dy := screenOf(orders.x+3, orders.y+4)
+	mm, _ = m.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, Action: tea.MouseActionMotion, X: dx, Y: dy})
+	m = mm.(Model)
+	if m.erdPanel.hoverCard != "" {
+		t.Errorf("left-drag motion leaked into hover: hoverCard=%q want empty", m.erdPanel.hoverCard)
+	}
+	if m.erdPanel.dragPending != "" || m.erdPanel.dragCard != "" {
+		t.Errorf("left-drag motion with no press started a drag: pending=%q card=%q", m.erdPanel.dragPending, m.erdPanel.dragCard)
+	}
+}
+
+// TestERDHoverIgnoredInMermaid confirms hover only applies to the graph view:
+// button-less motion while the Mermaid source is showing leaves hoverCard empty.
+func TestERDHoverIgnoredInMermaid(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	m := Model{erdPanel: ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24, focusName: "orders", merm: true}}
+	m.erdPanel.graph = m.erdPanel.renderedGraph()
+	orders := m.erdPanel.cardNamed("orders")
+	sx, sy := m.erdPanel.canvasToScreen(orders.x+3, orders.y+4)
+	mm, _ := m.handleERDMouse(tea.MouseMsg{Type: tea.MouseMotion, Action: tea.MouseActionMotion, X: sx, Y: sy})
+	m = mm.(Model)
+	if m.erdPanel.hoverCard != "" {
+		t.Fatalf("mermaid view set hoverCard=%q want empty", m.erdPanel.hoverCard)
+	}
+}
+
+// TestERDTooltipText unit-tests the tooltip body: PK/FK markers, names, and
+// uppercased types. Column comments aren't in the data model (db.Column holds
+// only name+type), so this is the full available detail.
+func TestERDTooltipText(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	m := Model{erdPanel: ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24}}
+	orders := m.erdPanel.cardNamed("orders")
+	out := ansi.Strip(m.erdPanel.tooltipText(orders))
+	for _, want := range []string{
+		"orders",                 // title
+		"◆",                      // PK marker (id)
+		"◇",                      // FK marker (user_id)
+		"id", "user_id", "total", // names
+		"INT", "REAL", // uppercased types (erdType normalizes)
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("tooltip missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestERDHoverTooltipRevealsCollapsedCard is the integration test for the
+// overlay: a collapsed card hides its columns (header-only), so the columns
+// appear in View() ONLY when the tooltip overlays them on hover.
+func TestERDHoverTooltipRevealsCollapsedCard(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	m := Model{erdPanel: ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24, focusName: "orders"}}
+	m.erdPanel.graph = m.erdPanel.renderedGraph()
+	// Collapse the focused card via the zc key sequence (mirrors TestERDZCCollapse).
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	m.erdPanel = m.erdPanel.Update(key("z"))
+	m.erdPanel = m.erdPanel.Update(key("c"))
+	orders := m.erdPanel.cardNamed("orders")
+	if !orders.collapsed {
+		t.Fatalf("setup: orders not collapsed")
+	}
+
+	// Without hover: a collapsed card renders no column rows, so its FK column
+	// (unique to orders) is absent from the whole view.
+	if bare := ansi.Strip(m.erdPanel.View()); strings.Contains(bare, "user_id") {
+		t.Errorf("collapsed orders leaked its columns without hover")
+	}
+
+	// Hover the collapsed card's header and the tooltip reveals the columns.
+	m.erdPanel.hoverCard = "orders" // simulate a motion event landing on the header
+	if hovered := ansi.Strip(m.erdPanel.View()); !strings.Contains(hovered, "user_id") || !strings.Contains(hovered, "total") {
+		t.Errorf("hover did not reveal collapsed card's columns:\n%s", hovered)
+	}
+}
+
+// TestERDHoverClearedOnInput confirms a tooltip never lingers after the diagram
+// moves under a static cursor: any key clears hoverCard (focus move / fold /
+// scroll / mermaid toggle), as does the wheel and a drag promotion.
+func TestERDHoverClearedOnInput(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	newModel := func() Model {
+		m := Model{erdPanel: ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24, focusName: "orders"}}
+		m.erdPanel.graph = m.erdPanel.renderedGraph()
+		m.erdPanel.hoverCard = "orders"
+		return m
+	}
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+
+	t.Run("key", func(t *testing.T) {
+		m := newModel()
+		m.erdPanel = m.erdPanel.Update(key("j")) // move focus
+		if m.erdPanel.hoverCard != "" {
+			t.Errorf("key did not clear hoverCard: %q", m.erdPanel.hoverCard)
+		}
+	})
+	t.Run("mermaid-toggle", func(t *testing.T) {
+		m := newModel()
+		m.erdPanel = m.erdPanel.Update(key("m"))
+		if m.erdPanel.hoverCard != "" {
+			t.Errorf("mermaid toggle did not clear hoverCard: %q", m.erdPanel.hoverCard)
+		}
+	})
+	t.Run("wheel", func(t *testing.T) {
+		m := newModel()
+		m.erdPanel = m.erdPanel.Wheel(1, 0)
+		if m.erdPanel.hoverCard != "" {
+			t.Errorf("wheel did not clear hoverCard: %q", m.erdPanel.hoverCard)
+		}
+	})
+	t.Run("drag-promote", func(t *testing.T) {
+		m := newModel()
+		orders := m.erdPanel.cardNamed("orders")
+		// Press on a body cell, then a motion far enough to promote to a drag.
+		sx, sy := m.erdPanel.canvasToScreen(orders.x+3, orders.y+4)
+		mm, _ := m.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, Action: tea.MouseActionPress, X: sx, Y: sy})
+		m = mm.(Model)
+		mx, my := m.erdPanel.canvasToScreen(orders.x+3+15, orders.y+4+9)
+		mm, _ = m.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, Action: tea.MouseActionMotion, X: mx, Y: my})
+		m = mm.(Model)
+		if m.erdPanel.dragCard != "orders" {
+			t.Fatalf("drag did not promote: dragCard=%q", m.erdPanel.dragCard)
+		}
+		if m.erdPanel.hoverCard != "" {
+			t.Errorf("drag promote did not clear hoverCard: %q", m.erdPanel.hoverCard)
+		}
+	})
+}

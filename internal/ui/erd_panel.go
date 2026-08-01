@@ -72,6 +72,15 @@ type ERDPanel struct {
 	dragOrigX   int // card position at press (esc-cancel restores it)
 	dragOrigY   int
 
+	// Hover tooltip (mouse-motion). The name of the card under the cursor,
+	// or "" when it sits over empty space. Purely presentational — set by
+	// button-less mouse motion (handled in mouse.go's handleERDMouse) and
+	// cleared on any viewport-changing input (key, wheel, drag promote) so a
+	// tooltip never lingers over a card that scrolled away. Requires
+	// WithMouseAllMotion (see docs/tui-mouse.md); the rest of the app's mouse
+	// handlers no-op on MouseMotion, so enabling all-motion is safe.
+	hoverCard string
+
 	// z-prefix fold/fit family. `z` is a vim-style prefix: `zz` fits the
 	// diagram, `zc`/`zo`/`za` collapse/expand/toggle the focused card. The flag
 	// is set on a bare `z` and consumed by the next key; an unrecognized second
@@ -109,6 +118,7 @@ func (e *ERDPanel) Show(title string, layout *erdLayout, mermaid []string) {
 	e.dragPending = ""
 	e.dragCard = ""
 	e.zPrefix = false
+	e.hoverCard = ""
 }
 
 // MermaidLines returns the Mermaid source (used by the app's copy/save handlers
@@ -121,6 +131,7 @@ func (e *ERDPanel) Hide() {
 	e.dragPending = ""
 	e.dragCard = ""
 	e.zPrefix = false
+	e.hoverCard = ""
 }
 
 // SetSize sets the outer dimensions of the panel (including border).
@@ -469,6 +480,9 @@ const erdWheelLines = 3
 // keyboard paging anchor) inside the new view; horizontal moves scrollX. The
 // Mermaid view scrolls vertically only.
 func (e ERDPanel) Wheel(dy, dx int) ERDPanel {
+	// Scrolling moves cards under a static cursor; drop the hover so a tooltip
+	// doesn't linger over whatever card ends up beneath it.
+	e.hoverCard = ""
 	if dy != 0 {
 		vh := e.contentHeight()
 		maxY := e.lineCount() - vh
@@ -687,6 +701,7 @@ func (e ERDPanel) dragPromote(cx, cy int) (ERDPanel, bool) {
 		return e, false
 	}
 	e.dragCard = e.dragPending
+	e.hoverCard = "" // no tooltip while dragging
 	return e, true
 }
 
@@ -844,6 +859,10 @@ const (
 // toggles highlight on it, and g/G/ctrl+d/ctrl+u page the view; in the Mermaid
 // view j/k/g/G/ctrl+d/ctrl+u scroll the source lines.
 func (e ERDPanel) Update(msg tea.KeyMsg) ERDPanel {
+	// Any keyboard input clears the hover tooltip: the diagram may shift under
+	// a static cursor (focus move, fold, scroll), so the cached hovered card is
+	// no longer trustworthy until the next mouse motion re-establishes it.
+	e.hoverCard = ""
 	// While the in-graph "/" search bar is open it consumes all keys (including
 	// esc/enter, which the app-level ERD block would otherwise grab).
 	if e.searching {
@@ -1273,6 +1292,119 @@ func (e *ERDPanel) adjustScroll(vh int) {
 	}
 }
 
+// canvasToScreen is the inverse of contentToCanvas: it maps a logical canvas
+// cell to the screen cell it currently occupies within the panel's content
+// area. Used to place the hover tooltip beside the card under the cursor.
+func (e ERDPanel) canvasToScreen(cx, cy int) (sx, sy int) {
+	_, _, offX, offY := e.placedBounds()
+	ox, oy := e.canvasOrigin()
+	sx = cx - ox + offX - e.scrollX
+	sy = cy - oy + offY - e.scrollY
+	return
+}
+
+// tooltipText renders the hover tooltip for a card: a bordered box listing the
+// table's columns with PK/FK markers and types. It mirrors the card's own
+// column rows but is always fully visible, which is the point — collapsed
+// cards (▸) hide their columns, and cards partly scrolled out of view clip
+// them, so hovering reveals the full list without drilling in or expanding.
+// The column data model (db.Column) carries only name + type, so there are no
+// comments/defaults to show; markers (◆ PK bold-accent, ◇ FK primary) match
+// the card glyphs so the tooltip reads as the same card, in detail.
+func (e ERDPanel) tooltipText(c *gcard) string {
+	nameW := 0
+	for _, col := range c.cols {
+		if w := len([]rune(col.Name)); w > nameW {
+			nameW = w
+		}
+	}
+	typeW := 0
+	for _, col := range c.cols {
+		if w := len([]rune(strings.ToUpper(erdType(col.Type)))); w > typeW {
+			typeW = w
+		}
+	}
+	// Column row: marker(1) + space(1) + name(nameW) + gap(2) + type(typeW).
+	inner := 2 + nameW + 2 + typeW
+	if nameW == 0 {
+		inner = 0 // no columns: just the title
+	}
+	if t := len([]rune(c.name)); t > inner {
+		inner = t
+	}
+
+	pad := func(s string, w int) string {
+		if n := w - len([]rune(s)); n > 0 {
+			return s + strings.Repeat(" ", n)
+		}
+		return s
+	}
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(colorPrimary)
+	nameStyle := lipgloss.NewStyle().Foreground(colorFg)
+	mutedStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	pkStyle := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
+	fkStyle := lipgloss.NewStyle().Foreground(colorPrimary)
+
+	lines := []string{titleStyle.Render(pad(c.name, inner))}
+	for _, col := range c.cols {
+		marker, mstyle := "·", mutedStyle
+		if c.pkSet[col.Name] {
+			marker, mstyle = "◆", pkStyle
+		} else if c.fkSet[col.Name] {
+			marker, mstyle = "◇", fkStyle
+		}
+		name := pad(col.Name, nameW)
+		typ := pad(strings.ToUpper(erdType(col.Type)), typeW)
+		row := mstyle.Render(marker+" ") + nameStyle.Render(name) + "  " + mutedStyle.Render(typ)
+		lines = append(lines, row)
+	}
+	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
+	return lipgloss.NewStyle().
+		Border(panelBorder()).
+		BorderForeground(colorPrimary).
+		Padding(0, 1).
+		Render(content)
+}
+
+// overlayTooltip composites the hover tooltip onto the rendered graph body,
+// placed beside the hovered card. It prefers the card's right side (one-column
+// gap) and flips left when that would overflow the viewport, then clamps so the
+// box always stays on-screen. Position is recomputed from the card's *current*
+// screen location each render, so it tracks scrolls/folds correctly for the
+// frame between a motion event and the next viewport-changing input (which
+// clears hoverCard). Returns body unchanged if the card can't be resolved.
+func (e ERDPanel) overlayTooltip(body string, c *gcard, cw, ch int) string {
+	tip := e.tooltipText(c)
+	tw := lipgloss.Width(tip)
+	th := lipgloss.Height(tip)
+	if tw <= 0 || th <= 0 {
+		return body
+	}
+	leftX, topY := e.canvasToScreen(c.x, c.y)
+	cardRight := leftX + c.w
+	tipX := cardRight + 1 // right of the card, one-column gap
+	if tipX+tw > cw {
+		tipX = leftX - tw - 1 // flip to the left
+	}
+	if tipX < 0 {
+		tipX = 0
+	}
+	if tipX+tw > cw {
+		tipX = cw - tw // clamp (may overlap the card on very small screens)
+	}
+	if tipX < 0 {
+		tipX = 0
+	}
+	tipY := topY
+	if tipY+th > ch {
+		tipY = ch - th
+	}
+	if tipY < 0 {
+		tipY = 0
+	}
+	return placeOverlay(body, tip, tipX, tipY)
+}
+
 // View renders the active view edge to edge — no border, title, or footer,
 // so the diagram fills the whole workspace (the status line remains visible
 // below it). The graph is centred in the viewport when it's smaller than the
@@ -1315,6 +1447,14 @@ func (e ERDPanel) View() string {
 		// or exceeds the viewport, Place is a no-op and scroll/pan applies.
 		body := e.graph.Window(e.scrollX, cw, e.scrollY, ch)
 		body = lipgloss.Place(cw, ch, lipgloss.Center, lipgloss.Center, body)
+		// Hover tooltip overlays the graph (never the Mermaid view). Placed
+		// beside the hovered card; stale hovers are already cleared by the
+		// key/wheel/drag paths, so a non-empty hoverCard is current.
+		if e.hoverCard != "" {
+			if c := e.cardNamed(e.hoverCard); c != nil {
+				body = e.overlayTooltip(body, c, cw, ch)
+			}
+		}
 		if e.dragCard != "" {
 			return lipgloss.JoinVertical(lipgloss.Left, body, e.dragStatusLine(cw))
 		}

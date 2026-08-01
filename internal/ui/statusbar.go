@@ -369,7 +369,11 @@ func Run(cfg *config.Config, forceReadOnly bool, startupFile string) error {
 		}
 		m.schemaMsg = fmt.Sprintf("loaded %s — press ctrl+e to run", expanded)
 	}
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	// WithMouseAllMotion (not just cell motion) so the ERD can show hover
+	// tooltips: button-less motion events are what surface a card's columns
+	// without a click. Cell motion alone only reports motion while a button is
+	// held (drag). See docs/tui-mouse.md for the trade-offs.
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion())
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("running application: %w", err)
 	}
