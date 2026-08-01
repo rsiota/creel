@@ -1311,41 +1311,98 @@ func (e ERDPanel) canvasToScreen(cx, cy int) (sx, sy int) {
 // The column data model (db.Column) carries only name + type, so there are no
 // comments/defaults to show; markers (◆ PK bold-accent, ◇ FK primary) match
 // the card glyphs so the tooltip reads as the same card, in detail.
+// fkTargets maps each FK column name on c to its drawn reference target
+// ("refTable.refColumn"), derived from the layout's resolved arrows. Only FKs
+// whose parent is in the drawn set have an arrow, so this matches what the
+// diagram actually shows (a focused ERD omits arrows to absent tables).
+func (e ERDPanel) fkTargets(c *gcard) map[string]string {
+	m := map[string]string{}
+	if e.layout == nil || c == nil {
+		return m
+	}
+	for _, a := range e.layout.arrows {
+		if a.child == c && a.childCol != "" && a.parent != nil {
+			m[a.childCol] = a.parent.name + "." + a.parentCol
+		}
+	}
+	return m
+}
+
+// tooltipText renders the hover tooltip for a card. It surfaces ONLY
+// information not already painted on the card, so it never reads as redundant
+// noise:
+//   - Collapsed card (▸): its columns are hidden, so the tooltip reveals them
+//     — marker, name, and type — and annotates each FK column with the
+//     table.column it references (a detail the card never shows, even when
+//     expanded).
+//   - Expanded card: columns are already visible, so the tooltip lists only its
+//     FK references (col → refTable.refColumn). Returns "" when the card has
+//     no FKs, so no tooltip renders — there is nothing to add.
+//
+// Column comments/nullability/default aren't available: db.Column carries only
+// name + type, and the ERD cards don't load the richer TableColumnInfo.
 func (e ERDPanel) tooltipText(c *gcard) string {
-	nameW := 0
+	fks := e.fkTargets(c)
+	var rows []string
+	if c.collapsed {
+		rows = e.tooltipRowsCollapsed(c, fks)
+	} else if len(fks) > 0 {
+		rows = e.tooltipRowsFKRefs(fks, c.cols)
+	} else {
+		return "" // expanded card with no FK references: nothing to add
+	}
+	if len(rows) == 0 {
+		return ""
+	}
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(colorPrimary)
+	// Rows carry per-segment ANSI colour, so pad the rendered strings' display
+	// width with trailing spaces (not the raw text) to keep the border rectangular.
+	all := append([]string{titleStyle.Render(c.name)}, rows...)
+	maxW := 0
+	for _, r := range all {
+		if w := lipgloss.Width(r); w > maxW {
+			maxW = w
+		}
+	}
+	for i := range all {
+		if d := maxW - lipgloss.Width(all[i]); d > 0 {
+			all[i] += strings.Repeat(" ", d)
+		}
+	}
+	content := lipgloss.JoinVertical(lipgloss.Left, all...)
+	return lipgloss.NewStyle().
+		Border(panelBorder()).
+		BorderForeground(colorPrimary).
+		Padding(0, 1).
+		Render(content)
+}
+
+// tooltipRowsCollapsed builds one styled row per column for a collapsed card's
+// reveal: marker + name + type, with FK columns annotated " → refTable.refCol"
+// (the one detail the card never shows). Names/types are padded to fixed
+// columns so the rows line up before any FK suffix.
+func (e ERDPanel) tooltipRowsCollapsed(c *gcard, fks map[string]string) []string {
+	nameW, typeW := 0, 0
 	for _, col := range c.cols {
 		if w := len([]rune(col.Name)); w > nameW {
 			nameW = w
 		}
-	}
-	typeW := 0
-	for _, col := range c.cols {
 		if w := len([]rune(strings.ToUpper(erdType(col.Type)))); w > typeW {
 			typeW = w
 		}
 	}
-	// Column row: marker(1) + space(1) + name(nameW) + gap(2) + type(typeW).
-	inner := 2 + nameW + 2 + typeW
-	if nameW == 0 {
-		inner = 0 // no columns: just the title
-	}
-	if t := len([]rune(c.name)); t > inner {
-		inner = t
-	}
-
 	pad := func(s string, w int) string {
-		if n := w - len([]rune(s)); n > 0 {
-			return s + strings.Repeat(" ", n)
+		if d := w - len([]rune(s)); d > 0 {
+			return s + strings.Repeat(" ", d)
 		}
 		return s
 	}
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(colorPrimary)
-	nameStyle := lipgloss.NewStyle().Foreground(colorFg)
 	mutedStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	nameStyle := lipgloss.NewStyle().Foreground(colorFg)
 	pkStyle := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
 	fkStyle := lipgloss.NewStyle().Foreground(colorPrimary)
-
-	lines := []string{titleStyle.Render(pad(c.name, inner))}
+	var rows []string
 	for _, col := range c.cols {
 		marker, mstyle := "·", mutedStyle
 		if c.pkSet[col.Name] {
@@ -1353,17 +1410,34 @@ func (e ERDPanel) tooltipText(c *gcard) string {
 		} else if c.fkSet[col.Name] {
 			marker, mstyle = "◇", fkStyle
 		}
-		name := pad(col.Name, nameW)
-		typ := pad(strings.ToUpper(erdType(col.Type)), typeW)
-		row := mstyle.Render(marker+" ") + nameStyle.Render(name) + "  " + mutedStyle.Render(typ)
-		lines = append(lines, row)
+		row := mstyle.Render(marker+" ") +
+			nameStyle.Render(pad(col.Name, nameW)) + "  " +
+			mutedStyle.Render(pad(strings.ToUpper(erdType(col.Type)), typeW))
+		if t, ok := fks[col.Name]; ok {
+			row += mutedStyle.Render(" → " + t)
+		}
+		rows = append(rows, row)
 	}
-	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
-	return lipgloss.NewStyle().
-		Border(panelBorder()).
-		BorderForeground(colorPrimary).
-		Padding(0, 1).
-		Render(content)
+	return rows
+}
+
+// tooltipRowsFKRefs builds one styled row per FK reference for an expanded
+// card: "◇ col → refTable.refCol". The columns themselves are already visible
+// on the card, so only the reference targets (which aren't) are listed. cols
+// sets the display order; only entries present in fks are shown.
+func (e ERDPanel) tooltipRowsFKRefs(fks map[string]string, cols []db.Column) []string {
+	nameStyle := lipgloss.NewStyle().Foreground(colorFg)
+	fkStyle := lipgloss.NewStyle().Foreground(colorPrimary)
+	mutedStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	var rows []string
+	for _, col := range cols {
+		t, ok := fks[col.Name]
+		if !ok {
+			continue
+		}
+		rows = append(rows, fkStyle.Render("◇ ")+nameStyle.Render(col.Name)+mutedStyle.Render(" → "+t))
+	}
+	return rows
 }
 
 // overlayTooltip composites the hover tooltip onto the rendered graph body,

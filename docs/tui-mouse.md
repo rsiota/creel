@@ -292,10 +292,17 @@ it deviated:
    re-established on the next mouse motion," which avoids per-handler clearing
    sprawl. `Show`/`Hide` reset it too.
 
-**What it shows:** the hovered card's columns with PK/FK markers and types,
-overlaid beside the card (right side preferred, flips left / clamps to stay
-on-screen) via the existing `placeOverlay` compositing helper. The big win is
-collapsed cards (`zc`) — hovering reveals their columns without expanding.
+**What it shows — only non-redundant info.** The card already paints each
+ column's marker/name/type, so the tooltip deliberately never repeats those;
+ it surfaces what the card *doesn't*:
+  - **Expanded card** → its FK references only (`◇ col → refTable.refColumn`),
+    the one detail absent from the card (you'd otherwise trace the arrow).
+    Suppressed entirely when the card has no FKs — there's nothing to add.
+  - **Collapsed card** (`zc`) → a full column reveal (the fold hides them),
+    with each FK column annotated with its target.
+ FK targets come from `layout.arrows` (the drawn connections), so they match
+ the diagram. Overlaid beside the card (right side preferred, flips left /
+ clamps to stay on-screen) via the existing `placeOverlay` helper.
 
 **Known limitation (data model):** the sketch mentioned "comments," but
 `db.Column` carries only `Name` + `Type` — there is no comment/nullable/default

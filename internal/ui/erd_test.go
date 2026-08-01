@@ -2620,24 +2620,67 @@ func TestERDHoverIgnoredInMermaid(t *testing.T) {
 	}
 }
 
-// TestERDTooltipText unit-tests the tooltip body: PK/FK markers, names, and
-// uppercased types. Column comments aren't in the data model (db.Column holds
-// only name+type), so this is the full available detail.
-func TestERDTooltipText(t *testing.T) {
+// TestERDTooltipTextExpandedShowsFKRefsOnly confirms the tooltip never
+// repeats what the card already paints: an expanded card lists only its FK
+// references (col → refTable.refCol) — the one detail absent from the card —
+// and omits its non-FK columns entirely.
+func TestERDTooltipTextExpandedShowsFKRefsOnly(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	m := Model{erdPanel: ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24}}
+	orders := m.erdPanel.cardNamed("orders") // expanded, FK: user_id → users.id
+	out := ansi.Strip(m.erdPanel.tooltipText(orders))
+	for _, want := range []string{
+		"orders",   // title
+		"◇",        // FK marker
+		"user_id",  // FK column
+		"→",        // reference arrow
+		"users.id", // target (NOT shown on the card)
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expanded tooltip missing %q:\n%s", want, out)
+		}
+	}
+	// Non-redundancy: a non-FK column already visible on the card must NOT be
+	// re-listed in the tooltip. total/id are orders columns but not FKs.
+	for _, redundant := range []string{"total", "INT", "REAL"} {
+		if strings.Contains(out, redundant) {
+			t.Errorf("expanded tooltip redundantly shows %q (already on the card):\n%s", redundant, out)
+		}
+	}
+}
+
+// TestERDTooltipTextExpandedNoFKsIsEmpty: an expanded card with no FK
+// references has nothing to add, so the tooltip is suppressed ("").
+func TestERDTooltipTextExpandedNoFKsIsEmpty(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	m := Model{erdPanel: ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24}}
+	users := m.erdPanel.cardNamed("users") // expanded, no outbound FK
+	if out := m.erdPanel.tooltipText(users); out != "" {
+		t.Errorf("expanded no-FK tooltip should be empty, got:\n%s", ansi.Strip(out))
+	}
+}
+
+// TestERDTooltipTextCollapsedRevealsColumns: a collapsed card hides its
+// columns, so the tooltip reveals them (marker + name + type) and annotates
+// each FK column with its target. This is the non-redundant case — the info is
+// genuinely hidden by the fold.
+func TestERDTooltipTextCollapsedRevealsColumns(t *testing.T) {
 	tables, schemas, pks, fks := erdFixture()
 	layout := computeERDLayout(tables, schemas, pks, fks)
 	m := Model{erdPanel: ERDPanel{layout: layout, cards: layout.cards, width: 80, height: 24}}
 	orders := m.erdPanel.cardNamed("orders")
+	orders.collapsed = true
 	out := ansi.Strip(m.erdPanel.tooltipText(orders))
 	for _, want := range []string{
-		"orders",                 // title
-		"◆",                      // PK marker (id)
-		"◇",                      // FK marker (user_id)
-		"id", "user_id", "total", // names
-		"INT", "REAL", // uppercased types (erdType normalizes)
+		"orders",  // title
+		"◆", "id", // PK column revealed
+		"total", "REAL", // non-FK column + type revealed
+		"◇", "user_id", "→", "users.id", // FK column + its target
 	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("tooltip missing %q:\n%s", want, out)
+			t.Errorf("collapsed reveal missing %q:\n%s", want, out)
 		}
 	}
 }
