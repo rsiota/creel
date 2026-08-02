@@ -1,5 +1,10 @@
 # creel
 
+<p align="center">
+  <img src="docs/images/creel-erd.png" alt="creel — static ERD of the demo database" width="760">
+</p>
+<p align="center"><em>Static ERD (<code>g R</code>) of the bundled demo database</em></p>
+
 A fast, memory-efficient SQL TUI for **SQLite**, **MySQL**, and **PostgreSQL**, written in Go.
 
 Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `creel` brings a vim-driven, keyboard-first workflow to browsing schemas, running queries, and editing data — all from the terminal.
