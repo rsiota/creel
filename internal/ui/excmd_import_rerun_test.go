@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ruben/gsql/internal/db"
-	"github.com/ruben/gsql/internal/history"
+	"github.com/ruben/creel/internal/db"
+	"github.com/ruben/creel/internal/history"
 )
 
 // Behavioral tests for :import and :rerun, plus the history-panel numbering

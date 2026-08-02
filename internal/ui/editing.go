@@ -6,7 +6,7 @@ import (
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/db"
 )
 
 // copyCursorCell writes the cell under the cursor to the clipboard and starts

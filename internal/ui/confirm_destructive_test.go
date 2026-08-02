@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/gsql/internal/bookmarks"
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/db"
-	"github.com/ruben/gsql/internal/history"
+	"github.com/ruben/creel/internal/bookmarks"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/db"
+	"github.com/ruben/creel/internal/history"
 )
 
 // confirmDestructive() defaults to true (safe) when the setting is unset, and

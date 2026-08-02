@@ -9,7 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/db"
 )
 
 // executeQuery runs the query under the cursor asynchronously with pagination.
@@ -211,7 +211,7 @@ func (m *Model) runPageQuery() tea.Cmd {
 	// both tables have an "id" column).
 	var execQuery string
 	if isSelectQuery(query) && !hasJoinClause(query) {
-		execQuery = fmt.Sprintf("SELECT * FROM (%s) AS _gsql_page LIMIT %d OFFSET %d",
+		execQuery = fmt.Sprintf("SELECT * FROM (%s) AS _creel_page LIMIT %d OFFSET %d",
 			query, pageSize+1, offset)
 	} else {
 		execQuery = query

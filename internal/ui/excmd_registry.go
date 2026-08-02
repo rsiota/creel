@@ -411,7 +411,7 @@ func exCommands() []exCmdSpec {
 		},
 		{
 			verbs:   []string{"version"},
-			desc:    "show the gsql build version",
+			desc:    "show the creel build version",
 			usage:   ":version",
 			argKind: exArgNone,
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exVersion() },

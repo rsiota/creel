@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/db"
 )
 
 // insertColumn represents one column included in a pending INSERT.

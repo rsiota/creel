@@ -13,7 +13,7 @@ import (
 // bar, selection highlights, table stripes, marked rows, …) keep that
 // background untouched.
 //
-// This is how gsql paints the app background with the active theme's bg
+// This is how creel paints the app background with the active theme's bg
 // colour — including during live theme preview — without threading a
 // background through every renderer. The pass runs after the whole view
 // (workspace + overlays) is assembled, so popups like the theme picker also

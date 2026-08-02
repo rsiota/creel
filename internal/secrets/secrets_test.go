@@ -86,7 +86,7 @@ func TestKeychainRoundTrip(t *testing.T) {
 	if !Available() {
 		t.Skip("OS keychain not available")
 	}
-	conn := "gsql-test-roundtrip"
+	conn := "creel-test-roundtrip"
 	t.Cleanup(func() { _ = DeleteAll(conn) })
 
 	ref, err := Store(conn, FieldPassword, "s3cr3t")
@@ -129,7 +129,7 @@ func TestDeleteMissingIsNotAnError(t *testing.T) {
 	if !Available() {
 		t.Skip("OS keychain not available")
 	}
-	if err := Delete("gsql-test-missing", FieldPassword); err != nil {
+	if err := Delete("creel-test-missing", FieldPassword); err != nil {
 		t.Errorf("Delete of missing key = %v, want nil", err)
 	}
 }
@@ -139,7 +139,7 @@ func TestDeleteAllReportsFirstErrorButAttemptsAll(t *testing.T) {
 		t.Skip("OS keychain not available")
 	}
 	// DeleteAll on a never-stored connection is a clean no-op (all missing).
-	if err := DeleteAll("gsql-test-deleteall-clean"); err != nil {
+	if err := DeleteAll("creel-test-deleteall-clean"); err != nil {
 		t.Errorf("DeleteAll on clean connection = %v, want nil", err)
 	}
 }
@@ -182,7 +182,7 @@ func TestAIKeychainRoundTrip(t *testing.T) {
 	if !Available() {
 		t.Skip("OS keychain not available")
 	}
-	name := "gsql-test-ai-provider"
+	name := "creel-test-ai-provider"
 	t.Cleanup(func() { _ = DeleteAI(name) })
 
 	ref, err := StoreAI(name, "sk-test-123")
@@ -212,7 +212,7 @@ func TestDeleteAIMissingIsNotAnError(t *testing.T) {
 	if !Available() {
 		t.Skip("OS keychain not available")
 	}
-	if err := DeleteAI("gsql-test-ai-missing"); err != nil {
+	if err := DeleteAI("creel-test-ai-missing"); err != nil {
 		t.Errorf("DeleteAI of missing key = %v, want nil", err)
 	}
 }

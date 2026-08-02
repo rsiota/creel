@@ -59,7 +59,7 @@ func dumpSQL(w io.Writer, database DB, driver Driver, dbName string, tables []st
 // DumpHeader writes the dump preamble: comments and (MySQL) session-variable
 // setup comments. It is the first stage of an incremental dump.
 func DumpHeader(w io.Writer, driver Driver, dbName string, tableCount int) error {
-	fmt.Fprintf(w, "-- gsql SQL dump\n")
+	fmt.Fprintf(w, "-- creel SQL dump\n")
 	fmt.Fprintf(w, "-- driver: %s\n", driver)
 	fmt.Fprintf(w, "-- database: %s\n", dbName)
 	fmt.Fprintf(w, "-- tables: %d\n", tableCount)

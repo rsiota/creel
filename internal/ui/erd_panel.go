@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/db"
 )
 
 // ERDPanel displays a generated entity-relationship diagram as a scrollable,

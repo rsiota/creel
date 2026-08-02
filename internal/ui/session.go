@@ -1,6 +1,6 @@
 package ui
 
-import "github.com/ruben/gsql/internal/session"
+import "github.com/ruben/creel/internal/session"
 
 // sessionKey returns the (connection, database) pair the current workspace is
 // bound to — the key under which its state is persisted. ok is false when no
@@ -45,7 +45,7 @@ func (m *Model) saveSession() {
 // the active connection+database. With no session (or a blank one) the default
 // single "New Query" tab is left in place. It does not re-run any query — the
 // editor buffers are restored verbatim and the user runs them with ctrl+e,
-// mirroring the gsql -f startup flag (avoids stale data and side-effecting
+// mirroring the creel -f startup flag (avoids stale data and side-effecting
 // writes on reconnect).
 func (m *Model) restoreSession() {
 	conn, database, ok := m.sessionKey()

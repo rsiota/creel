@@ -1,4 +1,4 @@
-# gsql — Roadmap
+# creel — Roadmap
 
 Sourced from a code review on 2026-07-10. Nearly all of it has shipped; this
 file is now split into **Open work** (the live items, kept short so it stays a
@@ -196,7 +196,7 @@ palette). Never copy a key handler body into an ex executor. A full unified
 8. **Configurable query timeout** — superseded by #7.
 9. **Session restore** (2026-07-23) — new `internal/session` package persists
    `State{Tabs, Active}` as JSON keyed by (connection, database); restores the
-   editor buffer + last query (not results) on reconnect. `gsql -f` takes
+   editor buffer + last query (not results) on reconnect. `creel -f` takes
    precedence; all quit paths funnel through `beginQuit()`. `:session` manages
    it. Files: `internal/session/`, `session.go`, `connection_ops.go`, `app.go`,
    `excmd.go`, `excmd_registry.go`. Tests: `session_test.go`, `session_test.go`.
@@ -250,8 +250,8 @@ palette). Never copy a key handler body into an ex executor. A full unified
     `history_panel.go`, `styles.go`, `registry.go`, `app.go`. Tests:
     `history_test.go`, `history_panel_test.go`.
 14. **`.sql` file integration** (2026-07-17) — `:e`/`:edit`/`:w`/`:write` +
-    `gsql -f` startup flag; shared `expandTilde`/`loadStartupFile`. Files:
-    `excmd.go`, `import_prompt.go`, `cmd/gsql/main.go`, `statusbar.go`. Tests:
+    `creel -f` startup flag; shared `expandTilde`/`loadStartupFile`. Files:
+    `excmd.go`, `import_prompt.go`, `cmd/creel/main.go`, `statusbar.go`. Tests:
     `file_io_test.go`.
 15. **`:` command-set** (2026-07-17) — Tiers 1–3 complete; Tier 5 Waves A–E
     done (`:run`, `:qa`, `:tab*`, `:copy`, `:connect`/`:c`, `:connections`,

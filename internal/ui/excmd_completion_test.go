@@ -10,7 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/ruben/gsql/internal/config"
+	"github.com/ruben/creel/internal/config"
 )
 
 // TestExCompletionShowsAllOnOpen: typing ":" alone lists every command — the

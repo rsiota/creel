@@ -8,8 +8,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/db"
 )
 
 // queryExecutedMsg now carries a timedOut flag distinct from cancelled.

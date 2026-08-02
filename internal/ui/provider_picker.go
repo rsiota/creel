@@ -1,14 +1,14 @@
 package ui
 
 import (
-	"github.com/ruben/gsql/internal/config"
+	"github.com/ruben/creel/internal/config"
 )
 
 // ProviderPicker is the modal behind `M` on the assistant panel: it lists the
 // AI providers configured in the `ai:` block of the config and switches the
 // active one (which carries its own API key, base URL, and default model).
 // With no providers configured it is never shown — the panel falls back to the
-// GSQL_AI_* environment variables instead.
+// CREEL_AI_* environment variables instead.
 type ProviderPicker struct {
 	providers []config.AIProvider
 	cursor    int

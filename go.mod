@@ -1,4 +1,4 @@
-module github.com/ruben/gsql
+module github.com/ruben/creel
 
 go 1.26.4
 

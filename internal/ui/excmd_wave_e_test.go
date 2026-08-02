@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/gsql/internal/config"
+	"github.com/ruben/creel/internal/config"
 )
 
 func TestExTruncate(t *testing.T) {

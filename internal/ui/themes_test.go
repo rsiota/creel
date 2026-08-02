@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ruben/gsql/internal/config"
+	"github.com/ruben/creel/internal/config"
 )
 
 // paletteForTheme resolves known theme names to their palettes.

@@ -49,7 +49,7 @@ type Settings struct {
 
 	// TransparentBackground leaves the app's background unpainted so the
 	// terminal's own background (or window transparency / background image)
-	// shows through. By default gsql fills the background with the active
+	// shows through. By default creel fills the background with the active
 	// theme's bg colour — necessary for light themes, whose foreground
 	// palettes are unreadable on a dark terminal. Set this to make light
 	// themes look wrong in exchange for keeping transparency; the value is

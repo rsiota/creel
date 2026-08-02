@@ -6,7 +6,7 @@ import "github.com/charmbracelet/lipgloss"
 
 // generatedThemes maps normalized theme names to palettes derived from
 // iTerm2-Color-Schemes (Windows Terminal JSON format) by cmd/genthemes.
-// Each palette maps the scheme's 16 ANSI colors onto gsql's semantic slots
+// Each palette maps the scheme's 16 ANSI colors onto creel's semantic slots
 // (blue->primary, magenta->accent, green->success, red->err, yellow->warn,
 // cyan->mark, bright-black->muted); tint slots (borders, cursor row, status
 // bar, search/visual) are synthesized by interpolating between bg and fg,

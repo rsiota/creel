@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/gsql/internal/bookmarks"
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/bookmarks"
+	"github.com/ruben/creel/internal/db"
 )
 
 // Behavioral tests for the data-inspection verbs (:count, :sample/:head) and

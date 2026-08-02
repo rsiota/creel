@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/gsql/internal/config"
+	"github.com/ruben/creel/internal/config"
 )
 
 // newConnListModel builds a model in the connections state with the given

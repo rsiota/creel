@@ -1,4 +1,4 @@
-// Command genthemes derives gsql color palettes from iTerm2-Color-Schemes
+// Command genthemes derives creel color palettes from iTerm2-Color-Schemes
 // (Windows Terminal JSON format) and emits a Go source file that registers
 // them as generatedThemes in package ui.
 //
@@ -109,7 +109,7 @@ func contrast(a, b rgb) float64 {
 	return (la + 0.05) / (lb + 0.05)
 }
 
-// derive maps a terminal color scheme onto gsql's 19 semantic slots. Accent
+// derive maps a terminal color scheme onto creel's 19 semantic slots. Accent
 // slots come straight from the ANSI colors; tint slots (borders, cursor row,
 // status bar, search/visual) are synthesized by interpolating between bg and
 // fg. The unfocused border needs a light/dark branch (light themes fade toward
@@ -254,7 +254,7 @@ func emit(entries []genEntry) string {
 	b.WriteString("import \"github.com/charmbracelet/lipgloss\"\n\n")
 	b.WriteString("// generatedThemes maps normalized theme names to palettes derived from\n")
 	b.WriteString("// iTerm2-Color-Schemes (Windows Terminal JSON format) by cmd/genthemes.\n")
-	b.WriteString("// Each palette maps the scheme's 16 ANSI colors onto gsql's semantic slots\n")
+	b.WriteString("// Each palette maps the scheme's 16 ANSI colors onto creel's semantic slots\n")
 	b.WriteString("// (blue->primary, magenta->accent, green->success, red->err, yellow->warn,\n")
 	b.WriteString("// cyan->mark, bright-black->muted); tint slots (borders, cursor row, status\n")
 	b.WriteString("// bar, search/visual) are synthesized by interpolating between bg and fg,\n")

@@ -14,8 +14,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/ruben/gsql/internal/db"
-	"github.com/ruben/gsql/internal/version"
+	"github.com/ruben/creel/internal/db"
+	"github.com/ruben/creel/internal/version"
 )
 
 // exCmd is the vim-style ":" command line: a modal prompt at the bottom of the
@@ -1464,7 +1464,7 @@ func (m *Model) exEditFile(path string) tea.Cmd {
 	return nil
 }
 
-// loadStartupFile reads a .sql file into the editor for the `gsql -f` startup
+// loadStartupFile reads a .sql file into the editor for the `creel -f` startup
 // flag — the non-interactive counterpart of :e. It expands ~ and resolves
 // relative paths against the working directory (same as :e), returning the
 // expanded path on success or the read error otherwise. Run fails fast on the

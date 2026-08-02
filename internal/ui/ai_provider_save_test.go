@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/secrets"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/secrets"
 )
 
 // newProviderTestModel builds a workspace-state model with the config pointing
@@ -116,10 +116,10 @@ func TestSaveProviderFormRenameRekeys(t *testing.T) {
 		t.Skip("OS keychain not available")
 	}
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	name := "gsql-test-rename-before"
+	name := "creel-test-rename-before"
 	t.Cleanup(func() {
 		_ = secrets.DeleteAI(name)
-		_ = secrets.DeleteAI("gsql-test-rename-after")
+		_ = secrets.DeleteAI("creel-test-rename-after")
 	})
 
 	// Seed a keychain entry under the old name.
@@ -131,7 +131,7 @@ func TestSaveProviderFormRenameRekeys(t *testing.T) {
 	m := newProviderTestModel(t)
 	m.config.AddAIProvider(config.AIProvider{Name: name, APIKey: ref})
 	m.providerForm.ShowEdit(config.AIProvider{Name: name, APIKey: ref})
-	m.providerForm.fields[pfName].SetValue("gsql-test-rename-after")
+	m.providerForm.fields[pfName].SetValue("creel-test-rename-after")
 	// Keep keychain mode (inferred from the ref) so storeProviderSecret re-keys.
 
 	(&m).saveProviderForm()
@@ -140,7 +140,7 @@ func TestSaveProviderFormRenameRekeys(t *testing.T) {
 	if _, err := secrets.Resolve(ref); err == nil {
 		t.Error("old keychain entry should have been purged on rename")
 	}
-	saved := m.config.GetAIProvider("gsql-test-rename-after")
+	saved := m.config.GetAIProvider("creel-test-rename-after")
 	if saved == nil || !secrets.IsReference(saved.APIKey) {
 		t.Fatalf("renamed provider should hold a keychain ref, got %+v", saved)
 	}

@@ -20,7 +20,7 @@ import (
 // restoring are kept: the tab title, the editor buffer, and the last executed
 // statement. Result rows, cursors, and filters are intentionally not
 // persisted — the buffer is restored verbatim and the user re-runs it
-// (mirroring the gsql -f startup flag), which avoids stale data and
+// (mirroring the creel -f startup flag), which avoids stale data and
 // side-effecting writes on reconnect.
 type Tab struct {
 	Title     string `json:"title,omitempty"`

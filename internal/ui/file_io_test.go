@@ -129,7 +129,7 @@ func TestLineCount(t *testing.T) {
 	}
 }
 
-// loadStartupFile is the `gsql -f` startup loader (the non-interactive
+// loadStartupFile is the `creel -f` startup loader (the non-interactive
 // counterpart of :e). It shares :e's ~ expansion and relative-path handling;
 // unlike :e it returns the error rather than parking it in schemaMsg, so Run
 // can fail fast on a missing/unreadable file.

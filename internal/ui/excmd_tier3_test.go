@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/db"
 )
 
 // Tests for the Tier 3 small wins: :limit (page size), :timing (elapsed

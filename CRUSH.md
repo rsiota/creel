@@ -1,4 +1,4 @@
-# gsql — Project Memory
+# creel — Project Memory
 
 ## Overview
 A fast, memory-efficient SQL TUI inspired by [sqlit](https://github.com/Maxteabag/sqlit) (which is Python/Textual). Written in Go for speed. Currently supports **SQLite**, **MySQL**, and **PostgreSQL**.
@@ -9,19 +9,19 @@ A fast, memory-efficient SQL TUI inspired by [sqlit](https://github.com/Maxteaba
 - **SQLite**: `modernc.org/sqlite` (pure Go, no CGO required)
 - **MySQL**: `github.com/go-sql-driver/mysql`
 - **PostgreSQL**: `github.com/jackc/pgx/v5` (via `pgx/v5/stdlib` for `database/sql` compatibility)
-- **Config**: YAML (`gopkg.in/yaml.v3`), stored at `~/.config/gsql/config.yaml`. Secret fields (passwords, SSH passwords) default to the OS keychain via `github.com/zalando/go-keyring`; the YAML then holds `secret://<conn>/<field>` references resolved at connect time. Plaintext fallback when no keychain is available; a per-connection form field (`Secrets: keychain/plain`) opts out.
+- **Config**: YAML (`gopkg.in/yaml.v3`), stored at `~/.config/creel/config.yaml`. Secret fields (passwords, SSH passwords) default to the OS keychain via `github.com/zalando/go-keyring`; the YAML then holds `secret://<conn>/<field>` references resolved at connect time. Plaintext fallback when no keychain is available; a per-connection form field (`Secrets: keychain/plain`) opts out.
 
 ## Build & Run Commands
-- **Build**: `go build -o gsql ./cmd/gsql/`
+- **Build**: `go build -o creel ./cmd/creel/`
 - **Build all packages**: `go build ./...`
-- **Run TUI**: `./gsql`
-- **CLI mode**: `./gsql -e "SELECT * FROM users" -database /tmp/test.db`
+- **Run TUI**: `./creel`
+- **CLI mode**: `./creel -e "SELECT * FROM users" -database /tmp/test.db`
 - **Vet**: `go vet ./...`
 - **Tidy deps**: `go mod tidy`
 
 ## Architecture
 ```
-cmd/gsql/main.go          — Entry point (TUI + CLI modes)
+cmd/creel/main.go          — Entry point (TUI + CLI modes)
 internal/db/              — Database abstraction layer
   db.go                   — DB interface, Connection wrapper
   sqlite.go               — SQLite implementation
@@ -147,7 +147,7 @@ The `DB` interface also exposes catalog metadata used by the structure panel:
 - [x] **Secret storage** — `internal/secrets` wraps `github.com/zalando/go-keyring` (macOS Keychain / Windows Credential Manager / Linux Secret Service). `Store` writes a value and returns a `secret://<conn>/<field>` reference; `Resolve` turns a ref (or plaintext) back into the value. The connection form has a `Secrets` field (default `keychain`); `storeConnSecrets` (app.go) migrates password + ssh_password to refs on save, `resolveConnSecrets` (connection_ops.go) resolves refs at connect, `secretsModeFromConfig` infers the mode when editing, and `deleteSelectedConnection` purges keychain entries. `ssh_passphrase` (not in the form) is preserved across edits and resolved at connect. Falls back to plaintext (with a status message) when the keychain is unavailable. Backward compatible: plaintext values pass through unchanged.
 - [x] **Read-only / safe mode** — `ConnectionConfig.ReadOnly` (config `readonly: true`) plus a global `--readonly` CLI flag (`Model.forceReadOnly`, merged into the driver config at connect). Defense in depth: (1) a shared `rejectWriteIfReadOnly`/`isWriteQuery` guard in `db.go` classifies the statement and rejects writes in every driver's `Exec`/`ExecuteContext` with `ErrReadOnly`; `Begin`/`Session` are refused outright so transactional edits and imports cannot run. (2) the engine itself is opened read-only where supported — SQLite sets `PRAGMA query_only = ON` (covers the single connection), Postgres adds `default_transaction_read_only=on` to the startup params (every pooled connection); MySQL relies on the guard (no reliable pool-wide option). A `READ-ONLY` badge shows in the status bar. The connection form gained a `Read-only (yes/no)` toggle.
 
-## Config Format (~/.config/gsql/config.yaml)
+## Config Format (~/.config/creel/config.yaml)
 ```yaml
 connections:
   - name: local-dev

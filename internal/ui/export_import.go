@@ -12,7 +12,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/db"
 )
 
 // exportToCSV writes the current page to a CSV file in ~/Downloads. It is the
@@ -248,7 +248,7 @@ func exportFilename(table, timestamp string, format exportFormat) string {
 		name = "query"
 	}
 	ext := exportFormatExt[format]
-	return fmt.Sprintf("gsql_%s_%s.%s", name, timestamp, ext)
+	return fmt.Sprintf("creel_%s_%s.%s", name, timestamp, ext)
 }
 
 // exportStatusMessage renders the result of an export for the status bar.

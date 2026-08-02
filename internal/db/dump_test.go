@@ -48,7 +48,7 @@ func TestDumpSQL_BasicTable(t *testing.T) {
 
 	// Must contain expected structural elements.
 	for _, want := range []string{
-		"-- gsql SQL dump",
+		"-- creel SQL dump",
 		`DROP TABLE IF EXISTS "users";`,
 		`CREATE TABLE "users" (`,
 		`"id" INTEGER PRIMARY KEY`,

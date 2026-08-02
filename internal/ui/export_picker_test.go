@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/db"
 )
 
 func TestExportPicker_ShowAllMarked(t *testing.T) {

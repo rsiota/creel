@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/db"
-	"github.com/ruben/gsql/internal/ui"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/db"
+	"github.com/ruben/creel/internal/ui"
 )
 
 func main() {

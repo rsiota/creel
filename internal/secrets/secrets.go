@@ -5,7 +5,7 @@
 // github.com/zalando/go-keyring) and represented in configuration files as
 // opaque references of the form "secret://<key>". Resolve accepts either a
 // reference or a plaintext value and always returns the plaintext. This keeps
-// real passwords out of ~/.config/gsql/config.yaml while remaining backward
+// real passwords out of ~/.config/creel/config.yaml while remaining backward
 // compatible: any plaintext value is passed through unchanged.
 //
 // The keychain is optional. If the OS keychain is unavailable (headless Linux
@@ -22,8 +22,14 @@ import (
 )
 
 const (
-	// Service is the keychain service under which all gsql secrets are stored.
-	Service = "gsql"
+	// Service is the keychain service under which all creel secrets are stored.
+	Service = "creel"
+	// legacyService is the keychain service used by creel's predecessor (gsql).
+	// Secrets written by older builds live here; Resolve falls back to it so
+	// existing credentials keep working after the rename without any data move.
+	// New secrets are always written to Service, so users migrate as they
+	// re-save connections.
+	legacyService = "gsql"
 	// RefPrefix marks a configuration value as a keychain reference. Values
 	// starting with this prefix are resolved via Resolve rather than stored.
 	RefPrefix = "secret://"
@@ -72,7 +78,7 @@ func DeleteAI(name string) error {
 
 // availabilityProbeKey is a sentinel used by Available to detect a functional
 // keychain backend without reading or writing real data.
-const availabilityProbeKey = "__gsql_availability_probe__"
+const availabilityProbeKey = "__creel_availability_probe__"
 
 // MakeKey builds the keychain key for a connection's field. The key is stable
 // across runs as long as the connection name is unchanged.
@@ -137,7 +143,17 @@ func Resolve(value string) (string, error) {
 	key := strings.TrimPrefix(value, RefPrefix)
 	secret, err := keyring.Get(Service, key)
 	if err != nil {
-		return "", fmt.Errorf("reading %q from keychain: %w", key, err)
+		// Fall back to the legacy service so secrets stored by the predecessor
+		// (gsql) still resolve. Only ErrNotFound triggers the fallback; real
+		// keychain errors are still surfaced.
+		if !errors.Is(err, keyring.ErrNotFound) {
+			return "", fmt.Errorf("reading %q from keychain: %w", key, err)
+		}
+		legacy, lerr := keyring.Get(legacyService, key)
+		if lerr != nil {
+			return "", fmt.Errorf("reading %q from keychain: %w", key, err)
+		}
+		return legacy, nil
 	}
 	return secret, nil
 }

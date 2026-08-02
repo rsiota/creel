@@ -1,8 +1,8 @@
-# gsql
+# creel
 
 A fast, memory-efficient SQL TUI for **SQLite**, **MySQL**, and **PostgreSQL**, written in Go.
 
-Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `gsql` brings a vim-driven, keyboard-first workflow to browsing schemas, running queries, and editing data — all from the terminal.
+Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `creel` brings a vim-driven, keyboard-first workflow to browsing schemas, running queries, and editing data — all from the terminal.
 
 ## Features
 
@@ -16,7 +16,7 @@ Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `gsql`
 - **Inline editing** — edit cells directly, insert rows, clone rows, paste from clipboard
 - **Record inspector** — side panel with a vertical form view that tracks the results cursor
 - **Query history & bookmarks** — per-connection, persisted, searchable
-- **Session restore** — reopening a connection brings back your open tabs and editor buffers from the last visit (keyed per connection + database). Buffers are restored but not re-executed; a `gsql -f` startup file still takes precedence on first connect. `:session clear` wipes the saved snapshot, `:session save` snapshots now
+- **Session restore** — reopening a connection brings back your open tabs and editor buffers from the last visit (keyed per connection + database). Buffers are restored but not re-executed; a `creel -f` startup file still takes precedence on first connect. `:session clear` wipes the saved snapshot, `:session save` snapshots now
 - **EXPLAIN plans** — driver-aware rendering (`g e`) of query plans
 - **Schema editing** — add columns, rename tables, create/drop/truncate tables, and a grid-based table designer (`N`)
 - **Table structure view** (`d`) — a tabbed structure editor: columns (editable grid), foreign keys, indexes, check constraints, and triggers in one view, plus a definition tab for views
@@ -35,7 +35,7 @@ Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `gsql`
 ## Build
 
 ```sh
-go build -o gsql ./cmd/gsql/
+go build -o creel ./cmd/creel/
 ```
 
 ## Usage
@@ -43,18 +43,18 @@ go build -o gsql ./cmd/gsql/
 ### Interactive TUI
 
 ```sh
-./gsql
+./creel
 ```
 
-On first run, no config exists — use the connection list (`n` to add) to create connections, which are saved to `~/.config/gsql/config.yaml`.
+On first run, no config exists — use the connection list (`n` to add) to create connections, which are saved to `~/.config/creel/config.yaml`.
 
 ### CLI mode
 
 Execute a single query and print results as TSV:
 
 ```sh
-./gsql -e "SELECT * FROM users" -database /tmp/test.db
-./gsql -e "SHOW TABLES" -driver mysql -database myapp -host 10.0.0.5 -user admin -password secret
+./creel -e "SELECT * FROM users" -database /tmp/test.db
+./creel -e "SHOW TABLES" -driver mysql -database myapp -host 10.0.0.5 -user admin -password secret
 ```
 
 Flags:
@@ -72,7 +72,13 @@ Flags:
 
 ## Configuration
 
-Connections are stored at `~/.config/gsql/config.yaml`. Secret fields (passwords)
+> **Upgrading from gsql?** On first launch creel automatically moves
+> `~/.config/gsql/` to `~/.config/creel/` (connections, history, bookmarks,
+> sessions) and keeps reading any keychain secrets stored under the old
+> `gsql` service, so nothing needs to be re-entered. New secrets are written
+> under the `creel` service going forward.
+
+Connections are stored at `~/.config/creel/config.yaml`. Secret fields (passwords)
 default to the OS keychain; in that case the config holds an opaque reference
 instead of the real password:
 
@@ -117,8 +123,8 @@ specific connection.
 
 ### Read-only mode
 
-Point gsql at production safely by marking a connection `readonly: true` (see
-the `prod-pg` example below) or launching with `gsql --readonly` to force every
+Point creel at production safely by marking a connection `readonly: true` (see
+the `prod-pg` example below) or launching with `creel --readonly` to force every
 connection read-only. In either case writes are refused — `Exec`/`Execute`
 return an error for INSERT/UPDATE/DELETE/DDL, `Begin`/`Session` (imports) are
 blocked — and the connection is opened read-only at the engine level where the
@@ -191,9 +197,11 @@ ai:
       model: gpt-4o-mini                     # optional; set via `m`
 ```
 
-With no providers configured, gsql falls back to environment variables
-(`GSQL_AI_API_KEY` / `OPENAI_API_KEY` / `ZAI_API_KEY`, and optionally
-`GSQL_AI_BASE_URL` / `GSQL_AI_MODEL`), so the panel works with zero config.
+With no providers configured, creel falls back to environment variables
+(`CREEL_AI_API_KEY` / `OPENAI_API_KEY` / `ZAI_API_KEY`, and optionally
+`CREEL_AI_BASE_URL` / `CREEL_AI_MODEL`), so the panel works with zero config.
+The deprecated `GSQL_AI_*` equivalents are still honoured (in lower priority)
+for users upgrading from gsql.
 
 ### Settings
 
@@ -207,7 +215,7 @@ optional and fall back to defaults when omitted:
 | `default_driver` | sqlite       | Driver pre-filled in the add-connection form                             |
 | `theme`          | tokyo-night  | Palette: `tokyo-night`, `gruvbox`, `nord`, `catppuccin`, `light` + ~565 auto-derived from iTerm2-Color-Schemes (dracula, solarized, …). Unknown → default |
 | `icons`          | unicode      | Glyph set for tree expand/collapse markers (sidebar, connection groups, relationship explorer). `unicode` uses portable triangles (▾/▸); `nerdfont` uses Nerd Font angle chevrons (U+F107/U+F105) — open, rotationally-symmetric like treemacs, but only renders correctly in a terminal running a Nerd Font. Unknown → default |
-| `transparent_background` | false | By default gsql fills the app background with the theme's bg colour (required for light themes to be readable). Set `true` to leave it unpainted so the terminal's own background / transparency shows through — at the cost of light themes looking wrong. |
+| `transparent_background` | false | By default creel fills the app background with the theme's bg colour (required for light themes to be readable). Set `true` to leave it unpainted so the terminal's own background / transparency shows through — at the cost of light themes looking wrong. |
 | `confirm_destructive` | true | Destructive actions (drop table/database, truncate, delete rows, discard edits, drop column, delete provider/connection, clear history/bookmarks) prompt for confirmation. Set `false` to skip the prompts and run each action immediately. |
 
 ```yaml
@@ -354,7 +362,7 @@ In the add/edit form:
 ## Architecture
 
 ```
-cmd/gsql/main.go        Entry point (TUI + CLI modes)
+cmd/creel/main.go        Entry point (TUI + CLI modes)
 internal/db/            Database abstraction layer
   db.go                 DB interface + Connection wrapper
   sqlite.go             SQLite driver (modernc.org/sqlite, pure Go)

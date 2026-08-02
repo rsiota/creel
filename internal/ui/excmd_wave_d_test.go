@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/gsql/internal/version"
+	"github.com/ruben/creel/internal/version"
 )
 
 func TestExNew(t *testing.T) {
@@ -26,7 +26,7 @@ func TestExVersion(t *testing.T) {
 	if m.schemaMsg != want {
 		t.Errorf(":version -> %q, want %q", m.schemaMsg, want)
 	}
-	if !strings.HasPrefix(m.schemaMsg, "gsql ") && m.schemaMsg != "gsql (devel)" && m.schemaMsg != "gsql (unknown)" {
+	if !strings.HasPrefix(m.schemaMsg, "creel ") && m.schemaMsg != "creel (devel)" && m.schemaMsg != "creel (unknown)" {
 		t.Errorf(":version unexpected form %q", m.schemaMsg)
 	}
 }
@@ -128,7 +128,7 @@ func TestOpenTableRecordsRecent(t *testing.T) {
 
 func TestVersionString(t *testing.T) {
 	s := version.String()
-	if !strings.HasPrefix(s, "gsql") {
+	if !strings.HasPrefix(s, "creel") {
 		t.Errorf("version.String() = %q", s)
 	}
 }

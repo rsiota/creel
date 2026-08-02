@@ -1,9 +1,9 @@
 # Third-Party Theme Attribution
 
-gsql ships a large catalog of color themes auto-derived from the
+creel ships a large catalog of color themes auto-derived from the
 [iTerm2-Color-Schemes](https://github.com/mbadolato/iTerm2-Color-Schemes)
 project. These are the themes listed under "generated" in the theme picker
-(`g c`), distinct from gsql's hand-tuned curated themes (Tokyo Night, Gruvbox,
+(`g c`), distinct from creel's hand-tuned curated themes (Tokyo Night, Gruvbox,
 Nord, Catppuccin, Light).
 
 ## Source
@@ -17,11 +17,11 @@ Nord, Catppuccin, Light).
 
 ## Derivation
 
-Each scheme's 16 ANSI colors + background/foreground are mapped onto gsql's
+Each scheme's 16 ANSI colors + background/foreground are mapped onto creel's
 19 semantic color slots by `cmd/genthemes` (see its doc comment for the
 mapping). This is a mechanical derivation, not a port: the upstream color
 values are reused, but the semantic assignment (e.g. which color becomes the
-"primary" or "border") is gsql's. Schemes whose foreground/background contrast
+"primary" or "border") is creel's. Schemes whose foreground/background contrast
 fails WCAG AA (< 4.5:1) are skipped at generation time.
 
 ## Licenses
@@ -32,6 +32,6 @@ some per--theme exceptions). The original color values and theme names retain
 their authors' licenses and attribution; see the upstream repository for
 per-theme authorship and license details.
 
-gsql's derived palettes (`internal/ui/themes_generated.go`) are generated code
+creel's derived palettes (`internal/ui/themes_generated.go`) are generated code
 that reuses those color values; the generator's output header records the
 upstream source.

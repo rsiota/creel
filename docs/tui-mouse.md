@@ -1,6 +1,6 @@
 # TUI mouse handling notes
 
-Reference for mouse-event plumbing in `gsql`. Written to stop the same
+Reference for mouse-event plumbing in `creel`. Written to stop the same
 round-trips recurring — most of it was learned the hard way while building
 the ERD drag (2026-07-27) and is the prerequisite for the **hover tooltips**
 item on the `ROADMAP.md` ERD section.
@@ -16,7 +16,7 @@ bubbletea reports **left-button drag motion as `Type == MouseLeft` +
 `Action == MouseActionMotion`**, *not* as `Type == MouseMotion`.
 
 `Type == MouseMotion` is only set for **button-less** motion (hover), which
-gsql does not currently receive (see [Program options](#program-options)
+creel does not currently receive (see [Program options](#program-options)
 below — it needs `WithMouseAllMotion`, which we do not enable).
 
 So: if you route a drag by switching on `msg.Type`, every motion event
@@ -76,14 +76,14 @@ i.e. **motion keeps the button's `Type`**; only button-less motion (the
 default arm, `Button == MouseButtonNone`) is left as `MouseMotion`.
 
 Modifiers land on `msg.Alt`, `msg.Ctrl`, `msg.Shift` (set from the X10/SGR
-bit-flags). gsql uses `msg.Shift` to turn the vertical wheel sideways in
+bit-flags). creel uses `msg.Shift` to turn the vertical wheel sideways in
 the ERD (`mouse.go`).
 
 ---
 
 ## Program options
 
-Mouse reporting is opt-in at program start. gsql uses **cell motion**:
+Mouse reporting is opt-in at program start. creel uses **cell motion**:
 
 ```go
 // internal/ui/statusbar.go:372
@@ -92,7 +92,7 @@ p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 | Option | Delivers | Doesn't deliver |
 |--------|----------|-----------------|
-| `WithMouseCellMotion()` ← **gsql** | clicks, releases, wheel, and **motion only while a button is held** (drag) | button-less motion (hover) |
+| `WithMouseCellMotion()` ← **creel** | clicks, releases, wheel, and **motion only while a button is held** (drag) | button-less motion (hover) |
 | `WithMouseAllMotion()` | everything cell-motion delivers **plus button-less motion** (hover) | nothing mouse-related |
 | neither | nothing (mouse off) | — |
 
@@ -317,7 +317,7 @@ are the available detail today.
 
 - **SGR vs X10.** SGR (1006) gives reliable releases + large coordinates;
   X10 synthesises releases and caps at row/col 223. bubbletea auto-negotiates;
-  gsql code never reads which mode is active, and shouldn't start.
+  creel code never reads which mode is active, and shouldn't start.
 - **Release events are unreliable on X10 / some terminals.** This is *why*
   the ERD click logic also runs from the press path as a fallback shape —
   don't make a mouse feature depend solely on receiving a clean release.

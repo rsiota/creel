@@ -1,21 +1,21 @@
-// Package version reports the gsql build version for :version and CLI use.
+// Package version reports the creel build version for :version and CLI use.
 package version
 
 import (
 	"runtime/debug"
 )
 
-// String returns a short version label like "gsql v1.2.3" or "gsql (devel)"
+// String returns a short version label like "creel v1.2.3" or "creel (devel)"
 // when built without module version metadata (typical for `go run` / local
 // builds).
 func String() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
-		return "gsql (unknown)"
+		return "creel (unknown)"
 	}
 	v := info.Main.Version
 	if v == "" || v == "(devel)" {
-		return "gsql (devel)"
+		return "creel (devel)"
 	}
-	return "gsql " + v
+	return "creel " + v
 }

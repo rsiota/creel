@@ -7,8 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/secrets"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/secrets"
 )
 
 // FormField indices. The order is fixed; which of these are actually shown is

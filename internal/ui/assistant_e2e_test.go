@@ -7,17 +7,17 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/db"
 )
 
 // zaiKeyForTest returns a z.ai API key for integration tests, from $ZAI_API_KEY
 // or pi's auth.json. The whole live test is opt-in: it only runs when
-// $GSQL_AI_E2E is set, so an ordinary `go test ./...` never hits the network.
+// $CREEL_AI_E2E is set, so an ordinary `go test ./...` never hits the network.
 func zaiKeyForTest(t *testing.T) string {
 	t.Helper()
-	if os.Getenv("GSQL_AI_E2E") == "" {
-		t.Skip("GSQL_AI_E2E not set — skipping live integration test")
+	if os.Getenv("CREEL_AI_E2E") == "" {
+		t.Skip("CREEL_AI_E2E not set — skipping live integration test")
 	}
 	if k := os.Getenv("ZAI_API_KEY"); k != "" {
 		return k
@@ -44,7 +44,7 @@ func zaiKeyForTest(t *testing.T) string {
 // conversation context now carries the turn for follow-ups.
 func TestAssistantEndToEnd(t *testing.T) {
 	t.Setenv("ZAI_API_KEY", zaiKeyForTest(t))
-	t.Setenv("GSQL_AI_MODEL", "glm-4.6")
+	t.Setenv("CREEL_AI_MODEL", "glm-4.6")
 
 	dbPath := filepath.Join(t.TempDir(), "ai.db")
 	conn, err := db.New(db.ConnectionConfig{Driver: db.DriverSQLite, Database: dbPath})

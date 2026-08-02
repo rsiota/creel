@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/secrets"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/secrets"
 )
 
 func TestStoreConnSecretsPlainModeIsPassthrough(t *testing.T) {
@@ -31,7 +31,7 @@ func TestStoreConnSecretsKeychainStoresReferences(t *testing.T) {
 		t.Skip("OS keychain not available")
 	}
 	cfg := config.ConnectionConfig{
-		Name:        "gsql-store-test",
+		Name:        "creel-store-test",
 		Password:    "hunter2",
 		SSHPassword: "sshsecret",
 	}
@@ -62,8 +62,8 @@ func TestStoreConnSecretsLeavesExistingReferencesAlone(t *testing.T) {
 		t.Skip("OS keychain not available")
 	}
 	cfg := config.ConnectionConfig{
-		Name:     "gsql-store-ref-test",
-		Password: secrets.MakeRef("gsql-store-ref-test", secrets.FieldPassword),
+		Name:     "creel-store-ref-test",
+		Password: secrets.MakeRef("creel-store-ref-test", secrets.FieldPassword),
 	}
 	t.Cleanup(func() { _ = secrets.DeleteAll(cfg.Name) })
 

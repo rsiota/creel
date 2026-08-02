@@ -4,9 +4,9 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/db"
-	"github.com/ruben/gsql/internal/secrets"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/db"
+	"github.com/ruben/creel/internal/secrets"
 )
 
 // rollbackTxn rolls back and clears any active manual transaction. It is a

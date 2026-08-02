@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/db"
 )
 
 // Behavioral tests for the Step 5 ":" aliases. These cover the cheap-to-test
@@ -61,7 +61,7 @@ func TestExIconsAppliesAndPersists(t *testing.T) {
 	defer applyIcons("") // restore default triangles
 
 	// :icons persists via m.config.Save(); redirect the config dir so the test
-	// does not overwrite the user's real ~/.config/gsql/config.yaml.
+	// does not overwrite the user's real ~/.config/creel/config.yaml.
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	cfg := &config.Config{}

@@ -12,12 +12,12 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ruben/gsql/internal/bookmarks"
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/db"
-	"github.com/ruben/gsql/internal/history"
-	"github.com/ruben/gsql/internal/secrets"
-	"github.com/ruben/gsql/internal/session"
+	"github.com/ruben/creel/internal/bookmarks"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/db"
+	"github.com/ruben/creel/internal/history"
+	"github.com/ruben/creel/internal/secrets"
+	"github.com/ruben/creel/internal/session"
 )
 
 // Focus represents which panel currently has keyboard focus.
@@ -420,7 +420,7 @@ type Model struct {
 	tx                db.Tx // active manual transaction (:begin/:commit/:rollback); nil = autocommit
 	forceReadOnly     bool  // --readonly CLI flag: forces every connection read-only
 	sessionStore      *session.Store
-	startupFileLoaded bool // gsql -f: suppress the first session restore so the file wins
+	startupFileLoaded bool // creel -f: suppress the first session restore so the file wins
 	historyStore      *history.Store
 	historyNavEntries []string // cached queries for the current browse session
 	historyNavIdx     int      // -1 = not browsing; otherwise index into historyNavEntries (most recent = len-1)
@@ -1503,7 +1503,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// configured (env-only mode) there is no /models endpoint to query.
 		p, ok := m.activeProvider()
 		if !ok {
-			m.aiMsg = "configure an ai: provider in ~/.config/gsql/config.yaml to browse models"
+			m.aiMsg = "configure an ai: provider in ~/.config/creel/config.yaml to browse models"
 			return m, nil
 		}
 		m.modelBrowser.Show(p.Name, p.Model)

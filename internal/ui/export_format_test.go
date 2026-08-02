@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/db"
 )
 
 // JSON export emits an array of objects keyed by column name.
@@ -114,14 +114,14 @@ func TestSerializeFormatDispatch(t *testing.T) {
 func TestWriteExportJSON(t *testing.T) {
 	cols := []string{"id"}
 	rows := [][]string{{"1"}}
-	path, count, err := writeExport(fmtJSON, cols, rows, "gsql_test_unit.json")
+	path, count, err := writeExport(fmtJSON, cols, rows, "creel_test_unit.json")
 	if err != nil {
 		t.Fatalf("writeExport: %v", err)
 	}
 	if count != 1 {
 		t.Errorf("count=%d, want 1", count)
 	}
-	if !strings.HasSuffix(path, "gsql_test_unit.json") {
+	if !strings.HasSuffix(path, "creel_test_unit.json") {
 		t.Errorf("path=%s, want .json suffix", path)
 	}
 }

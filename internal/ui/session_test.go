@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/db"
 )
 
 // newNamedSQLiteConn opens a fresh SQLite database with a configured Name so
@@ -119,7 +119,7 @@ func TestSaveSessionNoopWithoutConnection(t *testing.T) {
 	}
 }
 
-// TestRestoreSkippedAfterStartupFile verifies that a `gsql -f` loaded buffer
+// TestRestoreSkippedAfterStartupFile verifies that a `creel -f` loaded buffer
 // is not clobbered by a restored session on the first connect, while a later
 // connect (switching connections) restores normally.
 func TestRestoreSkippedAfterStartupFile(t *testing.T) {

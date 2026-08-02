@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ruben/gsql/internal/history"
+	"github.com/ruben/creel/internal/history"
 )
 
 // TestHistoryPanelSlowestSort confirms ToggleSort reorders the visible list by

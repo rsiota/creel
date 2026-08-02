@@ -9,8 +9,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/db"
 )
 
 // popupDim returns the fixed popup dimensions matching the connection form.
@@ -357,7 +357,7 @@ func truncateSidebarLine(line string, maxVisible int) string {
 
 // Run starts the application.
 // Run starts the interactive TUI. If startupFile is non-empty it is loaded
-// into the editor before the program starts (the `gsql -f` flag); a read
+// into the editor before the program starts (the `creel -f` flag); a read
 // failure fails fast with a wrapped error before any UI is shown.
 func Run(cfg *config.Config, forceReadOnly bool, startupFile string) error {
 	m := NewModel(cfg)
@@ -386,9 +386,9 @@ func historyDir() string {
 	if configDir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return filepath.Join(".config", "gsql")
+			return filepath.Join(".config", "creel")
 		}
 		configDir = filepath.Join(home, ".config")
 	}
-	return filepath.Join(configDir, "gsql")
+	return filepath.Join(configDir, "creel")
 }

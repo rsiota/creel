@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/secrets"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/secrets"
 )
 
 // TestSecretConfigRoundTrip verifies the full save/load cycle: plaintext
@@ -20,7 +20,7 @@ func TestSecretConfigRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	const connName = "gsql-roundtrip"
+	const connName = "creel-roundtrip"
 	t.Cleanup(func() { _ = secrets.DeleteAll(connName) })
 
 	// Build a config as the form would (plaintext passwords).
@@ -40,7 +40,7 @@ func TestSecretConfigRoundTrip(t *testing.T) {
 	}
 
 	// The on-disk YAML must not leak plaintext.
-	data, err := os.ReadFile(filepath.Join(dir, "gsql", "config.yaml"))
+	data, err := os.ReadFile(filepath.Join(dir, "creel", "config.yaml"))
 	if err != nil {
 		t.Fatalf("read yaml: %v", err)
 	}

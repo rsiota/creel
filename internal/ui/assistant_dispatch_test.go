@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/db"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/db"
 )
 
 func TestCtrlFToggleDispatch(t *testing.T) {
@@ -315,7 +315,7 @@ func TestAIConfigProviderResolution(t *testing.T) {
 	}
 
 	// Unknown provider name, and no providers at all, both fall back to env.
-	t.Setenv("GSQL_AI_API_KEY", "envkey")
+	t.Setenv("CREEL_AI_API_KEY", "envkey")
 	m2 := NewModel(&config.Config{AI: config.AIConfig{Default: "missing", Providers: provs}})
 	if got := m2.aiConfig().APIKey; got != "envkey" {
 		t.Errorf("unknown provider should fall back to env: got APIKey %q", got)

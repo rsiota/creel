@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ruben/gsql/internal/bookmarks"
+	"github.com/ruben/creel/internal/bookmarks"
 )
 
 // BookmarkPanel renders a scrollable list of saved queries.

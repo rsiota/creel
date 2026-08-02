@@ -18,7 +18,7 @@ type Config struct {
 // AIConfig holds the AI provider configuration for the :ai / assistant
 // panel. Providers is a named list (each bundles an API key, base URL, and
 // default model); Default names the active one. With no providers configured
-// the app falls back to the GSQL_AI_* environment variables, so this block is
+// the app falls back to the CREEL_AI_* environment variables, so this block is
 // entirely optional.
 type AIConfig struct {
 	Default   string       `yaml:"default,omitempty"`
@@ -74,12 +74,39 @@ func ConfigPath() (string, error) {
 		configDir = filepath.Join(home, ".config")
 	}
 
-	appDir := filepath.Join(configDir, "gsql")
+	appDir := filepath.Join(configDir, "creel")
+
+	// One-time migration from the predecessor's config dir (gsql). If the new
+	// dir doesn't exist yet but the legacy one does, move it over so existing
+	// users keep their connections, history, bookmarks, and sessions. Rename is
+	// atomic and instant when both paths share a filesystem (they do: same
+	// parent). Skipped once the new dir exists, so it's safe on every run.
+	migrateLegacyConfigDir(filepath.Join(configDir, "gsql"), appDir)
+
 	if err := os.MkdirAll(appDir, 0755); err != nil {
 		return "", fmt.Errorf("could not create config directory: %w", err)
 	}
 
 	return filepath.Join(appDir, "config.yaml"), nil
+}
+
+// migrateLegacyConfigDir moves legacyDir onto newDir when newDir is absent and
+// legacyDir exists. Any error is reported on stderr but never fatal — the
+// caller then creates a fresh newDir, and the legacy data is left untouched.
+func migrateLegacyConfigDir(legacyDir, newDir string) {
+	if _, err := os.Stat(newDir); err == nil {
+		return // new dir already present (or created); nothing to migrate
+	}
+	if _, err := os.Stat(legacyDir); err != nil {
+		return // no legacy dir to migrate from
+	}
+	if err := os.Rename(legacyDir, newDir); err != nil {
+		// Cross-device rename (unlikely, same parent) or permission issue: leave
+		// the legacy dir in place rather than risk losing data.
+		fmt.Fprintf(os.Stderr, "creel: could not migrate %s -> %s (%v); leaving it in place\n", legacyDir, newDir, err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "creel: migrated config from %s to %s\n", legacyDir, newDir)
 }
 
 // Load reads the config file from disk. If the file does not exist, it returns

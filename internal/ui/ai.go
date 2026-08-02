@@ -8,10 +8,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/gsql/internal/ai"
-	"github.com/ruben/gsql/internal/config"
-	"github.com/ruben/gsql/internal/db"
-	"github.com/ruben/gsql/internal/secrets"
+	"github.com/ruben/creel/internal/ai"
+	"github.com/ruben/creel/internal/config"
+	"github.com/ruben/creel/internal/db"
+	"github.com/ruben/creel/internal/secrets"
 )
 
 // AI integration. The :ai <question> ex-command and the assistant panel build
@@ -24,7 +24,7 @@ import (
 // Providers are configured in the `ai:` config block (edited in-app via the
 // `M` picker → n/e provider form, which stores the API key in the OS keychain
 // as a secret:// ref). With no providers configured, the env vars
-// GSQL_AI_API_KEY / GSQL_AI_BASE_URL / GSQL_AI_MODEL are used as a fallback.
+// CREEL_AI_API_KEY / CREEL_AI_BASE_URL / CREEL_AI_MODEL are used as a fallback.
 
 // aiResultMsg carries the model's reply (raw + extracted SQL), or the
 // failure. toPanel routes the result: true appends to the assistant panel's
@@ -154,27 +154,29 @@ func (m Model) aiIntrospector() ai.SchemaIntrospector {
 }
 
 // aiConfigFromEnv reads the provider configuration from the environment.
-// It tries, in order, GSQL_AI_API_KEY, OPENAI_API_KEY, then ZAI_API_KEY (the
-// env var pi documents for z.ai) — so a z.ai setup inherited from pi works
-// with no extra wiring.
+// It tries, in order, CREEL_AI_API_KEY, the deprecated GSQL_AI_API_KEY,
+// OPENAI_API_KEY, then ZAI_API_KEY (the env var pi documents for z.ai) — so a
+// z.ai setup inherited from pi works with no extra wiring, and users upgrading
+// from gsql keep working until they migrate their shell rc. CREEL_AI_BASE_URL
+// and CREEL_AI_MODEL likewise fall back to their GSQL_AI_* equivalents.
 //
 // When the key is a z.ai key (sourced from ZAI_API_KEY) and the caller did not
 // pin an explicit base URL / model, the z.ai *coding* endpoint and a cheap GLM
 // model are used by default. This matters: z.ai coding-plan keys are rejected
 // on the generic /api/paas/v4 endpoint, which is the usual cause of an
 // "unauthorized" / "token expired or incorrect" error. Override either with
-// GSQL_AI_BASE_URL / GSQL_AI_MODEL. Pointing the base URL at a local runtime
+// CREEL_AI_BASE_URL / CREEL_AI_MODEL. Pointing the base URL at a local runtime
 // (e.g. http://localhost:11434/v1 for Ollama) makes :ai fully offline.
 func aiConfigFromEnv() ai.Config {
 	var key, src string
-	for _, env := range []string{"GSQL_AI_API_KEY", "OPENAI_API_KEY", "ZAI_API_KEY"} {
+	for _, env := range []string{"CREEL_AI_API_KEY", "GSQL_AI_API_KEY", "OPENAI_API_KEY", "ZAI_API_KEY"} {
 		if v := os.Getenv(env); v != "" {
 			key, src = v, env
 			break
 		}
 	}
-	baseURL := os.Getenv("GSQL_AI_BASE_URL")
-	model := os.Getenv("GSQL_AI_MODEL")
+	baseURL := envOrDeprecated("CREEL_AI_BASE_URL", "GSQL_AI_BASE_URL")
+	model := envOrDeprecated("CREEL_AI_MODEL", "GSQL_AI_MODEL")
 	if src == "ZAI_API_KEY" {
 		if baseURL == "" {
 			baseURL = "https://api.z.ai/api/coding/paas/v4"
@@ -218,6 +220,16 @@ func firstNonEmpty(vs ...string) string {
 	return ""
 }
 
+// envOrDeprecated returns name's value, falling back to deprecatedName when
+// name is unset/empty. Used so the CREEL_AI_* env vars keep honouring their
+// GSQL_AI_* predecessors until users migrate their shell configuration.
+func envOrDeprecated(name, deprecatedName string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return os.Getenv(deprecatedName)
+}
+
 // aiAuthHint returns a short, actionable suffix appended to AI auth failures.
 // The dominant real-world cause is a z.ai coding-plan key hitting the wrong
 // endpoint (the generic /api/paas/v4 path rejects it as "unauthorized" /
@@ -231,7 +243,7 @@ func aiAuthHint(err error) string {
 	switch {
 	case strings.Contains(s, "401"), strings.Contains(s, "403"),
 		strings.Contains(s, "unauthorized"), strings.Contains(s, "token expired"):
-		return " — check GSQL_AI_BASE_URL matches your provider (z.ai coding keys need the /api/coding/paas/v4 endpoint)"
+		return " — check CREEL_AI_BASE_URL matches your provider (z.ai coding keys need the /api/coding/paas/v4 endpoint)"
 	}
 	return ""
 }
@@ -298,7 +310,7 @@ func (m Model) effectiveProviderName() string {
 // aiConfig builds the AI client config. A configured provider wins (its API
 // key is resolved — plaintext or keychain secret:// ref — and its base URL /
 // model fall back to the ai defaults when empty); with no provider configured
-// it falls through to the GSQL_AI_* environment variables. This is the single
+// it falls through to the CREEL_AI_* environment variables. This is the single
 // place that resolves which key/endpoint/model a request actually uses.
 func (m Model) aiConfig() ai.Config {
 	if p, ok := m.activeProvider(); ok {
@@ -571,7 +583,7 @@ func (m *Model) dispatchAI(messages []ai.Message, toPanel bool, question string)
 		if _, ok := m.activeProvider(); ok {
 			m.aiMsg = "active AI provider has no api key — press M then e to set it"
 		} else {
-			m.aiMsg = "no AI provider configured — press M then n to add one (or set $GSQL_AI_API_KEY)"
+			m.aiMsg = "no AI provider configured — press M then n to add one (or set $CREEL_AI_API_KEY)"
 		}
 		return nil
 	}
