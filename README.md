@@ -100,14 +100,30 @@ erDiagram
 - **Pagination** — large result sets are paged (LIMIT/OFFSET) for speed and low memory
 - **CLI mode** — run a query and print results without launching the TUI
 
+## Install
+
+**Homebrew** (tap):
+
+```sh
+brew install rsiota/creel/creel
+```
+
+**go install**:
+
+```sh
+go install github.com/rsiota/creel/cmd/creel@latest
+```
+
 ## Requirements
 
-- Go 1.26+
+- Go 1.26+ (only needed to build from source)
 - A terminal with Unicode support
 
 ## Build
 
 ```sh
+git clone https://github.com/rsiota/creel.git
+cd creel
 go build -o creel ./cmd/creel/
 ```
 
