@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/creel/internal/config"
+	"github.com/rsiota/creel/internal/config"
 )
 
 // Each newly-sectioned context resolves to its registry section and yields

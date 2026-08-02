@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ruben/creel/internal/config"
+	"github.com/rsiota/creel/internal/config"
 )
 
 // groupedConns returns a mix of grouped and ungrouped connections used across

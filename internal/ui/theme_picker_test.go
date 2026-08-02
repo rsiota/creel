@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ruben/creel/internal/config"
+	"github.com/rsiota/creel/internal/config"
 )
 
 // Show positions the cursor on the active theme, treating empty as the default.

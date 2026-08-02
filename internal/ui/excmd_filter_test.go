@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/creel/internal/db"
+	"github.com/rsiota/creel/internal/db"
 )
 
 // Tests for the v2 ex-command wiring: :filter (the headline — connecting the :

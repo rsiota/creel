@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/creel/internal/config"
-	"github.com/ruben/creel/internal/db"
+	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/db"
 )
 
 // Regression test for stale size: SetSize is applied during View (a

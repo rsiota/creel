@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/ruben/creel/internal/config"
+	"github.com/rsiota/creel/internal/config"
 )
 
 func TestConnectionFormValidation(t *testing.T) {

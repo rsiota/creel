@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/creel/internal/db"
+	"github.com/rsiota/creel/internal/db"
 )
 
 func TestSchemaEditorRenameColumn(t *testing.T) {

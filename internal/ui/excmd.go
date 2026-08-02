@@ -14,8 +14,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/ruben/creel/internal/db"
-	"github.com/ruben/creel/internal/version"
+	"github.com/rsiota/creel/internal/db"
+	"github.com/rsiota/creel/internal/version"
 )
 
 // exCmd is the vim-style ":" command line: a modal prompt at the bottom of the

@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ruben/creel/internal/db"
+	"github.com/rsiota/creel/internal/db"
 )
 
 // ExplainPanel displays the output of EXPLAIN/EXPLAIN QUERY PLAN as a

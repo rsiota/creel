@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/creel/internal/config"
+	"github.com/rsiota/creel/internal/config"
 )
 
 // The docked relationship explorer (g r) resolves to its own registry section

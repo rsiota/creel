@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/creel/internal/db"
+	"github.com/rsiota/creel/internal/db"
 )
 
 // newSQLiteTestConn opens a fresh SQLite database in a per-test temp dir.

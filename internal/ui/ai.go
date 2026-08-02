@@ -8,10 +8,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/creel/internal/ai"
-	"github.com/ruben/creel/internal/config"
-	"github.com/ruben/creel/internal/db"
-	"github.com/ruben/creel/internal/secrets"
+	"github.com/rsiota/creel/internal/ai"
+	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/db"
+	"github.com/rsiota/creel/internal/secrets"
 )
 
 // AI integration. The :ai <question> ex-command and the assistant panel build

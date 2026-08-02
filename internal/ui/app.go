@@ -12,12 +12,12 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ruben/creel/internal/bookmarks"
-	"github.com/ruben/creel/internal/config"
-	"github.com/ruben/creel/internal/db"
-	"github.com/ruben/creel/internal/history"
-	"github.com/ruben/creel/internal/secrets"
-	"github.com/ruben/creel/internal/session"
+	"github.com/rsiota/creel/internal/bookmarks"
+	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/db"
+	"github.com/rsiota/creel/internal/history"
+	"github.com/rsiota/creel/internal/secrets"
+	"github.com/rsiota/creel/internal/session"
 )
 
 // Focus represents which panel currently has keyboard focus.

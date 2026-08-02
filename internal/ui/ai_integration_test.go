@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/creel/internal/ai"
-	"github.com/ruben/creel/internal/db"
+	"github.com/rsiota/creel/internal/ai"
+	"github.com/rsiota/creel/internal/db"
 )
 
 // TestSchemaContext_RealSQLite verifies the real db.DB → ai.SchemaIntrospector

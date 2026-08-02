@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ruben/creel/internal/config"
-	"github.com/ruben/creel/internal/db"
+	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/db"
 )
 
 // Tests for :tail — the append-only/event-table companion to :watch. It reuses

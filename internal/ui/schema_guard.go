@@ -3,7 +3,7 @@ package ui
 import (
 	"fmt"
 
-	"github.com/ruben/creel/internal/db"
+	"github.com/rsiota/creel/internal/db"
 )
 
 // GuardColumnAction returns an error message if a column action should not

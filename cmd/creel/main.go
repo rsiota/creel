@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ruben/creel/internal/config"
-	"github.com/ruben/creel/internal/db"
-	"github.com/ruben/creel/internal/ui"
+	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/db"
+	"github.com/rsiota/creel/internal/ui"
 )
 
 func main() {

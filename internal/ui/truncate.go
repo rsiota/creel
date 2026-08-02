@@ -3,7 +3,7 @@ package ui
 import (
 	"fmt"
 
-	"github.com/ruben/creel/internal/db"
+	"github.com/rsiota/creel/internal/db"
 )
 
 // buildTruncateQuery returns the SQL statement that removes all rows from a table.

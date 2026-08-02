@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ruben/creel/internal/config"
+	"github.com/rsiota/creel/internal/config"
 )
 
 // NewModel applies effective settings: page size, query timeout, and the

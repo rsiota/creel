@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/creel/internal/version"
+	"github.com/rsiota/creel/internal/version"
 )
 
 func TestExNew(t *testing.T) {

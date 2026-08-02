@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ruben/creel/internal/db"
+	"github.com/rsiota/creel/internal/db"
 )
 
 func TestInsertRowKeybindingOnEmptyTable(t *testing.T) {

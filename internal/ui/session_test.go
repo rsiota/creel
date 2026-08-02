@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/creel/internal/config"
-	"github.com/ruben/creel/internal/db"
+	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/db"
 )
 
 // newNamedSQLiteConn opens a fresh SQLite database with a configured Name so

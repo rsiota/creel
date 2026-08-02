@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/creel/internal/config"
-	"github.com/ruben/creel/internal/secrets"
+	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/secrets"
 )
 
 // newProviderTestModel builds a workspace-state model with the config pointing

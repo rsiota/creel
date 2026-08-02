@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/creel/internal/config"
-	"github.com/ruben/creel/internal/secrets"
+	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/secrets"
 )
 
 // TestSecretConfigRoundTrip verifies the full save/load cycle: plaintext

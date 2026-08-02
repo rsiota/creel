@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ruben/creel/internal/config"
-	"github.com/ruben/creel/internal/db"
+	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/db"
 )
 
 // newExportTestModel builds a Model wired to a temp SQLite DB with a `users`

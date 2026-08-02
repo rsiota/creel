@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ruben/creel/internal/db"
-	"github.com/ruben/creel/internal/history"
+	"github.com/rsiota/creel/internal/db"
+	"github.com/rsiota/creel/internal/history"
 )
 
 // Behavioral tests for :import and :rerun, plus the history-panel numbering

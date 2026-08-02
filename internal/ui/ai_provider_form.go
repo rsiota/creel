@@ -6,8 +6,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ruben/creel/internal/config"
-	"github.com/ruben/creel/internal/secrets"
+	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/secrets"
 )
 
 // AI provider form. This is the add/edit form opened from the `M` provider

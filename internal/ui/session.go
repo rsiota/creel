@@ -1,6 +1,6 @@
 package ui
 
-import "github.com/ruben/creel/internal/session"
+import "github.com/rsiota/creel/internal/session"
 
 // sessionKey returns the (connection, database) pair the current workspace is
 // bound to — the key under which its state is persisted. ok is false when no

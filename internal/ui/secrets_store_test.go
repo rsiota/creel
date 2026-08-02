@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/creel/internal/config"
-	"github.com/ruben/creel/internal/secrets"
+	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/secrets"
 )
 
 func TestStoreConnSecretsPlainModeIsPassthrough(t *testing.T) {

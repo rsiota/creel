@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/creel/internal/config"
-	"github.com/ruben/creel/internal/db"
+	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/db"
 )
 
 // Behavioral tests for the Step 5 ":" aliases. These cover the cheap-to-test

@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/ruben/creel/internal/config"
+	"github.com/rsiota/creel/internal/config"
 )
 
 // ProviderPicker is the modal behind `M` on the assistant panel: it lists the

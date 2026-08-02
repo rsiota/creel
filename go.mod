@@ -1,4 +1,4 @@
-module github.com/ruben/creel
+module github.com/rsiota/creel
 
 go 1.26.4
 

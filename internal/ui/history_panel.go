@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ruben/creel/internal/history"
+	"github.com/rsiota/creel/internal/history"
 )
 
 // HistoryPanel renders a scrollable list of past queries.

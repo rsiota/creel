@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ruben/creel/internal/config"
+	"github.com/rsiota/creel/internal/config"
 )
 
 func TestSyncEditorQuery(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ruben/creel/internal/ai"
+	"github.com/rsiota/creel/internal/ai"
 )
 
 // setAIEnv sets the given env vars for the duration of the test, restoring the
