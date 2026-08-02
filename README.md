@@ -4,6 +4,74 @@ A fast, memory-efficient SQL TUI for **SQLite**, **MySQL**, and **PostgreSQL**, 
 
 Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `creel` brings a vim-driven, keyboard-first workflow to browsing schemas, running queries, and editing data — all from the terminal.
 
+<details>
+<summary><b>Entity-relationship diagram of the bundled demo database</b></summary>
+
+(`demo/schema.sql` — a small e-commerce schema; `g R` inside creel renders the interactive version.)
+
+```mermaid
+erDiagram
+    users ||--o{ addresses   : has
+    users ||--o{ orders      : places
+    users ||--o{ reviews     : writes
+    categories ||--o{ categories : "parent of"
+    categories ||--o{ products   : contains
+    products ||--o{ order_items : "ordered as"
+    products ||--o{ reviews     : "reviewed in"
+    orders ||--o{ order_items   : contains
+    orders ||--o{ payments      : "paid by"
+
+    users {
+        INTEGER id PK
+        TEXT    email
+        TEXT    name
+        TEXT    role
+    }
+    categories {
+        INTEGER id PK
+        TEXT    name
+        INTEGER parent_id FK
+    }
+    products {
+        INTEGER id PK
+        TEXT    name
+        REAL    price
+        INTEGER category_id FK
+    }
+    addresses {
+        INTEGER id PK
+        INTEGER user_id FK
+        TEXT    city
+        TEXT    country
+    }
+    orders {
+        INTEGER id PK
+        INTEGER user_id FK
+        TEXT    status
+        REAL    total
+    }
+    order_items {
+        INTEGER id PK
+        INTEGER order_id FK
+        INTEGER product_id FK
+        INTEGER quantity
+    }
+    reviews {
+        INTEGER id PK
+        INTEGER user_id FK
+        INTEGER product_id FK
+        INTEGER rating
+    }
+    payments {
+        INTEGER id PK
+        INTEGER order_id FK
+        TEXT    method
+        REAL    amount
+    }
+```
+
+</details>
+
 ## Features
 
 - **Three databases, one interface** — connect to SQLite, MySQL, or PostgreSQL (with SSH tunneling for remote MySQL)
