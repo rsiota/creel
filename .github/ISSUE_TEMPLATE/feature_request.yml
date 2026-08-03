@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest an idea for creel
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      placeholder: "I keep wanting to ..., but creel currently makes it awkward because ..."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would help?
+      description: The outcome you'd like. No need to design the exact keybinding or command.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered

@@ -4,10 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/rsiota/creel/internal/config"
 	"github.com/rsiota/creel/internal/db"
 	"github.com/rsiota/creel/internal/ui"
+	"github.com/rsiota/creel/internal/version"
 )
 
 func main() {
@@ -22,6 +24,7 @@ func main() {
 		passFlag     string
 		cliMode      bool
 		readOnlyFlag bool
+		versionFlag  bool
 	)
 
 	flag.StringVar(&queryFlag, "e", "", "Execute SQL query and exit (CLI mode)")
@@ -34,7 +37,15 @@ func main() {
 	flag.StringVar(&passFlag, "password", "", "Database password (MySQL only)")
 	flag.BoolVar(&cliMode, "cli", false, "Run in CLI mode (non-interactive)")
 	flag.BoolVar(&readOnlyFlag, "readonly", false, "Force read-only mode for all connections (reject writes)")
+	flag.BoolVar(&versionFlag, "version", false, "Print version information and exit")
 	flag.Parse()
+
+	if versionFlag {
+		fmt.Println(version.String())
+		fmt.Printf("  go:       %s\n", runtime.Version())
+		fmt.Printf("  platform: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+		return
+	}
 
 	// CLI mode: execute query and print results
 	if queryFlag != "" || cliMode {

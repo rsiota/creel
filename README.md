@@ -164,6 +164,7 @@ Flags:
 | `-user`     | Username (MySQL/Postgres)                          | `root`    |
 | `-password` | Password (MySQL/Postgres)                          |           |
 | `-cli`      | Force CLI mode                                     | `false`   |
+| `-version`  | Print version information and exit                 |           |
 
 ## Configuration
 

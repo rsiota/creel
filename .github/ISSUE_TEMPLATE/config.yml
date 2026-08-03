@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/rsiota/creel/security/policy
+    about: Found a security issue? Please use the security policy instead of a public issue.

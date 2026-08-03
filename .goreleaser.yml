@@ -1,0 +1,66 @@
+# GoReleaser config for creel.
+# Docs: https://goreleaser.com
+#
+# Triggered by .github/workflows/release.yml on `git push --tags v*`.
+# Builds cross-platform binaries and publishes a GitHub Release with checksums
+# and a changelog.
+#
+# The Homebrew tap is maintained separately. GoReleaser deprecated the `brews`
+# publisher (in favour of macOS-only `homebrew_casks`), so the existing tap
+# formula at rsiota/homebrew-creel is kept as-is rather than auto-managed here.
+# To point it at a new release, update its `url`/`sha256` to the matching
+# assets in the GitHub Release.
+
+version: 2
+
+project_name: creel
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: creel
+    main: ./cmd/creel
+    binary: creel
+    env:
+      - CGO_ENABLED=0 # pure-Go (modernc.org/sqlite) — cross-compiles cleanly
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/rsiota/creel/internal/version.Version={{.Tag}}
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- if eq .Os "darwin" }}macOS
+      {{- else }}{{ title .Os }}{{ end }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^style:"
+      - "Merge pull request"
+      - "Merge branch"
+
+release:
+  draft: false
+  prerelease: auto
+  name_template: "{{ .Tag }}"

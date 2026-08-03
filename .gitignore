@@ -1,6 +1,9 @@
 # Binary
 /creel
 
+# GoReleaser build output
+/dist
+
 # Go
 *.test
 *.out
