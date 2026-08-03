@@ -1,9 +1,11 @@
 # creel
 
 <p align="center">
-  <img src="docs/images/creel-erd.png" alt="creel — static ERD of the demo database" width="760">
+  <a href="docs/images/demo.gif">
+    <img src="docs/images/demo.gif" alt="creel — recorded demo" width="760">
+  </a>
 </p>
-<p align="center"><em>Static ERD (<code>g R</code>) of the bundled demo database</em></p>
+<p align="center"><em>A quick tour of creel, recorded with <a href="https://asciinema.org">asciinema</a>. Play it live and interactive: <code>asciinema play demo.cast</code></em></p>
 
 A fast, memory-efficient SQL TUI for **SQLite**, **MySQL**, and **PostgreSQL**, written in Go.
 
@@ -13,6 +15,10 @@ Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `creel
 <summary><b>Entity-relationship diagram of the bundled demo database</b></summary>
 
 (`demo/schema.sql` — a small e-commerce schema; `g R` inside creel renders the interactive version.)
+
+<p align="center">
+  <img src="docs/images/creel-erd.png" alt="creel — static ERD of the demo database" width="720">
+</p>
 
 ```mermaid
 erDiagram
