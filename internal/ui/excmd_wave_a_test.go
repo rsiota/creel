@@ -193,6 +193,11 @@ func TestExCopy(t *testing.T) {
 		}
 	})
 	t.Run("copies cell", func(t *testing.T) {
+		// :copy writes to the real system clipboard; skip where none exists
+		// (e.g. headless CI runners without xsel/xclip/wl-clipboard).
+		if _, err := clipboard.ReadAll(); err != nil {
+			t.Skipf("clipboard unavailable: %v", err)
+		}
 		m := &Model{results: NewResultsTable()}
 		m.results.SetResult([]string{"id", "name"}, [][]string{{"1", "alice"}}, "")
 		m.results.SetCursor(0, 1)
