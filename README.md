@@ -1,6 +1,13 @@
 # creel
 
 <p align="center">
+  <a href="https://github.com/rsiota/creel/actions/workflows/ci.yml"><img src="https://github.com/rsiota/creel/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/rsiota/creel/releases/latest"><img src="https://img.shields.io/github/v/release/rsiota/creel?logo=github" alt="GitHub Release"></a>
+  <a href="https://pkg.go.dev/github.com/rsiota/creel"><img src="https://pkg.go.dev/badge/github.com/rsiota/creel.svg" alt="Go Reference"></a>
+  <a href="https://goreportcard.com/report/github.com/rsiota/creel"><img src="https://goreportcard.com/badge/github.com/rsiota/creel" alt="Go Report Card"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/rsiota/creel?color=blue" alt="License"></a>
+</p>
+<p align="center">
   <a href="docs/images/demo.gif">
     <img src="docs/images/demo.gif" alt="creel — recorded demo" width="760">
   </a>
