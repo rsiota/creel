@@ -1,0 +1,162 @@
+# Features
+
+An overview of everything creel can do. For keys, see
+[Keybindings](keybindings.md); for connection and app settings, see
+[Configuration](configuration.md).
+
+## Connecting
+
+- **Three databases, one interface** — connect to SQLite, MySQL, or PostgreSQL,
+  with SSH tunneling for remote MySQL.
+- **Secret storage** — passwords and SSH passwords are stored in the OS keychain
+  (macOS Keychain, Windows Credential Manager, Linux Secret Service) rather than
+  plaintext config, falling back to plaintext on systems without a keychain. See
+  [Configuration → Secret storage](configuration.md#secret-storage).
+- **Read-only mode** — point creel at production safely. See
+  [Configuration → Read-only mode](configuration.md#read-only-mode).
+
+## Browsing
+
+- **Table browser** — expand/collapse columns, inspect schemas, fuzzy-filter
+  tables.
+- **Results grid** — sort, filter, search, hide/show columns, follow foreign
+  keys (`g d`), mark and bulk-delete rows. Large result sets are paged
+  (LIMIT/OFFSET) for speed and low memory.
+
+### Relationship explorer (`g r` / `:explore panel`)
+
+A docked panel that browses a row like a folder: an expandable object-graph
+tree of the focused row's inbound and outbound foreign keys, with a live
+per-edge count. Expand an edge (`→`) to see the related rows inline, expand a
+row to see *its* edges, and so on (depth-capped); `Enter` opens a node in the
+grid, `←` collapses, `r` retargets. The panel stays open and re-roots as the
+cursor moves. Counts and child rows fan out concurrently across all three
+drivers.
+
+### Static ERD (`g R` / `:erd`)
+
+Renders a graphical entity-relationship diagram in a scrollable panel: bordered
+table cards laid out in dependency-ranked columns with box-drawing arrows from
+each FK to the PK it references (◆ = PK, ◇ = FK). `m` toggles to the Mermaid
+`erDiagram` source; `y`/`s` copy/save the Mermaid (renders natively in
+GitHub/GitLab markdown).
+
+Navigate by mouse — hover a card to pop up a tooltip of the info it doesn't
+already show (an expanded card lists its FK references, e.g.
+`user_id → users.id`, which you'd otherwise trace an arrow for; a collapsed
+card reveals its hidden columns), click a card to highlight its relationships
+(dimming the rest), double-click to re-centre, or in a focused ERD click a
+related table's header (marked `◎`) to re-focus on its neighbourhood — or by
+keyboard: `j`/`k`/`h`/`l` move a focus between cards (the viewport follows),
+`Space` highlights the focused card, `Enter` re-focuses the ERD on it, `/`
+jumps to a table by name (`Tab` cycles matches), `p` traces the shortest FK
+path between two tables (anchor one, move to the other, `p` again), `zz` fits
+all cards to the viewport, `zc`/`zo`/`za` collapse/expand/toggle a focused card
+to a header-only bar to declutter dense schemas (▸ marks a folded card),
+`zM`/`zR` collapse/expand every card at once (the layout contracts to reclaim
+the freed space, arrows re-route, and the view reframes), and `g`/`G`/`ctrl+d`/
+`ctrl+u` page the view.
+
+<details>
+<summary><b>Mermaid source for the bundled demo database</b></summary>
+
+(`demo/schema.sql` — a small e-commerce schema; `g R` inside creel renders the
+interactive version.)
+
+```mermaid
+erDiagram
+    users ||--o{ addresses   : has
+    users ||--o{ orders      : places
+    users ||--o{ reviews     : writes
+    categories ||--o{ categories : "parent of"
+    categories ||--o{ products   : contains
+    products ||--o{ order_items : "ordered as"
+    products ||--o{ reviews     : "reviewed in"
+    orders ||--o{ order_items   : contains
+    orders ||--o{ payments      : "paid by"
+
+    users {
+        INTEGER id PK
+        TEXT    email
+        TEXT    name
+        TEXT    role
+    }
+    categories {
+        INTEGER id PK
+        TEXT    name
+        INTEGER parent_id FK
+    }
+    products {
+        INTEGER id PK
+        TEXT    name
+        REAL    price
+        INTEGER category_id FK
+    }
+    addresses {
+        INTEGER id PK
+        INTEGER user_id FK
+        TEXT    city
+        TEXT    country
+    }
+    orders {
+        INTEGER id PK
+        INTEGER user_id FK
+        TEXT    status
+        REAL    total
+    }
+    order_items {
+        INTEGER id PK
+        INTEGER order_id FK
+        INTEGER product_id FK
+        INTEGER quantity
+    }
+    reviews {
+        INTEGER id PK
+        INTEGER user_id FK
+        INTEGER product_id FK
+        INTEGER rating
+    }
+    payments {
+        INTEGER id PK
+        INTEGER order_id FK
+        TEXT    method
+        REAL    amount
+    }
+```
+
+</details>
+
+### EXPLAIN, search, statistics
+
+- **EXPLAIN plans** — driver-aware rendering (`g e`) of query plans.
+- **Cross-table search** (`S`) and **column statistics** (`g s`).
+
+## Editing
+
+- **Inline editing** — edit cells directly, insert rows, clone rows, paste from
+  clipboard.
+- **Record inspector** — side panel with a vertical form view that tracks the
+  results cursor.
+- **Schema editing** — add columns, rename tables, create/drop/truncate tables,
+  and a grid-based table designer (`N`).
+- **Table structure view** (`d`) — a tabbed structure editor: columns (editable
+  grid), foreign keys, indexes, check constraints, and triggers in one view,
+  plus a definition tab for views.
+- **Import / export** — streaming SQL dump importer (`I`) and a pure-Go
+  `mysqldump`-compatible exporter (`X`); result-set export via the `g X` dialog
+  (format, columns, and whole-table/marked/page scope) or instant CSV (`x`).
+
+## Workflow
+
+- **Vim-mode editor** — normal/insert modes, motions (`h/j/k/l`, `w/b`),
+  operators (`dd`, `dw`, `x`, `D`), yank/paste, and SQL autocompletion.
+- **Query history & bookmarks** — per-connection, persisted, searchable.
+- **Session restore** — reopening a connection brings back your open tabs and
+  editor buffers from the last visit (keyed per connection + database). Buffers
+  are restored but not re-executed; a `creel -f` startup file still takes
+  precedence on first connect. `:session clear` wipes the saved snapshot,
+  `:session save` snapshots now.
+- **Command palette** (`Ctrl+P`) and a full **help overlay** (`?`).
+- **AI assistant** — turn a natural-language question into SQL using any
+  OpenAI-compatible endpoint. See
+  [Configuration → AI assistant](configuration.md#ai-assistant).

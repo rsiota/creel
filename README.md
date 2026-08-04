@@ -18,100 +18,63 @@ A fast, memory-efficient SQL TUI for **SQLite**, **MySQL**, and **PostgreSQL**, 
 
 Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `creel` brings a vim-driven, keyboard-first workflow to browsing schemas, running queries, and editing data — all from the terminal.
 
-<details>
-<summary><b>Entity-relationship diagram of the bundled demo database</b></summary>
+## Quickstart
 
-(`demo/schema.sql` — a small e-commerce schema; `g R` inside creel renders the interactive version.)
-
-<p align="center">
-  <img src="docs/images/creel-erd.png" alt="creel — static ERD of the demo database" width="720">
-</p>
-
-```mermaid
-erDiagram
-    users ||--o{ addresses   : has
-    users ||--o{ orders      : places
-    users ||--o{ reviews     : writes
-    categories ||--o{ categories : "parent of"
-    categories ||--o{ products   : contains
-    products ||--o{ order_items : "ordered as"
-    products ||--o{ reviews     : "reviewed in"
-    orders ||--o{ order_items   : contains
-    orders ||--o{ payments      : "paid by"
-
-    users {
-        INTEGER id PK
-        TEXT    email
-        TEXT    name
-        TEXT    role
-    }
-    categories {
-        INTEGER id PK
-        TEXT    name
-        INTEGER parent_id FK
-    }
-    products {
-        INTEGER id PK
-        TEXT    name
-        REAL    price
-        INTEGER category_id FK
-    }
-    addresses {
-        INTEGER id PK
-        INTEGER user_id FK
-        TEXT    city
-        TEXT    country
-    }
-    orders {
-        INTEGER id PK
-        INTEGER user_id FK
-        TEXT    status
-        REAL    total
-    }
-    order_items {
-        INTEGER id PK
-        INTEGER order_id FK
-        INTEGER product_id FK
-        INTEGER quantity
-    }
-    reviews {
-        INTEGER id PK
-        INTEGER user_id FK
-        INTEGER product_id FK
-        INTEGER rating
-    }
-    payments {
-        INTEGER id PK
-        INTEGER order_id FK
-        TEXT    method
-        REAL    amount
-    }
+```sh
+brew install rsiota/creel/creel        # or: go install github.com/rsiota/creel/cmd/creel@latest
+creel                                  # press n to add a connection, or point at any SQLite file
 ```
 
-</details>
+To explore the bundled sample database (shown in the demo and screenshots):
+
+```sh
+git clone https://github.com/rsiota/creel.git && cd creel
+creel -database demo/creel-demo.db     # then press g R for the ERD, g r on a row for its relationships
+```
 
 ## Features
 
-- **Three databases, one interface** — connect to SQLite, MySQL, or PostgreSQL (with SSH tunneling for remote MySQL)
-- **Secret storage** — passwords and SSH passwords are stored in the OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service) rather than plaintext config; falls back to plaintext on systems without a keychain
-- **Vim-mode editor** — normal/insert modes, motions (`h/j/k/l`, `w/b`), operators (`dd`, `dw`, `x`, `D`), yank/paste, and SQL autocompletion
-- **Table browser** — expand/collapse columns, inspect schemas, fuzzy-filter tables
-- **Results grid** — sort, filter, search, hide/show columns, follow foreign keys (`g d`), mark and bulk-delete rows
-- **Relationship explorer** (`g r` / `:explore panel`) — a docked panel that browses a row like a folder: an expandable object-graph tree of the focused row's inbound and outbound foreign keys, with a live per-edge count. Expand an edge (`→`) to see the related rows inline, expand a row to see *its* edges, and so on (depth-capped); `Enter` opens a node in the grid, `←` collapses, `r` retargets. The panel stays open and re-roots as the cursor moves. Counts and child rows fan out concurrently across all three drivers
-- **Static ERD** (`g R` / `:erd`) — renders a graphical entity-relationship diagram in a scrollable panel: bordered table cards laid out in dependency-ranked columns with box-drawing arrows from each FK to the PK it references (◆ = PK, ◇ = FK). `m` toggles to the Mermaid `erDiagram` source; `y`/`s` copy/save the Mermaid (renders natively in GitHub/GitLab markdown). Navigate by mouse — hover a card to pop up a tooltip of the info it doesn't already show (an expanded card lists its FK references, e.g. `user_id → users.id`, which you'd otherwise trace an arrow for; a collapsed card reveals its hidden columns), click a card to highlight its relationships (dimming the rest), double-click to re-centre, or in a focused ERD click a related table's header (marked `◎`) to re-focus on its neighbourhood — or by keyboard: `j`/`k`/`h`/`l` move a focus between cards (the viewport follows), `Space` highlights the focused card, `Enter` re-focuses the ERD on it, `/` jumps to a table by name (`Tab` cycles matches), `p` traces the shortest FK path between two tables (anchor one, move to the other, `p` again), `zz` fits all cards to the viewport, `zc`/`zo`/`za` collapse/expand/toggle a focused card to a header-only bar to declutter dense schemas (▸ marks a folded card), `zM`/`zR` collapse/expand every card at once (the layout contracts to reclaim the freed space, arrows re-route, and the view reframes), and `g`/`G`/`ctrl+d`/`ctrl+u` page the view
-- **Inline editing** — edit cells directly, insert rows, clone rows, paste from clipboard
-- **Record inspector** — side panel with a vertical form view that tracks the results cursor
-- **Query history & bookmarks** — per-connection, persisted, searchable
-- **Session restore** — reopening a connection brings back your open tabs and editor buffers from the last visit (keyed per connection + database). Buffers are restored but not re-executed; a `creel -f` startup file still takes precedence on first connect. `:session clear` wipes the saved snapshot, `:session save` snapshots now
-- **EXPLAIN plans** — driver-aware rendering (`g e`) of query plans
-- **Schema editing** — add columns, rename tables, create/drop/truncate tables, and a grid-based table designer (`N`)
-- **Table structure view** (`d`) — a tabbed structure editor: columns (editable grid), foreign keys, indexes, check constraints, and triggers in one view, plus a definition tab for views
-- **Read-only mode** — a per-connection `readonly: true` flag or a global `--readonly` CLI flag that rejects writes (INSERT/UPDATE/DELETE/DDL), blocks transactions and imports, and opens the connection read-only at the engine level (SQLite `query_only`, Postgres `default_transaction_read_only`); a `READ-ONLY` indicator shows in the status bar
-- **Import / export** — streaming SQL dump importer (`I`) and a pure-Go `mysqldump`-compatible exporter (`X`); result-set export via the `g X` dialog (format, columns, and whole-table/marked/page scope) or instant CSV (`x`)
-- **Cross-table search** (`S`) and **column statistics** (`g s`)
-- **Command palette** (`Ctrl+P`) and a full **help overlay** (`?`)
-- **Pagination** — large result sets are paged (LIMIT/OFFSET) for speed and low memory
-- **CLI mode** — run a query and print results without launching the TUI
+**Connect**
+
+- Three databases, one interface — SQLite, MySQL, and PostgreSQL, with SSH tunneling for remote MySQL.
+- Secret storage — passwords live in the OS keychain (macOS/Windows/Linux), never plaintext config.
+- Read-only mode — point creel at production safely; per-connection flag or global `--readonly`.
+
+**Browse**
+
+- Table browser — expand columns, inspect schemas, fuzzy-filter.
+- Results grid — sort, filter, search, hide columns, follow foreign keys (`g d`).
+- Relationship explorer (`g r`) — browse a row's inbound/outbound FK graph like a folder.
+- Static ERD (`g R`) — graphical entity-relationship diagram; exportable as Mermaid.
+- EXPLAIN plans (`g e`), cross-table search (`S`), column statistics (`g s`).
+
+**Edit**
+
+- Inline editing — edit cells, insert/clone rows, paste from clipboard.
+- Schema editing — add columns, rename/drop/truncate tables, table designer (`N`), structure view (`d`).
+- Import / export — streaming SQL dump importer (`I`), `mysqldump`-compatible exporter (`X`), CSV/result export.
+
+**Workflow**
+
+- Vim-mode editor — normal/insert modes, motions, operators, SQL autocompletion.
+- Query history & bookmarks — per-connection, persisted, searchable.
+- Session restore — reopen a connection to find your tabs and buffers as you left them.
+- Record inspector — side panel form view tracking the results cursor.
+- Command palette (`Ctrl+P`) and help overlay (`?`).
+
+**Run anywhere** — large result sets are paged for speed and low memory, and a CLI mode runs a query and prints results without the TUI.
+
+See [Features](docs/features.md) for the full detail on the relationship explorer and ERD.
+
+## Documentation
+
+| Topic | Description |
+| --- | --- |
+| [Features](docs/features.md) | What creel can do, in depth. |
+| [Keybindings](docs/keybindings.md) | Every key in every panel (also `?` in-app). |
+| [Configuration](docs/configuration.md) | `config.yaml`, secrets, read-only mode, groups, AI assistant, settings, themes. |
+| [CLI mode](docs/cli.md) | Running queries headlessly with flags. |
+| [Demo database](demo/README.md) | The bundled e-commerce schema used in the screenshots. |
 
 ## Install
 
@@ -127,12 +90,7 @@ brew install rsiota/creel/creel
 go install github.com/rsiota/creel/cmd/creel@latest
 ```
 
-## Requirements
-
-- Go 1.26+ (only needed to build from source)
-- A terminal with Unicode support
-
-## Build
+**Build from source** (requires Go 1.26+):
 
 ```sh
 git clone https://github.com/rsiota/creel.git
@@ -140,327 +98,7 @@ cd creel
 go build -o creel ./cmd/creel/
 ```
 
-## Usage
-
-### Interactive TUI
-
-```sh
-./creel
-```
-
-On first run, no config exists — use the connection list (`n` to add) to create connections, which are saved to `~/.config/creel/config.yaml`.
-
-### CLI mode
-
-Execute a single query and print results as TSV:
-
-```sh
-./creel -e "SELECT * FROM users" -database /tmp/test.db
-./creel -e "SHOW TABLES" -driver mysql -database myapp -host 10.0.0.5 -user admin -password secret
-```
-
-Flags:
-
-| Flag        | Description                                        | Default   |
-| ----------- | -------------------------------------------------- | --------- |
-| `-e`        | SQL query to execute (enables CLI mode)            |           |
-| `-driver`   | `sqlite`, `mysql`, or `postgres`                   | `sqlite`  |
-| `-database` | Database name (SQLite path or MySQL/PG database)   |           |
-| `-host`     | Database host (MySQL/Postgres)                     | `localhost` |
-| `-port`     | Database port (MySQL/Postgres)                     | `3306`    |
-| `-user`     | Username (MySQL/Postgres)                          | `root`    |
-| `-password` | Password (MySQL/Postgres)                          |           |
-| `-cli`      | Force CLI mode                                     | `false`   |
-| `-version`  | Print version information and exit                 |           |
-
-## Configuration
-
-> **Upgrading from gsql?** On first launch creel automatically moves
-> `~/.config/gsql/` to `~/.config/creel/` (connections, history, bookmarks,
-> sessions) and keeps reading any keychain secrets stored under the old
-> `gsql` service, so nothing needs to be re-entered. New secrets are written
-> under the `creel` service going forward.
-
-Connections are stored at `~/.config/creel/config.yaml`. Secret fields (passwords)
-default to the OS keychain; in that case the config holds an opaque reference
-instead of the real password:
-
-```yaml
-connections:
-  - name: local-dev
-    driver: sqlite
-    database: /path/to/db.sqlite
-  - name: staging
-    driver: mysql
-    database: myapp
-    host: 10.0.0.5
-    port: 3306
-    username: admin
-    password: secret://staging/password   # looked up in the OS keychain
-    group: Work                            # optional folder in the connection list
-  - name: prod-pg
-    driver: postgres
-    database: analytics
-    host: db.internal
-    port: 5432
-    username: readonly
-    password: secret://prod-pg/password
-  # MySQL behind a bastion host
-  - name: tunneled
-    driver: mysql
-    database: reports
-    host: 10.0.0.20
-    port: 3306
-    username: admin
-    password: secret://tunneled/password
-    ssh_host: bastion.example.com
-    ssh_port: 22
-    ssh_user: deploy
-    ssh_key_path: ~/.ssh/id_ed25519
-```
-
-A `password:` value that is **not** a `secret://` reference is treated as
-plaintext and used directly, so existing configs keep working. Set the
-connection form's **Secrets** field to `plain` to opt out of the keychain for a
-specific connection.
-
-### Read-only mode
-
-Point creel at production safely by marking a connection `readonly: true` (see
-the `prod-pg` example below) or launching with `creel --readonly` to force every
-connection read-only. In either case writes are refused — `Exec`/`Execute`
-return an error for INSERT/UPDATE/DELETE/DDL, `Begin`/`Session` (imports) are
-blocked — and the connection is opened read-only at the engine level where the
-driver supports it. A `READ-ONLY` badge appears in the status bar.
-
-```yaml
-connections:
-  - name: prod-pg
-    driver: postgres
-    database: analytics
-    host: db.internal
-    port: 5432
-    username: readonly
-    password: secret://prod-pg/password
-    readonly: true
-```
-
-### Connection groups
-
-Give a connection a `group` to organize the connection list into collapsible
-folders (see the `staging` example above):
-
-```yaml
-connections:
-  - name: staging
-    driver: mysql
-    # ...
-    group: Work
-  - name: personal-db
-    driver: sqlite
-    database: ~/notes.db
-    group: Personal
-```
-
-In the connection list, grouped connections render indented under `▾ Group`
-headers (with a connection count), ungrouped ones lead under "Ungrouped", then
-named groups alphabetically. Press `space` (or `tab`) to fold/unfold the group
-under the cursor, or `enter` on a header to toggle it. Filtering (`/`) flattens
-the list to ranked matches regardless of groups. Connections with no `group`
-render exactly as before when none of your connections use groups.
-
-### AI assistant
-
-The assistant panel (and the `:ai` command) turn a natural-language question
-into SQL using any OpenAI-compatible endpoint (OpenAI, z.ai, OpenRouter,
-Ollama, LM Studio, …). Configure it **in-app** from the assistant panel:
-
-- `M` opens the provider picker. From there `n` adds a provider, `e` edits the
-  one under the cursor, `d` deletes it (a `y/n` prompt confirms first, like
-  deleting a connection), and `enter` makes one the active default.
-- The add/edit form collects a **Name**, **API Key**, **Base URL**, and a
-  **Secrets** toggle (`keychain` / `plain`). In `keychain` mode (the default)
-  the API key is stored in the OS keychain as a `secret://` reference — never
-  written to the config file in plaintext — exactly like a connection password.
-- `ctrl+t` in the form probes the provider's `/models` endpoint and reports
-  `✓ reachable` or the real error (a valid key pointed at the wrong endpoint
-  is the usual cause of a confusing "unauthorized").
-- `m` (from the panel) browses the models the active provider exposes and
-  pins one as that provider's `model:`.
-
-The same data lives under an `ai:` block if you prefer to hand-edit:
-
-```yaml
-ai:
-  default: openai
-  providers:
-    - name: openai
-      api_key: secret://ai/openai/api_key   # keychain ref (set by the form)
-      base_url: https://api.openai.com/v1   # optional; defaults to OpenAI
-      model: gpt-4o-mini                     # optional; set via `m`
-```
-
-With no providers configured, creel falls back to environment variables
-(`CREEL_AI_API_KEY` / `OPENAI_API_KEY` / `ZAI_API_KEY`, and optionally
-`CREEL_AI_BASE_URL` / `CREEL_AI_MODEL`), so the panel works with zero config.
-The deprecated `GSQL_AI_*` equivalents are still honoured (in lower priority)
-for users upgrading from gsql.
-
-### Settings
-
-Top-level app preferences live under a `settings:` block. All fields are
-optional and fall back to defaults when omitted:
-
-| Key              | Default      | Description                                                              |
-| ---------------- | ------------ | ------------------------------------------------------------------------ |
-| `page_size`      | 200          | Rows fetched per page in results                                         |
-| `query_timeout`  | 30s          | Per-query deadline (friendly form: `2m`, `1h30m`, or a bare seconds int). `off` / `none` (or a negative value) disables the deadline entirely — `esc` still cancels |
-| `default_driver` | sqlite       | Driver pre-filled in the add-connection form                             |
-| `theme`          | tokyo-night  | Palette: `tokyo-night`, `gruvbox`, `nord`, `catppuccin`, `light` + ~565 auto-derived from iTerm2-Color-Schemes (dracula, solarized, …). Unknown → default |
-| `icons`          | unicode      | Glyph set for tree expand/collapse markers (sidebar, connection groups, relationship explorer). `unicode` uses portable triangles (▾/▸); `nerdfont` uses Nerd Font angle chevrons (U+F107/U+F105) — open, rotationally-symmetric like treemacs, but only renders correctly in a terminal running a Nerd Font. Unknown → default |
-| `transparent_background` | false | By default creel fills the app background with the theme's bg colour (required for light themes to be readable). Set `true` to leave it unpainted so the terminal's own background / transparency shows through — at the cost of light themes looking wrong. |
-| `confirm_destructive` | true | Destructive actions (drop table/database, truncate, delete rows, discard edits, drop column, delete provider/connection, clear history/bookmarks) prompt for confirmation. Set `false` to skip the prompts and run each action immediately. |
-
-```yaml
-settings:
-  page_size: 500
-  query_timeout: 1m
-  default_driver: postgres
-  theme: gruvbox
-  icons: nerdfont
-  confirm_destructive: false
-```
-
-`query_timeout` accepts values like `30s`, `2m`, `1h30m`, or a bare number of
-seconds (`45`). An invalid value makes config load fail loudly rather than
-silently falling back. An unknown `theme` silently falls back to the default
-rather than blocking startup. (`cursor_style` is reserved for upcoming work.)
-
-To experiment with themes live, press `g c` in the workspace to open the
-theme picker (a scrollable, filterable overlay — type to filter by name,
-`↑`/`↓` to preview); moving the selection re-themes the UI immediately,
-`enter` saves the choice to config, and `esc` reverts. The theme's background
-is painted too, so light themes preview correctly. See `THIRDPARTY.md`
-for theme attribution.
-
-## Keybindings
-
-Press `?` inside the TUI for the full overlay, or `Ctrl+P` for the fuzzy command palette.
-
-### Global
-
-| Key             | Action                          |
-| --------------- | ------------------------------- |
-| `ctrl+e` / `\`  | Run statement under cursor      |
-| `ctrl+r`        | Refresh schema & re-run query   |
-| `esc` / `ctrl+c`| Cancel running query            |
-| `ctrl+w`        | Maximize / restore editor       |
-| `ctrl+t`        | Switch connection               |
-| `ctrl+b`        | Browse databases (MySQL)        |
-| `ctrl+y`        | Query history                   |
-| `ctrl+g`        | Bookmarks                       |
-| `B`             | Bookmark current query          |
-| `ctrl+o`        | Toggle record inspector         |
-| `ctrl+h/j/k/l`  | Move focus between panels       |
-| `tab` / `shift+tab` | Cycle focus                |
-| `ctrl+d` / `ctrl+u` | Next / previous page        |
-| `ctrl+p`        | Command palette                 |
-| `:`             | Ex command line (`:q`, `:sort`, `:goto`, …) |
-| `g c`           | Theme picker (live preview)     |
-| `?`             | Toggle help                     |
-| `q` / `ctrl+q`  | Quit (not while editing)        |
-
-### Connections
-
-| Key        | Action                          |
-| ---------- | ------------------------------- |
-| `enter`    | Connect to selected             |
-| `n`        | New connection                  |
-| `e`        | Edit connection                 |
-| `d`        | Delete connection               |
-| `/`        | Filter connections              |
-
-In the add/edit form:
-
-| Key        | Action                          |
-| ---------- | ------------------------------- |
-| `tab`      | Next field                      |
-| `enter`    | Save                            |
-| `ctrl+t`   | Test connection (no save)       |
-| `esc`      | Cancel                          |
-
-### Sidebar (Tables)
-
-| Key        | Action                    |
-| ---------- | ------------------------- |
-| `j/k`      | Move                      |
-| `g g` / `G`| Top / bottom              |
-| `space`    | Expand columns            |
-| `enter` / `s` | `SELECT *` from table  |
-| `d`        | Structure (columns/indexes/FKs/checks/triggers) |
-| `a`        | Add column                |
-| `r`        | Rename table              |
-| `T`        | Truncate table            |
-| `D`        | Drop table                |
-| `N`        | New table (grid editor)   |
-| `X`        | Export database            |
-| `I`        | Import SQL dump           |
-| `S`        | Cross-table search        |
-| `/`        | Filter tables             |
-
-### Editor (Vim)
-
-| Key          | Action                          |
-| ------------ | ------------------------------- |
-| `i/a/o/A/O`  | Enter insert mode               |
-| `esc`        | Normal mode                     |
-| `h/j/k/l`, `w/b` | Move                       |
-| `x` / `dd` / `dw` / `D` | Delete              |
-| `y` / `p`    | Yank / paste                    |
-| `ctrl+n`     | Autocomplete                    |
-| `==`         | Format SQL                      |
-
-### Results
-
-| Key        | Action                                       |
-| ---------- | -------------------------------------------- |
-| `h/j/k/l`  | Move cursor                                  |
-| `0` / `$`  | First / last column                          |
-| `g g` / `G`| Top / bottom                                 |
-| `/`        | Search all columns                           |
-| `g /`      | Regex search                                 |
-| `n` / `N`   | Next / previous match                       |
-| `o`        | Sort column                                  |
-| `g s`      | Column statistics                            |
-| `g e`      | Explain query plan                           |
-| `g d`      | Follow foreign key                           |
-| `g b`      | Go back                                      |
-| `g r`      | Relationship explorer (row's FK graph)       |
-| `g R`      | Static ERD (table cards + arrows)            |
-| `*`        | Keep rows equal to cursor cell               |
-| `!`        | Hide rows equal to cursor cell               |
-| `g f`      | Filter column values                         |
-| `space`    | Toggle row mark                              |
-| `F`        | Filter by marked rows                        |
-| `C`        | Clear marks                                  |
-| `u`        | Undo last filter                             |
-| `c`        | Clear filters                                |
-| `V`        | Visual mode (select range)                   |
-| `dd`       | Delete marked or cursor row                  |
-| `e`        | Edit cell                                    |
-| `E`        | Expand cell (large values)                   |
-| `ctrl+s`   | Save edits                                   |
-| `A`        | Insert new row                               |
-| `D`        | Discard edits                                |
-| `H`        | Hide column                                  |
-| `g H`      | Show all columns                             |
-| `v`        | Column visibility overlay                    |
-| `:`        | Ex command line (`:q`, `:sort`, `:goto`, …; column jump in results) |
-| `y` / `p`  | Copy cell / paste to cell                    |
-| `Y`        | Copy rows as INSERT statements               |
-| `P`        | Clone marked/cursor row                      |
-| `x`        | Export current page to CSV                 |
-| `g X`      | Export dialog (format · columns · scope)   |
+The config lives at `~/.config/creel/config.yaml` and is created on first run.
 
 ## Architecture
 
@@ -494,6 +132,22 @@ internal/ui/            Bubble Tea components
 - **Pure-Go SQLite** — no CGO, which simplifies cross-compilation.
 - **Keybinding registry** — `registry.go` is the single source of truth for both the help overlay and the command palette, with a drift-detection test ensuring documented keys are actually wired.
 
+## Upgrading from gsql
+
+On first launch creel automatically migrates `~/.config/gsql/` to `~/.config/creel/` (connections, history, bookmarks, sessions) and keeps reading keychain secrets stored under the old `gsql` service. See [Configuration](docs/configuration.md) for details.
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md).
+
+## Contributing
+
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md)
+for how to build, test, and add keybindings or database drivers, and
+[ROADMAP.md](ROADMAP.md) for the direction of the project. Bug reports and
+feature requests use the [issue templates](.github/ISSUE_TEMPLATE). This
+project follows the [Contributor Covenant](CODE_OF_CONDUCT.md) code of conduct.
+
 ## License
 
-MIT
+[MIT](LICENSE)
