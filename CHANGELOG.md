@@ -1,0 +1,47 @@
+# Changelog
+
+All notable changes to creel are documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+GitHub Release notes are copied from this file at release time; the GoReleaser
+auto-changelog is kept only as a fallback (it excludes `docs:`/`ci:`/`test:`
+commits, so it can come up empty).
+
+## [Unreleased]
+
+## [0.1.1] - 2026-08-03
+
+A follow-up to the initial release: release tooling, install options, and docs polish.
+
+### Added
+- `-version` flag to print build version information.
+- Homebrew install (`brew install rsiota/creel/creel`) and `go install` quick-start.
+- Asciinema demo in the README.
+- Issue templates (bug report, feature request) and a security policy ([SECURITY.md](SECURITY.md)).
+
+### Changed
+- Releases are now built and published with GoReleaser — cross-platform binaries (Linux/macOS/Windows on amd64/arm64) with checksums.
+
+## [0.1.0] - 2026-08-02
+
+First public release. creel succeeds `gsql` (the project was renamed) and migrates `~/.config/gsql/` to `~/.config/creel/` automatically on first launch.
+
+### Added
+- **Three databases, one interface** — SQLite, MySQL, and PostgreSQL, with SSH tunneling for remote MySQL.
+- **Vim-mode editor** — normal/insert modes, motions (`h/j/k/l`, `w/b`), operators (`dd`, `dw`, `x`, `D`), yank/paste, and SQL autocompletion.
+- **Static ERD** (`g R`) — graphical entity-relationship diagram with box-drawing FK arrows; fit-to-screen, collapse/expand, hover tooltips, and Mermaid export.
+- **Relationship explorer** (`g r`) — browse a row's inbound/outbound foreign keys as an expandable object graph.
+- **Results grid** — sort, filter, regex search, hide/show columns, follow foreign keys, mark and bulk-delete rows.
+- **Inline editing** — edit cells, insert/clone rows, paste from clipboard.
+- **Schema editing** — add columns, rename/create/drop/truncate tables, and a grid-based table designer.
+- **Import / export** — streaming SQL dump importer and a pure-Go `mysqldump`-compatible exporter.
+- **Secret storage** — passwords and SSH keys live in the OS keychain, never in plaintext config.
+- **AI assistant** — natural-language → SQL via any OpenAI-compatible endpoint (key stored in the keychain).
+- **Read-only mode** for safely pointing at production.
+- **Session restore**, per-connection query history & bookmarks, EXPLAIN plans, and ~570 themes.
+
+[Unreleased]: https://github.com/rsiota/creel/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/rsiota/creel/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/rsiota/creel/releases/tag/v0.1.0

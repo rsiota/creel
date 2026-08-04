@@ -79,7 +79,8 @@ subject line short and imperative. Scope is optional but used for UI work
    on every push (`.github/workflows/ci.yml`).
 4. Reference any issue the PR closes (`Closes #123`).
 5. For user-facing changes, update the relevant doc under `docs/` and the
-   README if needed.
+   README if needed, and add an entry under **[Unreleased]** in
+   [CHANGELOG.md](CHANGELOG.md).
 
 ## Reporting issues
 
