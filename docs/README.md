@@ -18,6 +18,7 @@ is a quickstart; the pages below are the reference.
 
 ## Internals
 
+- [**Architecture**](architecture.md) — subsystem map and the design decisions behind the driver interface, Elm state machine, keybinding registry, and more.
 - [**Command registry**](command-registry.md) — design notes on unifying `:`
   commands, keybindings, and the palette into one action layer.
 - [**TUI mouse handling**](tui-mouse.md) — notes on Bubble Tea mouse-event

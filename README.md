@@ -75,6 +75,7 @@ See [Features](docs/features.md) for the full detail on the relationship explore
 | [Configuration](docs/configuration.md) | `config.yaml`, secrets, read-only mode, groups, AI assistant, settings, themes. |
 | [CLI mode](docs/cli.md) | Running queries headlessly with flags. |
 | [Demo database](demo/README.md) | The bundled e-commerce schema used in the screenshots. |
+| [Architecture](docs/architecture.md) | Subsystem map and design decisions. |
 
 ## Install
 
@@ -125,12 +126,7 @@ internal/ui/            Bubble Tea components
   palette.go            Fuzzy command palette (Ctrl+P)
 ```
 
-### Design notes
-
-- **Driver interface** — `internal/db/db.go` defines the `DB` interface; every driver implements it, so adding a new database is self-contained.
-- **Elm architecture** — the UI is an immutable state machine in `app.go` (`stateConnections` → `stateWorkspace`), with focus cycling between panels.
-- **Pure-Go SQLite** — no CGO, which simplifies cross-compilation.
-- **Keybinding registry** — `registry.go` is the single source of truth for both the help overlay and the command palette, with a drift-detection test ensuring documented keys are actually wired.
+For the full subsystem map and design decisions, see [docs/architecture.md](docs/architecture.md).
 
 ## Upgrading from gsql
 

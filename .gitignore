@@ -22,3 +22,7 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
+
+# Local agent context/state
+.crush/
+CRUSH.md
