@@ -66,6 +66,19 @@ creel -database demo/creel-demo.db     # then press g R for the ERD, g r on a ro
 
 See [Features](docs/features.md) for the full detail on the relationship explorer and ERD.
 
+## How creel compares
+
+creel isn't trying to replace a database GUI — it's a fast, keyboard-first terminal tool. A few reference points:
+
+| | creel | dbcli (pgcli / mycli / litecli) | sqlit | usq |
+| --- | --- | --- | --- | --- |
+| Language | Go — one static binary, no runtime deps | Python | Python | Go |
+| Databases | SQLite, MySQL, PostgreSQL | one tool per database | SQLite, MySQL, PostgreSQL, SQL Server, Turso, … | many drivers |
+| Interaction | vim modal editor + editable results grid | REPL prompt (optional vi mode) + pager | TUI | prompt-style (psql-like) |
+| Schema view | ERD (`g R`) + relationship explorer (`g r`) | — | — | — |
+
+In short: the **dbcli** tools are mature, battle-tested REPLs with excellent autocompletion — reach for them if you want a smart prompt. **sqlit** (which inspired creel) is a polished multi-database TUI in Python/Textual. **usq** is a Go universal CLI spanning many drivers. creel's angle is a **single, dependency-free Go binary** with a **vim-native editor** and **graphical schema exploration** built for browsing and editing relational data quickly.
+
 ## Documentation
 
 | Topic | Description |
