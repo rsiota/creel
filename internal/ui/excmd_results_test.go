@@ -29,6 +29,43 @@ func TestExCopyInsert(t *testing.T) {
 	})
 }
 
+func TestExCopyRow(t *testing.T) {
+	t.Run("no rows", func(t *testing.T) {
+		m := &Model{results: NewResultsTable()}
+		m.runExCommand("copyrow")
+		if !strings.Contains(m.schemaMsg, "nothing to copy") {
+			t.Errorf(":copyrow with no rows -> %q", m.schemaMsg)
+		}
+	})
+	t.Run("copies cursor row as tsv by default", func(t *testing.T) {
+		m := &Model{results: NewResultsTable()}
+		m.results.SetResult([]string{"a", "b"}, [][]string{{"1", "2"}}, "")
+		cmd := m.runExCommand("copyrow")
+		if cmd == nil {
+			t.Fatalf(":copyrow -> %q", m.schemaMsg)
+		}
+		if !strings.Contains(m.exportMsg, "copied 1 row as tsv") {
+			t.Errorf("exportMsg = %q", m.exportMsg)
+		}
+	})
+	t.Run("honours format argument", func(t *testing.T) {
+		m := &Model{results: NewResultsTable()}
+		m.results.SetResult([]string{"a", "b"}, [][]string{{"1", "2"}}, "")
+		m.runExCommand("copyrow csv")
+		if !strings.Contains(m.exportMsg, "as csv") {
+			t.Errorf(":copyrow csv -> %q", m.exportMsg)
+		}
+	})
+	t.Run("rejects unknown format", func(t *testing.T) {
+		m := &Model{results: NewResultsTable()}
+		m.results.SetResult([]string{"a"}, [][]string{{"1"}}, "")
+		m.runExCommand("copyrow xml")
+		if !strings.Contains(m.schemaMsg, "format must be one of") {
+			t.Errorf(":copyrow xml -> %q", m.schemaMsg)
+		}
+	})
+}
+
 func TestExRegex(t *testing.T) {
 	t.Run("no rows", func(t *testing.T) {
 		m := &Model{results: NewResultsTable()}

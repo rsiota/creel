@@ -769,6 +769,22 @@ func (m *Model) exCopyInsert() tea.Cmd {
 	return nil
 }
 
+// exCopyRow copies the marked rows (or the cursor row when none are marked)
+// to the clipboard as TSV by default, or a specified format
+// (:copyrow csv|tsv|md|json|jsonl), sharing copyRowsDelimited.
+func (m *Model) exCopyRow(args []string) tea.Cmd {
+	format := fmtTSV
+	if len(args) > 0 {
+		f, ok := parseExportFormat(args[0])
+		if !ok {
+			m.schemaMsg = ":copyrow format must be one of: csv, json, jsonl, md, tsv"
+			return nil
+		}
+		format = f
+	}
+	return m.copyRowsDelimited(format)
+}
+
 // exRegex applies a regex search to the current page (:regex <pattern>),
 // sharing applySearch with the g/ search mode. Patterns may contain spaces.
 func (m *Model) exRegex(args []string) tea.Cmd {

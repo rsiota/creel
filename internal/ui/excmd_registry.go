@@ -254,6 +254,16 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exCopyInsert() },
 		},
 		{
+			verbs:   []string{"copyrow"},
+			desc:    "copy marked/cursor row(s) to clipboard (tsv default)",
+			usage:   ":copyrow [csv|json|jsonl|md|tsv]",
+			argKind: exArgOptional,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				return m.exCopyRow(args)
+			},
+			complete: completeCopyRow,
+		},
+		{
 			verbs:   []string{"regex"},
 			desc:    "regex search the current page",
 			usage:   ":regex <pattern>",
@@ -921,6 +931,15 @@ func completeExport(m *Model, args []string, partial string) []string {
 		cols[i] = m.results.ColumnName(i)
 	}
 	return rankStrings(partial, cols)
+}
+
+// completeCopyRow completes :copyrow's single optional format argument. TSV
+// is listed first since it's the default.
+func completeCopyRow(_ *Model, args []string, partial string) []string {
+	if len(args) == 0 {
+		return rankStrings(partial, []string{"tsv", "csv", "md", "json", "jsonl"})
+	}
+	return nil
 }
 
 // completePath offers filesystem entries matching the typed path prefix as the

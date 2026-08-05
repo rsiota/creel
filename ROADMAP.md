@@ -96,6 +96,38 @@ users ask; don't speculatively.
   semantics, the size-the-panel-before-hit-testing trap, and a hover-tooltips
   implementation sketch for the next ERD item. See it before touching mouse code.
 
+### Data-fidelity & UX gaps — 2026-08-04 review
+
+Findings from a focused review of the core "browse and move data" loop. Two
+siblings (NULL vs empty-string distinction, copy-row-to-clipboard) shipped in
+this pass — see the 2026-08-04 History entries; what remains open:
+
+- **Multi-line cell viewer** — the grid flattens control chars (newlines,
+  tabs) via `sanitizeCellRow`, so multi-line TEXT / JSON / log blobs are
+  unreadable in the grid; only the inspector pretty-prints JSON (capped at 6
+  lines). An "expand cell into a multi-line viewer" (`Enter`/`o` on a cell, or
+  a peek pane) would close this. Medium effort, high value for anyone browsing
+  text columns. Files: `results_table.go`, new viewer component.
+- **Binary / BLOB rendering** — no BLOB/`bytea` handling; values are
+  string-scanned in `executeRows` and render as garbage. At minimum a
+  `<BLOB 1.2KB>` placeholder + "save to file", so binary columns don't corrupt
+  the view. Needs a `[]byte` branch in the scan path. Files:
+  `internal/db/db.go`, `results_table.go`.
+- **CLI output format + connection reuse** — `cmd/creel/main.go` has flat
+  `-driver/-host/...` flags but no `-format csv|json|tsv|md` and can't target a
+  saved connection by name (`-c <name>`). Both are cheap (reuse
+  `serializeFormat` + the config) and make the headless path a credible
+  scripting alternative to `psql -c` / `mysql -e`. Files: `cmd/creel/main.go`.
+- **Transaction isolation level** — `:begin`/`:commit`/`:rollback` exist but
+  there's no isolation-level control, which matters for Postgres/MySQL work. A
+  `:begin {read committed|repeatable read|serializable}` form (or `:isolation`)
+  would round out the transaction story; driver-specific but bounded. Files:
+  `db.go`, `excmd.go`, `excmd_registry.go`.
+- **Column-width memory** — column widths auto-fit per query but aren't
+  remembered per-table or per-session, so wide columns get re-sized every run.
+  Persist a per-(connection,table) width map alongside session state. Files:
+  `results_table.go`, `internal/session/`.
+
 ---
 
 ## Design guidance (living)
@@ -262,3 +294,23 @@ palette). Never copy a key handler body into an ex executor. A full unified
     `:hidecolumn`/`:showcolumns`/`:copyinsert`/`:regex`, and DDL
     `:createdb`/`:dropdb`/`:addcolumn`/`:discard`/`:clone`). All funnel through
     shared helpers (the architecture habit above). Tier 4 DBA remains open.
+
+### 2026-08-04 — Data-fidelity review
+
+16. **NULL vs empty-string distinction** (2026-08-04) — the in-memory cell
+    model reserves the `"NULL"` sentinel for SQL NULL and scans genuine empty
+    strings as `""`, but `sqlEscape` (the INSERT-literal renderer used by
+    `:copyinsert` / `Y`) coerced `""` → NULL, silently corrupting real empty
+    strings on copy. Fixed: `sqlEscape` now emits `''` for empty strings and
+    `NULL` only for the sentinel; the results grid dims the NULL sentinel
+    (`colorMuted`) so it reads as a marker, not data (matching the inspector).
+    The parameterized inline-edit path was already correct (`"NULL"` → `nil`,
+    `""` → empty string). Files: `results_table.go`. Tests: `null_copy_test.go`.
+17. **Copy row(s) to clipboard** (2026-08-04) — `:copyrow [fmt]` copies the
+    marked rows (or the cursor row when none are marked) to the clipboard as
+    TSV (default) or `csv`/`md`/`json`/`jsonl`, reusing `serializeFormat`.
+    Fills the gap between `:copy` (one cell) and `:copyinsert` (rows as SQL) —
+    the common "paste this row into Sheets/Slack" case. Keybinding deferred
+    (ship the verb first, per the design guidance). Files: `results_table.go`,
+    `editing.go`, `excmd.go`, `excmd_registry.go`. Tests: `null_copy_test.go`,
+    `excmd_results_test.go`.

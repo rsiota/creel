@@ -533,6 +533,61 @@ func (r ResultsTable) CopyAsInsert() (string, int) {
 	return b.String(), count
 }
 
+// CopyAsDelimited renders the marked rows (or the cursor row when none are
+// marked) in a delimited format (csv/tsv/md/json/jsonl) for clipboard copy.
+// Only visible columns are included, mirroring CopyAsInsert. Returns the
+// serialized text and the number of rows copied (0 when there is nothing to
+// copy). NULL cells keep their "NULL" sentinel text in the output, consistent
+// with the grid.
+func (r ResultsTable) CopyAsDelimited(format exportFormat) (string, int) {
+	visibleCols := r.visibleColRange()
+	if len(visibleCols) == 0 || len(r.rows) == 0 {
+		return "", 0
+	}
+
+	// Select rows: marked rows if any, otherwise the cursor row. Unlike
+	// CopyAsInsert (which falls back to the whole page), the delimited copy is
+	// for grabbing a row or two into a spreadsheet/chat — dumping the whole
+	// page would be surprising and is already covered by :export / g X.
+	var selected []int
+	if !r.marksStale() && len(r.markedRows) > 0 {
+		for rowIdx := range r.rows {
+			tuple := r.pkTuple(rowIdx)
+			if tuple == nil {
+				continue
+			}
+			if _, marked := r.markedRows[pkKey(tuple)]; !marked {
+				continue
+			}
+			selected = append(selected, rowIdx)
+		}
+	} else if r.cursorRow >= 0 && r.cursorRow < len(r.rows) {
+		selected = []int{r.cursorRow}
+	}
+	if len(selected) == 0 {
+		return "", 0
+	}
+
+	cols := make([]string, len(visibleCols))
+	for j, ci := range visibleCols {
+		cols[j] = r.columns[ci]
+	}
+	rows := make([][]string, len(selected))
+	for i, rowIdx := range selected {
+		row := make([]string, len(visibleCols))
+		for j, ci := range visibleCols {
+			row[j] = r.RowValue(rowIdx, ci)
+		}
+		rows[i] = row
+	}
+
+	content, err := serializeFormat(format, cols, rows)
+	if err != nil {
+		return "", 0
+	}
+	return content, len(selected)
+}
+
 func (r ResultsTable) columnType(col int) string {
 	name := r.columns[col]
 	if typ := r.columnTypes[name]; typ != "" {
@@ -548,12 +603,17 @@ func quoteIdent(name string) string {
 	return "\"" + strings.ReplaceAll(name, "\"", "\"\"") + "\""
 }
 
-// sqlEscape renders a value as a SQL literal. NULL and empty strings that
-// are actually NULL representations become NULL; numeric types pass bare;
-// everything else is single-quoted with embedded quotes doubled.
+// sqlEscape renders a value as a SQL literal. Only the "NULL" sentinel maps
+// to SQL NULL; a genuine empty string becomes ” (not NULL) so real empty
+// strings round-trip correctly through :copyinsert / copy-as-INSERT. Numeric
+// types pass bare; everything else is single-quoted with embedded quotes
+// doubled.
 func sqlEscape(val, typ string) string {
-	if val == "NULL" || val == "" {
+	if val == "NULL" {
 		return "NULL"
+	}
+	if val == "" {
+		return "''"
 	}
 	if isNumericType(typ) {
 		return val
@@ -1722,7 +1782,11 @@ func (r ResultsTable) View() string {
 				case isCursorRow:
 					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorCursorRow)
 				default:
-					style = lipgloss.NewStyle().Foreground(colorFg)
+					fg := colorFg
+					if val == "NULL" {
+						fg = colorMuted
+					}
+					style = lipgloss.NewStyle().Foreground(fg)
 					if rowIdx%2 == 1 {
 						style = style.Background(colorStripe)
 					}

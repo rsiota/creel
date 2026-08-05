@@ -554,6 +554,27 @@ func (m *Model) copyRowsAsInsert() tea.Cmd {
 	return copyFeedbackCmd()
 }
 
+// copyRowsDelimited copies the marked rows (or the cursor row when none are
+// marked) to the clipboard in a delimited format (default tsv), shared by
+// :copyrow. Returns the copy-feedback cmd when something was copied, nil
+// otherwise. Fills the gap between :copy (one cell) and copyRowsAsInsert
+// (rows as SQL) — the "paste this row into Sheets/Slack" case.
+func (m *Model) copyRowsDelimited(format exportFormat) tea.Cmd {
+	if m.results.NumRows() == 0 {
+		m.schemaMsg = "nothing to copy"
+		return nil
+	}
+	content, count := m.results.CopyAsDelimited(format)
+	if count == 0 {
+		m.schemaMsg = "nothing to copy"
+		return nil
+	}
+	_ = clipboard.WriteAll(content)
+	m.results.StartCopyFeedback()
+	m.exportMsg = fmt.Sprintf("copied %d row%s as %s", count, plural(count), string(format))
+	return copyFeedbackCmd()
+}
+
 func plural(n int) string {
 	if n == 1 {
 		return ""
