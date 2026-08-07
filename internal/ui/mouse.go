@@ -269,13 +269,28 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.applyFocus()
 	}
 
-	// Scroll wheel — scroll results vertically.
+	// Scroll wheel — accumulate into wheelAccum and apply on wheelTickMsg
+	// (one scroll per tick), not one scroll per event. The Magic Mouse /
+	// trackpad emit hundreds of momentum wheel events per swipe; applying
+	// synchronously here lets the event rate outrun the renderer and the grid
+	// appears to keep scrolling after the gesture ends. Coalescing makes each
+	// event O(1) with an unchanged View, so the flood drains without renders.
 	if msg.Type == tea.MouseWheelUp {
-		m.results.ScrollUp()
+		m.wheelAccum--
+		m.viewCached = true // view-neutral: nothing on screen changed yet
+		if !m.wheelTickPending {
+			m.wheelTickPending = true
+			return m, scheduleWheelTick()
+		}
 		return m, nil
 	}
 	if msg.Type == tea.MouseWheelDown {
-		m.results.ScrollDown()
+		m.wheelAccum++
+		m.viewCached = true // view-neutral: nothing on screen changed yet
+		if !m.wheelTickPending {
+			m.wheelTickPending = true
+			return m, scheduleWheelTick()
+		}
 		return m, nil
 	}
 

@@ -272,6 +272,13 @@ type watchTickMsg struct{ gen uint64 }
 // backendSearchTickMsg fires after the debounce delay to execute the query.
 type backendSearchTickMsg struct{ input string }
 
+// wheelTickMsg flushes the accumulated mouse-wheel delta for the results grid.
+// The Magic Mouse / trackpad emit hundreds of momentum wheel events per swipe;
+// coalescing them into one scroll per tick (instead of one Update+render per
+// event) stops the renderer falling behind and the grid "scrolling without
+// stopping" long after the gesture ends.
+type wheelTickMsg struct{}
+
 // flashExpiry is how long a transient status-bar message stays visible before
 // auto-clearing.
 const flashExpiry = 5 * time.Second
@@ -357,6 +364,22 @@ type Model struct {
 	resultsPendingG bool
 	resultsPendingY bool
 	resultsPendingD bool // dd double-tap state for row deletion
+
+	// Wheel coalescing: rapid wheel events accumulate here and are applied in
+	// a single scroll on wheelTickMsg, so a momentum-scroll flood can't outrun
+	// the render loop. wheelAccum is signed (+ = scroll down, - = up).
+	wheelAccum       int
+	wheelTickPending bool
+
+	// View cache: bubbletea calls View() after every message, so a wheel-event
+	// flood would rebuild the whole screen thousands of times even though the
+	// coalesced events change nothing on screen. A coalesced wheel event marks
+	// the frame view-cached (viewCached=true); View() then returns viewBuf as-is.
+	// Every other message resets viewCached (in update), forcing a rebuild.
+	// viewBuf is a pointer so the value-receiver View() can populate it across
+	// the copy bubbletea makes; NewModel allocates it.
+	viewBuf    *string
+	viewCached bool
 
 	// Double-click-to-edit: records the time and cell of the most recent
 	// left-click in the results panel so a second click on the same cell
@@ -579,6 +602,7 @@ func NewModel(cfg *config.Config) Model {
 		expanded:        make(map[string][]db.Column),
 		pageSize:        settings.PageSize,
 		queryTimeout:    settings.QueryTimeout.Std(),
+		viewBuf:         new(string),
 		// Tab management
 		resultsTabs: []*ResultsTab{firstTab},
 		activeTabID: 0,
@@ -883,6 +907,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Invalidate the view cache by default. A coalesced results wheel event is
+	// the only view-neutral message; it re-enables the cache in its handler so
+	// the wheel flood doesn't rebuild the screen thousands of times.
+	m.viewCached = false
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -1271,6 +1299,17 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case copyFlashTickMsg:
 		if m.results.AdvanceCopyFlash() {
 			return m, copyFlashTickCmd()
+		}
+		return m, nil
+
+	case wheelTickMsg:
+		// Apply the accumulated wheel delta in one scroll and release the
+		// pending flag so the next wheel event can arm a fresh tick.
+		m.wheelTickPending = false
+		delta := m.wheelAccum
+		m.wheelAccum = 0
+		if delta != 0 {
+			m.results.ScrollBy(delta)
 		}
 		return m, nil
 
@@ -3990,6 +4029,17 @@ func (m *Model) refreshCompletionCandidates() {
 
 // View renders the entire application.
 func (m Model) View() string {
+	if m.viewCached && m.viewBuf != nil && *m.viewBuf != "" {
+		return *m.viewBuf
+	}
+	s := m.buildView()
+	if m.viewBuf != nil {
+		*m.viewBuf = s
+	}
+	return s
+}
+
+func (m Model) buildView() string {
 	if m.quitting {
 		return ""
 	}

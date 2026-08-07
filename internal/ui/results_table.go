@@ -1307,6 +1307,23 @@ func (r *ResultsTable) ScrollUp() {
 	}
 }
 
+// ScrollBy shifts the visible rows by rows (signed: + down, - up), clamped to
+// the valid range. Used to apply a coalesced wheel delta in one move.
+func (r *ResultsTable) ScrollBy(rows int) {
+	maxVisible := r.maxVisibleRows()
+	maxScroll := len(r.rows) - maxVisible
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	r.scrollRow += rows
+	if r.scrollRow < 0 {
+		r.scrollRow = 0
+	}
+	if r.scrollRow > maxScroll {
+		r.scrollRow = maxScroll
+	}
+}
+
 // ScrollRight moves the visible columns right by one.
 func (r *ResultsTable) ScrollRight() {
 	if r.scrollCol < len(r.colWidths)-1 {

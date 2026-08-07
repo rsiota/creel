@@ -324,3 +324,122 @@ func TestResultsClickSameCellKeepsEditing(t *testing.T) {
 		t.Errorf("clicking the cell being edited should keep edit mode active")
 	}
 }
+
+// TestResultsWheelCoalescing verifies that a rapid flood of wheel events (e.g.
+// a Magic Mouse / trackpad momentum swipe) is coalesced into a single scroll
+// per tick rather than one Update+render per event. Without coalescing the
+// event rate outruns the renderer and the grid keeps "scrolling without
+// stopping" after the gesture ends.
+func TestResultsWheelCoalescing(t *testing.T) {
+	m := NewModel(&config.Config{})
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = mm.(Model)
+	m.state = stateWorkspace
+	m.focus = FocusResults
+
+	// 100 rows in a viewport that fits far fewer, so scrolling is meaningful.
+	rows := make([][]string, 100)
+	for i := range rows {
+		rows[i] = []string{"x", "y"}
+	}
+	m.results.SetSize(86, 22)
+	m.results.SetResult([]string{"id", "name"}, rows, "100 rows")
+
+	// Y=30 sits inside the results panel (resultsTop=12, resultsBottom=38).
+	wheel := func(down bool) {
+		typ := tea.MouseWheelUp
+		if down {
+			typ = tea.MouseWheelDown
+		}
+		upd, _ := m.Update(tea.MouseMsg{Type: typ, X: 50, Y: 30})
+		m = upd.(Model)
+	}
+
+	// A burst of 20 wheel-downs: nothing scrolls yet (coalesced), but the
+	// delta accumulates and exactly one tick is armed.
+	for i := 0; i < 20; i++ {
+		wheel(true)
+	}
+	if got := m.results.ScrollRow(); got != 0 {
+		t.Errorf("scrollRow = %d after flood, want 0 (events coalesced, not applied per-event)", got)
+	}
+	if m.wheelAccum != 20 {
+		t.Errorf("wheelAccum = %d, want 20", m.wheelAccum)
+	}
+	if !m.wheelTickPending {
+		t.Error("wheelTickPending should be true while a tick is armed")
+	}
+
+	// More events while a tick is pending must NOT arm a second tick.
+	wheel(true)
+	if m.wheelAccum != 21 {
+		t.Errorf("wheelAccum = %d, want 21", m.wheelAccum)
+	}
+	if !m.wheelTickPending {
+		t.Error("wheelTickPending should still be true")
+	}
+
+	// The tick flushes the whole accumulated delta in one scroll.
+	upd, _ := m.Update(wheelTickMsg{})
+	m = upd.(Model)
+	if got := m.results.ScrollRow(); got != 21 {
+		t.Errorf("scrollRow = %d after tick, want 21", got)
+	}
+	if m.wheelAccum != 0 || m.wheelTickPending {
+		t.Errorf("after tick: wheelAccum=%d wheelTickPending=%v, want 0/false", m.wheelAccum, m.wheelTickPending)
+	}
+
+	// A delta past the end clamps; a large negative delta clamps back to 0.
+	m.wheelAccum = 1 << 20
+	upd, _ = m.Update(wheelTickMsg{})
+	m = upd.(Model)
+	if got, max := m.results.ScrollRow(), m.results.NumRows()-1; got >= max {
+		t.Errorf("scrollRow = %d should clamp below %d", got, max)
+	}
+	m.wheelAccum = -(1 << 20)
+	upd, _ = m.Update(wheelTickMsg{})
+	m = upd.(Model)
+	if got := m.results.ScrollRow(); got != 0 {
+		t.Errorf("scrollRow = %d after huge up-scroll, want 0 (clamped)", got)
+	}
+}
+
+// TestResultsWheelViewCache verifies that a coalesced wheel event marks the
+// frame view-cached so bubbletea's per-message View() call returns the prior
+// frame instead of rebuilding the whole screen (the cost that lets a violent
+// momentum flood outrun the render loop). The tick that applies the scroll
+// invalidates the cache so the next View() rebuilds.
+func TestResultsWheelViewCache(t *testing.T) {
+	m := newResultsMouseModel()
+	v0 := m.View() // primes the cache (*viewBuf = v0)
+
+	// A wheel event is view-neutral: it arms the cache and must not change the
+	// rendered output.
+	upd, _ := m.Update(tea.MouseMsg{Type: tea.MouseWheelDown, X: 50, Y: 30})
+	m = upd.(Model)
+	if !m.viewCached {
+		t.Fatal("coalesced wheel event should mark the view cached (viewCached=true)")
+	}
+	if m.View() != v0 {
+		t.Error("View() changed after a view-neutral wheel event; cache should return the prior frame")
+	}
+
+	// Applying the accumulated scroll invalidates the cache → View() rebuilds.
+	upd, _ = m.Update(wheelTickMsg{})
+	m = upd.(Model)
+	if m.viewCached {
+		t.Error("wheelTickMsg should invalidate the view cache (viewCached=false)")
+	}
+
+	// Any other message (e.g. a key) also invalidates, so the cache can't go stale.
+	upd, _ = m.Update(tea.MouseMsg{Type: tea.MouseWheelDown, X: 50, Y: 30})
+	m = upd.(Model)
+	if !m.viewCached {
+		t.Fatal("precondition: wheel should re-arm the cache")
+	}
+	upd, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m = upd.(Model)
+	if m.viewCached {
+		t.Error("a non-wheel message should invalidate the view cache")
+	}
+}

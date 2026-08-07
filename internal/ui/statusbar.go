@@ -332,6 +332,20 @@ func copyFlashTickCmd() tea.Cmd {
 	})
 }
 
+// wheelTickInterval caps how often a coalesced wheel scroll is applied (and
+// thus how often the results grid re-renders during a momentum-scroll flood).
+// ~16ms ≈ one frame: fast enough to feel responsive, slow enough that the
+// renderer never falls behind the event rate.
+const wheelTickInterval = 16 * time.Millisecond
+
+// scheduleWheelTick arms the timer that flushes the accumulated wheel delta.
+// At most one is in flight at a time (guarded by Model.wheelTickPending).
+func scheduleWheelTick() tea.Cmd {
+	return tea.Tick(wheelTickInterval, func(time.Time) tea.Msg {
+		return wheelTickMsg{}
+	})
+}
+
 func copyFeedbackCmd() tea.Cmd {
 	return tea.Batch(
 		copyFlashTickCmd(),
