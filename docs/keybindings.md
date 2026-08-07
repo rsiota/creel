@@ -106,7 +106,7 @@ In the add/edit form:
 | `V`        | Visual mode (select range)                   |
 | `dd`       | Delete marked or cursor row                  |
 | `e`        | Edit cell                                    |
-| `E`        | Expand cell (large values)                   |
+| `E`        | Expand/view cell (multi-line)               |
 | `ctrl+s`   | Save edits                                   |
 | `A`        | Insert new row                               |
 | `D`        | Discard edits                                |

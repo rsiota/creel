@@ -175,11 +175,15 @@ func (m *Model) openCellEditPopup(row, col int) tea.Cmd {
 		return nil
 	}
 	colName := m.results.ColumnName(col)
-	val := m.results.RowValue(row, col)
+	val := m.results.RawRowValue(row, col)
 	if val == "NULL" {
 		val = ""
 	}
-	m.cellEdit.Show(val, row, col, colName)
+	// Open view-only when the results can't be written back: read-only mode
+	// (global --readonly or a read-only connection), custom queries, or
+	// PK-less views. Otherwise E is an editor for the cell.
+	readOnly := !m.results.IsEditable() || !m.results.HasPrimaryKey() || m.isReadOnly()
+	m.cellEdit.Show(val, row, col, colName, readOnly)
 	return m.cellEdit.Focus()
 }
 

@@ -44,7 +44,7 @@ func TestCellEditPopupLifecycle(t *testing.T) {
 		t.Fatal("popup should start hidden")
 	}
 
-	p.Show("hello world", 2, 3, "body")
+	p.Show("hello world", 2, 3, "body", false)
 	if !p.IsVisible() {
 		t.Fatal("popup should be visible after Show")
 	}
@@ -146,5 +146,146 @@ func TestCellEditPopupRouting(t *testing.T) {
 	m = updated.(Model)
 	if m.cellEdit.IsVisible() {
 		t.Fatal("popup should close after esc")
+	}
+}
+
+// TestCellEditPopupReadOnly verifies that E opens the cell popup in view-only
+// mode on results that can't be written back (read-only mode / no primary
+// key — e.g. a custom query or a view), so multi-line values can still be
+// expanded and read. In read-only mode the popup never stages edits: ctrl+s
+// is a no-op and esc closes.
+func TestCellEditPopupReadOnly(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	cfg := db.ConnectionConfig{Driver: db.DriverSQLite, Database: dbPath}
+	sqlite, err := db.New(cfg)
+	if err != nil {
+		t.Fatalf("new sqlite: %v", err)
+	}
+	if err := sqlite.Connect(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() {
+		sqlite.Close()
+		os.Remove(dbPath)
+	})
+
+	body := "line1\nline2\nline3"
+	if _, err := sqlite.DB().Exec(`CREATE TABLE v (body TEXT)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	if _, err := sqlite.DB().Exec(`INSERT INTO v (body) VALUES (?)`, body); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	m := NewModel(&config.Config{})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.connection = sqlite
+	m.state = stateWorkspace
+	m.focus = FocusResults
+	m.results = NewResultsTable()
+	m.results.SetSize(100, 20)
+	// No primary key and never marked editable: IsEditable()==false,
+	// HasPrimaryKey()==false. Mimics a custom query / view result set.
+	m.results.SetResult(
+		[]string{"body"},
+		[][]string{{body}},
+		"1 row",
+	)
+	m.results.SetCursor(0, 0)
+
+	// E opens the popup even though the results aren't editable.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'E'}})
+	m = updated.(Model)
+	if !m.cellEdit.IsVisible() {
+		t.Fatal("popup should open after 'E' on non-editable results")
+	}
+	if !m.cellEdit.IsReadOnly() {
+		t.Fatal("popup should be read-only on non-editable results")
+	}
+	if m.cellEdit.Value() != body {
+		t.Errorf("popup value = %q, want %q", m.cellEdit.Value(), body)
+	}
+
+	// ctrl+s must not stage anything in read-only mode, and leaves the popup
+	// open (it's a no-op; esc closes).
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = updated.(Model)
+	if m.results.HasDirtyCells() {
+		t.Fatal("read-only popup must not stage dirty cells on ctrl+s")
+	}
+	if !m.cellEdit.IsVisible() {
+		t.Fatal("read-only popup should remain open after ctrl+s (no-op)")
+	}
+
+	// esc closes.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.cellEdit.IsVisible() {
+		t.Fatal("popup should close after esc")
+	}
+}
+
+// TestCellEditPopupReadOnlyMode verifies that --readonly (forceReadOnly) opens
+// the cell popup view-only even on an otherwise-editable table, since writes
+// can't land in read-only mode. detectEditability still marks simple SELECTs
+// editable under --readonly, so the read-only arm must key off isReadOnly().
+func TestCellEditPopupReadOnlyMode(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	cfg := db.ConnectionConfig{Driver: db.DriverSQLite, Database: dbPath}
+	sqlite, err := db.New(cfg)
+	if err != nil {
+		t.Fatalf("new sqlite: %v", err)
+	}
+	if err := sqlite.Connect(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() {
+		sqlite.Close()
+		os.Remove(dbPath)
+	})
+
+	if _, err := sqlite.DB().Exec(`CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	if _, err := sqlite.DB().Exec(`INSERT INTO notes (id, body) VALUES (1, ?)`, "a\nb\nc"); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	m := NewModel(&config.Config{})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.connection = sqlite
+	m.forceReadOnly = true // simulates --readonly
+	m.state = stateWorkspace
+	m.focus = FocusResults
+	m.results = NewResultsTable()
+	m.results.SetSize(100, 20)
+	m.results.SetResult(
+		[]string{"id", "body"},
+		[][]string{{"1", "a\nb\nc"}},
+		"1 row",
+	)
+	m.results.SetEditable("notes", []string{"id"}) // editable table...
+	if !m.results.IsEditable() {
+		t.Fatal("precondition: results should be editable")
+	}
+	if !m.isReadOnly() {
+		t.Fatal("precondition: model should report read-only")
+	}
+	m.results.SetCursor(0, 1)
+
+	// ...but read-only mode forces the popup view-only.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'E'}})
+	m = updated.(Model)
+	if !m.cellEdit.IsVisible() {
+		t.Fatal("popup should open after 'E'")
+	}
+	if !m.cellEdit.IsReadOnly() {
+		t.Fatal("popup should be read-only under --readonly even on an editable table")
+	}
+	// And multi-line content survives (raw rows, not sanitized).
+	if m.cellEdit.Value() != "a\nb\nc" {
+		t.Errorf("popup value = %q, want real newlines preserved", m.cellEdit.Value())
 	}
 }

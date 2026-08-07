@@ -16,6 +16,8 @@ import (
 type CellEditPopup struct {
 	ta       textarea.Model
 	visible  bool
+	readOnly bool   // view-only: render statically, never stage edits
+	scrollY  int    // top line offset when readOnly
 	row      int    // results row index
 	col      int    // results column index
 	colName  string // column header, shown in the popup title line
@@ -31,7 +33,10 @@ func NewCellEditPopup() CellEditPopup {
 
 // Show opens the popup seeded with the given value. JSON objects and arrays
 // are automatically pretty-printed and syntax-highlighted for readability.
-func (p *CellEditPopup) Show(val string, row, col int, colName string) {
+// When readOnly is true the popup is a view-only peek: the value renders
+// statically (no cursor, no edits staged) — used for results that can't be
+// written back (read-only mode, custom queries, views without a primary key).
+func (p *CellEditPopup) Show(val string, row, col int, colName string, readOnly bool) {
 	ta := textarea.New()
 	ta.Prompt = ""
 	ta.ShowLineNumbers = false
@@ -50,6 +55,8 @@ func (p *CellEditPopup) Show(val string, row, col int, colName string) {
 	ta.BlurredStyle = ta.FocusedStyle
 	p.ta = ta
 	p.visible = true
+	p.readOnly = readOnly
+	p.scrollY = 0
 	p.row = row
 	p.col = col
 	p.colName = colName
@@ -61,11 +68,19 @@ func (p *CellEditPopup) Hide() {
 	p.ta = textarea.Model{}
 	p.colName = ""
 	p.jsonMode = false
+	p.readOnly = false
+	p.scrollY = 0
 }
 
 // IsVisible reports whether the popup is open.
 func (p CellEditPopup) IsVisible() bool {
 	return p.visible
+}
+
+// IsReadOnly reports whether the popup is open in view-only mode (no edits
+// staged).
+func (p CellEditPopup) IsReadOnly() bool {
+	return p.readOnly
 }
 
 // Value returns the current editor contents.
@@ -101,17 +116,23 @@ func (p *CellEditPopup) SetMaxSize(contentW, contentH int) {
 	p.ta.SetHeight(contentH)
 }
 
-// Focus focuses the textarea.
+// Focus focuses the textarea. It is a no-op in read-only mode, where the
+// value is rendered statically with no cursor.
 func (p *CellEditPopup) Focus() tea.Cmd {
-	if !p.visible {
+	if !p.visible || p.readOnly {
 		return nil
 	}
 	return p.ta.Focus()
 }
 
-// Update forwards messages to the textarea.
+// Update forwards messages to the textarea, or — in read-only mode — handles
+// just the scroll keys so the value can be paged through without being edited.
 func (p CellEditPopup) Update(msg tea.Msg) (CellEditPopup, tea.Cmd) {
 	if !p.visible {
+		return p, nil
+	}
+	if p.readOnly {
+		p.scrollReadOnly(msg)
 		return p, nil
 	}
 	var cmd tea.Cmd
@@ -119,11 +140,51 @@ func (p CellEditPopup) Update(msg tea.Msg) (CellEditPopup, tea.Cmd) {
 	return p, cmd
 }
 
+// scrollReadOnly adjusts the read-only viewport offset for navigation keys so
+// long values can be paged through. Mouse and unrecognized keys are ignored.
+func (p *CellEditPopup) scrollReadOnly(msg tea.Msg) {
+	k, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return
+	}
+	maxScroll := len(strings.Split(p.ta.Value(), "\n")) - p.height
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	switch k.String() {
+	case "j", "down":
+		if p.scrollY < maxScroll {
+			p.scrollY++
+		}
+	case "k", "up":
+		if p.scrollY > 0 {
+			p.scrollY--
+		}
+	case "pgdown", "ctrl+d":
+		p.scrollY += p.height
+		if p.scrollY > maxScroll {
+			p.scrollY = maxScroll
+		}
+	case "pgup", "ctrl+u":
+		p.scrollY -= p.height
+		if p.scrollY < 0 {
+			p.scrollY = 0
+		}
+	case "g", "home":
+		p.scrollY = 0
+	case "G", "end":
+		p.scrollY = maxScroll
+	}
+}
+
 // View renders the popup content (label + bordered textarea) without the outer
 // rounded border, which is applied by the caller. The label and value border
 // mirror the inspector's styling.
 func (p CellEditPopup) View() string {
 	label := lipgloss.NewStyle().Foreground(colorLabel).Render(p.colName)
+	if p.readOnly {
+		label += " " + lipgloss.NewStyle().Foreground(colorMuted).Render("(read-only)")
+	}
 
 	borderW := p.width + 2 // +2 for the inner " " padding on each side
 	bs := lipgloss.NewStyle().Foreground(colorBorder)
@@ -132,6 +193,12 @@ func (p CellEditPopup) View() string {
 
 	var lines []string
 	lines = append(lines, " "+label, top)
+
+	if p.readOnly {
+		lines = append(lines, p.readOnlyLines(bs)...)
+		lines = append(lines, bottom)
+		return lipgloss.JoinVertical(lipgloss.Left, lines...)
+	}
 
 	if p.jsonMode {
 		cursorLine := p.ta.Line()
@@ -169,6 +236,40 @@ func (p CellEditPopup) View() string {
 
 	lines = append(lines, bottom)
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
+// readOnlyLines renders the visible window of the value as static,
+// non-editable lines (no cursor), padded to a fixed height so the box doesn't
+// resize while scrolling.
+func (p CellEditPopup) readOnlyLines(bs lipgloss.Style) []string {
+	all := strings.Split(p.ta.Value(), "\n")
+	start := p.scrollY
+	if start < 0 {
+		start = 0
+	}
+	if start > len(all) {
+		start = len(all)
+	}
+	end := start + p.height
+	if end > len(all) {
+		end = len(all)
+	}
+	blank := bs.Render("│ ") + strings.Repeat(" ", p.width) + bs.Render(" │")
+	var out []string
+	for _, line := range all[start:end] {
+		raw := truncateCell(line, p.width)
+		var content string
+		if p.jsonMode {
+			content = highlightJSON(raw)
+		} else {
+			content = raw
+		}
+		out = append(out, bs.Render("│ ")+content+bs.Render(" │"))
+	}
+	for len(out) < p.height {
+		out = append(out, blank)
+	}
+	return out
 }
 
 // sgrPrefix returns the leading SGR escape sequence sty applies, with no

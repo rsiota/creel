@@ -98,16 +98,11 @@ users ask; don't speculatively.
 
 ### Data-fidelity & UX gaps — 2026-08-04 review
 
-Findings from a focused review of the core "browse and move data" loop. Two
-siblings (NULL vs empty-string distinction, copy-row-to-clipboard) shipped in
-this pass — see the 2026-08-04 History entries; what remains open:
+Findings from a focused review of the core "browse and move data" loop. Three
+siblings (NULL vs empty-string distinction, copy-row-to-clipboard, multi-line
+cell viewer) shipped in this pass — see the 2026-08-04 History entries; what
+remains open:
 
-- **Multi-line cell viewer** — the grid flattens control chars (newlines,
-  tabs) via `sanitizeCellRow`, so multi-line TEXT / JSON / log blobs are
-  unreadable in the grid; only the inspector pretty-prints JSON (capped at 6
-  lines). An "expand cell into a multi-line viewer" (`Enter`/`o` on a cell, or
-  a peek pane) would close this. Medium effort, high value for anyone browsing
-  text columns. Files: `results_table.go`, new viewer component.
 - **Binary / BLOB rendering** — no BLOB/`bytea` handling; values are
   string-scanned in `executeRows` and render as garbage. At minimum a
   `<BLOB 1.2KB>` placeholder + "save to file", so binary columns don't corrupt
@@ -314,3 +309,18 @@ palette). Never copy a key handler body into an ex executor. A full unified
     (ship the verb first, per the design guidance). Files: `results_table.go`,
     `editing.go`, `excmd.go`, `excmd_registry.go`. Tests: `null_copy_test.go`,
     `excmd_results_test.go`.
+18. **Multi-line cell viewer** (2026-08-05) — the cell-expand popup (`E`,
+    `CellEditPopup`) already covered long-truncated values and pretty-printed
+    JSON, but it (a) was gated on editability so it no-op'd on read-only mode /
+    custom queries / PK-less views, and (b) read the sanitized `rows` copy, so
+    multi-line TEXT still rendered flat. Both fixed. `openCellEditPopup` now
+    opens the popup **view-only** (`CellEditPopup` gained a `readOnly` mode:
+    static render, no cursor, j/k/pgup/G scroll, ctrl+s is a no-op) whenever
+    the results can't be written back, so `E` is always a usable peek — most
+    useful in read-only mode, whose whole point is safe viewing. And
+    `ResultsTable` now retains the un-sanitized `rawRows` (new `RawRowValue`),
+    which seeds the popup (and the ctrl+s "did it change?" compare) so real
+    newlines/tabs survive into the viewer. The grid display is untouched (it
+    still reads the flattened copy for its single-line layout). Files:
+    `cell_edit_popup.go`, `results_table.go`, `schema_ops.go`, `app.go`,
+    `registry.go`. Tests: `cell_edit_popup_test.go`, `cell_edit_test.go`.

@@ -481,8 +481,8 @@ type Model struct {
 	// hintDesc is the pressed key's registry description shown briefly next to
 	// the hint line. It expires on the next render after hintDescDuration
 	// (matching how hintFlash expires), so no timer command is needed.
-	hintDesc    string
-	hintDescAt  time.Time
+	hintDesc   string
+	hintDescAt time.Time
 
 	// Async query execution state
 	queryRunning   bool               // true while a query is in flight
@@ -2609,13 +2609,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.cellEdit.IsVisible() {
 		switch msg.String() {
 		case "ctrl+s":
+			if m.cellEdit.IsReadOnly() {
+				// View-only peek: nothing to stage. esc closes the popup.
+				return m, nil
+			}
 			val := m.cellEdit.Value()
 			// Compact JSON so pretty-printing in the popup doesn't create
 			// a false dirty cell when the user just views and saves.
 			if compacted, ok := compactJSON(val); ok {
 				val = compacted
 			}
-			orig := m.results.RowValue(m.cellEdit.Row(), m.cellEdit.Col())
+			orig := m.results.RawRowValue(m.cellEdit.Row(), m.cellEdit.Col())
 			if orig == "NULL" {
 				orig = ""
 			}
@@ -3491,7 +3495,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.results.StartEdit()
 				return m, nil
 			case "E":
-				if !m.results.IsEditable() || !m.results.HasPrimaryKey() || m.inspector.IsVisible() {
+				// Expand opens a multi-line peek of the cell under the cursor.
+				// It doubles as a read-only viewer when the results can't be
+				// written back (read-only mode, custom queries, PK-less views),
+				// so it is intentionally not gated on editability like e/i.
+				if m.inspector.IsVisible() {
 					break
 				}
 				m.resultsPendingG = false

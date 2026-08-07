@@ -31,6 +31,7 @@ type cellRef struct {
 type ResultsTable struct {
 	columns   []string
 	rows      [][]string
+	rawRows   [][]string // un-sanitized rows, preserving newlines/tabs for the cell viewer
 	scrollRow int
 	scrollCol int
 	colWidths []int
@@ -300,6 +301,24 @@ func (r ResultsTable) RowValue(row, col int) string {
 		return ""
 	}
 	return r.rows[row][col]
+}
+
+// RawRowValue returns the un-sanitized cell value (preserving newlines and
+// tabs) for viewers that render multi-line content, such as the cell-edit
+// popup. Pending dirty edits take precedence. When raw rows aren't available
+// it falls back to the sanitized value from RowValue.
+func (r ResultsTable) RawRowValue(row, col int) string {
+	ref := cellRef{row: row, col: col}
+	if val, ok := r.dirtyCells[ref]; ok {
+		return val
+	}
+	if row < 0 || row >= len(r.rawRows) {
+		return r.RowValue(row, col)
+	}
+	if col < 0 || col >= len(r.rawRows[row]) {
+		return r.RowValue(row, col)
+	}
+	return r.rawRows[row][col]
 }
 
 // SourceTable returns the table name backing editable results.
@@ -965,6 +984,9 @@ func (r *ResultsTable) SetSaveError(msg string) {
 
 // SetResult populates the table with query results.
 func (r *ResultsTable) SetResult(cols []string, rows [][]string, message string) {
+	// Keep the raw rows for viewers that render multi-line content (the
+	// cell-edit popup); the grid display reads the sanitized copy below.
+	r.rawRows = rows
 	// Flatten control characters to spaces so they don't break the
 	// single-line cell layout (multi-line TEXT fields, tabs, etc.).
 	cols = sanitizeCellRow(cols)
