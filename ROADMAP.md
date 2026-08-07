@@ -98,21 +98,16 @@ users ask; don't speculatively.
 
 ### Data-fidelity & UX gaps — 2026-08-04 review
 
-Findings from a focused review of the core "browse and move data" loop. Three
+Findings from a focused review of the core "browse and move data" loop. Four
 siblings (NULL vs empty-string distinction, copy-row-to-clipboard, multi-line
-cell viewer) shipped in this pass — see the 2026-08-04 History entries; what
-remains open:
+cell viewer, CLI output format + connection reuse) shipped in this pass — see
+the 2026-08-04 History entries; what remains open:
 
 - **Binary / BLOB rendering** — no BLOB/`bytea` handling; values are
   string-scanned in `executeRows` and render as garbage. At minimum a
   `<BLOB 1.2KB>` placeholder + "save to file", so binary columns don't corrupt
   the view. Needs a `[]byte` branch in the scan path. Files:
   `internal/db/db.go`, `results_table.go`.
-- **CLI output format + connection reuse** — `cmd/creel/main.go` has flat
-  `-driver/-host/...` flags but no `-format csv|json|tsv|md` and can't target a
-  saved connection by name (`-c <name>`). Both are cheap (reuse
-  `serializeFormat` + the config) and make the headless path a credible
-  scripting alternative to `psql -c` / `mysql -e`. Files: `cmd/creel/main.go`.
 - **Transaction isolation level** — `:begin`/`:commit`/`:rollback` exist but
   there's no isolation-level control, which matters for Postgres/MySQL work. A
   `:begin {read committed|repeatable read|serializable}` form (or `:isolation`)
@@ -324,3 +319,21 @@ palette). Never copy a key handler body into an ex executor. A full unified
     still reads the flattened copy for its single-line layout). Files:
     `cell_edit_popup.go`, `results_table.go`, `schema_ops.go`, `app.go`,
     `registry.go`. Tests: `cell_edit_popup_test.go`, `cell_edit_test.go`.
+19. **CLI output format + connection reuse** (2026-08-06) — the headless path
+    (`cmd/creel/main.go`) gained a `-format csv|json|jsonl|md|tsv` flag
+    (default `tsv`; was hard-coded loose TSV) and `-c <name>` to target a saved
+    connection, resolving its password / SSH passphrase from the keychain the
+    same way the connection form does on connect — so connections saved in the
+    TUI (incl. SSH-tunneled) work headlessly. `-c` **composes** with the flat
+    `-driver`/`-database`/… flags: any explicitly-set one (detected via
+    `flag.Visit`) overrides the matching field of the saved connection, so e.g.
+    `-c localhost -database x` fills a different database instead of discarding
+    the flag; `-c` also combines with `-readonly`. Output goes
+    to stdout (pipes cleanly); the row-count summary stays on stderr. To reuse
+    the existing (unexported) serializer + connection resolver without
+    rippling through ~70 UI call sites, two thin exports were added on `ui`:
+    `Serialize(format, cols, rows)` (wraps `serializeFormat`) and
+    `ResolveConnection(cfg, name, forceReadOnly)` (wraps `connConfigToDB` +
+    `resolveConnSecrets`). Files: `cmd/creel/main.go`, `internal/ui/cli.go`.
+    Tests: `internal/ui/cli_test.go`, `cmd/creel/main_test.go`. Docs:
+    `docs/cli.md`.
