@@ -49,11 +49,12 @@ func findResultsColumnX(t *testing.T, m Model, y int) (int, int) {
 	t.Helper()
 	g := m.workspaceGeom()
 	// Start past the sidebar↔centre seam (SidebarWidth-1 and SidebarWidth are
-	// resize handles) so a probe click cannot be swallowed by a split drag.
+	// resize handles) and stop before the centre↔right-slot seam so a probe
+	// click cannot be swallowed by a split drag.
 	// layoutWorkspace/SetSize also clamps cursorCol from -1 → 0, so a drag
 	// that only relayouts would otherwise look like a successful column hit.
 	for x := g.SidebarWidth + 1; x < g.EditorRight && x < g.SidebarWidth+50; x++ {
-		if m.onSidebarSplit(x, y, g) {
+		if m.onSidebarSplit(x, y, g) || m.onRightSlotSplit(x, y, g) {
 			continue
 		}
 		wantCol := m.results.ColumnAtX(x - g.SidebarWidth)
@@ -65,7 +66,7 @@ func findResultsColumnX(t *testing.T, m Model, y int) (int, int) {
 		probe.results.cursorCol = -1
 		out, _ := probe.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: y})
 		mm := out.(Model)
-		if mm.sidebarDragging || mm.splitDragging {
+		if mm.sidebarDragging || mm.splitDragging || mm.rightSlotDragging {
 			continue
 		}
 		if mm.results.cursorCol == wantCol {

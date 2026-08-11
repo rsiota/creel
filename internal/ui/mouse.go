@@ -105,6 +105,7 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.cellEdit.IsVisible() {
 		m.splitDragging = false
 		m.sidebarDragging = false
+		m.rightSlotDragging = false
 		return m, nil
 	}
 
@@ -118,6 +119,9 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.sidebarDragging {
 		return m.handleSidebarDrag(msg)
 	}
+	if m.rightSlotDragging {
+		return m.handleRightSlotDrag(msg)
+	}
 
 	g := m.workspaceGeom()
 	sidebarWidth := g.SidebarWidth
@@ -125,12 +129,15 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	resultsTop := g.ResultsTop
 	resultsBottom := g.ResultsBottom
 
-	// Press on a panel seam starts a resize drag. Check the sidebar seam
-	// before the editor/results seam so the corner cell (if any) prefers
-	// horizontal resize — the vertical seam only spans the centre column.
+	// Press on a panel seam starts a resize drag. Horizontal seams before
+	// the editor/results seam so T-junctions prefer horizontal resize.
 	if msg.Type == tea.MouseLeft && msg.Action != tea.MouseActionMotion &&
 		m.onSidebarSplit(msg.X, msg.Y, g) {
 		return m.beginSidebarDrag(msg.X, g)
+	}
+	if msg.Type == tea.MouseLeft && msg.Action != tea.MouseActionMotion &&
+		m.onRightSlotSplit(msg.X, msg.Y, g) {
+		return m.beginRightSlotDrag(msg.X, g)
 	}
 	// Schema editor and table designer replace the editor/results split.
 	if !m.schemaEditor.IsVisible() && !m.tableDesigner.IsVisible() &&
@@ -391,6 +398,18 @@ func (m Model) onSidebarSplit(x, y int, g workspaceGeom) bool {
 	return x == g.SidebarWidth-1 || x == g.SidebarWidth
 }
 
+// onRightSlotSplit reports whether (x,y) sits on the seam between the centre
+// column and the right slot (centre right border or right-slot left border).
+func (m Model) onRightSlotSplit(x, y int, g workspaceGeom) bool {
+	if g.RightSlotW <= 0 {
+		return false
+	}
+	if y < 0 || y > g.ResultsBottom {
+		return false
+	}
+	return x == g.EditorRight-1 || x == g.EditorRight
+}
+
 // beginSplitDrag starts an editor↔results resize. Dragging while maximized
 // exits maximize and adopts the current visual height so the divider doesn't
 // jump.
@@ -450,6 +469,34 @@ func (m Model) handleSidebarDrag(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // the cursor (minus the press offset), clamps, and relayouts.
 func (m Model) applySidebarDragX(x int) (tea.Model, tea.Cmd) {
 	m.sidebarSplitW = x - m.sidebarDragOff
+	m.layoutWorkspace()
+	return m, nil
+}
+
+// beginRightSlotDrag starts a centre↔right-slot resize.
+func (m Model) beginRightSlotDrag(x int, g workspaceGeom) (tea.Model, tea.Cmd) {
+	m.rightSlotDragging = true
+	m.rightSlotDragOff = x - g.EditorRight
+	return m.applyRightSlotDragX(x)
+}
+
+// handleRightSlotDrag continues or ends an in-flight right-slot resize.
+func (m Model) handleRightSlotDrag(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action == tea.MouseActionMotion ||
+		(msg.Type == tea.MouseLeft && msg.Action != tea.MouseActionRelease) {
+		return m.applyRightSlotDragX(msg.X)
+	}
+	if msg.Type == tea.MouseRelease || msg.Action == tea.MouseActionRelease {
+		m.rightSlotDragging = false
+		return m, nil
+	}
+	return m, nil
+}
+
+// applyRightSlotDragX sets rightSlotSplitW so the centre column's right edge
+// tracks the cursor (minus the press offset), clamps, and relayouts.
+func (m Model) applyRightSlotDragX(x int) (tea.Model, tea.Cmd) {
+	m.rightSlotSplitW = m.width - x + m.rightSlotDragOff
 	m.layoutWorkspace()
 	return m, nil
 }

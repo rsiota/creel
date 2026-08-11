@@ -144,3 +144,36 @@ func TestWorkspaceGeomClampsSidebarSplit(t *testing.T) {
 		t.Errorf("RightWidth=%d, want >= %d", g.RightWidth, minCenterWidth)
 	}
 }
+
+func TestWorkspaceGeomRightSlotSplit(t *testing.T) {
+	m := newGeomModel(120, 40)
+	m.inspector.Toggle()
+	m.rightSlotSplitW = 35
+	g := m.workspaceGeom()
+	if g.RightSlotW != 35 {
+		t.Errorf("RightSlotW=%d, want 35", g.RightSlotW)
+	}
+	if g.EditorRight != 85 {
+		t.Errorf("EditorRight=%d, want 85", g.EditorRight)
+	}
+}
+
+func TestWorkspaceGeomClampsRightSlotSplit(t *testing.T) {
+	m := newGeomModel(120, 40)
+	m.inspector.Toggle()
+	m.rightSlotSplitW = 2
+	g := m.workspaceGeom()
+	if g.RightSlotW != minRightSlotWidth {
+		t.Errorf("RightSlotW=%d, want min %d", g.RightSlotW, minRightSlotWidth)
+	}
+
+	m.rightSlotSplitW = 1000
+	g = m.workspaceGeom()
+	maxW := 120 - workspaceBorderOH - g.SidebarWidth - minCenterWidth
+	if g.RightSlotW != maxW {
+		t.Errorf("RightSlotW=%d, want max %d", g.RightSlotW, maxW)
+	}
+	if g.RightWidth < minCenterWidth {
+		t.Errorf("RightWidth=%d, want >= %d", g.RightWidth, minCenterWidth)
+	}
+}

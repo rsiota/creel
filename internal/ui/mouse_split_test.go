@@ -199,3 +199,98 @@ func TestOnSidebarSplit(t *testing.T) {
 		t.Error("below panel area should not be the seam")
 	}
 }
+
+// Dragging the centre↔right-slot seam should resize the inspector.
+func TestRightSlotDragResizes(t *testing.T) {
+	m := newFocusModel() // 120×40
+	m.inspector.Toggle()
+	m.layoutWorkspace()
+	g := m.workspaceGeom()
+	if g.RightSlotW != InspectorWidth {
+		t.Fatalf("precondition: RightSlotW=%d", g.RightSlotW)
+	}
+
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{
+		Type:   tea.MouseLeft,
+		Action: tea.MouseActionPress,
+		X:      g.EditorRight,
+		Y:      10,
+	})
+	m = out.(Model)
+	if !m.rightSlotDragging {
+		t.Fatal("expected rightSlotDragging after press on seam")
+	}
+
+	// Drag right: EditorRight follows X=85 → RightSlotW = 120-85 = 35.
+	out, _ = m.handleWorkspaceMouse(tea.MouseMsg{
+		Type:   tea.MouseLeft,
+		Action: tea.MouseActionMotion,
+		X:      85,
+		Y:      10,
+	})
+	m = out.(Model)
+	g = m.workspaceGeom()
+	if g.RightSlotW != 35 {
+		t.Errorf("after drag to X=85: RightSlotW=%d, want 35", g.RightSlotW)
+	}
+	if g.EditorRight != 85 {
+		t.Errorf("EditorRight=%d, want 85", g.EditorRight)
+	}
+
+	out, _ = m.handleWorkspaceMouse(tea.MouseMsg{
+		Type:   tea.MouseRelease,
+		Action: tea.MouseActionRelease,
+		X:      85,
+		Y:      10,
+	})
+	m = out.(Model)
+	if m.rightSlotDragging {
+		t.Error("rightSlotDragging still set after release")
+	}
+	if m.workspaceGeom().RightSlotW != 35 {
+		t.Errorf("width after release=%d, want 35", m.workspaceGeom().RightSlotW)
+	}
+}
+
+func TestOnRightSlotSplit(t *testing.T) {
+	m := newFocusModel()
+	g := m.workspaceGeom()
+	if m.onRightSlotSplit(g.EditorRight-1, 5, g) {
+		t.Error("seam should not hit when right slot is closed")
+	}
+
+	m.inspector.Toggle()
+	m.layoutWorkspace()
+	g = m.workspaceGeom()
+	if !m.onRightSlotSplit(g.EditorRight-1, 5, g) {
+		t.Error("expected hit on centre right border")
+	}
+	if !m.onRightSlotSplit(g.EditorRight, 5, g) {
+		t.Error("expected hit on right-slot left border")
+	}
+	if m.onRightSlotSplit(g.EditorRight-2, 5, g) {
+		t.Error("centre body should not be the seam")
+	}
+	if m.onRightSlotSplit(g.EditorRight+1, 5, g) {
+		t.Error("right-slot body should not be the seam")
+	}
+	if m.onRightSlotSplit(g.EditorRight, g.ResultsBottom+1, g) {
+		t.Error("below panel area should not be the seam")
+	}
+}
+
+func TestRightSlotDragIgnoredWhenClosed(t *testing.T) {
+	m := newFocusModel()
+	g := m.workspaceGeom()
+	// Press near the right edge with no right slot open.
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{
+		Type:   tea.MouseLeft,
+		Action: tea.MouseActionPress,
+		X:      g.EditorRight - 1,
+		Y:      10,
+	})
+	m = out.(Model)
+	if m.rightSlotDragging {
+		t.Error("right-slot drag started with slot closed")
+	}
+}

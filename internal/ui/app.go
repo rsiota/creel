@@ -403,13 +403,20 @@ type Model struct {
 	// sidebarSplitW is the user-chosen outer width of the sidebar. 0 means
 	// defaultSidebarWidth; clamped by workspaceGeom.
 	sidebarSplitW int
-	// splitDragging / sidebarDragging track an in-flight mouse resize of the
-	// editor↔results or sidebar↔centre seam. The Off fields keep the divider
-	// stuck under the cursor (msg.Y - ResultsTop / msg.X - SidebarWidth).
-	splitDragging   bool
-	splitDragOff    int
-	sidebarDragging bool
-	sidebarDragOff  int
+	// rightSlotSplitW is the user-chosen outer width of the right slot
+	// (inspector / assistant / docked explorer). 0 means the active panel's
+	// default (InspectorWidth / AssistantWidth); clamped by workspaceGeom.
+	rightSlotSplitW int
+	// splitDragging / sidebarDragging / rightSlotDragging track an in-flight
+	// mouse resize of the editor↔results, sidebar↔centre, or centre↔right-slot
+	// seam. The Off fields keep the divider stuck under the cursor
+	// (msg.Y - ResultsTop / msg.X - SidebarWidth / msg.X - EditorRight).
+	splitDragging     bool
+	splitDragOff      int
+	sidebarDragging   bool
+	sidebarDragOff    int
+	rightSlotDragging bool
+	rightSlotDragOff  int
 
 	// Truncate confirmation dialog (non-empty table name while pending).
 	truncateConfirm string
@@ -4267,7 +4274,7 @@ func (m Model) viewAddConnection() string {
 func (m Model) viewWorkspace() string {
 	g := m.workspaceGeom()
 	sidebarWidth := g.SidebarWidth
-	inspectorWidth := InspectorWidth
+	slotWidth := g.RightSlotW
 	statusHeight := g.StatusH
 	borderOverhead := g.BorderOH
 	editorHeight := g.EditorHeight
@@ -4367,9 +4374,9 @@ func (m Model) viewWorkspace() string {
 		if slotContentHeight < 3 {
 			slotContentHeight = 3
 		}
-		m.inspector.SetSize(inspectorWidth-borderOverhead, slotContentHeight)
+		m.inspector.SetSize(slotWidth-borderOverhead, slotContentHeight)
 		slotPanel = lipgloss.NewStyle().
-			Width(inspectorWidth - borderOverhead).
+			Width(slotWidth - borderOverhead).
 			Height(slotContentHeight).
 			Border(panelBorder()).
 			BorderForeground(m.borderForFocus(FocusInspector)).
@@ -4379,11 +4386,11 @@ func (m Model) viewWorkspace() string {
 		if slotContentHeight < 3 {
 			slotContentHeight = 3
 		}
-		m.assistant.SetSize(AssistantWidth-borderOverhead, slotContentHeight)
+		m.assistant.SetSize(slotWidth-borderOverhead, slotContentHeight)
 		m.assistant.spinner = m.querySpinner // keep the pending spinner in sync
 		m.assistant.SetModel(m.effectiveAIModel())
 		slotPanel = lipgloss.NewStyle().
-			Width(AssistantWidth - borderOverhead).
+			Width(slotWidth - borderOverhead).
 			Height(slotContentHeight).
 			Border(panelBorder()).
 			BorderForeground(m.borderForFocus(FocusAssistant)).
@@ -4394,7 +4401,7 @@ func (m Model) viewWorkspace() string {
 		// mirrors focus, like the inspector/assistant.
 		slotH := lipgloss.Height(rightPanel)
 		m.explorer.focused = m.focus == FocusExplorer
-		m.explorer.SetSize(inspectorWidth, slotH)
+		m.explorer.SetSize(slotWidth, slotH)
 		slotPanel = m.explorer.View()
 	}
 

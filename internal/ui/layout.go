@@ -8,6 +8,7 @@ const (
 	minEditorHeight     = 8
 	minResultsHeight    = 3
 	minSidebarWidth     = 18
+	minRightSlotWidth   = 24
 	minCenterWidth      = 40 // editor/results column must stay usable
 	workspaceStatusH    = 1
 	workspaceBorderOH   = 2
@@ -48,16 +49,34 @@ func (m Model) workspaceGeom() workspaceGeom {
 		g.CmdHeight = 1
 	}
 
+	var rightDefault int
 	switch {
 	case m.inspector.IsVisible():
-		g.RightSlotW = InspectorWidth
+		rightDefault = InspectorWidth
 	case m.assistant.IsVisible():
-		g.RightSlotW = AssistantWidth
+		rightDefault = AssistantWidth
 	case m.explorer.IsVisible() && m.explorer.docked:
-		g.RightSlotW = InspectorWidth
+		rightDefault = InspectorWidth
 	}
 
+	// Two-pass clamp: right slot and sidebar each need the other's width for
+	// maxW. Prefer the user's sidebar width for the first right-slot pass, then
+	// recompute both so minCenterWidth is honoured.
+	sidebarPreferred := m.sidebarSplitW
+	if sidebarPreferred <= 0 {
+		sidebarPreferred = defaultSidebarWidth
+	}
+	if sidebarPreferred < minSidebarWidth {
+		sidebarPreferred = minSidebarWidth
+	}
+	if rightDefault > 0 {
+		g.RightSlotW = m.effectiveRightSlotWidth(rightDefault, sidebarPreferred)
+	}
 	g.SidebarWidth = m.effectiveSidebarWidth(g.RightSlotW)
+	if rightDefault > 0 {
+		g.RightSlotW = m.effectiveRightSlotWidth(rightDefault, g.SidebarWidth)
+	}
+
 	g.EditorHeight = m.effectiveEditorHeight(g.CmdHeight)
 
 	g.ResultsHeight = m.height - g.EditorHeight - g.StatusH - g.CmdHeight - g.BorderOH
@@ -97,6 +116,31 @@ func (m Model) effectiveSidebarWidth(rightSlotW int) int {
 	}
 	if w < minSidebarWidth {
 		w = minSidebarWidth
+	}
+	if w > maxW {
+		w = maxW
+	}
+	return w
+}
+
+// effectiveRightSlotWidth returns the outer right-slot width from
+// rightSlotSplitW (or defaultW when unset), clamped so the centre column keeps
+// minCenterWidth given sidebarWidth.
+func (m Model) effectiveRightSlotWidth(defaultW, sidebarWidth int) int {
+	if defaultW <= 0 {
+		return 0
+	}
+	maxW := m.width - workspaceBorderOH - sidebarWidth - minCenterWidth
+	if maxW < minRightSlotWidth {
+		maxW = minRightSlotWidth
+	}
+
+	w := m.rightSlotSplitW
+	if w <= 0 {
+		w = defaultW
+	}
+	if w < minRightSlotWidth {
+		w = minRightSlotWidth
 	}
 	if w > maxW {
 		w = maxW
@@ -337,17 +381,17 @@ func (m *Model) layoutWorkspace() {
 
 	if inspectorVisible {
 		viewHeight := g.EditorHeight + g.ResultsHeight
-		m.inspector.SetSize(InspectorWidth-g.BorderOH, viewHeight)
+		m.inspector.SetSize(g.RightSlotW-g.BorderOH, viewHeight)
 	}
 	if assistantVisible {
 		viewHeight := g.EditorHeight + g.ResultsHeight
-		m.assistant.SetSize(AssistantWidth-g.BorderOH, viewHeight)
+		m.assistant.SetSize(g.RightSlotW-g.BorderOH, viewHeight)
 	}
 	if explorerDocked {
 		// Rendered directly in the slot (View() carries its own border), so the
-		// total panel is InspectorWidth × (editor+results+borders).
+		// total panel is RightSlotW × (editor+results+borders).
 		viewHeight := g.EditorHeight + g.ResultsHeight + g.BorderOH
-		m.explorer.SetSize(InspectorWidth, viewHeight)
+		m.explorer.SetSize(g.RightSlotW, viewHeight)
 	}
 
 	// Modal overlay panels (explain / lookup) share a centered 70% size. They

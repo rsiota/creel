@@ -1286,8 +1286,8 @@ func (r *ResultsTable) ensureCursorVisible() {
 
 func (r ResultsTable) maxVisibleRows() int {
 	max := r.height - 4
-	if max < 1 {
-		max = 1
+	if max < 0 {
+		max = 0
 	}
 	return max
 }
