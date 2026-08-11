@@ -47,14 +47,29 @@ func newResultsMouseModel() Model {
 // and the column index.
 func findResultsColumnX(t *testing.T, m Model, y int) (int, int) {
 	t.Helper()
-	for x := 30; x < 70; x++ {
+	g := m.workspaceGeom()
+	// Start past the sidebar↔centre seam (SidebarWidth-1 and SidebarWidth are
+	// resize handles) so a probe click cannot be swallowed by a split drag.
+	// layoutWorkspace/SetSize also clamps cursorCol from -1 → 0, so a drag
+	// that only relayouts would otherwise look like a successful column hit.
+	for x := g.SidebarWidth + 1; x < g.EditorRight && x < g.SidebarWidth+50; x++ {
+		if m.onSidebarSplit(x, y, g) {
+			continue
+		}
+		wantCol := m.results.ColumnAtX(x - g.SidebarWidth)
+		if wantCol < 0 {
+			continue
+		}
 		probe := m
 		probe.results.cursorRow = -1
 		probe.results.cursorCol = -1
 		out, _ := probe.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: y})
 		mm := out.(Model)
-		if mm.results.cursorCol >= 0 {
-			return x, mm.results.cursorCol
+		if mm.sidebarDragging || mm.splitDragging {
+			continue
+		}
+		if mm.results.cursorCol == wantCol {
+			return x, wantCol
 		}
 	}
 	t.Fatalf("no valid results column X found for Y=%d", y)
