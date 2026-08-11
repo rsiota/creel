@@ -104,15 +104,19 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.ex.visible || m.searching || m.backendSearching ||
 		m.cellEdit.IsVisible() {
 		m.splitDragging = false
+		m.sidebarDragging = false
 		return m, nil
 	}
 
-	// ── Editor↔results split drag ─────────────────────────────
+	// ── Panel split drags ─────────────────────────────────────
 	// Action-first (same shape as ERD drag): motion while a button is held
 	// arrives as Type=MouseLeft + Action=Motion, so a Type switch would
 	// re-enter the press path. See docs/tui-mouse.md.
 	if m.splitDragging {
 		return m.handleSplitDrag(msg)
+	}
+	if m.sidebarDragging {
+		return m.handleSidebarDrag(msg)
 	}
 
 	g := m.workspaceGeom()
@@ -121,8 +125,14 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	resultsTop := g.ResultsTop
 	resultsBottom := g.ResultsBottom
 
-	// Press on the editor/results seam starts a resize drag. Schema editor
-	// and table designer replace the split, so they skip this.
+	// Press on a panel seam starts a resize drag. Check the sidebar seam
+	// before the editor/results seam so the corner cell (if any) prefers
+	// horizontal resize — the vertical seam only spans the centre column.
+	if msg.Type == tea.MouseLeft && msg.Action != tea.MouseActionMotion &&
+		m.onSidebarSplit(msg.X, msg.Y, g) {
+		return m.beginSidebarDrag(msg.X, g)
+	}
+	// Schema editor and table designer replace the editor/results split.
 	if !m.schemaEditor.IsVisible() && !m.tableDesigner.IsVisible() &&
 		msg.Type == tea.MouseLeft && msg.Action != tea.MouseActionMotion &&
 		m.onEditorResultsSplit(msg.X, msg.Y, g) {
@@ -372,6 +382,15 @@ func (m Model) onEditorResultsSplit(x, y int, g workspaceGeom) bool {
 	return y == g.ResultsTop-1 || y == g.ResultsTop
 }
 
+// onSidebarSplit reports whether (x,y) sits on the seam between the sidebar
+// and the centre column (sidebar right border or centre left border).
+func (m Model) onSidebarSplit(x, y int, g workspaceGeom) bool {
+	if y < 0 || y > g.ResultsBottom {
+		return false
+	}
+	return x == g.SidebarWidth-1 || x == g.SidebarWidth
+}
+
 // beginSplitDrag starts an editor↔results resize. Dragging while maximized
 // exits maximize and adopts the current visual height so the divider doesn't
 // jump.
@@ -403,6 +422,34 @@ func (m Model) handleSplitDrag(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // (minus the press offset), clamps, and relayouts.
 func (m Model) applySplitDragY(y int) (tea.Model, tea.Cmd) {
 	m.editorSplitH = y - m.splitDragOff
+	m.layoutWorkspace()
+	return m, nil
+}
+
+// beginSidebarDrag starts a sidebar↔centre resize.
+func (m Model) beginSidebarDrag(x int, g workspaceGeom) (tea.Model, tea.Cmd) {
+	m.sidebarDragging = true
+	m.sidebarDragOff = x - g.SidebarWidth
+	return m.applySidebarDragX(x)
+}
+
+// handleSidebarDrag continues or ends an in-flight sidebar resize.
+func (m Model) handleSidebarDrag(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action == tea.MouseActionMotion ||
+		(msg.Type == tea.MouseLeft && msg.Action != tea.MouseActionRelease) {
+		return m.applySidebarDragX(msg.X)
+	}
+	if msg.Type == tea.MouseRelease || msg.Action == tea.MouseActionRelease {
+		m.sidebarDragging = false
+		return m, nil
+	}
+	return m, nil
+}
+
+// applySidebarDragX sets sidebarSplitW so the centre column's left edge tracks
+// the cursor (minus the press offset), clamps, and relayouts.
+func (m Model) applySidebarDragX(x int) (tea.Model, tea.Cmd) {
+	m.sidebarSplitW = x - m.sidebarDragOff
 	m.layoutWorkspace()
 	return m, nil
 }

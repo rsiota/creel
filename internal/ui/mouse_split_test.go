@@ -133,3 +133,69 @@ func TestOnEditorResultsSplit(t *testing.T) {
 		t.Error("seam hit should succeed just inside EditorRight")
 	}
 }
+
+// Dragging the sidebar↔centre seam should resize the sidebar.
+func TestSidebarDragResizes(t *testing.T) {
+	m := newFocusModel() // 120×40, default sidebar 30
+	g := m.workspaceGeom()
+	if g.SidebarWidth != defaultSidebarWidth {
+		t.Fatalf("precondition: SidebarWidth=%d", g.SidebarWidth)
+	}
+
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{
+		Type:   tea.MouseLeft,
+		Action: tea.MouseActionPress,
+		X:      g.SidebarWidth,
+		Y:      10,
+	})
+	m = out.(Model)
+	if !m.sidebarDragging {
+		t.Fatal("expected sidebarDragging after press on seam")
+	}
+
+	out, _ = m.handleWorkspaceMouse(tea.MouseMsg{
+		Type:   tea.MouseLeft,
+		Action: tea.MouseActionMotion,
+		X:      45,
+		Y:      10,
+	})
+	m = out.(Model)
+	g = m.workspaceGeom()
+	if g.SidebarWidth != 45 {
+		t.Errorf("after drag to X=45: SidebarWidth=%d, want 45", g.SidebarWidth)
+	}
+
+	out, _ = m.handleWorkspaceMouse(tea.MouseMsg{
+		Type:   tea.MouseRelease,
+		Action: tea.MouseActionRelease,
+		X:      45,
+		Y:      10,
+	})
+	m = out.(Model)
+	if m.sidebarDragging {
+		t.Error("sidebarDragging still set after release")
+	}
+	if m.workspaceGeom().SidebarWidth != 45 {
+		t.Errorf("width after release=%d, want 45", m.workspaceGeom().SidebarWidth)
+	}
+}
+
+func TestOnSidebarSplit(t *testing.T) {
+	m := newFocusModel()
+	g := m.workspaceGeom()
+	if !m.onSidebarSplit(g.SidebarWidth-1, 5, g) {
+		t.Error("expected hit on sidebar right border")
+	}
+	if !m.onSidebarSplit(g.SidebarWidth, 5, g) {
+		t.Error("expected hit on centre left border")
+	}
+	if m.onSidebarSplit(g.SidebarWidth-2, 5, g) {
+		t.Error("sidebar body should not be the seam")
+	}
+	if m.onSidebarSplit(g.SidebarWidth+1, 5, g) {
+		t.Error("centre body should not be the seam")
+	}
+	if m.onSidebarSplit(g.SidebarWidth, g.ResultsBottom+1, g) {
+		t.Error("below panel area should not be the seam")
+	}
+}

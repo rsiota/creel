@@ -113,3 +113,34 @@ func TestWorkspaceGeomCmdLineShrinksResults(t *testing.T) {
 		t.Errorf("ResultsHeight=%d, want %d with cmd line", g.ResultsHeight, base-1)
 	}
 }
+
+func TestWorkspaceGeomSidebarSplit(t *testing.T) {
+	m := newGeomModel(120, 40)
+	m.sidebarSplitW = 40
+	g := m.workspaceGeom()
+	if g.SidebarWidth != 40 {
+		t.Errorf("SidebarWidth=%d, want 40", g.SidebarWidth)
+	}
+	if g.RightWidth != 120-40-2 {
+		t.Errorf("RightWidth=%d, want %d", g.RightWidth, 120-40-2)
+	}
+}
+
+func TestWorkspaceGeomClampsSidebarSplit(t *testing.T) {
+	m := newGeomModel(120, 40)
+	m.sidebarSplitW = 2
+	g := m.workspaceGeom()
+	if g.SidebarWidth != minSidebarWidth {
+		t.Errorf("SidebarWidth=%d, want min %d", g.SidebarWidth, minSidebarWidth)
+	}
+
+	m.sidebarSplitW = 1000
+	g = m.workspaceGeom()
+	maxW := 120 - workspaceBorderOH - minCenterWidth
+	if g.SidebarWidth != maxW {
+		t.Errorf("SidebarWidth=%d, want max %d", g.SidebarWidth, maxW)
+	}
+	if g.RightWidth < minCenterWidth {
+		t.Errorf("RightWidth=%d, want >= %d", g.RightWidth, minCenterWidth)
+	}
+}

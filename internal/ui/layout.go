@@ -7,6 +7,8 @@ const (
 	defaultEditorHeight = 12
 	minEditorHeight     = 8
 	minResultsHeight    = 3
+	minSidebarWidth     = 18
+	minCenterWidth      = 40 // editor/results column must stay usable
 	workspaceStatusH    = 1
 	workspaceBorderOH   = 2
 )
@@ -33,11 +35,11 @@ type workspaceGeom struct {
 // still guard on width/height == 0 in updateLayout.
 func (m Model) workspaceGeom() workspaceGeom {
 	g := workspaceGeom{
-		SidebarWidth: defaultSidebarWidth,
-		BorderOH:     workspaceBorderOH,
-		StatusH:      workspaceStatusH,
+		BorderOH: workspaceBorderOH,
+		StatusH:  workspaceStatusH,
 	}
 	if m.width == 0 || m.height == 0 {
+		g.SidebarWidth = defaultSidebarWidth
 		g.EditorHeight = defaultEditorHeight
 		return g
 	}
@@ -55,6 +57,7 @@ func (m Model) workspaceGeom() workspaceGeom {
 		g.RightSlotW = InspectorWidth
 	}
 
+	g.SidebarWidth = m.effectiveSidebarWidth(g.RightSlotW)
 	g.EditorHeight = m.effectiveEditorHeight(g.CmdHeight)
 
 	g.ResultsHeight = m.height - g.EditorHeight - g.StatusH - g.CmdHeight - g.BorderOH
@@ -78,6 +81,27 @@ func (m Model) workspaceGeom() workspaceGeom {
 		g.RightWidth -= g.RightSlotW
 	}
 	return g
+}
+
+// effectiveSidebarWidth returns the outer sidebar width from sidebarSplitW
+// (or the default), clamped so the centre column keeps minCenterWidth.
+func (m Model) effectiveSidebarWidth(rightSlotW int) int {
+	maxW := m.width - workspaceBorderOH - rightSlotW - minCenterWidth
+	if maxW < minSidebarWidth {
+		maxW = minSidebarWidth
+	}
+
+	w := m.sidebarSplitW
+	if w <= 0 {
+		w = defaultSidebarWidth
+	}
+	if w < minSidebarWidth {
+		w = minSidebarWidth
+	}
+	if w > maxW {
+		w = maxW
+	}
+	return w
 }
 
 // effectiveEditorHeight returns the outer editor-panel height, honouring

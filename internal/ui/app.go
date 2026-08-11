@@ -400,11 +400,16 @@ type Model struct {
 	// (editor↔results split). 0 means defaultEditorHeight. Honoured when not
 	// maximized; clamped by workspaceGeom.
 	editorSplitH int
-	// splitDragging is set while the user is dragging the editor/results
-	// divider with the mouse. splitDragOff keeps the divider stuck under the
-	// cursor (msg.Y - ResultsTop at press).
-	splitDragging bool
-	splitDragOff  int
+	// sidebarSplitW is the user-chosen outer width of the sidebar. 0 means
+	// defaultSidebarWidth; clamped by workspaceGeom.
+	sidebarSplitW int
+	// splitDragging / sidebarDragging track an in-flight mouse resize of the
+	// editor↔results or sidebar↔centre seam. The Off fields keep the divider
+	// stuck under the cursor (msg.Y - ResultsTop / msg.X - SidebarWidth).
+	splitDragging   bool
+	splitDragOff    int
+	sidebarDragging bool
+	sidebarDragOff  int
 
 	// Truncate confirmation dialog (non-empty table name while pending).
 	truncateConfirm string

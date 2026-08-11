@@ -180,8 +180,8 @@ and `dragCard` (an active drag). Rules that fall out of this:
 
 Anything that adds drag elsewhere (e.g. moving a results column, a future
 mini-map viewport, panel splitters) should reuse this shape rather than
-inventing a fourth mouse protocol. The editor↔results splitter
-(`handleWorkspaceMouse` / `handleSplitDrag`) is the second consumer.
+inventing a fourth mouse protocol. The editor↔results and sidebar↔centre
+splitters (`handleSplitDrag` / `handleSidebarDrag`) are the second consumers.
 
 ---
 
