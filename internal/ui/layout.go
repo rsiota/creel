@@ -1,5 +1,121 @@
 package ui
 
+// Default and clamp sizes for the workspace chrome. Layout, View, and mouse
+// hit-testing all read these through workspaceGeom — never re-declare them.
+const (
+	defaultSidebarWidth = 30
+	defaultEditorHeight = 12
+	minEditorHeight     = 8
+	minResultsHeight    = 3
+	workspaceStatusH    = 1
+	workspaceBorderOH   = 2
+)
+
+// workspaceGeom is the single source of truth for workspace panel geometry.
+// layoutWorkspace, viewWorkspace, and mouse hit-tests must all derive from this
+// so a resize (or maximize) cannot desync paint from click mapping.
+type workspaceGeom struct {
+	SidebarWidth  int // left column outer width
+	EditorHeight  int // editor panel outer height (incl. borders)
+	ResultsHeight int // results panel height as used by viewWorkspace
+	ResultsTop    int // screen Y of the first results row (== EditorHeight)
+	ResultsBottom int // inclusive last Y of the panel area (above status)
+	EditorRight   int // exclusive right X of the centre column
+	RightWidth    int // centre-column content width (editor/results style width)
+	RightSlotW    int // inspector / assistant / docked-explorer width (0 if closed)
+	CmdHeight     int // bottom ":"/"/" line (0 or 1)
+	BorderOH      int
+	StatusH       int
+}
+
+// workspaceGeom computes panel bounds for the current model. Safe to call with
+// a zero-sized terminal (returns zeros / clamps); callers that size widgets
+// still guard on width/height == 0 in updateLayout.
+func (m Model) workspaceGeom() workspaceGeom {
+	g := workspaceGeom{
+		SidebarWidth: defaultSidebarWidth,
+		BorderOH:     workspaceBorderOH,
+		StatusH:      workspaceStatusH,
+	}
+	if m.width == 0 || m.height == 0 {
+		g.EditorHeight = defaultEditorHeight
+		return g
+	}
+
+	if m.ex.visible || m.searching || m.backendSearching {
+		g.CmdHeight = 1
+	}
+
+	switch {
+	case m.inspector.IsVisible():
+		g.RightSlotW = InspectorWidth
+	case m.assistant.IsVisible():
+		g.RightSlotW = AssistantWidth
+	case m.explorer.IsVisible() && m.explorer.docked:
+		g.RightSlotW = InspectorWidth
+	}
+
+	g.EditorHeight = m.effectiveEditorHeight(g.CmdHeight)
+
+	g.ResultsHeight = m.height - g.EditorHeight - g.StatusH - g.CmdHeight - g.BorderOH
+	if g.ResultsHeight < minResultsHeight {
+		g.ResultsHeight = minResultsHeight
+	}
+
+	g.ResultsTop = g.EditorHeight
+	// Status bar occupies the last row; the optional cmd line sits just above
+	// it. Mouse handlers ignore input while the cmd line is open, so the
+	// bottom of the clickable panel area is always height-2.
+	g.ResultsBottom = m.height - g.StatusH - 1
+
+	g.EditorRight = m.width
+	if g.RightSlotW > 0 {
+		g.EditorRight = m.width - g.RightSlotW
+	}
+
+	g.RightWidth = m.width - g.SidebarWidth - g.BorderOH
+	if g.RightSlotW > 0 {
+		g.RightWidth -= g.RightSlotW
+	}
+	return g
+}
+
+// effectiveEditorHeight returns the outer editor-panel height, honouring
+// maximize and the user-dragged split (editorSplitH), clamped so results keep
+// at least minResultsHeight rows.
+func (m Model) effectiveEditorHeight(cmdHeight int) int {
+	avail := m.height - workspaceStatusH - cmdHeight - workspaceBorderOH
+	maxH := avail - minResultsHeight
+	if maxH < minEditorHeight {
+		maxH = minEditorHeight
+	}
+
+	if m.editorMaximized {
+		// Most of the vertical space; leave a results sliver (~12 rows of
+		// chrome for the bottom panel), matching the pre-geom behaviour.
+		h := avail - 12
+		if h < minEditorHeight {
+			h = minEditorHeight
+		}
+		if h > maxH {
+			h = maxH
+		}
+		return h
+	}
+
+	h := m.editorSplitH
+	if h <= 0 {
+		h = defaultEditorHeight
+	}
+	if h < minEditorHeight {
+		h = minEditorHeight
+	}
+	if h > maxH {
+		h = maxH
+	}
+	return h
+}
+
 // isFocusable reports whether a panel is present and can receive focus.
 // The sidebar, tab bar, editor, and results are always present; the inspector
 // and assistant are only focusable when open (they share the right-hand slot).
@@ -171,75 +287,42 @@ func (m Model) updateLayout() Model {
 // layoutWorkspace sizes the workspace panels. Uses pointer receiver so it
 // works correctly when called from both value and pointer receiver methods.
 func (m *Model) layoutWorkspace() {
-	sidebarWidth := 30
-	inspectorWidth := InspectorWidth
-	statusHeight := 1
-	tabBarHeight := 0 // tabs are inside the editor panel
-	borderOverhead := 2
-	editorHeight := 12
-
-	if m.editorMaximized {
-		// Editor takes most of the vertical space, results gets a sliver.
-		editorHeight = m.height - statusHeight - tabBarHeight - borderOverhead - 12
-		if editorHeight < 8 {
-			editorHeight = 8
-		}
-	}
+	g := m.workspaceGeom()
 
 	inspectorVisible := m.inspector.IsVisible()
 	assistantVisible := m.assistant.IsVisible()
 	explorerDocked := m.explorer.IsVisible() && m.explorer.docked
 
-	rightWidth := m.width - sidebarWidth - borderOverhead
-	// The inspector, assistant, and docked explorer share the right-hand slot
-	// (mutually exclusive), so subtract whichever (if any) is open.
-	rightSlotWidth := 0
-	if inspectorVisible {
-		rightSlotWidth = InspectorWidth
-	} else if assistantVisible {
-		rightSlotWidth = AssistantWidth
-	} else if explorerDocked {
-		rightSlotWidth = InspectorWidth
-	}
-	if rightSlotWidth > 0 {
-		rightWidth -= rightSlotWidth
-	}
-
-	resultsHeight := m.height - tabBarHeight - editorHeight - statusHeight - borderOverhead
-	if resultsHeight < 3 {
-		resultsHeight = 3
-	}
-
 	// Sidebar and inspector span the same height as editor + results combined.
-	sideContentHeight := m.height - statusHeight - borderOverhead
+	sideContentHeight := m.height - g.StatusH - g.BorderOH
 	if sideContentHeight < 3 {
 		sideContentHeight = 3
 	}
 
-	editorContentHeight := editorHeight - borderOverhead - 2 // -2 for tab line + separator inside editor
+	editorContentHeight := g.EditorHeight - g.BorderOH - 2 // -2 for tab line + separator
 	if editorContentHeight < 1 {
 		editorContentHeight = 1
 	}
 
-	m.connList.SetSize(sidebarWidth-borderOverhead, sideContentHeight)
-	m.editor.SetSize(rightWidth, editorContentHeight)
+	m.connList.SetSize(g.SidebarWidth-g.BorderOH, sideContentHeight)
+	m.editor.SetSize(g.RightWidth, editorContentHeight)
 
-	m.tabBar.SetSize(rightWidth, 1)
+	m.tabBar.SetSize(g.RightWidth, 1)
 
-	m.results.SetSize(rightWidth+borderOverhead, resultsHeight+borderOverhead)
+	m.results.SetSize(g.RightWidth+g.BorderOH, g.ResultsHeight+g.BorderOH)
 
 	if inspectorVisible {
-		viewHeight := tabBarHeight + editorHeight + resultsHeight
-		m.inspector.SetSize(inspectorWidth-borderOverhead, viewHeight)
+		viewHeight := g.EditorHeight + g.ResultsHeight
+		m.inspector.SetSize(InspectorWidth-g.BorderOH, viewHeight)
 	}
 	if assistantVisible {
-		viewHeight := tabBarHeight + editorHeight + resultsHeight
-		m.assistant.SetSize(AssistantWidth-borderOverhead, viewHeight)
+		viewHeight := g.EditorHeight + g.ResultsHeight
+		m.assistant.SetSize(AssistantWidth-g.BorderOH, viewHeight)
 	}
 	if explorerDocked {
 		// Rendered directly in the slot (View() carries its own border), so the
 		// total panel is InspectorWidth × (editor+results+borders).
-		viewHeight := tabBarHeight + editorHeight + resultsHeight + borderOverhead
+		viewHeight := g.EditorHeight + g.ResultsHeight + g.BorderOH
 		m.explorer.SetSize(InspectorWidth, viewHeight)
 	}
 

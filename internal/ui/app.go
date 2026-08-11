@@ -396,6 +396,15 @@ type Model struct {
 
 	// Editor maximize toggle (ctrl+w)
 	editorMaximized bool
+	// editorSplitH is the user-chosen outer height of the editor panel
+	// (editor↔results split). 0 means defaultEditorHeight. Honoured when not
+	// maximized; clamped by workspaceGeom.
+	editorSplitH int
+	// splitDragging is set while the user is dragging the editor/results
+	// divider with the mouse. splitDragOff keeps the divider stuck under the
+	// cursor (msg.Y - ResultsTop at press).
+	splitDragging bool
+	splitDragOff  int
 
 	// Truncate confirmation dialog (non-empty table name while pending).
 	truncateConfirm string
@@ -4251,40 +4260,14 @@ func (m Model) viewAddConnection() string {
 }
 
 func (m Model) viewWorkspace() string {
-	sidebarWidth := 30
+	g := m.workspaceGeom()
+	sidebarWidth := g.SidebarWidth
 	inspectorWidth := InspectorWidth
-	statusHeight := 1
-	tabBarHeight := 0 // tabs are inside the editor panel
-	borderOverhead := 2
-	editorHeight := 12
-
-	if m.editorMaximized {
-		editorHeight = m.height - statusHeight - tabBarHeight - borderOverhead - 12
-		if editorHeight < 8 {
-			editorHeight = 8
-		}
-	}
-
-	// The bottom command line (":", "/", backend search) takes one row when
-	// active; reserve it here so the results panel (and the sidebar/inspector,
-	// whose heights derive from it) shrink to make room.
-	cmdHeight := 0
-	if m.ex.visible || m.searching || m.backendSearching {
-		cmdHeight = 1
-	}
-	resultsHeight := m.height - tabBarHeight - editorHeight - statusHeight - cmdHeight - borderOverhead
-	if resultsHeight < 3 {
-		resultsHeight = 3
-	}
-
-	rightWidth := m.width - sidebarWidth - borderOverhead
-	if m.inspector.IsVisible() {
-		rightWidth -= inspectorWidth
-	} else if m.assistant.IsVisible() {
-		rightWidth -= AssistantWidth
-	} else if m.explorer.IsVisible() && m.explorer.docked {
-		rightWidth -= inspectorWidth
-	}
+	statusHeight := g.StatusH
+	borderOverhead := g.BorderOH
+	editorHeight := g.EditorHeight
+	resultsHeight := g.ResultsHeight
+	rightWidth := g.RightWidth
 
 	// Build the content area (tabs are inside the editor panel).
 	var contentPanel string
@@ -4356,8 +4339,8 @@ func (m Model) viewWorkspace() string {
 			resultsPanel = resultsStyle.Render(func() string {
 				m.results.SetSort(m.sortCol, m.sortDir)
 				// The prompt no longer lives inside this panel; the table fills
-				// it at full height. cmdHeight above already reserved the row
-				// the bottom command line occupies.
+				// it at full height. CmdHeight in workspaceGeom already reserved
+				// the row the bottom command line occupies.
 				m.results.SetSize(rightWidth+borderOverhead, resultsHeight+borderOverhead)
 				return m.results.View()
 			}())

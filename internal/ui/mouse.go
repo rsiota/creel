@@ -103,29 +103,31 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// replace the editor/results panels and own content-area clicks).
 	if m.ex.visible || m.searching || m.backendSearching ||
 		m.cellEdit.IsVisible() {
+		m.splitDragging = false
 		return m, nil
 	}
 
-	sidebarWidth := 30
-	editorHeight := 12
-	if m.editorMaximized {
-		editorHeight = m.height - 1 - 2 - 12
-		if editorHeight < 8 {
-			editorHeight = 8
-		}
+	// ── Editor↔results split drag ─────────────────────────────
+	// Action-first (same shape as ERD drag): motion while a button is held
+	// arrives as Type=MouseLeft + Action=Motion, so a Type switch would
+	// re-enter the press path. See docs/tui-mouse.md.
+	if m.splitDragging {
+		return m.handleSplitDrag(msg)
 	}
 
-	// Right edge of the editor/results area; the right-hand slot panel
-	// (inspector or assistant) sits beyond it.
-	editorRight := m.width
-	if m.inspector.IsVisible() {
-		editorRight = m.width - InspectorWidth
-	} else if m.assistant.IsVisible() {
-		editorRight = m.width - AssistantWidth
-	}
+	g := m.workspaceGeom()
+	sidebarWidth := g.SidebarWidth
+	editorRight := g.EditorRight
+	resultsTop := g.ResultsTop
+	resultsBottom := g.ResultsBottom
 
-	resultsTop := editorHeight
-	resultsBottom := m.height - 2
+	// Press on the editor/results seam starts a resize drag. Schema editor
+	// and table designer replace the split, so they skip this.
+	if !m.schemaEditor.IsVisible() && !m.tableDesigner.IsVisible() &&
+		msg.Type == tea.MouseLeft && msg.Action != tea.MouseActionMotion &&
+		m.onEditorResultsSplit(msg.X, msg.Y, g) {
+		return m.beginSplitDrag(msg.Y, g)
+	}
 
 	// ── Structure view (schema editor) ────────────────────────
 	// When open it replaces the editor+results content area. Route clicks inside
@@ -360,35 +362,63 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// onEditorResultsSplit reports whether (x,y) sits on the seam between the
+// editor and results panels (editor bottom border or results top border),
+// within the centre column.
+func (m Model) onEditorResultsSplit(x, y int, g workspaceGeom) bool {
+	if x < g.SidebarWidth || x >= g.EditorRight {
+		return false
+	}
+	return y == g.ResultsTop-1 || y == g.ResultsTop
+}
+
+// beginSplitDrag starts an editor↔results resize. Dragging while maximized
+// exits maximize and adopts the current visual height so the divider doesn't
+// jump.
+func (m Model) beginSplitDrag(y int, g workspaceGeom) (tea.Model, tea.Cmd) {
+	if m.editorMaximized {
+		m.editorMaximized = false
+		m.editorSplitH = g.EditorHeight
+		g = m.workspaceGeom()
+	}
+	m.splitDragging = true
+	m.splitDragOff = y - g.ResultsTop
+	return m.applySplitDragY(y)
+}
+
+// handleSplitDrag continues or ends an in-flight editor↔results resize.
+func (m Model) handleSplitDrag(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action == tea.MouseActionMotion ||
+		(msg.Type == tea.MouseLeft && msg.Action != tea.MouseActionRelease) {
+		return m.applySplitDragY(msg.Y)
+	}
+	if msg.Type == tea.MouseRelease || msg.Action == tea.MouseActionRelease {
+		m.splitDragging = false
+		return m, nil
+	}
+	return m, nil
+}
+
+// applySplitDragY sets editorSplitH so the results top edge tracks the cursor
+// (minus the press offset), clamps, and relayouts.
+func (m Model) applySplitDragY(y int) (tea.Model, tea.Cmd) {
+	m.editorSplitH = y - m.splitDragOff
+	m.layoutWorkspace()
+	return m, nil
+}
+
 // handleTableDesignerMouse routes mouse events to the table designer, which
 // replaces the editor/results panels when open. Screen coordinates are
 // translated to the designer's content-relative grid (0-based, inside the
 // panel's rounded border): content origin is (sidebarWidth+1, 1).
 func (m Model) handleTableDesignerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	sidebarWidth := 30
-	statusHeight := 1
-	borderOverhead := 2
-	editorHeight := 12
-	if m.editorMaximized {
-		editorHeight = m.height - statusHeight - borderOverhead - 12
-		if editorHeight < 8 {
-			editorHeight = 8
-		}
-	}
-	resultsHeight := m.height - editorHeight - statusHeight - borderOverhead
-	if resultsHeight < 3 {
-		resultsHeight = 3
-	}
-	panelH := editorHeight + resultsHeight
-	rightWidth := m.width - sidebarWidth - borderOverhead
-	if m.inspector.IsVisible() {
-		rightWidth -= InspectorWidth
-	}
+	g := m.workspaceGeom()
+	panelH := g.EditorHeight + g.ResultsHeight
 
-	x := msg.X - sidebarWidth - 1
+	x := msg.X - g.SidebarWidth - 1
 	y := msg.Y - 1
-	contentW := rightWidth - borderOverhead
-	contentH := panelH - borderOverhead
+	contentW := g.RightWidth - g.BorderOH
+	contentH := panelH - g.BorderOH
 	// Keep the designer's size/column widths fresh for click mapping. SetSize is
 	// otherwise applied only during View (a value-receiver), so the model that
 	// handles mouse events would carry stale colWidths/height and the
@@ -417,31 +447,14 @@ func (m Model) handleTableDesignerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // panel's rounded border): the panel's top-left content cell is at screen
 // (sidebarWidth+1, 1).
 func (m Model) handleSchemaEditorMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	sidebarWidth := 30
-	statusHeight := 1
-	borderOverhead := 2
-	editorHeight := 12
-	if m.editorMaximized {
-		editorHeight = m.height - statusHeight - borderOverhead - 12
-		if editorHeight < 8 {
-			editorHeight = 8
-		}
-	}
-	resultsHeight := m.height - editorHeight - statusHeight - borderOverhead
-	if resultsHeight < 3 {
-		resultsHeight = 3
-	}
-	panelH := editorHeight + resultsHeight // matches viewWorkspace's editorH
-	rightWidth := m.width - sidebarWidth - borderOverhead
-	if m.inspector.IsVisible() {
-		rightWidth -= InspectorWidth
-	}
+	g := m.workspaceGeom()
+	panelH := g.EditorHeight + g.ResultsHeight // matches viewWorkspace's editorH
 
 	// Content-relative coords (inside the border).
-	x := msg.X - sidebarWidth - 1
+	x := msg.X - g.SidebarWidth - 1
 	y := msg.Y - 1
-	contentW := rightWidth - borderOverhead
-	contentH := panelH - borderOverhead
+	contentW := g.RightWidth - g.BorderOH
+	contentH := panelH - g.BorderOH
 	// Keep the editor's size/column widths fresh for click mapping (SetSize is
 	// otherwise applied only during View, a value-receiver, so the model that
 	// handles mouse events would carry stale colWidths/height).
