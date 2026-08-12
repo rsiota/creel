@@ -19,7 +19,7 @@ func TestBuildInsertQuery(t *testing.T) {
 		query, args, err := buildInsertQuery(db.DriverSQLite, "users", columns, map[string]string{
 			"name":  "alice",
 			"email": "alice@test.com",
-		})
+		}, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -34,7 +34,7 @@ func TestBuildInsertQuery(t *testing.T) {
 	t.Run("required column without value", func(t *testing.T) {
 		_, _, err := buildInsertQuery(db.DriverSQLite, "users", columns, map[string]string{
 			"email": "alice@test.com",
-		})
+		}, nil)
 		if err == nil || !strings.Contains(err.Error(), `column "name" is required`) {
 			t.Fatalf("expected required column error, got %v", err)
 		}
@@ -45,7 +45,7 @@ func TestBuildInsertQuery(t *testing.T) {
 			{Name: "id", Type: "INTEGER", PrimaryKey: true, AutoIncrement: true},
 			{Name: "status", Type: "TEXT", HasDefault: true},
 		}
-		_, _, err := buildInsertQuery(db.DriverSQLite, "users", optional, map[string]string{})
+		_, _, err := buildInsertQuery(db.DriverSQLite, "users", optional, map[string]string{}, nil)
 		if err == nil || !strings.Contains(err.Error(), "no values to insert") {
 			t.Fatalf("expected no values error, got %v", err)
 		}
@@ -55,7 +55,7 @@ func TestBuildInsertQuery(t *testing.T) {
 		query, args, err := buildInsertQuery(db.DriverSQLite, "users", columns, map[string]string{
 			"name":  "alice",
 			"email": "NULL",
-		})
+		}, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -76,7 +76,7 @@ func TestBuildInsertQuery(t *testing.T) {
 		_, args, err := buildInsertQuery(db.DriverSQLite, "logs", dtColumns, map[string]string{
 			"created_at": "2026-01-07T15:04:30Z",
 			"updated_at": "2026-01-07T15:04:30Z",
-		})
+		}, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -86,7 +86,7 @@ func TestBuildInsertQuery(t *testing.T) {
 	})
 
 	t.Run("empty table name", func(t *testing.T) {
-		_, _, err := buildInsertQuery(db.DriverSQLite, "", columns, map[string]string{"name": "alice"})
+		_, _, err := buildInsertQuery(db.DriverSQLite, "", columns, map[string]string{"name": "alice"}, nil)
 		if err == nil || !strings.Contains(err.Error(), "no table") {
 			t.Fatalf("expected no table error, got %v", err)
 		}
@@ -96,7 +96,7 @@ func TestBuildInsertQuery(t *testing.T) {
 		query, _, err := buildInsertQuery(db.DriverPostgres, "users", columns, map[string]string{
 			"name":  "alice",
 			"email": "alice@test.com",
-		})
+		}, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

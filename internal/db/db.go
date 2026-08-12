@@ -347,10 +347,22 @@ type TableColumnInfo struct {
 	DefaultValue  string
 }
 
+// BlobKey identifies a binary cell in Result.Rows by zero-based row and
+// column index. Used as the key into Result.Blobs.
+type BlobKey struct {
+	Row int
+	Col int
+}
+
 // Result holds the output of a query execution.
 type Result struct {
 	Columns []Column
 	Rows    [][]string
+	// Blobs holds raw binary cell data for BLOB/BYTEA/BINARY columns.
+	// Rows stores a display placeholder (see BlobPlaceholder) at the same
+	// coordinates; consumers that need the bytes (save-to-file, INSERT
+	// literals) look them up here. Nil when the result has no binary cells.
+	Blobs   map[BlobKey][]byte
 	Message string
 	Elapsed string
 }
@@ -439,6 +451,10 @@ type queryRunner interface {
 
 // executeRows runs a query against a *sql.DB or *sql.Tx with context support
 // and builds a Result. It is shared by all drivers and by sqlTx.
+//
+// Binary columns (BLOB / BYTEA / BINARY / …) are scanned as []byte so the
+// bytes stay intact; Rows gets a "<BLOB …>" placeholder and the raw data
+// is kept in Result.Blobs for save-to-file and SQL literals.
 func executeRows(ctx context.Context, database queryRunner, query string) (Result, error) {
 	start := time.Now()
 
@@ -459,30 +475,65 @@ func executeRows(ctx context.Context, database queryRunner, query string) (Resul
 	}
 
 	colTypes, _ := rows.ColumnTypes()
+	binaryCols := make([]bool, len(cols))
 	for i, ct := range colTypes {
 		cols[i].Type = ct.DatabaseTypeName()
+		binaryCols[i] = IsBinaryType(cols[i].Type)
 	}
 
 	var resultRows [][]string
+	var blobs map[BlobKey][]byte
+	rowIdx := 0
 	for rows.Next() {
-		rawValues := make([]sql.NullString, len(cols))
+		nsHolders := make([]sql.NullString, len(cols))
+		ifaceHolders := make([]interface{}, len(cols))
 		scanArgs := make([]interface{}, len(cols))
-		for i := range rawValues {
-			scanArgs[i] = &rawValues[i]
+		for i := range cols {
+			if binaryCols[i] {
+				scanArgs[i] = &ifaceHolders[i]
+			} else {
+				scanArgs[i] = &nsHolders[i]
+			}
 		}
 		if err := rows.Scan(scanArgs...); err != nil {
 			return Result{}, err
 		}
 
 		row := make([]string, len(cols))
-		for i, v := range rawValues {
-			if v.Valid {
-				row[i] = v.String
+		for i := range cols {
+			if binaryCols[i] {
+				// interface{} distinguishes SQL NULL (nil) from an empty
+				// BLOB (typed-nil or empty []byte) — scanning into []byte
+				// collapses both to nil on several drivers.
+				if ifaceHolders[i] == nil {
+					row[i] = "NULL"
+					continue
+				}
+				b, ok := ifaceHolders[i].([]byte)
+				if !ok {
+					// Unexpected type from the driver; stringify as fallback.
+					row[i] = fmt.Sprint(ifaceHolders[i])
+					continue
+				}
+				// Copy into a fresh slice. append(nil, empty...) yields nil,
+				// which would collapse empty BLOBs with SQL NULL in callers
+				// that check `data == nil`; start from []byte{} instead.
+				data := append([]byte{}, b...)
+				row[i] = BlobPlaceholder(len(data))
+				if blobs == nil {
+					blobs = make(map[BlobKey][]byte)
+				}
+				blobs[BlobKey{Row: rowIdx, Col: i}] = data
+				continue
+			}
+			if nsHolders[i].Valid {
+				row[i] = nsHolders[i].String
 			} else {
 				row[i] = "NULL"
 			}
 		}
 		resultRows = append(resultRows, row)
+		rowIdx++
 	}
 
 	if err := rows.Err(); err != nil {
@@ -498,6 +549,7 @@ func executeRows(ctx context.Context, database queryRunner, query string) (Resul
 	return Result{
 		Columns: cols,
 		Rows:    resultRows,
+		Blobs:   blobs,
 		Message: fmt.Sprintf("%d %s in %s", len(resultRows), noun, elapsed.Round(time.Millisecond)),
 		Elapsed: elapsed.String(),
 	}, nil

@@ -29,9 +29,12 @@ type cellRef struct {
 // per-cell truncation and horizontal scrolling. When editable, it
 // supports a cell cursor and inline editing.
 type ResultsTable struct {
-	columns   []string
-	rows      [][]string
-	rawRows   [][]string // un-sanitized rows, preserving newlines/tabs for the cell viewer
+	columns []string
+	rows    [][]string
+	rawRows [][]string // un-sanitized rows, preserving newlines/tabs for the cell viewer
+	// blobs holds raw binary cell data keyed by (row, col). Display uses a
+	// "<BLOB …>" placeholder in rows; save-to-file and INSERT literals read here.
+	blobs     map[db.BlobKey][]byte
 	scrollRow int
 	scrollCol int
 	colWidths []int
@@ -303,6 +306,27 @@ func (r ResultsTable) RowValue(row, col int) string {
 	return r.rows[row][col]
 }
 
+// BlobData returns the raw bytes for a binary cell, if any.
+func (r ResultsTable) BlobData(row, col int) ([]byte, bool) {
+	if r.blobs == nil {
+		return nil, false
+	}
+	d, ok := r.blobs[db.BlobKey{Row: row, Col: col}]
+	return d, ok
+}
+
+// IsBlobCell reports whether the cell holds binary data (scanned as []byte).
+func (r ResultsTable) IsBlobCell(row, col int) bool {
+	_, ok := r.BlobData(row, col)
+	return ok
+}
+
+// SetBlobs stores binary cell data for the current result set. Call after
+// SetResult; SetResult clears any previous map.
+func (r *ResultsTable) SetBlobs(blobs map[db.BlobKey][]byte) {
+	r.blobs = blobs
+}
+
 // RawRowValue returns the un-sanitized cell value (preserving newlines and
 // tabs) for viewers that render multi-line content, such as the cell-edit
 // popup. Pending dirty edits take precedence. When raw rows aren't available
@@ -542,8 +566,12 @@ func (r ResultsTable) CopyAsInsert() (string, int) {
 			if j > 0 {
 				b.WriteString(", ")
 			}
-			val := r.RowValue(rowIdx, ci)
-			b.WriteString(sqlEscape(val, r.columnType(ci)))
+			if data, ok := r.BlobData(rowIdx, ci); ok {
+				b.WriteString(db.BlobSQLLiteral(data, r.columnType(ci)))
+			} else {
+				val := r.RowValue(rowIdx, ci)
+				b.WriteString(sqlEscape(val, r.columnType(ci)))
+			}
 		}
 		b.WriteString(")")
 		count++
@@ -670,6 +698,10 @@ func isBareNumeric(s string) bool {
 // CloneRow represents a single row's column values ready for cloning.
 type CloneRow struct {
 	Values map[string]string
+	// Blobs holds raw binary values keyed by column name. When present for a
+	// column, buildInsertQuery uses the bytes instead of Values[name] (which
+	// would be the "<BLOB …>" display placeholder).
+	Blobs map[string][]byte
 }
 
 // CloneRowsData returns the rows to clone: marked rows if any exist,
@@ -717,6 +749,7 @@ func (r ResultsTable) CloneRowsData() (string, []db.TableColumnInfo, []CloneRow)
 		}
 
 		vals := make(map[string]string)
+		var rowBlobs map[string][]byte
 		for _, tc := range r.tableColumns {
 			if tc.AutoIncrement {
 				continue
@@ -725,10 +758,18 @@ func (r ResultsTable) CloneRowsData() (string, []db.TableColumnInfo, []CloneRow)
 				continue
 			}
 			if idx, ok := colIdx[strings.ToLower(tc.Name)]; ok {
+				if data, ok := r.BlobData(rowIdx, idx); ok {
+					if rowBlobs == nil {
+						rowBlobs = make(map[string][]byte)
+					}
+					rowBlobs[tc.Name] = data
+					vals[tc.Name] = r.RowValue(rowIdx, idx) // placeholder; overridden via Blobs
+					continue
+				}
 				vals[tc.Name] = r.RowValue(rowIdx, idx)
 			}
 		}
-		rows = append(rows, CloneRow{Values: vals})
+		rows = append(rows, CloneRow{Values: vals, Blobs: rowBlobs})
 	}
 
 	return r.sourceTable, r.tableColumns, rows
@@ -987,6 +1028,7 @@ func (r *ResultsTable) SetResult(cols []string, rows [][]string, message string)
 	// Keep the raw rows for viewers that render multi-line content (the
 	// cell-edit popup); the grid display reads the sanitized copy below.
 	r.rawRows = rows
+	r.blobs = nil
 	// Flatten control characters to spaces so they don't break the
 	// single-line cell layout (multi-line TEXT fields, tabs, etc.).
 	cols = sanitizeCellRow(cols)
@@ -1017,6 +1059,8 @@ func (r *ResultsTable) SetResult(cols []string, rows [][]string, message string)
 func (r *ResultsTable) SetError(err string) {
 	r.columns = nil
 	r.rows = nil
+	r.rawRows = nil
+	r.blobs = nil
 	r.message = err
 	r.hasResult = true
 }
@@ -1025,6 +1069,8 @@ func (r *ResultsTable) SetError(err string) {
 func (r *ResultsTable) Clear() {
 	r.columns = nil
 	r.rows = nil
+	r.rawRows = nil
+	r.blobs = nil
 	r.message = ""
 	r.hasResult = false
 	r.scrollRow = 0
@@ -1427,6 +1473,10 @@ func (r *ResultsTable) StartEdit() {
 	if !r.editable || !r.HasPrimaryKey() || len(r.rows) == 0 {
 		return
 	}
+	// Binary cells can't be edited as text; use :saveblob to export them.
+	if r.IsBlobCell(r.cursorRow, r.cursorCol) {
+		return
+	}
 	ti := textinput.New()
 	ti.Prompt = ""
 	ti.CharLimit = 0 // no limit
@@ -1822,7 +1872,7 @@ func (r ResultsTable) View() string {
 					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorCursorRow)
 				default:
 					fg := colorFg
-					if val == "NULL" {
+					if val == "NULL" || db.IsBlobPlaceholder(val) {
 						fg = colorMuted
 					}
 					style = lipgloss.NewStyle().Foreground(fg)

@@ -1573,6 +1573,29 @@ func (m *Model) exWriteFile(path string) tea.Cmd {
 	return nil
 }
 
+// exSaveBlob writes the binary value under the results cursor to a file
+// (:saveblob <file>). Binary cells are scanned as []byte and shown as
+// "<BLOB …>" placeholders; this is how you recover the raw bytes.
+func (m *Model) exSaveBlob(path string) tea.Cmd {
+	row, col := m.results.CursorRow(), m.results.CursorCol()
+	data, ok := m.results.BlobData(row, col)
+	if !ok {
+		m.schemaMsg = "cursor cell is not a binary value"
+		return nil
+	}
+	expanded, err := expandTilde(filepath.Clean(path))
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	if err := os.WriteFile(expanded, data, 0o644); err != nil {
+		m.schemaMsg = "write failed: " + err.Error()
+		return nil
+	}
+	m.schemaMsg = fmt.Sprintf("wrote %s to %s", db.FormatByteSize(len(data)), expanded)
+	return nil
+}
+
 // exExport writes the current result set to ~/Downloads in the given format
 // (:export <fmt> [cols...]) — a non-interactive shortcut over the g X export
 // dialog. <fmt> is one of csv, json, jsonl, md, tsv (case-insensitive; "markdown"

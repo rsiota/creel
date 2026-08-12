@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/rsiota/creel/internal/db"
 )
 
 // InspectorWidth is the column width reserved for the inspector panel
@@ -371,6 +372,9 @@ func (i *Inspector) StartFieldEdit(results ResultsTable) {
 	}
 
 	row := results.CursorRow()
+	if results.IsBlobCell(row, col) {
+		return
+	}
 	val := results.RowValue(row, col)
 	if val == "NULL" {
 		val = ""
@@ -567,7 +571,7 @@ func (i Inspector) View(results ResultsTable) string {
 		if valueContent == "" {
 			displayVal := truncateCell(val, valueWidth)
 			valStyle := lipgloss.NewStyle().Foreground(colorFg)
-			if !i.inserting && val == "NULL" {
+			if !i.inserting && (val == "NULL" || db.IsBlobPlaceholder(val)) {
 				valStyle = lipgloss.NewStyle().Foreground(colorMuted)
 			}
 			if isDirty {

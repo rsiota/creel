@@ -369,11 +369,14 @@ func truncateSidebarLine(line string, maxVisible int) string {
 	return lipgloss.NewStyle().MaxWidth(maxVisible).Render(line)
 }
 
-// Run starts the application.
 // Run starts the interactive TUI. If startupFile is non-empty it is loaded
 // into the editor before the program starts (the `creel -f` flag); a read
 // failure fails fast with a wrapped error before any UI is shown.
-func Run(cfg *config.Config, forceReadOnly bool, startupFile string) error {
+//
+// If startupConn is non-nil, creel opens that connection immediately and
+// enters the workspace (the `creel -database …` / `creel -c …` path) instead
+// of showing the connection picker. A connect failure fails fast the same way.
+func Run(cfg *config.Config, forceReadOnly bool, startupFile string, startupConn *db.ConnectionConfig) error {
 	m := NewModel(cfg)
 	m.forceReadOnly = forceReadOnly
 	if startupFile != "" {
@@ -382,6 +385,13 @@ func Run(cfg *config.Config, forceReadOnly bool, startupFile string) error {
 			return fmt.Errorf("loading %s: %w", startupFile, err)
 		}
 		m.schemaMsg = fmt.Sprintf("loaded %s — press ctrl+e to run", expanded)
+	}
+	if startupConn != nil {
+		cmd := m.connectWithConfig(*startupConn)
+		if m.connError != "" {
+			return fmt.Errorf("connecting to %s: %s", startupConn.Database, m.connError)
+		}
+		m.startupCmd = cmd
 	}
 	// WithMouseAllMotion (not just cell motion) so the ERD can show hover
 	// tooltips: button-less motion events are what surface a card's columns

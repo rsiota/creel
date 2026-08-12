@@ -175,6 +175,14 @@ func (m *Model) openCellEditPopup(row, col int) tea.Cmd {
 		return nil
 	}
 	colName := m.results.ColumnName(col)
+	// Binary cells: always view-only, with a short summary and a hint to
+	// export via :saveblob. Editing binary as text would corrupt the value.
+	if data, ok := m.results.BlobData(row, col); ok {
+		val := fmt.Sprintf("Binary value (%s)\n\nUse :saveblob <file> to write these bytes to disk.",
+			db.FormatByteSize(len(data)))
+		m.cellEdit.Show(val, row, col, colName, true)
+		return m.cellEdit.Focus()
+	}
 	val := m.results.RawRowValue(row, col)
 	if val == "NULL" {
 		val = ""

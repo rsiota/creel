@@ -147,7 +147,11 @@ func DumpTable(w io.Writer, database DB, driver Driver, table string) error {
 		}
 		values := make([]string, len(row))
 		for j, val := range row {
-			values[j] = formatSQLValue(val, colTypes[j])
+			if data, ok := result.Blobs[BlobKey{Row: i, Col: j}]; ok {
+				values[j] = BlobSQLLiteral(data, colTypes[j])
+			} else {
+				values[j] = formatSQLValue(val, colTypes[j])
+			}
 		}
 		fmt.Fprintf(w, "  (%s)", strings.Join(values, ", "))
 	}

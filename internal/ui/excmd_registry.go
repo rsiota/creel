@@ -628,6 +628,20 @@ func exCommands() []exCmdSpec {
 			},
 		},
 		{
+			verbs:    []string{"saveblob"},
+			desc:     "save the cursor cell's binary value to a file",
+			usage:    ":saveblob <file>",
+			argKind:  exArgRequired,
+			complete: completePath,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				if len(args) == 0 {
+					m.schemaMsg = ":saveblob needs a file path"
+					return nil
+				}
+				return m.exSaveBlob(args[0])
+			},
+		},
+		{
 			verbs:   []string{"bookmark"},
 			desc:    "bookmark the editor's current query",
 			usage:   ":bookmark",
@@ -943,7 +957,7 @@ func completeCopyRow(_ *Model, args []string, partial string) []string {
 }
 
 // completePath offers filesystem entries matching the typed path prefix as the
-// first argument of the file commands (:e/:w/:import/:open/:save). It reuses
+// first argument of the file commands (:e/:w/:import/:open/:save/:saveblob). It reuses
 // the import prompt's path engine (completeFilePath) but returns full-path
 // candidates (dir + name) rather than bare entry names, so the ":" popup's
 // fuzzy ranker — which matches the typed prefix against each candidate —

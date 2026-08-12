@@ -32,9 +32,9 @@ func main() {
 	flag.StringVar(&queryFlag, "e", "", "Execute SQL query and exit (CLI mode)")
 	flag.StringVar(&fileFlag, "f", "", "Load a .sql file into the editor at startup")
 	flag.StringVar(&formatFlag, "format", "tsv", "CLI output format: csv, json, jsonl, md, or tsv")
-	flag.StringVar(&connFlag, "c", "", "Saved connection name (CLI mode); explicit flags override its fields")
+	flag.StringVar(&connFlag, "c", "", "Saved connection name; opens it in the TUI, or uses it in CLI mode with -e")
 	flag.StringVar(&driverFlag, "driver", "sqlite", "Database driver: sqlite, mysql, or postgres")
-	flag.StringVar(&databaseFlag, "database", "", "Database name (SQLite path or MySQL database)")
+	flag.StringVar(&databaseFlag, "database", "", "Database (SQLite path or MySQL/Postgres name); opens it in the TUI, or required for CLI -e")
 	flag.StringVar(&hostFlag, "host", "localhost", "Database host (MySQL only)")
 	flag.IntVar(&portFlag, "port", 3306, "Database port (MySQL or Postgres only)")
 	flag.StringVar(&userFlag, "user", "root", "Database username (MySQL only)")
@@ -74,7 +74,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := ui.Run(cfg, readOnlyFlag, fileFlag); err != nil {
+	// -database / -c open the workspace directly instead of the connection
+	// picker (matches README quickstart: `creel -database demo/….db`).
+	var startupConn *db.ConnectionConfig
+	if databaseFlag != "" || connFlag != "" {
+		setFlags := make(map[string]bool)
+		flag.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
+		startupConn, err = buildConnConfig(setFlags, connFlag, driverFlag, databaseFlag, hostFlag, portFlag, userFlag, passFlag, readOnlyFlag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	if err := ui.Run(cfg, readOnlyFlag, fileFlag, startupConn); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}

@@ -560,7 +560,7 @@ func TestExArgCompletionPathTab(t *testing.T) {
 // TestExArgCompletionPathsAllVerbs: each file command (and its alias) is wired
 // to completePath, so a registry typo can't silently drop one.
 func TestExArgCompletionPathsAllVerbs(t *testing.T) {
-	for _, verb := range []string{"edit", "write", "import", "open", "save"} {
+	for _, verb := range []string{"edit", "write", "import", "open", "save", "saveblob"} {
 		spec := exLookup(verb)
 		if spec == nil {
 			t.Errorf("missing spec for :%s", verb)
@@ -571,7 +571,7 @@ func TestExArgCompletionPathsAllVerbs(t *testing.T) {
 		}
 	}
 	dir := setupPathFixture(t)
-	for _, verb := range []string{"e", "w", "import", "open", "save"} {
+	for _, verb := range []string{"e", "w", "import", "open", "save", "saveblob"} {
 		m := &Model{}
 		m.ex.input = verb + " " + dir + "/su"
 		m.recomputeExCompletion()

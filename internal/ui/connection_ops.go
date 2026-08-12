@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/rsiota/creel/internal/config"
@@ -45,7 +46,24 @@ func (m *Model) connectByName(name string) tea.Cmd {
 		m.connError = err.Error()
 		return nil
 	}
-	dbCfg = resolved
+	return m.connectWithConfig(resolved)
+}
+
+// connectWithConfig opens dbCfg, swaps it in as the active connection, and
+// enters the workspace. Shared by connectByName (saved connections) and the
+// creel -database / -c startup path (ad-hoc or named). Failures set
+// connError and leave the previous connection untouched.
+func (m *Model) connectWithConfig(dbCfg db.ConnectionConfig) tea.Cmd {
+	if dbCfg.Driver == db.DriverSQLite && dbCfg.Database != "" {
+		if expanded, err := expandTilde(filepath.Clean(dbCfg.Database)); err == nil {
+			dbCfg.Database = expanded
+		}
+	}
+	// Session restore is keyed by connection name; ad-hoc -database launches
+	// have none, so fall back to the file/database basename.
+	if dbCfg.Name == "" {
+		dbCfg.Name = filepath.Base(dbCfg.Database)
+	}
 
 	conn, err := db.New(dbCfg)
 	if err != nil {
@@ -68,6 +86,7 @@ func (m *Model) connectByName(name string) tea.Cmd {
 	}
 	m.resetWorkspaceForNewConnection()
 	m.connection = conn
+	m.connError = ""
 	m.state = stateWorkspace
 	m.focus = FocusConnections
 	m.columnCache = make(map[string][]db.Column)

@@ -10,7 +10,15 @@ By default output is **TSV**; use `-format` to pick `csv`, `json`, `jsonl`,
 
 ## Usage
 
-Ad-hoc connection from flat flags:
+Open a SQLite file directly in the TUI (skips the connection picker):
+
+```sh
+creel -database /tmp/test.db
+creel -database demo/blob-demo.db
+creel -c staging          # saved connection by name
+```
+
+Ad-hoc connection from flat flags (CLI / one-shot query):
 
 ```sh
 creel -e "SELECT * FROM users" -database /tmp/test.db
@@ -35,10 +43,10 @@ creel -c localhost -database local_turniq -e "SELECT * FROM users"   # -database
 | ------------- | -------------------------------------------------------------------- | ----------- |
 | `-e`          | SQL query to execute (enables CLI mode)                              |             |
 | `-f`          | Load a `.sql` file into the editor at startup (TUI)                  |             |
-| `-c`          | Saved connection name to use (CLI mode); individual flags below override its fields |             |
+| `-c`          | Saved connection name; opens it in the TUI, or uses it with `-e`     |             |
 | `-format`     | CLI output format: `csv`, `json`, `jsonl`, `md`, or `tsv`            | `tsv`       |
 | `-driver`     | `sqlite`, `mysql`, or `postgres`                                     | `sqlite`    |
-| `-database`   | Database name (SQLite path or MySQL/Postgres database)               |             |
+| `-database`   | SQLite path or MySQL/Postgres database; opens the TUI workspace when used without `-e` |             |
 | `-host`       | Database host (MySQL/Postgres)                                       | `localhost` |
 | `-port`       | Database port (MySQL/Postgres)                                       | `3306`      |
 | `-user`       | Username (MySQL/Postgres)                                            | `root`      |

@@ -464,7 +464,8 @@ type Model struct {
 	tx                db.Tx // active manual transaction (:begin/:commit/:rollback); nil = autocommit
 	forceReadOnly     bool  // --readonly CLI flag: forces every connection read-only
 	sessionStore      *session.Store
-	startupFileLoaded bool // creel -f: suppress the first session restore so the file wins
+	startupFileLoaded bool    // creel -f: suppress the first session restore so the file wins
+	startupCmd        tea.Cmd // creel -database/-c: follow-up cmds after auto-connect (focus, prefetch)
 	historyStore      *history.Store
 	historyNavEntries []string // cached queries for the current browse session
 	historyNavIdx     int      // -1 = not browsing; otherwise index into historyNavEntries (most recent = len-1)
@@ -902,7 +903,7 @@ func (m *Model) handleTabKey(msg tea.KeyMsg) bool {
 
 // Init initializes the application.
 func (m Model) Init() tea.Cmd {
-	return nil
+	return m.startupCmd
 }
 
 // Update is the top-level Bubble Tea update handler. It wraps the real
@@ -1090,13 +1091,16 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Check for "has next page" — we fetched pageSize+1 rows
 			rows := msg.result.Rows
+			blobs := msg.result.Blobs
 			hasNext := false
 			if len(rows) > msg.pageSize {
 				hasNext = true
 				rows = rows[:msg.pageSize]
+				blobs = db.TrimBlobs(blobs, msg.pageSize)
 			}
 
 			m.results.SetResult(cols, rows, msg.result.Message)
+			m.results.SetBlobs(blobs)
 			colTypes := make(map[string]string)
 			for _, c := range msg.result.Columns {
 				colTypes[c.Name] = c.Type
@@ -3527,6 +3531,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if m.results.isPKColumn(colName) {
 					return m, nil
 				}
+				if m.results.IsBlobCell(m.results.CursorRow(), m.results.CursorCol()) {
+					m.exportMsg = "binary cell — use :saveblob to export"
+					return m, nil
+				}
 				clip, err := clipboard.ReadAll()
 				if err != nil || clip == "" {
 					m.exportMsg = "clipboard is empty"
@@ -3951,6 +3959,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "e", "i":
 			m.inspector.pendingG = false
 			col := m.inspector.selectedColumn(m.results)
+			if !m.inspector.IsInserting() && m.results.IsBlobCell(m.results.CursorRow(), col) {
+				return m, m.openCellEditPopup(m.results.CursorRow(), col)
+			}
 			if !m.inspector.IsInserting() && m.inspector.IsFieldTruncated(m.results) {
 				return m, m.openCellEditPopup(m.results.CursorRow(), col)
 			}

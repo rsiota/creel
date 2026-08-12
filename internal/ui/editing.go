@@ -297,8 +297,14 @@ func (m *Model) startResultsCellEdit() tea.Cmd {
 	if m.inspector.IsVisible() {
 		return nil
 	}
-	if m.results.IsCellTruncated(m.results.CursorRow(), m.results.CursorCol()) {
-		return m.openCellEditPopup(m.results.CursorRow(), m.results.CursorCol())
+	row, col := m.results.CursorRow(), m.results.CursorCol()
+	// Binary cells open the view-only summary (with :saveblob hint) instead
+	// of the text editor — editing would corrupt the value.
+	if m.results.IsBlobCell(row, col) {
+		return m.openCellEditPopup(row, col)
+	}
+	if m.results.IsCellTruncated(row, col) {
+		return m.openCellEditPopup(row, col)
 	}
 	m.results.StartEdit()
 	return nil
@@ -313,6 +319,9 @@ func (m *Model) startInspectorFieldEdit() tea.Cmd {
 		return nil
 	}
 	col := m.inspector.selectedColumn(m.results)
+	if !m.inspector.IsInserting() && m.results.IsBlobCell(m.results.CursorRow(), col) {
+		return m.openCellEditPopup(m.results.CursorRow(), col)
+	}
 	if !m.inspector.IsInserting() && m.inspector.IsFieldTruncated(m.results) {
 		return m.openCellEditPopup(m.results.CursorRow(), col)
 	}
@@ -453,7 +462,7 @@ func (m *Model) saveInsert() tea.Cmd {
 	values := insertValuesByName(m.results, m.inspector.InsertValues())
 
 	driver := conn.Config().Driver
-	query, args, err := buildInsertQuery(driver, table, columns, values)
+	query, args, err := buildInsertQuery(driver, table, columns, values, nil)
 	if err != nil {
 		return func() tea.Msg {
 			return insertResultMsg{err: err}
@@ -504,7 +513,7 @@ func (m *Model) cloneRows() tea.Cmd {
 	}
 	var batch []pending
 	for _, row := range rows {
-		q, args, err := buildInsertQuery(conn.Config().Driver, table, columns, row.Values)
+		q, args, err := buildInsertQuery(conn.Config().Driver, table, columns, row.Values, row.Blobs)
 		if err != nil {
 			return func() tea.Msg {
 				return cloneResultMsg{table: table, err: err}
