@@ -32,11 +32,17 @@ type Tab struct {
 type State struct {
 	Tabs   []Tab `json:"tabs"`
 	Active int   `json:"active"` // index into Tabs; 0 when unset
+	// ColWidths remembers results-grid column widths per table so re-querying
+	// (or paging onto a short page) does not shrink columns the user already
+	// saw wider. Outer key is the table name; inner key is the column name.
+	ColWidths map[string]map[string]int `json:"col_widths,omitempty"`
 }
 
 // HasContent reports whether s carries anything worth restoring. A session
 // made up only of blank tabs (no editor content, no executed query) is treated
 // as empty so reconnecting keeps the default single "New Query" tab.
+// Column-width memory alone does not count — those widths are still loaded
+// by restoreSession even when this returns false.
 func (s State) HasContent() bool {
 	for _, t := range s.Tabs {
 		if t.Editor != "" || t.LastQuery != "" {

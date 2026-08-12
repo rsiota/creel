@@ -1233,6 +1233,51 @@ func (r *ResultsTable) computeColWidths() {
 	}
 }
 
+// ApplyRememberedWidths raises any column's width to at least the remembered
+// value for that column name (matched case-insensitively). Caps at
+// maxCellWidth. No-op when saved is empty.
+func (r *ResultsTable) ApplyRememberedWidths(saved map[string]int) {
+	if len(saved) == 0 || len(r.colWidths) == 0 {
+		return
+	}
+	lookup := make(map[string]int, len(saved))
+	for k, v := range saved {
+		lookup[strings.ToLower(k)] = v
+	}
+	for i, name := range r.columns {
+		w, ok := lookup[strings.ToLower(name)]
+		if !ok || w <= r.colWidths[i] {
+			continue
+		}
+		if w > maxCellWidth {
+			w = maxCellWidth
+		}
+		r.colWidths[i] = w
+	}
+}
+
+// SnapshotWidths returns the current column widths keyed by column name.
+func (r ResultsTable) SnapshotWidths() map[string]int {
+	if len(r.columns) == 0 || len(r.colWidths) == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(r.columns))
+	for i, name := range r.columns {
+		if i < len(r.colWidths) {
+			out[name] = r.colWidths[i]
+		}
+	}
+	return out
+}
+
+// ColWidth returns the display width for a column index, or 0 if unknown.
+func (r ResultsTable) ColWidth(col int) int {
+	if col < 0 || col >= len(r.colWidths) {
+		return 0
+	}
+	return r.colWidths[col]
+}
+
 func runeLen(s string) int {
 	return uniseg.StringWidth(s)
 }

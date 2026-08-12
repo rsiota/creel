@@ -16,6 +16,9 @@ func TestStoreSaveLoadRoundTrip(t *testing.T) {
 			{Title: "New Query", Editor: "-- scratch\n"},
 		},
 		Active: 0,
+		ColWidths: map[string]map[string]int{
+			"users": {"email": 28, "name": 12},
+		},
 	}
 	if err := s.Save("Work DB", "appdb", st); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -29,6 +32,9 @@ func TestStoreSaveLoadRoundTrip(t *testing.T) {
 	}
 	if len(got.Tabs) != 2 || got.Tabs[0].LastQuery != "SELECT * FROM users;" || got.Active != 0 {
 		t.Errorf("round-trip mismatch: %+v", got)
+	}
+	if got.ColWidths["users"]["email"] != 28 || got.ColWidths["users"]["name"] != 12 {
+		t.Errorf("col widths round-trip mismatch: %+v", got.ColWidths)
 	}
 }
 

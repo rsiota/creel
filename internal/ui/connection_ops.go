@@ -154,6 +154,7 @@ func (m *Model) resetWorkspaceForNewConnection() {
 	m.sidebarFiltering = false
 	m.sidebarFilter = ""
 	m.editor.CancelCompletion()
+	m.colWidthMem = nil
 }
 
 // showConnectionList disconnects (if needed) and returns to the connection

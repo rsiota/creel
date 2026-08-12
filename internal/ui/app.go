@@ -466,6 +466,10 @@ type Model struct {
 	sessionStore      *session.Store
 	startupFileLoaded bool    // creel -f: suppress the first session restore so the file wins
 	startupCmd        tea.Cmd // creel -database/-c: follow-up cmds after auto-connect (focus, prefetch)
+	// colWidthMem is the in-memory column-width map for the active
+	// connection+database (table → column → width). Loaded from / saved with
+	// the session so widths survive reconnects.
+	colWidthMem       map[string]map[string]int
 	historyStore      *history.Store
 	historyNavEntries []string // cached queries for the current browse session
 	historyNavIdx     int      // -1 = not browsing; otherwise index into historyNavEntries (most recent = len-1)
@@ -1118,6 +1122,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Enable inline editing and foreign-key navigation for simple table SELECTs.
 			m.detectResultMetadata(msg.query)
+			// Apply + grow remembered column widths for the backing table so
+			// paging onto a short page (or re-querying) does not shrink columns.
+			m.syncColWidthMemory()
 			m.inspector.Reset()
 			if m.restoreCursor {
 				m.results.SetCursor(m.restoreCursorRow, m.restoreCursorCol)

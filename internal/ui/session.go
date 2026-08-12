@@ -1,6 +1,10 @@
 package ui
 
-import "github.com/rsiota/creel/internal/session"
+import (
+	"strings"
+
+	"github.com/rsiota/creel/internal/session"
+)
 
 // sessionKey returns the (connection, database) pair the current workspace is
 // bound to — the key under which its state is persisted. ok is false when no
@@ -14,10 +18,10 @@ func (m *Model) sessionKey() (conn, database string, ok bool) {
 }
 
 // saveSession persists the current workspace (open tabs, their editor buffers,
-// and the active tab) for the active connection+database. It is best-effort:
-// write errors are ignored, matching the other persistence sites. Called at
-// connection/database teardown and on quit so reopening a connection restores
-// where the user left off.
+// the active tab, and remembered column widths) for the active
+// connection+database. It is best-effort: write errors are ignored, matching
+// the other persistence sites. Called at connection/database teardown and on
+// quit so reopening a connection restores where the user left off.
 func (m *Model) saveSession() {
 	conn, database, ok := m.sessionKey()
 	if !ok || m.sessionStore == nil {
@@ -27,7 +31,7 @@ func (m *Model) saveSession() {
 	// cursor is captured alongside the inactive tabs.
 	m.saveTabState()
 
-	st := session.State{}
+	st := session.State{ColWidths: m.colWidthMem}
 	for i, t := range m.resultsTabs {
 		st.Tabs = append(st.Tabs, session.Tab{
 			Title:     t.Title,
@@ -47,6 +51,9 @@ func (m *Model) saveSession() {
 // editor buffers are restored verbatim and the user runs them with ctrl+e,
 // mirroring the creel -f startup flag (avoids stale data and side-effecting
 // writes on reconnect).
+//
+// Column-width memory is always reloaded when a session file exists, even if
+// the tabs themselves are blank (HasContent is false).
 func (m *Model) restoreSession() {
 	conn, database, ok := m.sessionKey()
 	if !ok || m.sessionStore == nil {
@@ -60,7 +67,12 @@ func (m *Model) restoreSession() {
 		return
 	}
 	st, err := m.sessionStore.Load(conn, database)
-	if err != nil || !st.HasContent() {
+	if err != nil {
+		return
+	}
+	m.colWidthMem = cloneColWidthMem(st.ColWidths)
+
+	if !st.HasContent() {
 		return
 	}
 
@@ -92,4 +104,120 @@ func (m *Model) restoreSession() {
 func (m *Model) beginQuit() {
 	m.saveSession()
 	m.quitting = true
+}
+
+// syncColWidthMemory applies remembered widths for the current source table
+// onto the results grid (so a short page does not shrink columns), then folds
+// the resulting widths back into memory (so a wider page grows them). No-op
+// for custom queries with no backing table.
+func (m *Model) syncColWidthMemory() {
+	table := m.results.SourceTable()
+	if table == "" {
+		return
+	}
+	table = m.canonicalTableName(table)
+	m.results.ApplyRememberedWidths(m.colWidthsFor(table))
+	m.mergeColWidths(table, m.results.SnapshotWidths())
+}
+
+// colWidthsFor returns the remembered width map for a table, or nil.
+func (m *Model) colWidthsFor(table string) map[string]int {
+	if m.colWidthMem == nil {
+		return nil
+	}
+	if w, ok := m.colWidthMem[table]; ok {
+		return w
+	}
+	// Case-insensitive fallback for drivers that fold identifiers.
+	for name, w := range m.colWidthMem {
+		if strings.EqualFold(name, table) {
+			return w
+		}
+	}
+	return nil
+}
+
+// mergeColWidths raises remembered widths for table to at least the values in
+// widths (per column name). New columns are added; existing ones only grow.
+func (m *Model) mergeColWidths(table string, widths map[string]int) {
+	if table == "" || len(widths) == 0 {
+		return
+	}
+	if m.colWidthMem == nil {
+		m.colWidthMem = make(map[string]map[string]int)
+	}
+	cur, ok := m.colWidthMem[table]
+	if !ok {
+		// Reuse an EqualFold match's map when the stored key casing differs.
+		for name, w := range m.colWidthMem {
+			if strings.EqualFold(name, table) {
+				cur = w
+				ok = true
+				table = name
+				break
+			}
+		}
+	}
+	if !ok {
+		cur = make(map[string]int, len(widths))
+		m.colWidthMem[table] = cur
+	}
+	for col, w := range widths {
+		if w <= 0 {
+			continue
+		}
+		// Prefer matching an existing column key case-insensitively so we
+		// don't sprout duplicate entries when casing drifts.
+		key := col
+		for existing := range cur {
+			if strings.EqualFold(existing, col) {
+				key = existing
+				break
+			}
+		}
+		if w > cur[key] {
+			cur[key] = w
+		}
+	}
+}
+
+// renameColWidthTable moves remembered widths when a table is renamed.
+func (m *Model) renameColWidthTable(oldName, newName string) {
+	if m.colWidthMem == nil || oldName == "" || newName == "" {
+		return
+	}
+	for name, w := range m.colWidthMem {
+		if strings.EqualFold(name, oldName) {
+			delete(m.colWidthMem, name)
+			m.colWidthMem[newName] = w
+			return
+		}
+	}
+}
+
+// canonicalTableName returns the sidebar spelling of table when known.
+func (m *Model) canonicalTableName(table string) string {
+	for _, t := range m.tables {
+		if strings.EqualFold(t, table) {
+			return t
+		}
+	}
+	return table
+}
+
+// cloneColWidthMem deep-copies a col-width map so mutating memory cannot
+// alias the session store's cached State.
+func cloneColWidthMem(src map[string]map[string]int) map[string]map[string]int {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]map[string]int, len(src))
+	for table, cols := range src {
+		cp := make(map[string]int, len(cols))
+		for c, w := range cols {
+			cp[c] = w
+		}
+		out[table] = cp
+	}
+	return out
 }
