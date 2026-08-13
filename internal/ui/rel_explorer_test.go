@@ -90,10 +90,10 @@ func nonSynth(ns []*expNode) []*expNode {
 	return out
 }
 
-// TestLoadRowEdgesFiltersZeroCount checks that loadRowEdges drops edges whose
-// resolved count is not greater than 0: a row only shows the foreign keys it
-// actually participates in, so empty relationships don't clutter the tree.
-func TestLoadRowEdgesFiltersZeroCount(t *testing.T) {
+// TestLoadRowEdgesKeepsInboundZeroCount checks that inbound edges with count 0
+// stay visible (so "insert related" has a target), while still requiring a
+// resolved numeric count (NULL parent keys stay hidden).
+func TestLoadRowEdgesKeepsInboundZeroCount(t *testing.T) {
 	conn := newSQLiteTestConn(t)
 	defer conn.Close()
 	for _, q := range []string{
@@ -102,7 +102,7 @@ func TestLoadRowEdgesFiltersZeroCount(t *testing.T) {
 		`CREATE TABLE addresses (id INTEGER PRIMARY KEY, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users(id))`,
 		`INSERT INTO users VALUES (1,'Alice')`,
 		`INSERT INTO orders (id,user_id) VALUES (10,1)`, // 1 order
-		// no addresses for this user -> 0-count edge, must be filtered out
+		// no addresses for this user -> inbound count 0, still shown
 	} {
 		if _, err := conn.DB().Exec(q); err != nil {
 			t.Fatalf("exec: %v\n%s", err, q)
@@ -113,11 +113,17 @@ func TestLoadRowEdgesFiltersZeroCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadRowEdges: %v", err)
 	}
-	hasOrders := false
+	hasOrders, hasAddresses := false, false
 	for _, e := range edges {
 		switch e.edge.targetTable {
 		case "addresses":
-			t.Errorf("0-count addresses edge should be filtered out, got count=%q", e.edge.count)
+			hasAddresses = true
+			if e.edge.count != "0" {
+				t.Errorf("addresses count = %q, want 0", e.edge.count)
+			}
+			if e.edge.dir != relInbound {
+				t.Error("addresses should be inbound")
+			}
 		case "orders":
 			hasOrders = true
 			if e.edge.count != "1" {
@@ -126,7 +132,10 @@ func TestLoadRowEdgesFiltersZeroCount(t *testing.T) {
 		}
 	}
 	if !hasOrders {
-		t.Errorf("orders edge (count 1) should be present")
+		t.Error("orders edge (count 1) should be present")
+	}
+	if !hasAddresses {
+		t.Error("addresses edge (count 0) should stay visible for insert-related")
 	}
 }
 
@@ -731,6 +740,29 @@ func TestRelExplorerViewExactBoxModel(t *testing.T) {
 			t.Errorf("height %d: View rendered %d lines, want exactly %d (box-model overflow)", h, len(lines), h)
 		}
 		for i, ln := range lines {
+			if w := lipgloss.Width(ln); w != 45 {
+				t.Errorf("height %d line %d: width=%d, want 45", h, i, w)
+			}
+		}
+	}
+}
+
+// TestRelExplorerEmptyMsgExactBoxModel guards the "no focused row" empty
+// state: a long emptyMsg (and optional breadcrumb) must not wrap under the
+// panel Width and inflate height past e.height — that overflow shifts the
+// three-panel workspace up and clips the top borders.
+func TestRelExplorerEmptyMsgExactBoxModel(t *testing.T) {
+	for _, h := range []int{12, 20, 30} {
+		e := NewRelExplorer()
+		e.SetSize(45, h)
+		e.SetPath([]string{"users · #1", "orders · #10"})
+		e.applyEmpty(1, "no focused row — select a row to explore its relationships")
+
+		out := e.View()
+		if got := lipgloss.Height(out); got != h {
+			t.Errorf("height %d: View height=%d, want %d (emptyMsg wrap overflow)", h, got, h)
+		}
+		for i, ln := range strings.Split(out, "\n") {
 			if w := lipgloss.Width(ln); w != 45 {
 				t.Errorf("height %d line %d: width=%d, want 45", h, i, w)
 			}

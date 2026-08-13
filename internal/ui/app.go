@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -291,12 +292,14 @@ const hintFlashDuration = 300 * time.Millisecond
 // so it can actually be read).
 const hintDescDuration = 1500 * time.Millisecond
 
-// queryStackEntry stores navigation state for returning after following a FK.
+// queryStackEntry stores navigation state for returning after following a FK
+// or drilling in from the relationship explorer.
 type queryStackEntry struct {
 	query     string
 	page      int
 	cursorRow int
 	cursorCol int
+	label     string // breadcrumb crumb, e.g. "users · #1"
 }
 
 // Model is the top-level application model for the Bubble Tea architecture.
@@ -469,14 +472,18 @@ type Model struct {
 	// colWidthMem is the in-memory column-width map for the active
 	// connection+database (table → column → width). Loaded from / saved with
 	// the session so widths survive reconnects.
-	colWidthMem       map[string]map[string]int
-	historyStore      *history.Store
-	historyNavEntries []string // cached queries for the current browse session
-	historyNavIdx     int      // -1 = not browsing; otherwise index into historyNavEntries (most recent = len-1)
-	historyNavSaved   string   // editor content before history browse started
-	bookmarkStore     *bookmarks.Store
-	connError         string
-	tables            []string
+	colWidthMem map[string]map[string]int
+	// pendingRelatedInsert holds column→value prefills for an insert started
+	// from the relationship explorer (A on an inbound edge). Applied once the
+	// target-table query finishes and cleared afterward.
+	pendingRelatedInsert map[string]string
+	historyStore         *history.Store
+	historyNavEntries    []string // cached queries for the current browse session
+	historyNavIdx        int      // -1 = not browsing; otherwise index into historyNavEntries (most recent = len-1)
+	historyNavSaved      string   // editor content before history browse started
+	bookmarkStore        *bookmarks.Store
+	connError            string
+	tables               []string
 
 	// Pagination
 	page          int
@@ -1126,12 +1133,27 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// paging onto a short page (or re-querying) does not shrink columns.
 			m.syncColWidthMemory()
 			m.inspector.Reset()
+			// Finish an explorer "insert related" (A on an inbound edge): open
+			// the inspector with the FK prefilled once the target table is live.
+			// Must run after Reset so insert state is not wiped.
+			if prefills := m.pendingRelatedInsert; prefills != nil {
+				m.pendingRelatedInsert = nil
+				if m.results.IsEditable() && !m.results.HasDirtyCells() {
+					m.startInsertWithValues(prefills)
+					cols := make([]string, 0, len(prefills))
+					for c := range prefills {
+						cols = append(cols, c)
+					}
+					sort.Strings(cols)
+					m.schemaMsg = fmt.Sprintf("insert related — %s prefilled", strings.Join(cols, ", "))
+				}
+			}
 			if m.restoreCursor {
 				m.results.SetCursor(m.restoreCursorRow, m.restoreCursorCol)
 				m.restoreCursor = false
 			}
 			// If the relationship explorer is open, refresh it for the new
-			// focused row. This covers drill-in (Enter), back (←), and any
+			// focused row. This covers drill-in (Enter), back, and any
 			// manual query — the panel always reflects the current location.
 			if m.explorer.IsVisible() {
 				if cmd == nil {
@@ -4019,7 +4041,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case FocusExplorer:
 		// Docked relationship-explorer panel. Non-modal: global focus movement
 		// (ctrl+h/l) is handled before this switch. Tree nav: j/k move, → expands,
-		// ← collapses, Enter re-roots the grid, r retargets, esc/q close the panel.
+		// ← collapses, Enter re-roots the grid, A inserts related, u/g b goes
+		// back, r retargets, esc/q close the panel.
 		switch msg.String() {
 		case "esc", "q":
 			m.closeDockedExplorer()
@@ -4031,10 +4054,33 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "left", "h":
 			m.explorerCollapse()
 			return m, nil
+		case "A":
+			return m, m.explorerInsertRelated()
+		case "u", "backspace":
+			if len(m.queryStack) == 0 {
+				m.schemaMsg = "nothing to go back to"
+				return m, nil
+			}
+			return m, m.goBackQuery()
+		case "b":
+			// g b from the explorer — same as results.
+			if m.resultsPendingG {
+				m.resultsPendingG = false
+				if len(m.queryStack) == 0 {
+					m.schemaMsg = "nothing to go back to"
+					return m, nil
+				}
+				return m, m.goBackQuery()
+			}
+		case "g":
+			m.resultsPendingG = true
+			return m, nil
 		case "r":
+			m.resultsPendingG = false
 			m.explorer.markLoading()
 			return m, m.loadExplorer()
 		}
+		m.resultsPendingG = false
 		m.explorer = m.explorer.Update(msg)
 		return m, nil
 	}
@@ -4419,6 +4465,7 @@ func (m Model) viewWorkspace() string {
 		// mirrors focus, like the inspector/assistant.
 		slotH := lipgloss.Height(rightPanel)
 		m.explorer.focused = m.focus == FocusExplorer
+		m.explorer.SetPath(m.navBreadcrumb())
 		m.explorer.SetSize(slotWidth, slotH)
 		slotPanel = m.explorer.View()
 	}

@@ -101,22 +101,58 @@ users ask; don't speculatively.
 Findings from a focused review of the core "browse and move data" loop. Four
 siblings (NULL vs empty-string distinction, copy-row-to-clipboard, multi-line
 cell viewer, CLI output format + connection reuse) shipped in this pass — see
-the 2026-08-04 History entries; what remains open:
+the 2026-08-04 History entries; later follow-ups:
 
-- **Binary / BLOB rendering** — no BLOB/`bytea` handling; values are
-  string-scanned in `executeRows` and render as garbage. At minimum a
-  `<BLOB 1.2KB>` placeholder + "save to file", so binary columns don't corrupt
-  the view. Needs a `[]byte` branch in the scan path. Files:
-  `internal/db/db.go`, `results_table.go`.
+- **Binary / BLOB rendering** ✅ DONE (2026-08-12) — `<BLOB …>` placeholder,
+  `Result.Blobs`, `:saveblob`, hex literals in dump/INSERT/clone. Demo:
+  `demo/blob-demo.sql`. Also: TUI honors `-database` / `-c` (opens workspace
+  instead of the connection picker).
+- **Column-width memory** ✅ DONE (2026-08-12) — per-(connection,database,table)
+  widths in session JSON; max-merge so short pages don't shrink columns.
+  Cleared by `:session clear`.
 - **Transaction isolation level** — `:begin`/`:commit`/`:rollback` exist but
   there's no isolation-level control, which matters for Postgres/MySQL work. A
   `:begin {read committed|repeatable read|serializable}` form (or `:isolation`)
   would round out the transaction story; driver-specific but bounded. Files:
   `db.go`, `excmd.go`, `excmd_registry.go`.
-- **Column-width memory** — column widths auto-fit per query but aren't
-  remembered per-table or per-session, so wide columns get re-sized every run.
-  Persist a per-(connection,table) width map alongside session state. Files:
-  `results_table.go`, `internal/session/`.
+
+### Graph UX — browse/edit via the FK graph (in progress)
+
+Goal: the relationship explorer + ERD are how you *move through and edit*
+relational data, not just inspect schema. Pitch: “browse like a folder tree of
+related rows — edit without writing the JOIN.”
+
+**Shipped — first slice:**
+- Breadcrumb path in the explorer header (`users · #1 › orders · #10`)
+- Unified back from explorer: `u` / `backspace` / `g b` (same `queryStack`)
+- Stack entries carry a `label` for crumbs (`queryStackEntry.label`)
+- **Insert related** — `A` on an **inbound** edge prefills the child FK and
+  opens inspector insert (explorer yields the right slot)
+- Inbound edges with count `0` stay visible so the first related row is
+  insertable
+- Empty-state status lines truncated so a long `emptyMsg` cannot wrap and
+  inflate the explorer past its slot (was clipping the three panels' top
+  borders)
+
+Files: `rel_explorer.go`, `editing.go`, `app.go`, `schema_ops.go`,
+`inspector.go`, `excmd.go` (`loadRowEdges`), `registry.go`,
+`graph_nav_test.go`.
+
+**Next slices (suggested order):**
+1. **Keep explorer open across insert-related** — today `A` hides the explorer
+   so the inspector can use the right slot; after save/cancel, optionally
+   restore the explorer (or split/stack UX). Small polish.
+2. **Open node in a new tab** — Enter stays “re-root here”; e.g. `t` / `ctrl+t`
+   opens the drill query in a new results tab so the parent context stays.
+3. **Insert related without navigating away** — insert into the child table
+   while the explorer root stays on the parent (harder: editable target ≠
+   current grid). Follows from (1).
+4. **ERD as launcher** — Enter / double-click a card → `SELECT *` (or last
+   filter); optional “generate JOIN” from a shortest path into the editor.
+5. **Cross-highlight** — grid FK cell ↔ explorer edge ↔ ERD card dim/vivid.
+
+**Explicitly defer:** editing *through* ERD arrows as a general UPDATE engine;
+force-directed layouts; omniscient DB “git blame.”
 
 ---
 

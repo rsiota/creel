@@ -30,7 +30,41 @@ func (m *Model) pushQueryStack() {
 		page:      m.page,
 		cursorRow: m.results.CursorRow(),
 		cursorCol: m.results.CursorCol(),
+		label:     m.currentNavLabel(),
 	})
+}
+
+// currentNavLabel returns a short breadcrumb crumb for the focused context —
+// explorer root identity when the panel is rooted, otherwise the results row.
+func (m *Model) currentNavLabel() string {
+	if m.explorer.root != nil {
+		return m.explorer.root.table + m.explorer.root.label
+	}
+	src := m.results.SourceTable()
+	if src == "" {
+		return ""
+	}
+	if _, label, ok := m.focusedRowValues(src); ok {
+		return src + label
+	}
+	return src
+}
+
+// navBreadcrumb returns the full path crumbs: prior queryStack labels plus the
+// current root. Used by the explorer header.
+func (m *Model) navBreadcrumb() []string {
+	crumbs := make([]string, 0, len(m.queryStack)+1)
+	for _, e := range m.queryStack {
+		if e.label != "" {
+			crumbs = append(crumbs, e.label)
+		}
+	}
+	if cur := m.currentNavLabel(); cur != "" {
+		// Avoid duplicating the tip when the stack entry already matches
+		// (shouldn't happen) — always append the live root/cursor identity.
+		crumbs = append(crumbs, cur)
+	}
+	return crumbs
 }
 
 func (m *Model) followForeignKey() tea.Cmd {
@@ -118,6 +152,59 @@ func (m *Model) explorerActivate() tea.Cmd {
 	m.page = 0
 	m.results.SetSearchMatcher(nil)
 	m.lastSearch = ""
+	m.pendingRelatedInsert = nil
+	m.explorer.markLoading()
+	return m.runPageQuery()
+}
+
+// explorerInsertRelated (A) starts an insert into an inbound relationship's
+// child table with the FK column prefilled from the parent row. Select an
+// inbound edge (e.g. orders under users) and press A — the grid navigates to
+// that related set and the inspector opens in insert mode with the link set.
+func (m *Model) explorerInsertRelated() tea.Cmd {
+	if m.isReadOnly() {
+		m.schemaMsg = "read-only — cannot insert"
+		return nil
+	}
+	if m.txnBlocksWrite() {
+		return nil
+	}
+	node := m.explorer.selectedNode()
+	if node == nil {
+		return nil
+	}
+	// Allow A on an inbound edge, or on a synthetic "(no rows)" child of one.
+	edge := node
+	if !node.isEdge() {
+		if node.parent != nil && node.parent.isEdge() && node.synthetic {
+			edge = node.parent
+		} else {
+			m.schemaMsg = "select an inbound relationship (child table) to insert related"
+			return nil
+		}
+	}
+	if edge.edge.dir != relInbound {
+		m.schemaMsg = "insert related works on inbound edges (child tables)"
+		return nil
+	}
+	if edge.filterVal == "" || edge.filterVal == "NULL" {
+		m.schemaMsg = "cannot insert related: parent key is NULL"
+		return nil
+	}
+
+	prefills := map[string]string{edge.edge.targetColumn: edge.filterVal}
+	m.pendingRelatedInsert = prefills
+	m.pushQueryStack()
+	query := edgeDrillQuery(m.connection.Config().Driver, edge.edge, edge.filterVal)
+	m.editor.SetValue(query)
+	m.lastQuery = query
+	m.baseQuery = ""
+	m.filters = nil
+	m.sortCol = ""
+	m.sortDir = ""
+	m.page = 0
+	m.results.SetSearchMatcher(nil)
+	m.lastSearch = ""
 	m.explorer.markLoading()
 	return m.runPageQuery()
 }
@@ -140,6 +227,10 @@ func (m *Model) goBackQuery() tea.Cmd {
 	m.restoreCursor = true
 	m.restoreCursorRow = entry.cursorRow
 	m.restoreCursorCol = entry.cursorCol
+	m.pendingRelatedInsert = nil
+	if m.explorer.IsVisible() {
+		m.explorer.markLoading()
+	}
 	return m.runPageQuery()
 }
 

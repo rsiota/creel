@@ -67,6 +67,20 @@ func (i *Inspector) StartInsert() {
 	i.filter = ""
 }
 
+// SetInsertValues replaces pending insert field values (column index → text).
+// Call after StartInsert to prefill FKs for "insert related".
+func (i *Inspector) SetInsertValues(vals map[int]string) {
+	if !i.inserting {
+		return
+	}
+	if i.insertValues == nil {
+		i.insertValues = make(map[int]string, len(vals))
+	}
+	for k, v := range vals {
+		i.insertValues[k] = v
+	}
+}
+
 // CancelInsert exits new-record mode.
 func (i *Inspector) CancelInsert() {
 	i.inserting = false

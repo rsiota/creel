@@ -98,9 +98,10 @@ type RelExplorer struct {
 	err      string
 	emptyMsg string // why there is no root (no source table, etc.)
 
-	docked  bool   // panel mode: rendered in the right slot, cursor-driven
-	anchor  string // the results row (table + PK tuple) the current tree is rooted at
-	focused bool   // mirror of Model.focus == FocusExplorer, for the border color
+	docked  bool     // panel mode: rendered in the right slot, cursor-driven
+	anchor  string   // the results row (table + PK tuple) the current tree is rooted at
+	focused bool     // mirror of Model.focus == FocusExplorer, for the border color
+	path    []string // breadcrumb crumbs (stack + current), set by the Model before View
 }
 
 // NewRelExplorer returns a hidden explorer panel.
@@ -117,6 +118,10 @@ func (e *RelExplorer) Hide()       { e.visible = false; e.docked = false }
 // SetSize sets the panel's exterior dimensions (including border).
 func (e *RelExplorer) SetSize(w, h int) { e.width = w; e.height = h }
 
+// SetPath installs the navigation breadcrumb shown above the tree (query-stack
+// labels plus the current root). Pass nil/empty to hide it.
+func (e *RelExplorer) SetPath(crumbs []string) { e.path = crumbs }
+
 func (e *RelExplorer) contentHeight() int {
 	h := e.height - borderOverhead
 	if h < 1 {
@@ -125,10 +130,18 @@ func (e *RelExplorer) contentHeight() int {
 	return h
 }
 
-// nodeViewport is the number of tree lines that fit in the panel (its full
-// allocated content height).
+// pathLines is 1 when a breadcrumb is shown, else 0. Reserved from the
+// tree viewport so the path never scrolls with the nodes.
+func (e RelExplorer) pathLines() int {
+	if len(e.path) == 0 {
+		return 0
+	}
+	return 1
+}
+
+// nodeViewport is the number of tree lines that fit under the breadcrumb.
 func (e RelExplorer) nodeViewport() int {
-	vh := e.contentHeight()
+	vh := e.contentHeight() - e.pathLines()
 	if vh < 1 {
 		vh = 1
 	}
@@ -364,13 +377,13 @@ func (e RelExplorer) Update(msg tea.KeyMsg) RelExplorer {
 	return e
 }
 
-// View renders just the windowed tree — no title or footer; the panel is the
-// navigable object graph itself. It fills its fixed allocated height exactly,
-// with no reserved footer padding.
+// View renders the optional breadcrumb plus the windowed tree — no title or
+// footer; the panel is the navigable object graph itself. It fills its fixed
+// allocated height exactly.
 func (e RelExplorer) View() string {
 	vh := e.nodeViewport()
 	body := e.bodyLines()
-	for len(body) < vh {
+	for len(body) < vh+e.pathLines() {
 		body = append(body, "")
 	}
 	// Render an exact e.width × e.height panel with no interior padding, so the
@@ -378,12 +391,12 @@ func (e RelExplorer) View() string {
 	// panel gutter (every line carries its own glyph, so a gutter would only
 	// push them right). lipgloss Width excludes border: Width(e.width-
 	// borderOverhead) leaves e.width-2 = inner for text, and the border brings
-	// the total to e.width. Height excludes border, so Height(nodeViewport) +
+	// the total to e.width. Height excludes border, so Height(contentHeight) +
 	// border = e.height. This lets the docked slot place View() directly (no
 	// second border).
 	return lipgloss.NewStyle().
 		Width(e.width - borderOverhead).
-		Height(vh).
+		Height(e.contentHeight()).
 		Border(panelBorder()).
 		BorderForeground(e.borderColor()).
 		Render(strings.Join(body, "\n"))
@@ -398,26 +411,38 @@ func (e RelExplorer) borderColor() lipgloss.Color {
 	return colorBorderUnfocused
 }
 
-// bodyLines returns the windowed, rendered tree (or a status line).
+// bodyLines returns the breadcrumb (if any) plus the windowed, rendered tree
+// (or a status line).
 func (e RelExplorer) bodyLines() []string {
 	muted := lipgloss.NewStyle().Foreground(colorMuted)
+	inner := e.width - 2 // border only (no interior padding); text anchors flush left
+	if inner < 10 {
+		inner = 10
+	}
+
+	var out []string
+	if len(e.path) > 0 {
+		crumb := strings.Join(e.path, " › ")
+		out = append(out, muted.Render(truncateCell(crumb, inner)))
+	}
+
+	// Status lines must fit `inner` in one cell row. An untruncated emptyMsg
+	// (e.g. "no focused row — select a row…") wraps under Width() and the
+	// panel grows past e.height — JoinHorizontal then pushes the whole
+	// workspace up and clips the three panels' top borders.
 	switch {
 	case e.loading:
-		return []string{muted.Render("loading…")}
+		return append(out, muted.Render(truncateCell("loading…", inner)))
 	case e.err != "":
-		return []string{lipgloss.NewStyle().Foreground(colorError).Render(e.err)}
+		return append(out, lipgloss.NewStyle().Foreground(colorError).Render(truncateCell(e.err, inner)))
 	case e.root == nil:
 		msg := e.emptyMsg
 		if msg == "" {
 			msg = "no relationships"
 		}
-		return []string{muted.Render(msg)}
+		return append(out, muted.Render(truncateCell(msg, inner)))
 	}
 
-	inner := e.width - 2 // border only (no interior padding); text anchors flush left
-	if inner < 10 {
-		inner = 10
-	}
 	vis := e.visibleNodes()
 	all := make([]string, 0, len(vis))
 	for _, n := range vis {
@@ -435,7 +460,7 @@ func (e RelExplorer) bodyLines() []string {
 	if start > end {
 		start = end
 	}
-	return all[start:end]
+	return append(out, all[start:end]...)
 }
 
 // cursorNodeIndex is the index of a node in the visible list, or -1. Used only

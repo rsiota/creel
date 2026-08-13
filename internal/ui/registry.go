@@ -143,6 +143,8 @@ func registry() []Section {
 				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/ctrl+u"},
 				{"h/l, ←/→", []string{"h", "l", "left", "right"}, "collapse / expand", "h/l"},
 				{"enter", []string{"enter"}, "re-root grid on node", "enter"},
+				{"A", []string{"A"}, "insert related row (inbound edge)", "A"},
+				{"u / g b", []string{"u", "g", "b", "backspace"}, "go back", "u"},
 				{"r", []string{"r"}, "retarget / refresh", "r"},
 				{"esc / q", []string{"esc", "q"}, "close", "esc"},
 			},

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/rsiota/creel/internal/db"
@@ -328,13 +329,36 @@ func (m Model) resultsShowTable(table string) bool {
 
 // startInsert opens inspector new-record mode for the current editable table.
 func (m *Model) startInsert() {
+	m.startInsertWithValues(nil)
+}
+
+// startInsertWithValues opens inspector insert mode, optionally prefilling
+// fields by column name (used by explorer "insert related"). The explorer
+// yields the right slot so the inspector is visible.
+func (m *Model) startInsertWithValues(byName map[string]string) {
 	if !m.results.IsEditable() || m.results.HasDirtyCells() || m.inspector.IsInserting() {
 		return
+	}
+	if m.explorer.IsVisible() {
+		m.explorer.Hide()
 	}
 	if !m.inspector.IsVisible() {
 		m.inspector.visible = true
 	}
 	m.inspector.StartInsert()
+	if len(byName) > 0 {
+		vals := make(map[int]string, len(byName))
+		for i := 0; i < m.results.NumCols(); i++ {
+			name := m.results.ColumnName(i)
+			for k, v := range byName {
+				if strings.EqualFold(name, k) {
+					vals[i] = v
+					break
+				}
+			}
+		}
+		m.inspector.SetInsertValues(vals)
+	}
 	m.focus = FocusInspector
 	m.applyFocus()
 }

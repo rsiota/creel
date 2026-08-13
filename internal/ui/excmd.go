@@ -2082,21 +2082,25 @@ func loadRowEdges(conn *db.Connection, driver db.Driver, table string, rowVals m
 	}
 	wg.Wait()
 
-	// Keep only edges worth showing: a positive count, and — for outbound
-	// edges — not one that loops back to a row already on the path (e.g. a
-	// child row's FK pointing at the parent we came from). Inbound fan-out is
-	// always kept; an ancestor among its children is suppressed when expanded.
+	// Keep only edges worth showing:
+	//   - outbound: positive count, and not a back-edge to an ancestor
+	//   - inbound: any resolved numeric count, including 0 — empty child
+	//     relations stay visible so "insert related" (A) has a target
 	kept := edges[:0]
 	for _, e := range edges {
 		if !isNumericCount(e.edge.count) {
 			continue
 		}
-		if c, _ := strconv.Atoi(e.edge.count); c <= 0 {
-			continue
+		c, _ := strconv.Atoi(e.edge.count)
+		if e.edge.dir == relOutbound {
+			if c <= 0 {
+				continue
+			}
+			if isOutboundBackEdge(e, ancestors) {
+				continue
+			}
 		}
-		if e.edge.dir == relOutbound && isOutboundBackEdge(e, ancestors) {
-			continue
-		}
+		// inbound: keep even when c == 0
 		kept = append(kept, e)
 	}
 	return kept, nil
