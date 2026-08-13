@@ -20,8 +20,16 @@ An overview of everything creel can do. For keys, see
 - **Table browser** — expand/collapse columns, inspect schemas, fuzzy-filter
   tables.
 - **Results grid** — sort, filter, search, hide/show columns, follow foreign
-  keys (`g d`), mark and bulk-delete rows. Large result sets are paged
-  (LIMIT/OFFSET) for speed and low memory.
+  keys (`g d`), mark rows and columns, bulk-delete rows, and chart marked
+  columns with `:bar`. Large result sets are paged (LIMIT/OFFSET) for speed
+  and low memory.
+
+### Bar chart (`M` + `:bar`)
+
+Mark two columns with `M` (first = labels, second = values), then run `:bar`
+to replace the results grid with a horizontal bar chart of the current page.
+Or pass columns explicitly: `:bar <label> <value>`. `Esc`/`q` restores the
+grid. Non-numeric and NULL value cells are skipped.
 
 ### Relationship explorer (`g r` / `:explore panel`)
 

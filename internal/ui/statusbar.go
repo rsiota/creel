@@ -213,6 +213,14 @@ func (m Model) statusBar(connName string) string {
 		parts = append(parts, sbMark.Render(fmt.Sprintf("◆ %d", n)))
 	}
 
+	if cols := m.results.MarkedColumns(); len(cols) > 0 {
+		names := make([]string, len(cols))
+		for i, c := range cols {
+			names[i] = m.results.ColumnName(c)
+		}
+		parts = append(parts, sbMark.Render("▣ "+strings.Join(names, " › ")))
+	}
+
 	if n := m.results.HiddenCount(); n > 0 {
 		parts = append(parts, sbAccent.Render(fmt.Sprintf("⊫ %d", n)))
 	}

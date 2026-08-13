@@ -343,6 +343,7 @@ type Model struct {
 	explainPanel        ExplainPanel
 	lookupPanel         LookupPanel
 	erdPanel            ERDPanel
+	chartPanel          ChartPanel
 	explorer            RelExplorer
 	palette             palette
 	ex                  exCmd
@@ -628,6 +629,7 @@ func NewModel(cfg *config.Config) Model {
 		tableDesigner:   NewTableDesigner(),
 		schemaEditor:    NewSchemaEditor(),
 		cellEdit:        NewCellEditPopup(),
+		chartPanel:      NewChartPanel(),
 		sessionStore:    session.NewStore(historyDir()),
 		historyStore:    history.NewStore(historyDir()),
 		bookmarkStore:   bookmarks.NewStore(historyDir()),
@@ -1111,6 +1113,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.results.SetResult(cols, rows, msg.result.Message)
 			m.results.SetBlobs(blobs)
+			m.chartPanel.Hide()
 			colTypes := make(map[string]string)
 			for _, c := range msg.result.Columns {
 				colTypes[c.Name] = c.Type
@@ -2743,6 +2746,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Chart panel replaces the results grid — j/k scroll, esc/q close.
+	if m.chartPanel.IsVisible() {
+		switch msg.String() {
+		case "esc", "q", "ctrl+c":
+			m.chartPanel.Hide()
+			return m, nil
+		}
+		m.chartPanel = m.chartPanel.Update(msg)
+		return m, nil
+	}
+
 	// Lookup panel is modal — j/k scroll, esc/q close.
 	if m.lookupPanel.IsVisible() {
 		switch msg.String() {
@@ -3671,8 +3685,18 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case "C":
 				m.resultsPendingG = false
 				m.resultsPendingY = false
-				if m.results.MarkCount() > 0 {
-					m.results.ClearMarks()
+				if m.results.MarkCount() > 0 || m.results.ColumnMarkCount() > 0 {
+					m.results.ClearAllMarks()
+				}
+				return m, nil
+			case "M":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				if m.results.NumCols() == 0 {
+					return m, nil
+				}
+				if !m.results.ToggleColumnMark() {
+					m.schemaMsg = "mark at most 2 columns (label, then value) — then :bar"
 				}
 				return m, nil
 			case "u":
@@ -4378,7 +4402,12 @@ func (m Model) viewWorkspace() string {
 			))
 
 		var resultsPanel string
-		if m.queryRunning && !m.backendSearching {
+		if m.chartPanel.IsVisible() {
+			// Match the results-with-table box model: exterior includes the
+			// border, same as results.SetSize(rightWidth+2, resultsHeight+2).
+			m.chartPanel.SetSize(rightWidth+borderOverhead, resultsHeight+borderOverhead)
+			resultsPanel = m.chartPanel.View()
+		} else if m.queryRunning && !m.backendSearching {
 			// Show an animated spinner while the query executes.
 			frame := spinnerFrames[m.querySpinner%len(spinnerFrames)]
 			elapsed := time.Since(m.queryStart).Round(time.Millisecond)

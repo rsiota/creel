@@ -275,6 +275,7 @@ func registry() []Section {
 				{"*", []string{"*"}, "keep rows equal to cursor cell", ""},
 				{"!", []string{"!"}, "hide rows equal to cursor cell", ""},
 				{"space", []string{" "}, "toggle row mark", "space"},
+				{"M", []string{"M"}, "toggle column mark (for :bar)", "M"},
 				{"F", []string{"F"}, "filter by marked rows", ""},
 				{"C", []string{"C"}, "clear marks", ""},
 				{"dd", []string{"d"}, "delete marked or cursor row", "dd"},
@@ -351,6 +352,16 @@ func registry() []Section {
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
 				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/ctrl+u"},
 				{"esc", []string{"esc"}, "close", "esc"},
+			},
+		},
+		{
+			Title:  "Chart Panel",
+			Source: "chart_panel.go app.go",
+			Items: []Binding{
+				{"j/k", []string{"j", "k", "up", "down"}, "scroll", "j/k"},
+				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
+				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/ctrl+u"},
+				{"esc", []string{"esc", "q"}, "close", "esc"},
 			},
 		},
 		{

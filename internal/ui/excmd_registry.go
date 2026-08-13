@@ -781,6 +781,14 @@ func exCommands() []exCmdSpec {
 			},
 		},
 		{
+			verbs:    []string{"bar"},
+			desc:     "horizontal bar chart from two result columns",
+			usage:    ":bar [label] [value]",
+			argKind:  exArgOptional,
+			complete: completeBarColumns,
+			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exBar(args) },
+		},
+		{
 			verbs:   []string{"count"},
 			desc:    "row count for a table (SELECT count(*))",
 			usage:   ":count [table]",
@@ -893,6 +901,20 @@ func completeTable(m *Model, args []string, _ string) []string {
 // argument there is nothing useful to suggest; with no results there are none.
 func completeColumn(m *Model, args []string, _ string) []string {
 	if len(args) > 0 || m.results.NumCols() == 0 {
+		return nil
+	}
+	names := make([]string, 0, m.results.NumCols())
+	for i := 0; i < m.results.NumCols(); i++ {
+		names = append(names, m.results.ColumnName(i))
+	}
+	return names
+}
+
+// completeBarColumns offers result columns for :bar's label and value args
+// (up to two). Already-typed names are not filtered out — the user may chart
+// a column against itself.
+func completeBarColumns(m *Model, args []string, _ string) []string {
+	if len(args) >= 2 || m.results.NumCols() == 0 {
 		return nil
 	}
 	names := make([]string, 0, m.results.NumCols())

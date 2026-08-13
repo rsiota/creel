@@ -90,13 +90,13 @@ the panel-specific dispatch.
 ### Step 5 — High-value aliases ✅ DONE
 Added as single registry entries (autocomplete + help pick them up for free):
 `:explain`, `:refresh`/`:reload`, `:history`, `:bookmarks`/`:bm`,
-`:describe`/`:desc [table]`, `:stats [column]`, `:format`, `:theme <name>`.
+`:describe`/`:desc [table]`, `:stats [column]`, `:bar [label] [value]`, `:format`, `:theme <name>`.
 
 Each shares the SAME implementation as its keybinding, not a duplicate:
 - `:refresh`/`:reload`, `:history`, `:bookmarks` call freshly-extracted
   `refreshSchema` / `toggleHistory` / `toggleBookmarks`, now also used by
   ctrl+r / ctrl+y / ctrl+g.
-- `:explain`→`explainQuery`, `:stats`→`fetchColumnStats`,
+- `:explain`→`explainQuery`, `:stats`→`fetchColumnStats`, `:bar`→`exBar`,
   `:describe`→`openSchemaPanel`, `:format`→`formatSQL` (the editor `==` path).
 
 Deferred from this step (now scheduled in `ROADMAP.md` #15 Tier 5):

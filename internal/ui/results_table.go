@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -71,6 +72,11 @@ type ResultsTable struct {
 	// survive same-table re-queries but auto-invalidate on table change.
 	markedRows  map[string][]string
 	markedTable string
+
+	// Column marks (ordered) for charting — e.g. :bar uses the first marked
+	// column as labels and the second as values. Indices into columns;
+	// cleared when the result set is replaced. Cap is maxColumnMarks.
+	markedCols []int
 
 	// Hidden columns (display-only). Keyed by column name so the hidden
 	// set survives same-table re-queries; hiddenTable guards staleness like
@@ -495,6 +501,79 @@ func (r ResultsTable) MarkedPKs() [][]string {
 func (r *ResultsTable) ClearMarks() {
 	r.markedRows = nil
 	r.markedTable = ""
+}
+
+// maxColumnMarks is how many columns :bar (and similar) can consume at once
+// — label then value.
+const maxColumnMarks = 2
+
+// ToggleColumnMark flips the mark on the cursor column. Marks are ordered:
+// the first marked column is the label axis, the second the value axis.
+// At most maxColumnMarks columns may be marked; attempting a third returns
+// false without changing state.
+func (r *ResultsTable) ToggleColumnMark() bool {
+	col := r.cursorCol
+	if col < 0 || col >= len(r.columns) {
+		return true
+	}
+	for i, c := range r.markedCols {
+		if c == col {
+			r.markedCols = append(r.markedCols[:i], r.markedCols[i+1:]...)
+			return true
+		}
+	}
+	if len(r.markedCols) >= maxColumnMarks {
+		return false
+	}
+	r.markedCols = append(r.markedCols, col)
+	return true
+}
+
+// ClearColumnMarks removes all column marks.
+func (r *ResultsTable) ClearColumnMarks() {
+	r.markedCols = nil
+}
+
+// ClearAllMarks clears both row and column marks.
+func (r *ResultsTable) ClearAllMarks() {
+	r.ClearMarks()
+	r.ClearColumnMarks()
+}
+
+// ColumnMarkCount returns how many columns are currently marked.
+func (r ResultsTable) ColumnMarkCount() int {
+	return len(r.markedCols)
+}
+
+// MarkedColumns returns the ordered column indices currently marked.
+func (r ResultsTable) MarkedColumns() []int {
+	if len(r.markedCols) == 0 {
+		return nil
+	}
+	out := make([]int, len(r.markedCols))
+	copy(out, r.markedCols)
+	return out
+}
+
+// IsMarkedColumn reports whether the given column index is marked.
+func (r ResultsTable) IsMarkedColumn(col int) bool {
+	for _, c := range r.markedCols {
+		if c == col {
+			return true
+		}
+	}
+	return false
+}
+
+// ColumnMarkOrdinal returns the 1-based mark order for col (1 = label, 2 =
+// value), or 0 if unmarked.
+func (r ResultsTable) ColumnMarkOrdinal(col int) int {
+	for i, c := range r.markedCols {
+		if c == col {
+			return i + 1
+		}
+	}
+	return 0
 }
 
 const copyAsInsertMaxRows = 500
@@ -1051,6 +1130,7 @@ func (r *ResultsTable) SetResult(cols []string, rows [][]string, message string)
 	r.saveError = ""
 	r.copied = false
 	r.copyFlashActive = false
+	r.ClearColumnMarks()
 	r.ClearForeignKeys()
 	r.computeColWidths()
 }
@@ -1082,6 +1162,7 @@ func (r *ResultsTable) Clear() {
 	r.editing = false
 	r.copied = false
 	r.copyFlashActive = false
+	r.ClearColumnMarks()
 	r.ClearForeignKeys()
 }
 
@@ -1801,8 +1882,14 @@ func (r ResultsTable) View() string {
 		if r.editable && r.isPKColumn(r.columns[i]) {
 			header = header + " *"
 		}
+		if ord := r.ColumnMarkOrdinal(i); ord > 0 {
+			header = fmt.Sprintf("%d·%s", ord, header)
+		}
 		cell := truncateCell(header, r.colWidths[i])
 		baseStyle := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
+		if r.IsMarkedColumn(i) {
+			baseStyle = lipgloss.NewStyle().Foreground(colorMark).Bold(true)
+		}
 		if r.hasCellCursor() && i == r.cursorCol {
 			// Underline only the text, not the cell padding.
 			text := strings.TrimRight(cell, " ")
@@ -1898,6 +1985,7 @@ func (r ResultsTable) View() string {
 				// Style the cell
 				isMarked := r.IsMarkedRow(rowIdx)
 				isVisualRow := r.isVisualRow(rowIdx)
+				isColMarked := r.IsMarkedColumn(i)
 				isSearchMatch := r.searchMatcher != nil && r.searchMatcher(val)
 				var style lipgloss.Style
 				switch {
@@ -1911,6 +1999,11 @@ func (r ResultsTable) View() string {
 					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorVisual)
 				case isMarked:
 					style = lipgloss.NewStyle().Foreground(colorMark)
+					if isColMarked {
+						style = style.Background(colorVisual)
+					}
+				case isColMarked:
+					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorVisual)
 				case isSearchMatch:
 					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorSearch)
 				case isCursorRow:

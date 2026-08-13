@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -2477,6 +2478,97 @@ func (m *Model) exStats(arg string) tea.Cmd {
 		m.results.SetCursor(m.results.CursorRow(), idx)
 	}
 	return m.fetchColumnStats()
+}
+
+// exBar opens a horizontal bar chart in the results slot. Columns come from
+// args (`:bar label value`) or from the two ordered column marks (M). The
+// current result page supplies the rows — one bar per numeric row.
+func (m *Model) exBar(args []string) tea.Cmd {
+	if m.results.NumRows() == 0 {
+		m.schemaMsg = "no results to chart"
+		return nil
+	}
+
+	labelCol, valueCol, err := m.resolveBarColumns(args)
+	if err != "" {
+		m.schemaMsg = err
+		return nil
+	}
+
+	bars, skipped := buildBarSeries(m.results, labelCol, valueCol)
+	if len(bars) == 0 {
+		m.schemaMsg = "no numeric values in " + m.results.ColumnName(valueCol)
+		return nil
+	}
+
+	title := fmt.Sprintf("bar · %s × %s", m.results.ColumnName(labelCol), m.results.ColumnName(valueCol))
+	m.chartPanel.ShowBar(title, bars, skipped)
+	m.focus = FocusResults
+	return nil
+}
+
+// resolveBarColumns picks label/value column indices from :bar args or from
+// ordered column marks. Returns a user-facing error string on failure.
+func (m *Model) resolveBarColumns(args []string) (labelCol, valueCol int, err string) {
+	find := func(name string) int {
+		for i := 0; i < m.results.NumCols(); i++ {
+			if strings.EqualFold(m.results.ColumnName(i), name) {
+				return i
+			}
+		}
+		return -1
+	}
+
+	switch len(args) {
+	case 0:
+		marked := m.results.MarkedColumns()
+		if len(marked) != 2 {
+			return 0, 0, "mark 2 columns with M (label, then value), or :bar <label> <value>"
+		}
+		return marked[0], marked[1], ""
+	case 1:
+		return 0, 0, "usage: :bar <label> <value> (or mark 2 columns with M)"
+	default:
+		labelCol = find(args[0])
+		if labelCol < 0 {
+			return 0, 0, fmt.Sprintf("no such column: %s", args[0])
+		}
+		valueCol = find(args[1])
+		if valueCol < 0 {
+			return 0, 0, fmt.Sprintf("no such column: %s", args[1])
+		}
+		return labelCol, valueCol, ""
+	}
+}
+
+// buildBarSeries walks the current result page into chart bars. NULL and
+// non-numeric value cells are skipped (counted in skipped).
+func buildBarSeries(r ResultsTable, labelCol, valueCol int) (bars []chartBar, skipped int) {
+	n := r.NumRows()
+	bars = make([]chartBar, 0, n)
+	for i := 0; i < n; i++ {
+		raw := r.RowValue(i, valueCol)
+		if raw == "" || raw == "NULL" {
+			skipped++
+			continue
+		}
+		v, ok := parseFloat(raw)
+		if !ok || math.IsNaN(v) || math.IsInf(v, 0) {
+			skipped++
+			continue
+		}
+		if v < 0 {
+			// Horizontal bars are drawn from zero; negatives aren't representable yet.
+			skipped++
+			continue
+		}
+		label := r.RowValue(i, labelCol)
+		if label == "" || label == "NULL" {
+			label = "(null)"
+		}
+		bars = append(bars, chartBar{label: label, value: v})
+	}
+	return bars, skipped
 }
 
 // exTheme switches to a named theme (:theme <name>), applying it live and

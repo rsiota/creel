@@ -88,6 +88,7 @@ subsystem:
 - `filtering.go` — filter/sort stack, column visibility, backend LIKE search
 - `filter_picker.go` — DISTINCT-value multi-select filter (`g f`)
 - `stats.go` — column statistics + async total row count
+- `chart_panel.go` — horizontal bar chart in the results slot (`:bar` / column marks)
 - `inspector.go` — record inspector (right-side form view)
 - `cell_edit_popup.go`, `json_format.go` — cell editor + JSON pretty-print/highlight
 
