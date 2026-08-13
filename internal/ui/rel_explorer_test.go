@@ -748,14 +748,13 @@ func TestRelExplorerViewExactBoxModel(t *testing.T) {
 }
 
 // TestRelExplorerEmptyMsgExactBoxModel guards the "no focused row" empty
-// state: a long emptyMsg (and optional breadcrumb) must not wrap under the
-// panel Width and inflate height past e.height — that overflow shifts the
-// three-panel workspace up and clips the top borders.
+// state: a long emptyMsg must not wrap under the panel Width and inflate
+// height past e.height — that overflow shifts the three-panel workspace up
+// and clips the top borders.
 func TestRelExplorerEmptyMsgExactBoxModel(t *testing.T) {
 	for _, h := range []int{12, 20, 30} {
 		e := NewRelExplorer()
 		e.SetSize(45, h)
-		e.SetPath([]string{"users · #1", "orders · #10"})
 		e.applyEmpty(1, "no focused row — select a row to explore its relationships")
 
 		out := e.View()

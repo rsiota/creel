@@ -3,13 +3,11 @@ package ui
 import (
 	"strings"
 	"testing"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
-// TestNavBreadcrumbTracksDrillIn verifies that Enter on an explorer node
-// pushes a labeled stack entry and the breadcrumb lists parent › child.
-func TestNavBreadcrumbTracksDrillIn(t *testing.T) {
+// TestNavDrillInPushesStack verifies that Enter on an explorer node
+// pushes a stack entry so u/back can restore the prior query.
+func TestNavDrillInPushesStack(t *testing.T) {
 	conn := newSQLiteTestConn(t)
 	defer conn.Close()
 	for _, q := range []string{
@@ -43,21 +41,8 @@ func TestNavBreadcrumbTracksDrillIn(t *testing.T) {
 	if len(m.queryStack) != 1 {
 		t.Fatalf("stack len = %d, want 1", len(m.queryStack))
 	}
-	if !strings.Contains(m.queryStack[0].label, "users") {
-		t.Errorf("stack label = %q, want users crumb", m.queryStack[0].label)
-	}
-
-	// Simulate re-root on the order row (what queryExecutedMsg → loadExplorer does).
-	m.results.SetResult([]string{"id", "user_id"}, [][]string{{"10", "1"}}, "")
-	m.results.SetEditable("orders", []string{"id"})
-	m.lastQuery = orderRow.drillQuery
-	newRoot := m.loadExplorer()().(explorerLoadedMsg).root
-	m.explorer.applyRoot(newRoot, 1)
-
-	crumbs := m.navBreadcrumb()
-	joined := strings.Join(crumbs, " › ")
-	if !strings.Contains(joined, "users") || !strings.Contains(joined, "orders") {
-		t.Errorf("breadcrumb = %q, want users › orders", joined)
+	if m.queryStack[0].query != "SELECT * FROM users" {
+		t.Errorf("stack query = %q, want users SELECT", m.queryStack[0].query)
 	}
 }
 
@@ -224,22 +209,3 @@ func TestExplorerInsertRelatedRejectsOutbound(t *testing.T) {
 	}
 }
 
-// TestRelExplorerBreadcrumbInView reserves a path line above the tree.
-func TestRelExplorerBreadcrumbInView(t *testing.T) {
-	e := NewRelExplorer()
-	e.SetSize(45, 12)
-	e.SetPath([]string{"users · #1", "orders · #10"})
-	root := &expNode{kind: nodeRow, table: "orders", label: " · #10"}
-	e.applyRoot(root, 1)
-	out := e.View()
-	if !strings.Contains(out, "›") && !strings.Contains(out, "users") {
-		// lipgloss may strip; check bodyLines directly.
-		lines := e.bodyLines()
-		if len(lines) == 0 || !strings.Contains(lines[0], "users") {
-			t.Fatalf("breadcrumb missing from bodyLines: %v\nview:\n%s", lines, out)
-		}
-	}
-	if lipgloss.Height(out) != 12 {
-		t.Errorf("View height = %d, want 12", lipgloss.Height(out))
-	}
-}

@@ -190,7 +190,7 @@ type lookupResultMsg struct {
 // explorerLoadedMsg carries the explorer tree root (the focused row + its
 // first-level edges) produced by loadExplorer. root is nil on the empty/error
 // paths, in which case emptyMsg/err explains why. depth is the queryStack depth
-// at load time, shown as a breadcrumb hint.
+// at load time.
 type explorerLoadedMsg struct {
 	root     *expNode
 	depth    int
@@ -299,7 +299,6 @@ type queryStackEntry struct {
 	page      int
 	cursorRow int
 	cursorCol int
-	label     string // breadcrumb crumb, e.g. "users · #1"
 }
 
 // Model is the top-level application model for the Bubble Tea architecture.
@@ -4465,7 +4464,6 @@ func (m Model) viewWorkspace() string {
 		// mirrors focus, like the inspector/assistant.
 		slotH := lipgloss.Height(rightPanel)
 		m.explorer.focused = m.focus == FocusExplorer
-		m.explorer.SetPath(m.navBreadcrumb())
 		m.explorer.SetSize(slotWidth, slotH)
 		slotPanel = m.explorer.View()
 	}

@@ -30,41 +30,7 @@ func (m *Model) pushQueryStack() {
 		page:      m.page,
 		cursorRow: m.results.CursorRow(),
 		cursorCol: m.results.CursorCol(),
-		label:     m.currentNavLabel(),
 	})
-}
-
-// currentNavLabel returns a short breadcrumb crumb for the focused context —
-// explorer root identity when the panel is rooted, otherwise the results row.
-func (m *Model) currentNavLabel() string {
-	if m.explorer.root != nil {
-		return m.explorer.root.table + m.explorer.root.label
-	}
-	src := m.results.SourceTable()
-	if src == "" {
-		return ""
-	}
-	if _, label, ok := m.focusedRowValues(src); ok {
-		return src + label
-	}
-	return src
-}
-
-// navBreadcrumb returns the full path crumbs: prior queryStack labels plus the
-// current root. Used by the explorer header.
-func (m *Model) navBreadcrumb() []string {
-	crumbs := make([]string, 0, len(m.queryStack)+1)
-	for _, e := range m.queryStack {
-		if e.label != "" {
-			crumbs = append(crumbs, e.label)
-		}
-	}
-	if cur := m.currentNavLabel(); cur != "" {
-		// Avoid duplicating the tip when the stack entry already matches
-		// (shouldn't happen) — always append the live root/cursor identity.
-		crumbs = append(crumbs, cur)
-	}
-	return crumbs
 }
 
 func (m *Model) followForeignKey() tea.Cmd {

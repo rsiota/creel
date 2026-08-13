@@ -123,9 +123,7 @@ relational data, not just inspect schema. Pitch: “browse like a folder tree of
 related rows — edit without writing the JOIN.”
 
 **Shipped — first slice:**
-- Breadcrumb path in the explorer header (`users · #1 › orders · #10`)
 - Unified back from explorer: `u` / `backspace` / `g b` (same `queryStack`)
-- Stack entries carry a `label` for crumbs (`queryStackEntry.label`)
 - **Insert related** — `A` on an **inbound** edge prefills the child FK and
   opens inspector insert (explorer yields the right slot)
 - Inbound edges with count `0` stay visible so the first related row is
