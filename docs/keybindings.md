@@ -20,7 +20,7 @@ test keeps the documentation in sync with what's actually wired.
 | `B`             | Bookmark current query          |
 | `ctrl+o`        | Toggle record inspector         |
 | `ctrl+h/j/k/l`  | Move focus between panels       |
-| `tab` / `shift+tab` | Cycle focus                |
+| `tab` / `shift+tab` | Cycle focus (skips tab bar) |
 | `ctrl+d` / `ctrl+u` | Next / previous page        |
 | `ctrl+p`        | Command palette                 |
 | `:`             | Ex command line (`:q`, `:sort`, `:goto`, …) |
@@ -52,6 +52,7 @@ In the add/edit form:
 | Key        | Action                    |
 | ---------- | ------------------------- |
 | `j/k`      | Move                      |
+| `l`        | Focus results             |
 | `g g` / `G`| Top / bottom              |
 | `space`    | Expand columns            |
 | `enter` / `s` | `SELECT *` from table  |

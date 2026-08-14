@@ -54,7 +54,7 @@ func registry() []Section {
 				{"ctrl+o", []string{"ctrl+o"}, "toggle inspector", ""},
 				{"ctrl+f", []string{"ctrl+f"}, "toggle AI assistant", ""},
 				{"ctrl+h/j/k/l", []string{"ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"}, "move focus", ""},
-				{"tab / shift+tab", []string{"tab", "shift+tab"}, "cycle focus", ""},
+				{"tab / shift+tab", []string{"tab", "shift+tab"}, "cycle focus (skips tab bar)", ""},
 				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "next / prev page", ""},
 				{"ctrl+p", []string{"ctrl+p"}, "command palette", ""},
 				{":", []string{":"}, "ex command line", ":"},
@@ -99,6 +99,7 @@ func registry() []Section {
 			Source: "app.go",
 			Items: []Binding{
 				{"j/k, ↑/↓", []string{"j", "k", "up", "down"}, "move", "j/k"},
+				{"l", []string{"l", "right"}, "focus results", "l"},
 				{"g g / G", []string{"g", "G"}, "top / bottom", ""},
 				{"space", []string{" "}, "expand columns", "space"},
 				{"enter / s", []string{"enter", "s"}, "select * from table", "enter"},

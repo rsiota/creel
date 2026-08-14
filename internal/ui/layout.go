@@ -185,10 +185,14 @@ func (m Model) effectiveEditorHeight(cmdHeight int) int {
 }
 
 // isFocusable reports whether a panel is present and can receive focus.
-// The sidebar, tab bar, editor, and results are always present; the inspector
-// and assistant are only focusable when open (they share the right-hand slot).
+// The sidebar, editor, and results are always in the tab cycle. The tab bar
+// is reachable via click and ctrl+k from the editor, but skipped by tab /
+// shift+tab. The inspector and assistant are only focusable when open (they
+// share the right-hand slot).
 func (m Model) isFocusable(f Focus) bool {
 	switch f {
+	case FocusTabBar:
+		return false
 	case FocusInspector:
 		return m.inspector.IsVisible()
 	case FocusAssistant:

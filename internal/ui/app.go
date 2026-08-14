@@ -3876,6 +3876,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebarPendingG = false
 			m.toggleExpand()
 			return m, nil
+		case "l", "right":
+			m.sidebarPendingG = false
+			m.focus = FocusResults
+			m.applyFocus()
+			return m, nil
 		case "/":
 			m.sidebarFiltering = true
 			m.sidebarFilter = ""

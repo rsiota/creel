@@ -1,6 +1,10 @@
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 // TestMoveFocusNoDeadEnds locks in the three-column panel navigation:
 // Sidebar ↔ Editor ↔ right-slot, with the editor as the centre hub. The key
@@ -72,5 +76,42 @@ func TestMoveFocusCentreStack(t *testing.T) {
 	m = m.moveFocus("ctrl+k")
 	if m.focus != FocusTabBar {
 		t.Fatalf("editor→k: focus=%v, want FocusTabBar", m.focus)
+	}
+}
+
+func TestCycleFocusSkipsTabBar(t *testing.T) {
+	m := newFocusModel()
+	m.focus = FocusConnections
+	m = m.cycleFocus()
+	if m.focus != FocusEditor {
+		t.Fatalf("tab from sidebar: focus=%v, want FocusEditor", m.focus)
+	}
+	m = m.cycleFocus()
+	if m.focus != FocusResults {
+		t.Fatalf("tab from editor: focus=%v, want FocusResults", m.focus)
+	}
+	m = m.cycleFocusBack()
+	if m.focus != FocusEditor {
+		t.Fatalf("shift-tab from results: focus=%v, want FocusEditor", m.focus)
+	}
+	m = m.cycleFocusBack()
+	if m.focus != FocusConnections {
+		t.Fatalf("shift-tab from editor: focus=%v, want FocusConnections", m.focus)
+	}
+
+	// Tab still leaves the tab bar if it was focused by click / ctrl+k.
+	m.focus = FocusTabBar
+	m = m.cycleFocus()
+	if m.focus != FocusEditor {
+		t.Fatalf("tab from tab bar: focus=%v, want FocusEditor", m.focus)
+	}
+}
+
+func TestSidebarLFocusesResults(t *testing.T) {
+	m := newFocusModel()
+	m.focus = FocusConnections
+	got, _ := m.updateWorkspace(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	if got.(Model).focus != FocusResults {
+		t.Fatalf("sidebar l: focus=%v, want FocusResults", got.(Model).focus)
 	}
 }
