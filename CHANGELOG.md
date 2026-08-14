@@ -11,6 +11,29 @@ commits, so it can come up empty).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-14
+
+Charts, a richer FK explorer, mouse-resizeable panels, and CLI output — plus a quicker path from the sidebar into results.
+
+### Added
+- Bar charts from marked result columns (`M` + `:bar`), with sum/count/avg grouping and a cursor.
+- Line charts (`:line`) of two numeric columns, drawn as a continuous Braille series with a dim crosshair.
+- Browse and insert related rows from the FK explorer.
+- Remembered results-column widths per table.
+- Mouse-resize for the sidebar↔centre, editor↔results, and centre↔right seams.
+- `-format` query output and `-c` connection reuse with flag overrides.
+- Read-only cell viewer (`E`) on non-editable results.
+- `:copyrow` to copy the current result row.
+- Safer BLOB rendering; `-database` is honored in the TUI.
+
+### Changed
+- Sidebar `l` jumps to the results grid; `tab` / `shift+tab` skip the tab bar.
+- Relationship explorer no longer shows a breadcrumb path.
+
+### Fixed
+- Wheel events are coalesced so momentum scroll no longer runs away.
+- Empty strings are no longer coerced to NULL when copying cells.
+
 ## [0.1.1] - 2026-08-03
 
 A follow-up to the initial release: release tooling, install options, and docs polish.
@@ -42,6 +65,7 @@ First public release. creel succeeds `gsql` (the project was renamed) and migrat
 - **Read-only mode** for safely pointing at production.
 - **Session restore**, per-connection query history & bookmarks, EXPLAIN plans, and ~570 themes.
 
-[Unreleased]: https://github.com/rsiota/creel/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/rsiota/creel/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/rsiota/creel/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/rsiota/creel/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/rsiota/creel/releases/tag/v0.1.0
