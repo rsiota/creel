@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,18 +14,22 @@ import (
 type chartBar struct {
 	label string
 	value float64
+	n     int // row count in this group; used to fold avg into (other)
 }
 
 // ChartPanel renders a simple chart (currently horizontal bars) in the
 // results-panel slot. Esc/q closes it and restores the grid.
 type ChartPanel struct {
-	visible bool
-	title   string // e.g. "bar · users × amount"
-	bars    []chartBar
-	skipped int // rows skipped (NULL / non-numeric values)
-	scroll  int
-	width   int
-	height  int
+	visible  bool
+	title    string // e.g. "bar · users × amount · sum"
+	bars     []chartBar
+	agg      barAgg
+	expanded bool // true = show every grouped bar; false = top 20 + (other)
+	skipped  int  // rows skipped (NULL / non-numeric values)
+	cursor   int  // index into visibleBars
+	scroll   int
+	width    int
+	height   int
 }
 
 // NewChartPanel returns a hidden chart panel.
@@ -34,11 +39,14 @@ func NewChartPanel() ChartPanel { return ChartPanel{} }
 func (c ChartPanel) IsVisible() bool { return c.visible }
 
 // ShowBar populates a horizontal bar chart and makes the panel visible.
-func (c *ChartPanel) ShowBar(title string, bars []chartBar, skipped int) {
+func (c *ChartPanel) ShowBar(title string, bars []chartBar, skipped int, agg barAgg) {
 	c.visible = true
 	c.title = title
 	c.bars = bars
+	c.agg = agg
+	c.expanded = false
 	c.skipped = skipped
+	c.cursor = 0
 	c.scroll = 0
 }
 
@@ -65,50 +73,100 @@ func (c ChartPanel) contentWidth() int {
 	return w
 }
 
-// Update handles scrolling within the chart.
+// Update moves the bar cursor and unfolds (other). The chart stays put until
+// the cursor walks off the edge of the viewport, then it follows by one row.
 func (c ChartPanel) Update(msg tea.KeyMsg) ChartPanel {
-	n := len(c.bars)
+	n := len(c.visibleBars())
 	vh := c.viewport()
+	clamp := func() {
+		if c.cursor >= n {
+			c.cursor = n - 1
+		}
+		if c.cursor < 0 {
+			c.cursor = 0
+		}
+	}
 	switch msg.String() {
+	case "o":
+		if len(c.bars) > chartBarLimit {
+			was := c.expanded
+			c.expanded = !c.expanded
+			n = len(c.visibleBars())
+			if c.expanded && !was && n > chartBarLimit {
+				c.cursor = chartBarLimit
+			}
+			clamp()
+			c.adjustScroll(vh, n)
+		}
 	case "j", "down":
-		if c.scroll+vh < n {
-			c.scroll++
+		if c.cursor < n-1 {
+			c.cursor++
+			c.adjustScroll(vh, n)
 		}
 	case "k", "up":
-		if c.scroll > 0 {
-			c.scroll--
+		if c.cursor > 0 {
+			c.cursor--
+			c.adjustScroll(vh, n)
 		}
 	case "g":
+		c.cursor = 0
 		c.scroll = 0
 	case "G":
-		c.scroll = n - vh
-		if c.scroll < 0 {
-			c.scroll = 0
-		}
+		c.cursor = n - 1
+		c.adjustScroll(vh, n)
 	case "ctrl+d":
-		c.scroll += vh / 2
-		if max := n - vh; max < 0 {
-			c.scroll = 0
-		} else if c.scroll > max {
-			c.scroll = max
-		}
+		c.cursor += vh / 2
+		clamp()
+		c.adjustScroll(vh, n)
 	case "ctrl+u":
-		c.scroll -= vh / 2
-		if c.scroll < 0 {
-			c.scroll = 0
-		}
+		c.cursor -= vh / 2
+		clamp()
+		c.adjustScroll(vh, n)
 	}
 	return c
 }
 
-// viewport is how many bar rows fit under the title/footer.
+func (c *ChartPanel) adjustScroll(vh, n int) {
+	if vh <= 0 {
+		return
+	}
+	if c.cursor < c.scroll {
+		c.scroll = c.cursor
+	}
+	if c.cursor >= c.scroll+vh {
+		c.scroll = c.cursor - vh + 1
+	}
+	maxScroll := n - vh
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if c.scroll > maxScroll {
+		c.scroll = maxScroll
+	}
+	if c.scroll < 0 {
+		c.scroll = 0
+	}
+}
+
+func (c ChartPanel) visibleBars() []chartBar {
+	return foldChartBars(c.bars, c.expanded, c.agg)
+}
+
+// viewport is how many bar rows fit. A skipped-row note, when present,
+// takes the last content line; otherwise bars fill the panel.
 func (c ChartPanel) viewport() int {
-	// title + optional skipped footer + blank separator ≈ 3 reserved lines
-	vh := c.contentHeight() - 3
+	vh := c.contentHeight() - c.footerLines()
 	if vh < 1 {
 		vh = 1
 	}
 	return vh
+}
+
+func (c ChartPanel) footerLines() int {
+	if c.skipped > 0 {
+		return 1
+	}
+	return 0
 }
 
 // View renders the bordered chart panel.
@@ -131,21 +189,17 @@ func (c ChartPanel) View() string {
 
 func (c ChartPanel) bodyLines(inner int) []string {
 	muted := lipgloss.NewStyle().Foreground(colorMuted)
-	titleStyle := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
 	barStyle := lipgloss.NewStyle().Foreground(colorPrimary)
 	labelStyle := lipgloss.NewStyle().Foreground(colorFg)
 	valStyle := lipgloss.NewStyle().Foreground(colorLabel)
 
-	var out []string
-	out = append(out, titleStyle.Render(truncateCell(c.title, inner)))
-
 	if len(c.bars) == 0 {
-		out = append(out, muted.Render(truncateCell("no numeric values to chart", inner)))
-		return out
+		return []string{muted.Render(truncateCell("no numeric values to chart", inner))}
 	}
 
+	vis := c.visibleBars()
 	maxVal := 0.0
-	for _, b := range c.bars {
+	for _, b := range vis {
 		if b.value > maxVal {
 			maxVal = b.value
 		}
@@ -155,7 +209,7 @@ func (c ChartPanel) bodyLines(inner int) []string {
 	}
 
 	labelW := 0
-	for _, b := range c.bars {
+	for _, b := range vis {
 		if w := lipgloss.Width(b.label); w > labelW {
 			labelW = w
 		}
@@ -179,13 +233,17 @@ func (c ChartPanel) bodyLines(inner int) []string {
 		barW = 4
 	}
 
+	var out []string
 	vh := c.viewport()
 	start := c.scroll
 	end := start + vh
-	if end > len(c.bars) {
-		end = len(c.bars)
+	if end > len(vis) {
+		end = len(vis)
 	}
-	for _, b := range c.bars[start:end] {
+	if start > end {
+		start = end
+	}
+	for i, b := range vis[start:end] {
 		filled := 0
 		if maxVal > 0 {
 			filled = int(math.Round(float64(barW) * b.value / maxVal))
@@ -198,11 +256,21 @@ func (c ChartPanel) bodyLines(inner int) []string {
 		}
 		bar := strings.Repeat("█", filled) + strings.Repeat("░", barW-filled)
 		label := truncateCell(b.label, labelW)
-		line := labelStyle.Render(label) +
-			muted.Render(" │") +
-			barStyle.Render(bar) +
-			" " +
-			valStyle.Render(padLeft(formatChartValue(b.value), valW))
+		val := padLeft(formatChartValue(b.value), valW)
+		selected := start+i == c.cursor
+		ls, ms, bs, vs := labelStyle, muted, barStyle, valStyle
+		if selected {
+			ls = ls.Background(colorCursorRow)
+			ms = ms.Background(colorCursorRow)
+			bs = bs.Background(colorCursorRow)
+			vs = vs.Background(colorCursorRow)
+		}
+		line := ls.Render(label) + ms.Render(" │") + bs.Render(bar) + vs.Render(" "+val)
+		if selected {
+			if pad := inner - lipgloss.Width(line); pad > 0 {
+				line += lipgloss.NewStyle().Background(colorCursorRow).Render(strings.Repeat(" ", pad))
+			}
+		}
 		out = append(out, line)
 	}
 
@@ -227,4 +295,154 @@ func padLeft(s string, width int) string {
 		return s
 	}
 	return strings.Repeat(" ", width-w) + s
+}
+
+// barAgg is how :bar collapses duplicate labels into one bar.
+type barAgg int
+
+const (
+	barAggSum barAgg = iota
+	barAggCount
+	barAggAvg
+)
+
+func (a barAgg) String() string {
+	switch a {
+	case barAggCount:
+		return "count"
+	case barAggAvg:
+		return "avg"
+	default:
+		return "sum"
+	}
+}
+
+func parseBarAgg(s string) (barAgg, bool) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "sum":
+		return barAggSum, true
+	case "count":
+		return barAggCount, true
+	case "avg", "average", "mean":
+		return barAggAvg, true
+	}
+	return 0, false
+}
+
+const (
+	chartBarLimit = 20
+	otherBarLabel = "(other)"
+)
+
+type barBucket struct {
+	label string
+	sum   float64
+	n     int
+}
+
+func (b barBucket) value(agg barAgg) float64 {
+	switch agg {
+	case barAggCount:
+		return float64(b.n)
+	case barAggAvg:
+		if b.n == 0 {
+			return 0
+		}
+		return b.sum / float64(b.n)
+	default:
+		return b.sum
+	}
+}
+
+// buildBarSeries walks the current result page into aggregated chart bars.
+// Duplicate labels are grouped; sum/avg skip NULL, non-numeric, and negative
+// values (counted in skipped). count includes every row. Bars are sorted by
+// value descending and capped at chartBarLimit, with the rest folded into
+// "(other)".
+func buildBarSeries(r ResultsTable, labelCol, valueCol int, agg barAgg) (bars []chartBar, skipped int) {
+	idx := map[string]int{}
+	var buckets []barBucket
+
+	n := r.NumRows()
+	for i := 0; i < n; i++ {
+		label := r.RowValue(i, labelCol)
+		if label == "" || label == "NULL" {
+			label = "(null)"
+		}
+		if agg == barAggCount {
+			if j, ok := idx[label]; ok {
+				buckets[j].n++
+			} else {
+				idx[label] = len(buckets)
+				buckets = append(buckets, barBucket{label: label, n: 1})
+			}
+			continue
+		}
+		raw := r.RowValue(i, valueCol)
+		if raw == "" || raw == "NULL" {
+			skipped++
+			continue
+		}
+		v, ok := parseFloat(raw)
+		if !ok || math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+			skipped++
+			continue
+		}
+		if j, ok := idx[label]; ok {
+			buckets[j].sum += v
+			buckets[j].n++
+		} else {
+			idx[label] = len(buckets)
+			buckets = append(buckets, barBucket{label: label, sum: v, n: 1})
+		}
+	}
+	if len(buckets) == 0 {
+		return nil, skipped
+	}
+
+	sort.SliceStable(buckets, func(i, j int) bool {
+		vi, vj := buckets[i].value(agg), buckets[j].value(agg)
+		if vi != vj {
+			return vi > vj
+		}
+		return buckets[i].label < buckets[j].label
+	})
+
+	bars = make([]chartBar, len(buckets))
+	for i, b := range buckets {
+		bars[i] = chartBar{label: b.label, value: b.value(agg), n: b.n}
+	}
+	return bars, skipped
+}
+
+// foldChartBars keeps the top chartBarLimit bars and collapses the rest into
+// "(other)", unless expanded or the set already fits.
+func foldChartBars(bars []chartBar, expanded bool, agg barAgg) []chartBar {
+	if expanded || len(bars) <= chartBarLimit {
+		return bars
+	}
+	head := bars[:chartBarLimit]
+	var other chartBar
+	other.label = otherBarLabel
+	var n int
+	var acc float64
+	for _, b := range bars[chartBarLimit:] {
+		n += b.n
+		if agg == barAggAvg {
+			acc += b.value * float64(b.n)
+		} else {
+			acc += b.value
+		}
+	}
+	other.n = n
+	if agg == barAggAvg {
+		if n > 0 {
+			other.value = acc / float64(n)
+		}
+	} else {
+		other.value = acc
+	}
+	out := make([]chartBar, 0, chartBarLimit+1)
+	out = append(out, head...)
+	return append(out, other)
 }

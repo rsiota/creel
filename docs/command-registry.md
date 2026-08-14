@@ -90,7 +90,7 @@ the panel-specific dispatch.
 ### Step 5 — High-value aliases ✅ DONE
 Added as single registry entries (autocomplete + help pick them up for free):
 `:explain`, `:refresh`/`:reload`, `:history`, `:bookmarks`/`:bm`,
-`:describe`/`:desc [table]`, `:stats [column]`, `:bar [label] [value]`, `:format`, `:theme <name>`.
+`:describe`/`:desc [table]`, `:stats [column]`, `:bar [label] [value] [sum|count|avg]`, `:format`, `:theme <name>`.
 
 Each shares the SAME implementation as its keybinding, not a duplicate:
 - `:refresh`/`:reload`, `:history`, `:bookmarks` call freshly-extracted

@@ -4403,9 +4403,6 @@ func (m Model) viewWorkspace() string {
 
 		var resultsPanel string
 		if m.chartPanel.IsVisible() {
-			// Match the results-with-table box model: exterior includes the
-			// border, same as results.SetSize(rightWidth+2, resultsHeight+2).
-			m.chartPanel.SetSize(rightWidth+borderOverhead, resultsHeight+borderOverhead)
 			resultsPanel = m.chartPanel.View()
 		} else if m.queryRunning && !m.backendSearching {
 			// Show an animated spinner while the query executes.

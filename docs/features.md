@@ -28,8 +28,11 @@ An overview of everything creel can do. For keys, see
 
 Mark two columns with `M` (first = labels, second = values), then run `:bar`
 to replace the results grid with a horizontal bar chart of the current page.
-Or pass columns explicitly: `:bar <label> <value>`. `Esc`/`q` restores the
-grid. Non-numeric and NULL value cells are skipped.
+Or pass columns explicitly: `:bar <label> <value> [sum|count|avg]`. Duplicate
+labels are grouped (`sum` is the default); `:bar count` on marked columns
+counts rows per label. The top 20 bars are kept and the rest fold into
+`(other)`; press `o` to unfold (and `o` again to fold). `Esc`/`q` restores
+the grid. Non-numeric and NULL value cells are skipped for `sum`/`avg`.
 
 ### Relationship explorer (`g r` / `:explore panel`)
 

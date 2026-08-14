@@ -378,6 +378,9 @@ func (m *Model) layoutWorkspace() {
 	m.tabBar.SetSize(g.RightWidth, 1)
 
 	m.results.SetSize(g.RightWidth+g.BorderOH, g.ResultsHeight+g.BorderOH)
+	// Same box model as results. Must be sized here: View is a value
+	// receiver, so SetSize there would not persist for j/k cursor movement.
+	m.chartPanel.SetSize(g.RightWidth+g.BorderOH, g.ResultsHeight+g.BorderOH)
 
 	if inspectorVisible {
 		viewHeight := g.EditorHeight + g.ResultsHeight
@@ -396,8 +399,9 @@ func (m *Model) layoutWorkspace() {
 
 	// Modal overlay panels (explain / lookup) share a centered 70% size. They
 	// MUST be sized here rather than only in View: View has a value receiver,
-	// so a SetSize there mutates a throwaway copy. The docked explorer is sized
-	// as a slot panel above, not here.
+	// so a SetSize there mutates a throwaway copy. The chart panel is sized
+	// with the results grid above for the same reason. The docked explorer is
+	// sized as a slot panel above, not here.
 	overlayW := m.width * 70 / 100
 	overlayH := (m.height - 1) * 70 / 100
 	m.explainPanel.SetSize(overlayW, overlayH)

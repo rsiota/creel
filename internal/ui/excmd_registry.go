@@ -783,7 +783,7 @@ func exCommands() []exCmdSpec {
 		{
 			verbs:    []string{"bar"},
 			desc:     "horizontal bar chart from two result columns",
-			usage:    ":bar [label] [value]",
+			usage:    ":bar [label] [value] [sum|count|avg]",
 			argKind:  exArgOptional,
 			complete: completeBarColumns,
 			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exBar(args) },
@@ -910,16 +910,34 @@ func completeColumn(m *Model, args []string, _ string) []string {
 	return names
 }
 
-// completeBarColumns offers result columns for :bar's label and value args
-// (up to two). Already-typed names are not filtered out — the user may chart
-// a column against itself.
+// completeBarColumns offers result columns for :bar's label and value args,
+// then sum/count/avg for the optional aggregate. With no args yet, both
+// columns and aggregates are offered so `:bar count` works on marked columns.
 func completeBarColumns(m *Model, args []string, _ string) []string {
-	if len(args) >= 2 || m.results.NumCols() == 0 {
+	aggs := []string{"sum", "count", "avg"}
+	if len(args) >= 3 {
+		return nil
+	}
+	if len(args) == 2 {
+		return aggs
+	}
+	if len(args) == 1 {
+		if _, ok := parseBarAgg(args[0]); ok {
+			return nil
+		}
+	}
+	if m.results.NumCols() == 0 {
+		if len(args) == 0 {
+			return aggs
+		}
 		return nil
 	}
 	names := make([]string, 0, m.results.NumCols())
 	for i := 0; i < m.results.NumCols(); i++ {
 		names = append(names, m.results.ColumnName(i))
+	}
+	if len(args) == 0 {
+		return append(names, aggs...)
 	}
 	return names
 }
