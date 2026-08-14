@@ -50,6 +50,7 @@ func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+c":
 		m.ex.Hide()
+		m.layoutWorkspace()
 		return *m, nil
 	case "enter":
 		input := strings.TrimSpace(m.ex.input)
@@ -58,11 +59,14 @@ func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.ex.comp = nil
 		m.ex.argMode = false
 		if input == "" {
+			m.layoutWorkspace()
 			return *m, nil
 		}
 		m.ex.hist = append(m.ex.hist, input)
 		m.ex.histIdx = len(m.ex.hist)
-		return *m, m.runExCommand(input)
+		cmd := m.runExCommand(input)
+		m.layoutWorkspace()
+		return *m, cmd
 	case "up", "down":
 		// With the popup visible and not mid-history, up/down move its
 		// selection (mirroring the command palette). Otherwise they walk

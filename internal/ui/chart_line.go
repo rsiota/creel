@@ -45,22 +45,65 @@ func buildLineSeries(r ResultsTable, xCol, yCol int) (pts []chartPoint, skipped 
 	return pts, skipped
 }
 
+const (
+	brailleBase       rune = 0x2800
+	lineChartPad           = 4
+	lineChartPadRight      = 7
+)
+
+func clampChartPad(want, avail, minContent int) int {
+	max := (avail - minContent) / 2
+	if max < 0 {
+		return 0
+	}
+	if want > max {
+		return max
+	}
+	return want
+}
+
+func clampChartPadLR(left, right, avail, minContent int) (int, int) {
+	extra := avail - minContent
+	if extra <= 0 {
+		return 0, 0
+	}
+	if left+right <= extra {
+		return left, right
+	}
+	if left > extra {
+		return extra, 0
+	}
+	return left, extra - left
+}
+
+// brailleBits maps a 2×4 cell (subX 0..1, subY 0..3, top-left origin) onto
+// Unicode Braille dots 1–8.
+var brailleBits = [4][2]byte{
+	{0x01, 0x08},
+	{0x02, 0x10},
+	{0x04, 0x20},
+	{0x40, 0x80},
+}
+
 func (c ChartPanel) lineBodyLines(inner int) []string {
 	muted := lipgloss.NewStyle().Foreground(colorMuted)
-	axis := lipgloss.NewStyle().Foreground(colorLabel)
-	lineSt := lipgloss.NewStyle().Foreground(colorPrimary)
-	pointSt := lipgloss.NewStyle().Foreground(colorPrimary)
-	selSt := lipgloss.NewStyle().Foreground(colorPrimary).Background(colorCursorRow)
+	numSt := lipgloss.NewStyle().Foreground(colorFg)
+	axisSt := lipgloss.NewStyle().Foreground(colorMuted)
+	hairSt := lipgloss.NewStyle().Foreground(colorBorder)
+	lineSt := lipgloss.NewStyle().Foreground(colorFg)
+	selSt := lipgloss.NewStyle().Foreground(colorFg).Background(colorCursorRow)
 
 	if len(c.points) == 0 {
 		return []string{muted.Render(truncateCell("no numeric values to chart", inner))}
 	}
 
-	h := c.contentHeight() - c.footerLines()
+	availH := c.contentHeight() - c.footerLines()
+	padY := clampChartPad(lineChartPad, availH, 4)
+	padL, padR := clampChartPadLR(lineChartPad, lineChartPadRight, inner, 10)
+	h := availH - 2*padY
 	if h < 4 {
 		h = 4
 	}
-	// y-axis labels + " ┤", x-axis rule, x labels
 	yW := 0
 	minY, maxY := c.points[0].y, c.points[0].y
 	minX, maxX := c.points[0].x, c.points[0].x
@@ -87,7 +130,7 @@ func (c ChartPanel) lineBodyLines(inner int) []string {
 		yW = 3
 	}
 	axisGutter := yW + 2 // "┤ " after the number
-	plotW := inner - axisGutter
+	plotW := inner - padL - padR - axisGutter
 	plotH := h - 2 // rule + x labels
 	if plotW < 4 {
 		plotW = 4
@@ -96,52 +139,14 @@ func (c ChartPanel) lineBodyLines(inner int) []string {
 		plotH = 2
 	}
 
-	grid := make([][]rune, plotH)
-	for i := range grid {
-		grid[i] = []rune(strings.Repeat(" ", plotW))
-	}
-
-	colOf := func(x float64) int {
-		if plotW <= 1 || maxX == minX {
-			return 0
-		}
-		c := int(math.Round((x - minX) / (maxX - minX) * float64(plotW-1)))
-		if c < 0 {
-			c = 0
-		}
-		if c >= plotW {
-			c = plotW - 1
-		}
-		return c
-	}
-	rowOf := func(y float64) int {
-		if plotH <= 1 || maxY == minY {
-			return plotH / 2
-		}
-		t := (y - minY) / (maxY - minY)
-		r := (plotH - 1) - int(math.Round(t*float64(plotH-1)))
-		if r < 0 {
-			r = 0
-		}
-		if r >= plotH {
-			r = plotH - 1
-		}
-		return r
-	}
-
-	for i := 1; i < len(c.points); i++ {
-		x0, y0 := colOf(c.points[i-1].x), rowOf(c.points[i-1].y)
-		x1, y1 := colOf(c.points[i].x), rowOf(c.points[i].y)
-		strokeLine(grid, x0, y0, x1, y1)
-	}
-	for _, p := range c.points {
-		grid[rowOf(p.y)][colOf(p.x)] = '●'
-	}
+	grid := rasterLineBraille(plotW, plotH, c.points, minX, maxX, minY, maxY)
 
 	selCol, selRow := -1, -1
 	if c.cursor >= 0 && c.cursor < len(c.points) {
-		selCol = colOf(c.points[c.cursor].x)
-		selRow = rowOf(c.points[c.cursor].y)
+		p := c.points[c.cursor]
+		px, py := linePixelOf(p.x, p.y, minX, maxX, minY, maxY, plotW*2, plotH*4)
+		selCol, selRow = px/2, py/4
+		overlayCrosshair(grid, selCol, selRow)
 	}
 
 	out := make([]string, 0, h)
@@ -163,43 +168,110 @@ func (c ChartPanel) lineBodyLines(inner int) []string {
 			}
 		}
 		var b strings.Builder
-		b.WriteString(axis.Render(label + tick))
+		b.WriteString(numSt.Render(label) + axisSt.Render(tick))
 		for col, ch := range grid[row] {
 			s := string(ch)
-			st := muted
+			st := hairSt
 			switch {
-			case col == selCol && row == selRow && ch == '●':
+			case col == selCol && row == selRow && isBrailleCell(ch):
 				st = selSt
-			case ch == '●':
-				st = pointSt
-			case ch != ' ':
+			case isBrailleCell(ch):
 				st = lineSt
-			}
-			if col == selCol && ch == ' ' {
-				st = lipgloss.NewStyle().Background(colorCursorRow)
 			}
 			b.WriteString(st.Render(s))
 		}
 		out = append(out, b.String())
 	}
 
-	out = append(out, axis.Render(padLeft("", yW)+"└"+strings.Repeat("─", plotW)))
-	out = append(out, muted.Render(strings.Repeat(" ", axisGutter)+c.lineXAxis(plotW)))
+	out = append(out, axisSt.Render(padLeft("", yW)+"└"+strings.Repeat("─", plotW)))
+	out = append(out, numSt.Render(strings.Repeat(" ", axisGutter)+c.lineXAxis(plotW)))
 
+	leftPad := strings.Repeat(" ", padL)
+	body := make([]string, 0, len(out)+2*padY+1)
+	for i := 0; i < padY; i++ {
+		body = append(body, "")
+	}
+	for _, line := range out {
+		body = append(body, leftPad+line)
+	}
+	for i := 0; i < padY; i++ {
+		body = append(body, "")
+	}
 	if c.skipped > 0 {
-		out = append(out, muted.Render(truncateCell(
+		body = append(body, muted.Render(truncateCell(
 			fmt.Sprintf("skipped %d non-numeric/NULL row%s", c.skipped, pluralIf(c.skipped != 1, "s")),
 			inner)))
 	}
-	return out
+	return body
 }
 
-func strokeLine(grid [][]rune, x0, y0, x1, y1 int) {
-	h := len(grid)
-	if h == 0 {
-		return
+// rasterLineBraille draws a polyline at Braille resolution (2×4 dots per cell).
+func rasterLineBraille(plotW, plotH int, pts []chartPoint, minX, maxX, minY, maxY float64) [][]rune {
+	pixW, pixH := plotW*2, plotH*4
+	dots := make([][]byte, plotH)
+	for i := range dots {
+		dots[i] = make([]byte, plotW)
 	}
-	w := len(grid[0])
+	set := func(px, py int) {
+		if px < 0 || py < 0 || px >= pixW || py >= pixH {
+			return
+		}
+		dots[py/4][px/2] |= brailleBits[py%4][px%2]
+	}
+	if len(pts) == 1 {
+		px, py := linePixelOf(pts[0].x, pts[0].y, minX, maxX, minY, maxY, pixW, pixH)
+		set(px, py)
+	}
+	for i := 1; i < len(pts); i++ {
+		x0, y0 := linePixelOf(pts[i-1].x, pts[i-1].y, minX, maxX, minY, maxY, pixW, pixH)
+		x1, y1 := linePixelOf(pts[i].x, pts[i].y, minX, maxX, minY, maxY, pixW, pixH)
+		strokePixels(set, x0, y0, x1, y1)
+	}
+	grid := make([][]rune, plotH)
+	for y := range dots {
+		grid[y] = make([]rune, plotW)
+		for x, bits := range dots[y] {
+			if bits == 0 {
+				grid[y][x] = ' '
+			} else {
+				grid[y][x] = brailleBase + rune(bits)
+			}
+		}
+	}
+	return grid
+}
+
+func linePixelOf(x, y, minX, maxX, minY, maxY float64, pixW, pixH int) (px, py int) {
+	px = scalePixel(x, minX, maxX, pixW)
+	if pixH <= 1 || maxY == minY {
+		return px, pixH / 2
+	}
+	t := (y - minY) / (maxY - minY)
+	py = (pixH - 1) - int(math.Round(t*float64(pixH-1)))
+	if py < 0 {
+		py = 0
+	}
+	if py >= pixH {
+		py = pixH - 1
+	}
+	return px, py
+}
+
+func scalePixel(v, min, max float64, extent int) int {
+	if extent <= 1 || max == min {
+		return 0
+	}
+	p := int(math.Round((v - min) / (max - min) * float64(extent-1)))
+	if p < 0 {
+		p = 0
+	}
+	if p >= extent {
+		p = extent - 1
+	}
+	return p
+}
+
+func strokePixels(set func(x, y int), x0, y0, x1, y1 int) {
 	dx := absInt(x1 - x0)
 	dy := absInt(y1 - y0)
 	sx, sy := 1, 1
@@ -212,20 +284,7 @@ func strokeLine(grid [][]rune, x0, y0, x1, y1 int) {
 	err := dx - dy
 	x, y := x0, y0
 	for {
-		if x >= 0 && x < w && y >= 0 && y < h && grid[y][x] == ' ' {
-			var g rune = '─'
-			if dx == 0 {
-				g = '│'
-			} else if dy != 0 {
-				// grid y grows downward
-				if sx*sy > 0 {
-					g = '╲'
-				} else {
-					g = '╱'
-				}
-			}
-			grid[y][x] = g
-		}
+		set(x, y)
 		if x == x1 && y == y1 {
 			return
 		}
@@ -239,6 +298,36 @@ func strokeLine(grid [][]rune, x0, y0, x1, y1 int) {
 			y += sy
 		}
 	}
+}
+
+// overlayCrosshair draws a muted vertical/horizontal guide through the
+// selected sample. The series itself is left intact.
+func overlayCrosshair(grid [][]rune, col, row int) {
+	if len(grid) == 0 || col < 0 || row < 0 {
+		return
+	}
+	h, w := len(grid), len(grid[0])
+	if col >= w || row >= h {
+		return
+	}
+	for x := 0; x < w; x++ {
+		if grid[row][x] == ' ' {
+			grid[row][x] = '─'
+		}
+	}
+	for y := 0; y < h; y++ {
+		if grid[y][col] == ' ' {
+			grid[y][col] = '│'
+		}
+	}
+	switch grid[row][col] {
+	case ' ', '─', '│':
+		grid[row][col] = '┼'
+	}
+}
+
+func isBrailleCell(ch rune) bool {
+	return ch > brailleBase && ch <= brailleBase+0xFF
 }
 
 func absInt(n int) int {
