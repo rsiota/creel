@@ -21,16 +21,25 @@ type chartBar struct {
 // results-panel slot. Esc/q closes it and restores the grid.
 type ChartPanel struct {
 	visible  bool
+	kind     chartKind
 	title    string // e.g. "bar · users × amount · sum"
 	bars     []chartBar
+	points   []chartPoint
 	agg      barAgg
 	expanded bool // true = show every grouped bar; false = top 20 + (other)
 	skipped  int  // rows skipped (NULL / non-numeric values)
-	cursor   int  // index into visibleBars
+	cursor   int  // index into visibleBars / points
 	scroll   int
 	width    int
 	height   int
 }
+
+type chartKind int
+
+const (
+	chartKindBar chartKind = iota
+	chartKindLine
+)
 
 // NewChartPanel returns a hidden chart panel.
 func NewChartPanel() ChartPanel { return ChartPanel{} }
@@ -41,9 +50,24 @@ func (c ChartPanel) IsVisible() bool { return c.visible }
 // ShowBar populates a horizontal bar chart and makes the panel visible.
 func (c *ChartPanel) ShowBar(title string, bars []chartBar, skipped int, agg barAgg) {
 	c.visible = true
+	c.kind = chartKindBar
 	c.title = title
 	c.bars = bars
+	c.points = nil
 	c.agg = agg
+	c.expanded = false
+	c.skipped = skipped
+	c.cursor = 0
+	c.scroll = 0
+}
+
+// ShowLine populates a line chart and makes the panel visible.
+func (c *ChartPanel) ShowLine(title string, points []chartPoint, skipped int) {
+	c.visible = true
+	c.kind = chartKindLine
+	c.title = title
+	c.bars = nil
+	c.points = points
 	c.expanded = false
 	c.skipped = skipped
 	c.cursor = 0
@@ -73,10 +97,10 @@ func (c ChartPanel) contentWidth() int {
 	return w
 }
 
-// Update moves the bar cursor and unfolds (other). The chart stays put until
+// Update moves the cursor and unfolds bar (other). The chart stays put until
 // the cursor walks off the edge of the viewport, then it follows by one row.
 func (c ChartPanel) Update(msg tea.KeyMsg) ChartPanel {
-	n := len(c.visibleBars())
+	n := c.seriesLen()
 	vh := c.viewport()
 	clamp := func() {
 		if c.cursor >= n {
@@ -88,22 +112,22 @@ func (c ChartPanel) Update(msg tea.KeyMsg) ChartPanel {
 	}
 	switch msg.String() {
 	case "o":
-		if len(c.bars) > chartBarLimit {
+		if c.kind == chartKindBar && len(c.bars) > chartBarLimit {
 			was := c.expanded
 			c.expanded = !c.expanded
-			n = len(c.visibleBars())
+			n = c.seriesLen()
 			if c.expanded && !was && n > chartBarLimit {
 				c.cursor = chartBarLimit
 			}
 			clamp()
 			c.adjustScroll(vh, n)
 		}
-	case "j", "down":
+	case "j", "down", "l", "right":
 		if c.cursor < n-1 {
 			c.cursor++
 			c.adjustScroll(vh, n)
 		}
-	case "k", "up":
+	case "k", "up", "h", "left":
 		if c.cursor > 0 {
 			c.cursor--
 			c.adjustScroll(vh, n)
@@ -148,6 +172,13 @@ func (c *ChartPanel) adjustScroll(vh, n int) {
 	}
 }
 
+func (c ChartPanel) seriesLen() int {
+	if c.kind == chartKindLine {
+		return len(c.points)
+	}
+	return len(c.visibleBars())
+}
+
 func (c ChartPanel) visibleBars() []chartBar {
 	return foldChartBars(c.bars, c.expanded, c.agg)
 }
@@ -188,6 +219,13 @@ func (c ChartPanel) View() string {
 }
 
 func (c ChartPanel) bodyLines(inner int) []string {
+	if c.kind == chartKindLine {
+		return c.lineBodyLines(inner)
+	}
+	return c.barBodyLines(inner)
+}
+
+func (c ChartPanel) barBodyLines(inner int) []string {
 	muted := lipgloss.NewStyle().Foreground(colorMuted)
 	barStyle := lipgloss.NewStyle().Foreground(colorPrimary)
 	labelStyle := lipgloss.NewStyle().Foreground(colorFg)

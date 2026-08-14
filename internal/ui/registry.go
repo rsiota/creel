@@ -358,7 +358,7 @@ func registry() []Section {
 			Title:  "Chart Panel",
 			Source: "chart_panel.go app.go",
 			Items: []Binding{
-				{"j/k", []string{"j", "k", "up", "down"}, "move", "j/k"},
+				{"j/k/h/l", []string{"j", "k", "h", "l", "up", "down", "left", "right"}, "move", "j/k"},
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
 				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/ctrl+u"},
 				{"o", []string{"o"}, "unfold / fold (other)", "o"},

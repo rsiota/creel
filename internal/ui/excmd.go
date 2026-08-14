@@ -2506,6 +2506,62 @@ func (m *Model) exBar(args []string) tea.Cmd {
 	return nil
 }
 
+// exLine opens a line chart in the results slot. Columns come from args
+// (`:line x y`) or from the two ordered column marks (M: x, then y).
+func (m *Model) exLine(args []string) tea.Cmd {
+	if m.results.NumRows() == 0 {
+		m.schemaMsg = "no results to chart"
+		return nil
+	}
+	xCol, yCol, err := m.resolveLineColumns(args)
+	if err != "" {
+		m.schemaMsg = err
+		return nil
+	}
+	pts, skipped := buildLineSeries(m.results, xCol, yCol)
+	if len(pts) == 0 {
+		m.schemaMsg = "no numeric x/y pairs in " + m.results.ColumnName(xCol) + " × " + m.results.ColumnName(yCol)
+		return nil
+	}
+	title := fmt.Sprintf("line · %s × %s", m.results.ColumnName(xCol), m.results.ColumnName(yCol))
+	m.chartPanel.ShowLine(title, pts, skipped)
+	m.focus = FocusResults
+	return nil
+}
+
+// resolveLineColumns picks x/y column indices from :line args or from ordered
+// column marks.
+func (m *Model) resolveLineColumns(args []string) (xCol, yCol int, err string) {
+	find := func(name string) int {
+		for i := 0; i < m.results.NumCols(); i++ {
+			if strings.EqualFold(m.results.ColumnName(i), name) {
+				return i
+			}
+		}
+		return -1
+	}
+	switch len(args) {
+	case 0:
+		marked := m.results.MarkedColumns()
+		if len(marked) != 2 {
+			return 0, 0, "mark 2 columns with M (x, then y), or :line <x> <y>"
+		}
+		return marked[0], marked[1], ""
+	case 1:
+		return 0, 0, "usage: :line <x> <y> (or mark 2 columns with M)"
+	default:
+		xCol = find(args[0])
+		if xCol < 0 {
+			return 0, 0, fmt.Sprintf("no such column: %s", args[0])
+		}
+		yCol = find(args[1])
+		if yCol < 0 {
+			return 0, 0, fmt.Sprintf("no such column: %s", args[1])
+		}
+		return xCol, yCol, ""
+	}
+}
+
 // resolveBarColumns picks label/value column indices and an aggregate from
 // :bar args or from ordered column marks. Returns a user-facing error string
 // on failure.

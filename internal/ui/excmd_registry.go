@@ -789,6 +789,14 @@ func exCommands() []exCmdSpec {
 			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exBar(args) },
 		},
 		{
+			verbs:    []string{"line"},
+			desc:     "line chart from two numeric result columns",
+			usage:    ":line [x] [y]",
+			argKind:  exArgOptional,
+			complete: completeLineColumns,
+			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exLine(args) },
+		},
+		{
 			verbs:   []string{"count"},
 			desc:    "row count for a table (SELECT count(*))",
 			usage:   ":count [table]",
@@ -938,6 +946,18 @@ func completeBarColumns(m *Model, args []string, _ string) []string {
 	}
 	if len(args) == 0 {
 		return append(names, aggs...)
+	}
+	return names
+}
+
+// completeLineColumns offers result columns for :line's x and y args.
+func completeLineColumns(m *Model, args []string, _ string) []string {
+	if len(args) >= 2 || m.results.NumCols() == 0 {
+		return nil
+	}
+	names := make([]string, 0, m.results.NumCols())
+	for i := 0; i < m.results.NumCols(); i++ {
+		names = append(names, m.results.ColumnName(i))
 	}
 	return names
 }

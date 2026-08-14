@@ -34,6 +34,13 @@ counts rows per label. The top 20 bars are kept and the rest fold into
 `(other)`; press `o` to unfold (and `o` again to fold). `Esc`/`q` restores
 the grid. Non-numeric and NULL value cells are skipped for `sum`/`avg`.
 
+### Line chart (`M` + `:line`)
+
+Mark two numeric columns with `M` (first = x, second = y), then run `:line`
+to plot them in the results slot, sorted by x. Or `:line <x> <y>`. `h`/`l`
+(or `j`/`k`) move a cursor along the series; `Esc`/`q` restores the grid.
+Non-numeric and NULL cells are skipped. Negative values are kept.
+
 ### Relationship explorer (`g r` / `:explore panel`)
 
 A docked panel that browses a row like a folder: an expandable object-graph
