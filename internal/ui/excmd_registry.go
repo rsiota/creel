@@ -782,19 +782,27 @@ func exCommands() []exCmdSpec {
 		},
 		{
 			verbs:    []string{"bar"},
-			desc:     "horizontal bar chart from two result columns",
-			usage:    ":bar [label] [value] [sum|count|avg]",
+			desc:     "horizontal bar chart from two result columns (bang = all rows)",
+			usage:    ":bar[!] [label] [value] [sum|count|avg]",
 			argKind:  exArgOptional,
 			complete: completeBarColumns,
-			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exBar(args) },
+			run:      func(m *Model, args []string, force bool) tea.Cmd { return m.exBar(args, force) },
 		},
 		{
 			verbs:    []string{"line"},
-			desc:     "line chart from two numeric result columns",
-			usage:    ":line [x] [y]",
+			desc:     "line chart from two numeric result columns (bang = all rows)",
+			usage:    ":line[!] [x] [y]",
 			argKind:  exArgOptional,
 			complete: completeLineColumns,
-			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exLine(args) },
+			run:      func(m *Model, args []string, force bool) tea.Cmd { return m.exLine(args, force) },
+		},
+		{
+			verbs:    []string{"hist"},
+			desc:     "histogram of a numeric column (bang = all rows)",
+			usage:    ":hist[!] [column] [bins]",
+			argKind:  exArgOptional,
+			complete: completeHistColumns,
+			run:      func(m *Model, args []string, force bool) tea.Cmd { return m.exHist(args, force) },
 		},
 		{
 			verbs:   []string{"count"},
@@ -953,6 +961,18 @@ func completeBarColumns(m *Model, args []string, _ string) []string {
 // completeLineColumns offers result columns for :line's x and y args.
 func completeLineColumns(m *Model, args []string, _ string) []string {
 	if len(args) >= 2 || m.results.NumCols() == 0 {
+		return nil
+	}
+	names := make([]string, 0, m.results.NumCols())
+	for i := 0; i < m.results.NumCols(); i++ {
+		names = append(names, m.results.ColumnName(i))
+	}
+	return names
+}
+
+// completeHistColumns offers result columns for :hist's column arg.
+func completeHistColumns(m *Model, args []string, _ string) []string {
+	if len(args) >= 1 || m.results.NumCols() == 0 {
 		return nil
 	}
 	names := make([]string, 0, m.results.NumCols())

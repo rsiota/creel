@@ -359,6 +359,9 @@ func (m Model) updateLayout() Model {
 // layoutWorkspace sizes the workspace panels. Uses pointer receiver so it
 // works correctly when called from both value and pointer receiver methods.
 func (m *Model) layoutWorkspace() {
+	if m.width == 0 || m.height == 0 {
+		return
+	}
 	g := m.workspaceGeom()
 
 	inspectorVisible := m.inspector.IsVisible()

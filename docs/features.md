@@ -21,8 +21,9 @@ An overview of everything creel can do. For keys, see
   tables.
 - **Results grid** — sort, filter, search, hide/show columns, follow foreign
   keys (`g d`), mark rows and columns, bulk-delete rows, and chart marked
-  columns with `:bar`. Large result sets are paged (LIMIT/OFFSET) for speed
-  and low memory.
+  columns with `:bar` / `:line` / `:hist`. Large result sets are paged
+  (LIMIT/OFFSET) for speed and low memory. `:bar!`, `:line!`, and `:hist!`
+  re-run the last SELECT without the page LIMIT (capped at 50,000 rows).
 
 ### Bar chart (`M` + `:bar`)
 
@@ -33,6 +34,7 @@ labels are grouped (`sum` is the default); `:bar count` on marked columns
 counts rows per label. The top 20 bars are kept and the rest fold into
 `(other)`; press `o` to unfold (and `o` again to fold). `Esc`/`q` restores
 the grid. Non-numeric and NULL value cells are skipped for `sum`/`avg`.
+`:bar!` charts every row of the last SELECT (not just the current page).
 
 ### Line chart (`M` + `:line`)
 
@@ -40,6 +42,16 @@ Mark two numeric columns with `M` (first = x, second = y), then run `:line`
 to plot them in the results slot, sorted by x. Or `:line <x> <y>`. `h`/`l`
 (or `j`/`k`) move a cursor along the series; `Esc`/`q` restores the grid.
 Non-numeric and NULL cells are skipped. Negative values are kept.
+`:line!` charts every row of the last SELECT.
+
+### Histogram (`:hist`)
+
+Bin one numeric column into equal-width bars in the same panel. `:hist`
+uses the cursor column (or a single `M` mark); `:hist amount` names the
+column; `:hist amount 12` (or `:hist 12`) sets the bin count. Default bins
+follow Sturges' formula, clamped to 8–20 (max 100). Empty bins are shown;
+negatives are kept; there is no `(other)` fold. `:hist!` uses every row of
+the last SELECT.
 
 ### Relationship explorer (`g r` / `:explore panel`)
 

@@ -1390,6 +1390,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statsMsg = fmt.Sprintf("%s: %s", msg.column, msg.stats)
 		return m, nil
 
+	case chartReadyMsg:
+		m.applyChartReady(msg)
+		m.layoutWorkspace()
+		return m, nil
+
 	case countMsg:
 		if msg.err == nil {
 			m.totalRows = msg.total
@@ -3696,7 +3701,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				if !m.results.ToggleColumnMark() {
-					m.schemaMsg = "mark at most 2 columns (label, then value) — then :bar"
+					m.schemaMsg = "mark at most 2 columns (label, then value) — then :bar / :line"
 				}
 				return m, nil
 			case "u":

@@ -2485,8 +2485,9 @@ func (m *Model) exStats(arg string) tea.Cmd {
 
 // exBar opens a horizontal bar chart in the results slot. Columns come from
 // args (`:bar label value [sum|count|avg]`) or from the two ordered column
-// marks (M). Duplicate labels are grouped; the current page supplies the rows.
-func (m *Model) exBar(args []string) tea.Cmd {
+// marks (M). Duplicate labels are grouped. The current page supplies the
+// rows unless force (`:bar!`) re-runs lastQuery without the page LIMIT.
+func (m *Model) exBar(args []string, force bool) tea.Cmd {
 	if m.results.NumRows() == 0 {
 		m.schemaMsg = "no results to chart"
 		return nil
@@ -2497,22 +2498,22 @@ func (m *Model) exBar(args []string) tea.Cmd {
 		m.schemaMsg = err
 		return nil
 	}
-
-	bars, skipped := buildBarSeries(m.results, labelCol, valueCol, agg)
-	if len(bars) == 0 {
-		m.schemaMsg = "no numeric values in " + m.results.ColumnName(valueCol)
-		return nil
-	}
-
-	title := fmt.Sprintf("bar · %s × %s · %s", m.results.ColumnName(labelCol), m.results.ColumnName(valueCol), agg)
-	m.chartPanel.ShowBar(title, bars, skipped, agg)
-	m.focus = FocusResults
-	return nil
+	label := m.results.ColumnName(labelCol)
+	value := m.results.ColumnName(valueCol)
+	title := fmt.Sprintf("bar · %s × %s · %s", label, value, agg)
+	return m.runChart(chartSpec{
+		kind:     chartKindBar,
+		agg:      agg,
+		colNames: []string{label, value},
+		title:    title,
+		emptyErr: "no numeric values in " + value,
+	}, force)
 }
 
 // exLine opens a line chart in the results slot. Columns come from args
 // (`:line x y`) or from the two ordered column marks (M: x, then y).
-func (m *Model) exLine(args []string) tea.Cmd {
+// `:line!` re-runs lastQuery without the page LIMIT.
+func (m *Model) exLine(args []string, force bool) tea.Cmd {
 	if m.results.NumRows() == 0 {
 		m.schemaMsg = "no results to chart"
 		return nil
@@ -2522,15 +2523,42 @@ func (m *Model) exLine(args []string) tea.Cmd {
 		m.schemaMsg = err
 		return nil
 	}
-	pts, skipped := buildLineSeries(m.results, xCol, yCol)
-	if len(pts) == 0 {
-		m.schemaMsg = "no numeric x/y pairs in " + m.results.ColumnName(xCol) + " × " + m.results.ColumnName(yCol)
+	xName := m.results.ColumnName(xCol)
+	yName := m.results.ColumnName(yCol)
+	title := fmt.Sprintf("line · %s × %s", xName, yName)
+	return m.runChart(chartSpec{
+		kind:     chartKindLine,
+		colNames: []string{xName, yName},
+		title:    title,
+		emptyErr: "no numeric x/y pairs in " + xName + " × " + yName,
+	}, force)
+}
+
+// exHist opens a histogram of one numeric column. The column comes from
+// args, a single column mark, or the cursor column. bins is optional
+// (Sturges, clamped 8–20). `:hist!` re-runs lastQuery without the page LIMIT.
+func (m *Model) exHist(args []string, force bool) tea.Cmd {
+	if m.results.NumRows() == 0 {
+		m.schemaMsg = "no results to chart"
 		return nil
 	}
-	title := fmt.Sprintf("line · %s × %s", m.results.ColumnName(xCol), m.results.ColumnName(yCol))
-	m.chartPanel.ShowLine(title, pts, skipped)
-	m.focus = FocusResults
-	return nil
+	col, bins, err := m.resolveHistColumn(args)
+	if err != "" {
+		m.schemaMsg = err
+		return nil
+	}
+	name := m.results.ColumnName(col)
+	title := fmt.Sprintf("hist · %s", name)
+	if bins > 0 {
+		title += fmt.Sprintf(" · %d bins", bins)
+	}
+	return m.runChart(chartSpec{
+		kind:     chartKindHist,
+		colNames: []string{name},
+		bins:     bins,
+		title:    title,
+		emptyErr: "no numeric values in " + name,
+	}, force)
 }
 
 // resolveLineColumns picks x/y column indices from :line args or from ordered
@@ -2563,6 +2591,60 @@ func (m *Model) resolveLineColumns(args []string) (xCol, yCol int, err string) {
 			return 0, 0, fmt.Sprintf("no such column: %s", args[1])
 		}
 		return xCol, yCol, ""
+	}
+}
+
+// resolveHistColumn picks a numeric column and an optional bin count from
+// :hist args. With no column name, a single M mark wins, else the cursor
+// column (same as :stats). A lone numeric arg that is not a column name is
+// the bin count.
+func (m *Model) resolveHistColumn(args []string) (col, bins int, err string) {
+	defaultCol := func() (int, string) {
+		marked := m.results.MarkedColumns()
+		switch len(marked) {
+		case 0:
+			return m.results.CursorCol(), ""
+		case 1:
+			return marked[0], ""
+		default:
+			return 0, "mark 1 column with M, or :hist <column> [bins]"
+		}
+	}
+	parseBins := func(s string) (int, string) {
+		n, e := strconv.Atoi(s)
+		if e != nil || n < 1 {
+			return 0, fmt.Sprintf("invalid bin count: %s", s)
+		}
+		if n > 100 {
+			n = 100
+		}
+		return n, ""
+	}
+
+	switch len(args) {
+	case 0:
+		col, err = defaultCol()
+		return col, 0, err
+	case 1:
+		if idx := m.resultColumnIndex(args[0]); idx >= 0 {
+			return idx, 0, ""
+		}
+		if _, e := strconv.Atoi(args[0]); e == nil {
+			n, err := parseBins(args[0])
+			if err != "" {
+				return 0, 0, err
+			}
+			col, err = defaultCol()
+			return col, n, err
+		}
+		return 0, 0, fmt.Sprintf("no such column: %s", args[0])
+	default:
+		col = m.resultColumnIndex(args[0])
+		if col < 0 {
+			return 0, 0, fmt.Sprintf("no such column: %s", args[0])
+		}
+		n, err := parseBins(args[1])
+		return col, n, err
 	}
 }
 

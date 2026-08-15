@@ -141,6 +141,8 @@ func (m Model) statusMessage() string {
 			return sbError.Render(m.schemaMsg)
 		}
 		return sbSuccess.Render(m.schemaMsg)
+	case m.chartPanel.IsVisible() && m.chartPanel.title != "":
+		return sbMuted.Render(m.chartPanel.title)
 	case m.bookmarkMsg != "":
 		return sbSuccess.Render(m.bookmarkMsg)
 	case m.statsMsg != "":

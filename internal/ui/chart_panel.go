@@ -39,6 +39,7 @@ type chartKind int
 const (
 	chartKindBar chartKind = iota
 	chartKindLine
+	chartKindHist
 )
 
 // NewChartPanel returns a hidden chart panel.
@@ -72,6 +73,14 @@ func (c *ChartPanel) ShowLine(title string, points []chartPoint, skipped int) {
 	c.skipped = skipped
 	c.cursor = 0
 	c.scroll = 0
+}
+
+// ShowHist populates a histogram (horizontal bars, never folded) and makes
+// the panel visible.
+func (c *ChartPanel) ShowHist(title string, bars []chartBar, skipped int) {
+	c.ShowBar(title, bars, skipped, barAggCount)
+	c.kind = chartKindHist
+	c.expanded = true
 }
 
 // Hide closes the chart panel.

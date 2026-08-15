@@ -11,6 +11,10 @@ commits, so it can come up empty).
 
 ## [Unreleased]
 
+### Added
+- `:bar!` / `:line!` / `:hist!` chart every row of the last SELECT (capped at 50,000), not just the current page.
+- Histogram charts (`:hist`) of a numeric column, with optional bin count.
+
 ## [0.2.0] - 2026-08-14
 
 Charts, a richer FK explorer, mouse-resizeable panels, and CLI output — plus a quicker path from the sidebar into results.

@@ -1,0 +1,180 @@
+package ui
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/rsiota/creel/internal/db"
+)
+
+// chartAllMaxRows caps a :bar! / :line! / :hist! re-query so a huge result
+// cannot blow memory. The status bar notes when the chart truncated.
+const chartAllMaxRows = 50_000
+
+// chartReadyMsg delivers a finished chart, either built from the current page
+// or from a full-query re-run (async :bar! / :line! / :hist!).
+type chartReadyMsg struct {
+	kind      chartKind
+	title     string
+	bars      []chartBar
+	points    []chartPoint
+	skipped   int
+	agg       barAgg
+	truncated bool
+	err       string
+}
+
+type chartSpec struct {
+	kind     chartKind
+	agg      barAgg
+	colNames []string // 1 for hist, 2 for bar/line
+	bins     int      // hist only; 0 = auto
+	title    string
+	emptyErr string
+}
+
+func (m *Model) applyChartReady(msg chartReadyMsg) {
+	if msg.err != "" {
+		m.schemaMsg = msg.err
+		return
+	}
+	switch msg.kind {
+	case chartKindLine:
+		m.chartPanel.ShowLine(msg.title, msg.points, msg.skipped)
+	case chartKindHist:
+		m.chartPanel.ShowHist(msg.title, msg.bars, msg.skipped)
+	default:
+		m.chartPanel.ShowBar(msg.title, msg.bars, msg.skipped, msg.agg)
+	}
+	m.focus = FocusResults
+	if msg.truncated {
+		m.schemaMsg = fmt.Sprintf("charted first %s rows", formatCount(chartAllMaxRows))
+	} else {
+		// Clear "charting all rows…" after a bang fetch.
+		m.schemaMsg = ""
+	}
+}
+
+func (m *Model) runChart(spec chartSpec, all bool) tea.Cmd {
+	if m.results.NumRows() == 0 {
+		m.schemaMsg = "no results to chart"
+		return nil
+	}
+	if !all {
+		m.applyChartReady(buildChartReady(m.results, spec, false))
+		return nil
+	}
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	query := strings.TrimRight(strings.TrimSpace(m.lastQuery), ";")
+	if query == "" {
+		m.schemaMsg = "no query to re-run — :bar! / :line! / :hist! charts the last SELECT"
+		return nil
+	}
+	execQuery := query
+	if isSelectQuery(query) && !hasJoinClause(query) {
+		execQuery = fmt.Sprintf("SELECT * FROM (%s) AS _creel_chart LIMIT %d", query, chartAllMaxRows+1)
+	}
+	conn := m.connection
+	tx := m.tx
+	ctx, cancel := m.queryContext()
+	if !strings.Contains(spec.title, " · all") {
+		spec.title += " · all"
+	}
+	m.schemaMsg = "charting all rows…"
+	return func() tea.Msg {
+		defer cancel()
+		var (
+			result db.Result
+			err    error
+		)
+		if tx != nil {
+			result, err = tx.ExecuteContext(ctx, execQuery)
+		} else {
+			result, err = conn.DB().ExecuteContext(ctx, execQuery)
+		}
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return chartReadyMsg{err: "chart cancelled"}
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				return chartReadyMsg{err: "chart timed out"}
+			}
+			return chartReadyMsg{err: err.Error()}
+		}
+		truncated := false
+		rows := result.Rows
+		if len(rows) > chartAllMaxRows {
+			rows = rows[:chartAllMaxRows]
+			truncated = true
+		}
+		cols := make([]string, len(result.Columns))
+		for i, c := range result.Columns {
+			cols[i] = c.Name
+		}
+		tbl := NewResultsTable()
+		tbl.SetResult(cols, rows, "")
+		return buildChartReady(tbl, spec, truncated)
+	}
+}
+
+func buildChartReady(r ResultsTable, spec chartSpec, truncated bool) chartReadyMsg {
+	idxs := make([]int, len(spec.colNames))
+	for i, name := range spec.colNames {
+		idxs[i] = indexOfColumn(r, name)
+		if idxs[i] < 0 {
+			return chartReadyMsg{err: fmt.Sprintf("no such column: %s", name)}
+		}
+	}
+	title := spec.title
+	if truncated && !strings.Contains(title, " · all") {
+		title += " · all"
+	}
+	msg := chartReadyMsg{kind: spec.kind, title: title, agg: spec.agg, truncated: truncated}
+	switch spec.kind {
+	case chartKindLine:
+		pts, skipped := buildLineSeries(r, idxs[0], idxs[1])
+		if len(pts) == 0 {
+			msg.err = spec.emptyErr
+			return msg
+		}
+		msg.points = pts
+		msg.skipped = skipped
+	case chartKindHist:
+		bars, skipped := buildHistSeries(r, idxs[0], spec.bins)
+		if len(bars) == 0 {
+			msg.err = spec.emptyErr
+			return msg
+		}
+		msg.bars = bars
+		msg.skipped = skipped
+	default:
+		bars, skipped := buildBarSeries(r, idxs[0], idxs[1], spec.agg)
+		if len(bars) == 0 {
+			msg.err = spec.emptyErr
+			return msg
+		}
+		msg.bars = bars
+		msg.skipped = skipped
+	}
+	return msg
+}
+
+func indexOfColumn(r ResultsTable, name string) int {
+	for i := 0; i < r.NumCols(); i++ {
+		if strings.EqualFold(r.ColumnName(i), name) {
+			return i
+		}
+	}
+	return -1
+}
+
+func (m *Model) resultColumnIndex(name string) int {
+	return indexOfColumn(m.results, name)
+}

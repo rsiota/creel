@@ -35,7 +35,7 @@ func TestBuildLineSeriesSortsAndSkips(t *testing.T) {
 func TestExLineFromArgs(t *testing.T) {
 	m := &Model{results: NewResultsTable(), chartPanel: NewChartPanel()}
 	m.results.SetResult([]string{"t", "v"}, [][]string{{"1", "4"}, {"2", "8"}}, "")
-	if cmd := m.exLine([]string{"t", "v"}); cmd != nil {
+	if cmd := m.exLine([]string{"t", "v"}, false); cmd != nil {
 		t.Fatal("unexpected cmd")
 	}
 	if !m.chartPanel.IsVisible() || m.chartPanel.kind != chartKindLine {
@@ -53,7 +53,7 @@ func TestExLineFromMarks(t *testing.T) {
 	m.results.ToggleColumnMark()
 	m.results.SetCursor(0, 1)
 	m.results.ToggleColumnMark()
-	if cmd := m.exLine(nil); cmd != nil {
+	if cmd := m.exLine(nil, false); cmd != nil {
 		t.Fatal("unexpected cmd")
 	}
 	if m.chartPanel.kind != chartKindLine {
@@ -63,18 +63,18 @@ func TestExLineFromMarks(t *testing.T) {
 
 func TestExLineErrors(t *testing.T) {
 	m := &Model{results: NewResultsTable(), chartPanel: NewChartPanel()}
-	m.exLine(nil)
+	m.exLine(nil, false)
 	if m.schemaMsg == "" {
 		t.Fatal("expected error with no results")
 	}
 	m.schemaMsg = ""
 	m.results.SetResult([]string{"a", "b"}, [][]string{{"x", "y"}}, "")
-	m.exLine(nil)
+	m.exLine(nil, false)
 	if !strings.Contains(m.schemaMsg, "mark 2") {
 		t.Errorf("schemaMsg = %q", m.schemaMsg)
 	}
 	m.schemaMsg = ""
-	m.exLine([]string{"a", "b"})
+	m.exLine([]string{"a", "b"}, false)
 	if !strings.Contains(m.schemaMsg, "no numeric") {
 		t.Errorf("schemaMsg = %q", m.schemaMsg)
 	}

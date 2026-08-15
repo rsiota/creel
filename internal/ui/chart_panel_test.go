@@ -190,7 +190,7 @@ func TestExBarFromMarks(t *testing.T) {
 	m.results.SetCursor(0, 1)
 	m.results.ToggleColumnMark()
 
-	if cmd := m.exBar(nil); cmd != nil {
+	if cmd := m.exBar(nil, false); cmd != nil {
 		t.Fatal("exBar should not return a cmd")
 	}
 	if !m.chartPanel.IsVisible() {
@@ -210,7 +210,7 @@ func TestExBarFromMarks(t *testing.T) {
 func TestExBarFromArgs(t *testing.T) {
 	m := &Model{results: NewResultsTable(), chartPanel: NewChartPanel()}
 	m.results.SetResult([]string{"user", "hits"}, [][]string{{"alice", "5"}}, "")
-	if cmd := m.exBar([]string{"user", "hits"}); cmd != nil {
+	if cmd := m.exBar([]string{"user", "hits"}, false); cmd != nil {
 		t.Fatal("unexpected cmd")
 	}
 	if !m.chartPanel.IsVisible() {
@@ -218,7 +218,7 @@ func TestExBarFromArgs(t *testing.T) {
 	}
 
 	m.chartPanel.Hide()
-	if cmd := m.exBar([]string{"user", "hits", "avg"}); cmd != nil {
+	if cmd := m.exBar([]string{"user", "hits", "avg"}, false); cmd != nil {
 		t.Fatal("unexpected cmd")
 	}
 	if !strings.Contains(m.chartPanel.title, "avg") {
@@ -238,7 +238,7 @@ func TestExBarCountFromMarks(t *testing.T) {
 	m.results.SetCursor(0, 1)
 	m.results.ToggleColumnMark()
 
-	if cmd := m.exBar([]string{"count"}); cmd != nil {
+	if cmd := m.exBar([]string{"count"}, false); cmd != nil {
 		t.Fatal("unexpected cmd")
 	}
 	if len(m.chartPanel.bars) != 2 {
@@ -252,7 +252,7 @@ func TestExBarCountFromMarks(t *testing.T) {
 func TestExBarUnknownAggregate(t *testing.T) {
 	m := &Model{results: NewResultsTable(), chartPanel: NewChartPanel()}
 	m.results.SetResult([]string{"a", "b"}, [][]string{{"x", "1"}}, "")
-	m.exBar([]string{"a", "b", "median"})
+	m.exBar([]string{"a", "b", "median"}, false)
 	if !strings.Contains(m.schemaMsg, "unknown aggregate") {
 		t.Errorf("schemaMsg = %q", m.schemaMsg)
 	}
@@ -263,26 +263,26 @@ func TestExBarUnknownAggregate(t *testing.T) {
 
 func TestExBarErrors(t *testing.T) {
 	m := &Model{results: NewResultsTable(), chartPanel: NewChartPanel()}
-	m.exBar(nil)
+	m.exBar(nil, false)
 	if m.schemaMsg == "" {
 		t.Fatal("expected error with no results")
 	}
 
 	m.schemaMsg = ""
 	m.results.SetResult([]string{"a", "b"}, [][]string{{"x", "y"}}, "")
-	m.exBar(nil)
+	m.exBar(nil, false)
 	if !strings.Contains(m.schemaMsg, "mark 2") {
 		t.Errorf("schemaMsg = %q", m.schemaMsg)
 	}
 
 	m.schemaMsg = ""
-	m.exBar([]string{"missing", "b"})
+	m.exBar([]string{"missing", "b"}, false)
 	if !strings.Contains(m.schemaMsg, "no such column") {
 		t.Errorf("schemaMsg = %q", m.schemaMsg)
 	}
 
 	m.schemaMsg = ""
-	m.exBar([]string{"a", "b"})
+	m.exBar([]string{"a", "b"}, false)
 	if !strings.Contains(m.schemaMsg, "no numeric") {
 		t.Errorf("schemaMsg = %q", m.schemaMsg)
 	}
