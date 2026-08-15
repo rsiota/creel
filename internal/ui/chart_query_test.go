@@ -129,3 +129,22 @@ func TestRunExCommandBarBang(t *testing.T) {
 		t.Fatalf("bars = %d, want 3", len(m.chartPanel.bars))
 	}
 }
+
+func TestExFreqBangChartsAllRows(t *testing.T) {
+	m, _ := newExportTestModel(t, [][]string{{"1", "Ada", "ada@x"}})
+	m.lastQuery = "SELECT * FROM users"
+	if cmd := m.exFreq([]string{"name"}, false); cmd != nil {
+		t.Fatal("page :freq should not return a cmd")
+	}
+	if len(m.chartPanel.bars) != 1 || m.chartPanel.bars[0].label != "Ada" {
+		t.Fatalf("page freq = %+v, want Ada", m.chartPanel.bars)
+	}
+	m.chartPanel.Hide()
+	applyChartCmd(t, &m, m.exFreq([]string{"name"}, true))
+	if len(m.chartPanel.bars) != 3 {
+		t.Fatalf("bang freq bars = %d, want 3", len(m.chartPanel.bars))
+	}
+	if !strings.Contains(m.chartPanel.title, "freq · name") || !strings.Contains(m.chartPanel.title, " · all") {
+		t.Errorf("title = %q", m.chartPanel.title)
+	}
+}

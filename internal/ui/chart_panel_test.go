@@ -249,6 +249,110 @@ func TestExBarCountFromMarks(t *testing.T) {
 	}
 }
 
+func TestExBarFrequencyFromColumn(t *testing.T) {
+	m := &Model{results: NewResultsTable(), chartPanel: NewChartPanel()}
+	m.results.SetResult([]string{"user", "hits"}, [][]string{
+		{"alice", "5"},
+		{"alice", "1"},
+		{"bob", "x"},
+	}, "")
+	if cmd := m.exBar([]string{"user"}, false); cmd != nil {
+		t.Fatal("unexpected cmd")
+	}
+	if len(m.chartPanel.bars) != 2 {
+		t.Fatalf("bars = %d, want 2", len(m.chartPanel.bars))
+	}
+	if m.chartPanel.bars[0].label != "alice" || m.chartPanel.bars[0].value != 2 {
+		t.Errorf("bar0 = %+v, want alice 2", m.chartPanel.bars[0])
+	}
+	if m.chartPanel.title != "bar · user · count" {
+		t.Errorf("title = %q, want bar · user · count", m.chartPanel.title)
+	}
+
+	m.chartPanel.Hide()
+	if cmd := m.exBar([]string{"user", "count"}, false); cmd != nil {
+		t.Fatal("unexpected cmd")
+	}
+	if m.chartPanel.title != "bar · user · count" {
+		t.Errorf(":bar user count title = %q", m.chartPanel.title)
+	}
+
+	m.chartPanel.Hide()
+	m.schemaMsg = ""
+	m.exBar([]string{"user", "avg"}, false)
+	if !strings.Contains(m.schemaMsg, "one-column") {
+		t.Errorf("schemaMsg = %q, want one-column error", m.schemaMsg)
+	}
+}
+
+func TestExBarFrequencyFromOneMark(t *testing.T) {
+	m := &Model{results: NewResultsTable(), chartPanel: NewChartPanel()}
+	m.results.SetResult([]string{"user", "hits"}, [][]string{
+		{"alice", "5"},
+		{"bob", "1"},
+		{"alice", "2"},
+	}, "")
+	m.results.SetCursor(0, 0)
+	m.results.ToggleColumnMark()
+	if cmd := m.exBar(nil, false); cmd != nil {
+		t.Fatal("unexpected cmd")
+	}
+	if len(m.chartPanel.bars) != 2 || m.chartPanel.bars[0].label != "alice" || m.chartPanel.bars[0].value != 2 {
+		t.Fatalf("bars = %+v, want alice 2", m.chartPanel.bars)
+	}
+}
+
+func TestExFreqFromCursorAndArg(t *testing.T) {
+	m := &Model{results: NewResultsTable(), chartPanel: NewChartPanel()}
+	m.results.SetResult([]string{"user", "hits"}, [][]string{
+		{"alice", "5"},
+		{"bob", "1"},
+		{"alice", "2"},
+	}, "")
+	m.results.SetCursor(0, 0)
+	if cmd := m.exFreq(nil, false); cmd != nil {
+		t.Fatal("unexpected cmd")
+	}
+	if m.chartPanel.title != "freq · user" {
+		t.Errorf("title = %q, want freq · user", m.chartPanel.title)
+	}
+	if len(m.chartPanel.bars) != 2 || m.chartPanel.bars[0].value != 2 {
+		t.Fatalf("bars = %+v", m.chartPanel.bars)
+	}
+
+	m.chartPanel.Hide()
+	m.results.SetCursor(0, 1)
+	if cmd := m.exFreq([]string{"user"}, false); cmd != nil {
+		t.Fatal("unexpected cmd")
+	}
+	if m.chartPanel.title != "freq · user" {
+		t.Errorf("arg title = %q", m.chartPanel.title)
+	}
+}
+
+func TestExFreqErrors(t *testing.T) {
+	m := &Model{results: NewResultsTable(), chartPanel: NewChartPanel()}
+	m.exFreq(nil, false)
+	if m.schemaMsg == "" {
+		t.Fatal("expected error with no results")
+	}
+	m.schemaMsg = ""
+	m.results.SetResult([]string{"a", "b"}, [][]string{{"x", "1"}}, "")
+	m.results.SetCursor(0, 0)
+	m.results.ToggleColumnMark()
+	m.results.SetCursor(0, 1)
+	m.results.ToggleColumnMark()
+	m.exFreq(nil, false)
+	if !strings.Contains(m.schemaMsg, "mark 1") {
+		t.Errorf("schemaMsg = %q", m.schemaMsg)
+	}
+	m.schemaMsg = ""
+	m.exFreq([]string{"missing"}, false)
+	if !strings.Contains(m.schemaMsg, "no such column") {
+		t.Errorf("schemaMsg = %q", m.schemaMsg)
+	}
+}
+
 func TestExBarUnknownAggregate(t *testing.T) {
 	m := &Model{results: NewResultsTable(), chartPanel: NewChartPanel()}
 	m.results.SetResult([]string{"a", "b"}, [][]string{{"x", "1"}}, "")

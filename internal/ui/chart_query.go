@@ -11,7 +11,7 @@ import (
 	"github.com/rsiota/creel/internal/db"
 )
 
-// chartAllMaxRows caps a :bar! / :line! / :hist! re-query so a huge result
+// chartAllMaxRows caps a :bar! / :line! / :hist! / :freq! re-query so a huge result
 // cannot blow memory. The status bar notes when the chart truncated.
 const chartAllMaxRows = 50_000
 
@@ -74,7 +74,7 @@ func (m *Model) runChart(spec chartSpec, all bool) tea.Cmd {
 	}
 	query := strings.TrimRight(strings.TrimSpace(m.lastQuery), ";")
 	if query == "" {
-		m.schemaMsg = "no query to re-run — :bar! / :line! / :hist! charts the last SELECT"
+		m.schemaMsg = "no query to re-run — :bar! / :line! / :hist! / :freq! charts the last SELECT"
 		return nil
 	}
 	execQuery := query

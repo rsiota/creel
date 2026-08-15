@@ -782,11 +782,19 @@ func exCommands() []exCmdSpec {
 		},
 		{
 			verbs:    []string{"bar"},
-			desc:     "horizontal bar chart from two result columns (bang = all rows)",
+			desc:     "bar chart from result columns; one column counts (bang = all rows)",
 			usage:    ":bar[!] [label] [value] [sum|count|avg]",
 			argKind:  exArgOptional,
 			complete: completeBarColumns,
 			run:      func(m *Model, args []string, force bool) tea.Cmd { return m.exBar(args, force) },
+		},
+		{
+			verbs:    []string{"freq"},
+			desc:     "frequency bar chart of a column (bang = all rows)",
+			usage:    ":freq[!] [column]",
+			argKind:  exArgOptional,
+			complete: completeColumn,
+			run:      func(m *Model, args []string, force bool) tea.Cmd { return m.exFreq(args, force) },
 		},
 		{
 			verbs:    []string{"line"},
@@ -910,7 +918,7 @@ func completeTable(m *Model, args []string, _ string) []string {
 }
 
 // completeColumn offers the current result set's column names as the first
-// argument — the columns :sort/:hidecolumn/:stats/:filter operate on (each
+// argument — the columns :sort/:hidecolumn/:stats/:filter/:freq operate on (each
 // resolves the name case-insensitively against the results grid). It reads the
 // results grid rather than the schema cache so it stays correct for a custom
 // query whose columns differ from the focused table's schema. Past the first
@@ -928,7 +936,8 @@ func completeColumn(m *Model, args []string, _ string) []string {
 
 // completeBarColumns offers result columns for :bar's label and value args,
 // then sum/count/avg for the optional aggregate. With no args yet, both
-// columns and aggregates are offered so `:bar count` works on marked columns.
+// columns and aggregates are offered so `:bar count` works on marked columns
+// and `:bar <label>` (frequency) is completable.
 func completeBarColumns(m *Model, args []string, _ string) []string {
 	aggs := []string{"sum", "count", "avg"}
 	if len(args) >= 3 {

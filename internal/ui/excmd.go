@@ -2484,9 +2484,10 @@ func (m *Model) exStats(arg string) tea.Cmd {
 }
 
 // exBar opens a horizontal bar chart in the results slot. Columns come from
-// args (`:bar label value [sum|count|avg]`) or from the two ordered column
-// marks (M). Duplicate labels are grouped. The current page supplies the
-// rows unless force (`:bar!`) re-runs lastQuery without the page LIMIT.
+// args (`:bar label value [sum|count|avg]`) or from ordered column marks (M).
+// One column (named or a single mark) counts distinct values. Duplicate
+// labels are grouped. The current page supplies the rows unless force
+// (`:bar!`) re-runs lastQuery without the page LIMIT.
 func (m *Model) exBar(args []string, force bool) tea.Cmd {
 	if m.results.NumRows() == 0 {
 		m.schemaMsg = "no results to chart"
@@ -2501,12 +2502,40 @@ func (m *Model) exBar(args []string, force bool) tea.Cmd {
 	label := m.results.ColumnName(labelCol)
 	value := m.results.ColumnName(valueCol)
 	title := fmt.Sprintf("bar · %s × %s · %s", label, value, agg)
+	emptyErr := "no numeric values in " + value
+	if agg == barAggCount && labelCol == valueCol {
+		title = fmt.Sprintf("bar · %s · count", label)
+		emptyErr = "no values to chart"
+	}
 	return m.runChart(chartSpec{
 		kind:     chartKindBar,
 		agg:      agg,
 		colNames: []string{label, value},
 		title:    title,
-		emptyErr: "no numeric values in " + value,
+		emptyErr: emptyErr,
+	}, force)
+}
+
+// exFreq opens a frequency bar chart of one column (count of each distinct
+// value). The column comes from args, a single column mark, or the cursor
+// column. `:freq!` re-runs lastQuery without the page LIMIT.
+func (m *Model) exFreq(args []string, force bool) tea.Cmd {
+	if m.results.NumRows() == 0 {
+		m.schemaMsg = "no results to chart"
+		return nil
+	}
+	col, err := m.resolveFreqColumn(args)
+	if err != "" {
+		m.schemaMsg = err
+		return nil
+	}
+	name := m.results.ColumnName(col)
+	return m.runChart(chartSpec{
+		kind:     chartKindBar,
+		agg:      barAggCount,
+		colNames: []string{name, name},
+		title:    fmt.Sprintf("freq · %s", name),
+		emptyErr: "no values to chart",
 	}, force)
 }
 
@@ -2648,24 +2677,54 @@ func (m *Model) resolveHistColumn(args []string) (col, bins int, err string) {
 	}
 }
 
-// resolveBarColumns picks label/value column indices and an aggregate from
-// :bar args or from ordered column marks. Returns a user-facing error string
-// on failure.
-func (m *Model) resolveBarColumns(args []string) (labelCol, valueCol int, agg barAgg, err string) {
-	find := func(name string) int {
-		for i := 0; i < m.results.NumCols(); i++ {
-			if strings.EqualFold(m.results.ColumnName(i), name) {
-				return i
-			}
-		}
-		return -1
-	}
-	fromMarks := func(a barAgg) (int, int, barAgg, string) {
+// resolveFreqColumn picks the column for :freq. With no name, a single M mark
+// wins, else the cursor column (same as :hist / :stats).
+func (m *Model) resolveFreqColumn(args []string) (col int, err string) {
+	defaultCol := func() (int, string) {
 		marked := m.results.MarkedColumns()
-		if len(marked) != 2 {
-			return 0, 0, 0, "mark 2 columns with M (label, then value), or :bar <label> <value> [sum|count|avg]"
+		switch len(marked) {
+		case 0:
+			return m.results.CursorCol(), ""
+		case 1:
+			return marked[0], ""
+		default:
+			return 0, "mark 1 column with M, or :freq <column>"
 		}
-		return marked[0], marked[1], a, ""
+	}
+	switch len(args) {
+	case 0:
+		return defaultCol()
+	case 1:
+		if idx := m.resultColumnIndex(args[0]); idx >= 0 {
+			return idx, ""
+		}
+		return 0, fmt.Sprintf("no such column: %s", args[0])
+	default:
+		return 0, "usage: :freq [column]"
+	}
+}
+
+// resolveBarColumns picks label/value column indices and an aggregate from
+// :bar args or from ordered column marks. A single column (named or marked)
+// is a frequency count. Returns a user-facing error string on failure.
+func (m *Model) resolveBarColumns(args []string) (labelCol, valueCol int, agg barAgg, err string) {
+	find := m.resultColumnIndex
+	freq := func(col int) (int, int, barAgg, string) {
+		return col, col, barAggCount, ""
+	}
+	fromMarks := func(a barAgg, explicit bool) (int, int, barAgg, string) {
+		marked := m.results.MarkedColumns()
+		switch len(marked) {
+		case 1:
+			if !explicit || a == barAggCount {
+				return freq(marked[0])
+			}
+			return 0, 0, 0, "mark 2 columns with M (label, then value), or :bar <label> <value> [sum|count|avg]"
+		case 2:
+			return marked[0], marked[1], a, ""
+		default:
+			return 0, 0, 0, "mark 2 columns with M (label, then value), :bar <label> to count, or :bar <label> <value> [sum|count|avg]"
+		}
 	}
 	fromNames := func(label, value string, a barAgg) (int, int, barAgg, string) {
 		lc := find(label)
@@ -2681,13 +2740,28 @@ func (m *Model) resolveBarColumns(args []string) (labelCol, valueCol int, agg ba
 
 	switch len(args) {
 	case 0:
-		return fromMarks(barAggSum)
+		return fromMarks(barAggSum, false)
 	case 1:
 		if a, ok := parseBarAgg(args[0]); ok {
-			return fromMarks(a)
+			return fromMarks(a, true)
 		}
-		return 0, 0, 0, "usage: :bar <label> <value> [sum|count|avg] (or mark 2 columns with M)"
+		if idx := find(args[0]); idx >= 0 {
+			return freq(idx)
+		}
+		return 0, 0, 0, fmt.Sprintf("no such column: %s", args[0])
 	case 2:
+		// `:bar status count` is a one-column frequency unless `count` is
+		// also a real column (then it stays label × value).
+		if a, ok := parseBarAgg(args[1]); ok && find(args[1]) < 0 {
+			lc := find(args[0])
+			if lc < 0 {
+				return 0, 0, 0, fmt.Sprintf("no such column: %s", args[0])
+			}
+			if a != barAggCount {
+				return 0, 0, 0, "one-column :bar only supports count (or pass a value column)"
+			}
+			return freq(lc)
+		}
 		return fromNames(args[0], args[1], barAggSum)
 	default:
 		a, ok := parseBarAgg(args[2])

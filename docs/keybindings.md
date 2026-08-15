@@ -100,7 +100,7 @@ In the add/edit form:
 | `!`        | Hide rows equal to cursor cell               |
 | `g f`      | Filter column values                         |
 | `space`    | Toggle row mark                              |
-| `M`        | Toggle column mark (for `:bar` / `:line` / `:hist`) |
+| `M`        | Toggle column mark (for `:bar` / `:line` / `:hist` / `:freq`) |
 | `F`        | Filter by marked rows                        |
 | `C`        | Clear marks (rows and columns)               |
 | `u`        | Undo last filter                             |

@@ -21,20 +21,28 @@ An overview of everything creel can do. For keys, see
   tables.
 - **Results grid** — sort, filter, search, hide/show columns, follow foreign
   keys (`g d`), mark rows and columns, bulk-delete rows, and chart marked
-  columns with `:bar` / `:line` / `:hist`. Large result sets are paged
-  (LIMIT/OFFSET) for speed and low memory. `:bar!`, `:line!`, and `:hist!`
-  re-run the last SELECT without the page LIMIT (capped at 50,000 rows).
+  columns with `:bar` / `:line` / `:hist` / `:freq`. Large result sets are paged
+  (LIMIT/OFFSET) for speed and low memory. `:bar!`, `:line!`, `:hist!`, and
+  `:freq!` re-run the last SELECT without the page LIMIT (capped at 50,000 rows).
 
 ### Bar chart (`M` + `:bar`)
 
 Mark two columns with `M` (first = labels, second = values), then run `:bar`
 to replace the results grid with a horizontal bar chart of the current page.
-Or pass columns explicitly: `:bar <label> <value> [sum|count|avg]`. Duplicate
-labels are grouped (`sum` is the default); `:bar count` on marked columns
-counts rows per label. The top 20 bars are kept and the rest fold into
-`(other)`; press `o` to unfold (and `o` again to fold). `Esc`/`q` restores
-the grid. Non-numeric and NULL value cells are skipped for `sum`/`avg`.
-`:bar!` charts every row of the last SELECT (not just the current page).
+Or pass columns explicitly: `:bar <label> <value> [sum|count|avg]`. One
+column is a frequency count: `:bar status`, a single `M` mark, or
+`:bar status count`. Duplicate labels are grouped (`sum` is the default on
+two columns); `:bar count` on two marked columns counts rows per label. The
+top 20 bars are kept and the rest fold into `(other)`; press `o` to unfold
+(and `o` again to fold). `Esc`/`q` restores the grid. Non-numeric and NULL
+value cells are skipped for `sum`/`avg`. `:bar!` charts every row of the
+last SELECT (not just the current page).
+
+### Frequency (`:freq`)
+
+Count distinct values in one column, using the same bar panel as `:bar`.
+`:freq` uses the cursor column (or a single `M` mark); `:freq status` names
+the column. `:freq!` uses every row of the last SELECT.
 
 ### Line chart (`M` + `:line`)
 
