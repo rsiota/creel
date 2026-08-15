@@ -276,7 +276,7 @@ func registry() []Section {
 				{"*", []string{"*"}, "keep rows equal to cursor cell", ""},
 				{"!", []string{"!"}, "hide rows equal to cursor cell", ""},
 				{"space", []string{" "}, "toggle row mark", "space"},
-				{"M", []string{"M"}, "toggle column mark (for :bar / :line / :hist / :freq)", "M"},
+				{"M", []string{"M"}, "toggle column mark (for :bar / :line / :scatter / :hist / :freq)", "M"},
 				{"F", []string{"F"}, "filter by marked rows", ""},
 				{"C", []string{"C"}, "clear marks", ""},
 				{"dd", []string{"d"}, "delete marked or cursor row", "dd"},

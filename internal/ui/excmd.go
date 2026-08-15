@@ -2547,7 +2547,7 @@ func (m *Model) exLine(args []string, force bool) tea.Cmd {
 		m.schemaMsg = "no results to chart"
 		return nil
 	}
-	xCol, yCol, err := m.resolveLineColumns(args)
+	xCol, yCol, err := m.resolveXYColumns(args, "line")
 	if err != "" {
 		m.schemaMsg = err
 		return nil
@@ -2557,6 +2557,30 @@ func (m *Model) exLine(args []string, force bool) tea.Cmd {
 	title := fmt.Sprintf("line · %s × %s", xName, yName)
 	return m.runChart(chartSpec{
 		kind:     chartKindLine,
+		colNames: []string{xName, yName},
+		title:    title,
+		emptyErr: "no numeric x/y pairs in " + xName + " × " + yName,
+	}, force)
+}
+
+// exScatter opens a scatter chart in the results slot. Columns come from
+// args (`:scatter x y`) or from the two ordered column marks (M: x, then y).
+// `:scatter!` re-runs lastQuery without the page LIMIT.
+func (m *Model) exScatter(args []string, force bool) tea.Cmd {
+	if m.results.NumRows() == 0 {
+		m.schemaMsg = "no results to chart"
+		return nil
+	}
+	xCol, yCol, err := m.resolveXYColumns(args, "scatter")
+	if err != "" {
+		m.schemaMsg = err
+		return nil
+	}
+	xName := m.results.ColumnName(xCol)
+	yName := m.results.ColumnName(yCol)
+	title := fmt.Sprintf("scatter · %s × %s", xName, yName)
+	return m.runChart(chartSpec{
+		kind:     chartKindScatter,
 		colNames: []string{xName, yName},
 		title:    title,
 		emptyErr: "no numeric x/y pairs in " + xName + " × " + yName,
@@ -2590,26 +2614,19 @@ func (m *Model) exHist(args []string, force bool) tea.Cmd {
 	}, force)
 }
 
-// resolveLineColumns picks x/y column indices from :line args or from ordered
-// column marks.
-func (m *Model) resolveLineColumns(args []string) (xCol, yCol int, err string) {
-	find := func(name string) int {
-		for i := 0; i < m.results.NumCols(); i++ {
-			if strings.EqualFold(m.results.ColumnName(i), name) {
-				return i
-			}
-		}
-		return -1
-	}
+// resolveXYColumns picks x/y column indices from :line / :scatter args or
+// from ordered column marks.
+func (m *Model) resolveXYColumns(args []string, verb string) (xCol, yCol int, err string) {
+	find := m.resultColumnIndex
 	switch len(args) {
 	case 0:
 		marked := m.results.MarkedColumns()
 		if len(marked) != 2 {
-			return 0, 0, "mark 2 columns with M (x, then y), or :line <x> <y>"
+			return 0, 0, fmt.Sprintf("mark 2 columns with M (x, then y), or :%s <x> <y>", verb)
 		}
 		return marked[0], marked[1], ""
 	case 1:
-		return 0, 0, "usage: :line <x> <y> (or mark 2 columns with M)"
+		return 0, 0, fmt.Sprintf("usage: :%s <x> <y> (or mark 2 columns with M)", verb)
 	default:
 		xCol = find(args[0])
 		if xCol < 0 {

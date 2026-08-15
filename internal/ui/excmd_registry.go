@@ -805,6 +805,14 @@ func exCommands() []exCmdSpec {
 			run:      func(m *Model, args []string, force bool) tea.Cmd { return m.exLine(args, force) },
 		},
 		{
+			verbs:    []string{"scatter"},
+			desc:     "scatter chart from two numeric result columns (bang = all rows)",
+			usage:    ":scatter[!] [x] [y]",
+			argKind:  exArgOptional,
+			complete: completeLineColumns,
+			run:      func(m *Model, args []string, force bool) tea.Cmd { return m.exScatter(args, force) },
+		},
+		{
 			verbs:    []string{"hist"},
 			desc:     "histogram of a numeric column (bang = all rows)",
 			usage:    ":hist[!] [column] [bins]",
@@ -967,7 +975,7 @@ func completeBarColumns(m *Model, args []string, _ string) []string {
 	return names
 }
 
-// completeLineColumns offers result columns for :line's x and y args.
+// completeLineColumns offers result columns for :line / :scatter x and y args.
 func completeLineColumns(m *Model, args []string, _ string) []string {
 	if len(args) >= 2 || m.results.NumCols() == 0 {
 		return nil

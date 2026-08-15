@@ -139,7 +139,7 @@ func (c ChartPanel) lineBodyLines(inner int) []string {
 		plotH = 2
 	}
 
-	grid := rasterLineBraille(plotW, plotH, c.points, minX, maxX, minY, maxY)
+	grid := rasterBraille(plotW, plotH, c.points, minX, maxX, minY, maxY, c.kind != chartKindScatter)
 
 	selCol, selRow := -1, -1
 	if c.cursor >= 0 && c.cursor < len(c.points) {
@@ -207,6 +207,15 @@ func (c ChartPanel) lineBodyLines(inner int) []string {
 
 // rasterLineBraille draws a polyline at Braille resolution (2×4 dots per cell).
 func rasterLineBraille(plotW, plotH int, pts []chartPoint, minX, maxX, minY, maxY float64) [][]rune {
+	return rasterBraille(plotW, plotH, pts, minX, maxX, minY, maxY, true)
+}
+
+// rasterScatterBraille plots each sample as a point with no connecting stroke.
+func rasterScatterBraille(plotW, plotH int, pts []chartPoint, minX, maxX, minY, maxY float64) [][]rune {
+	return rasterBraille(plotW, plotH, pts, minX, maxX, minY, maxY, false)
+}
+
+func rasterBraille(plotW, plotH int, pts []chartPoint, minX, maxX, minY, maxY float64, connect bool) [][]rune {
 	pixW, pixH := plotW*2, plotH*4
 	dots := make([][]byte, plotH)
 	for i := range dots {
@@ -218,14 +227,21 @@ func rasterLineBraille(plotW, plotH int, pts []chartPoint, minX, maxX, minY, max
 		}
 		dots[py/4][px/2] |= brailleBits[py%4][px%2]
 	}
-	if len(pts) == 1 {
-		px, py := linePixelOf(pts[0].x, pts[0].y, minX, maxX, minY, maxY, pixW, pixH)
-		set(px, py)
-	}
-	for i := 1; i < len(pts); i++ {
-		x0, y0 := linePixelOf(pts[i-1].x, pts[i-1].y, minX, maxX, minY, maxY, pixW, pixH)
-		x1, y1 := linePixelOf(pts[i].x, pts[i].y, minX, maxX, minY, maxY, pixW, pixH)
-		strokePixels(set, x0, y0, x1, y1)
+	if connect {
+		if len(pts) == 1 {
+			px, py := linePixelOf(pts[0].x, pts[0].y, minX, maxX, minY, maxY, pixW, pixH)
+			set(px, py)
+		}
+		for i := 1; i < len(pts); i++ {
+			x0, y0 := linePixelOf(pts[i-1].x, pts[i-1].y, minX, maxX, minY, maxY, pixW, pixH)
+			x1, y1 := linePixelOf(pts[i].x, pts[i].y, minX, maxX, minY, maxY, pixW, pixH)
+			strokePixels(set, x0, y0, x1, y1)
+		}
+	} else {
+		for _, p := range pts {
+			px, py := linePixelOf(p.x, p.y, minX, maxX, minY, maxY, pixW, pixH)
+			set(px, py)
+		}
 	}
 	grid := make([][]rune, plotH)
 	for y := range dots {

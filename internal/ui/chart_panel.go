@@ -40,6 +40,7 @@ const (
 	chartKindBar chartKind = iota
 	chartKindLine
 	chartKindHist
+	chartKindScatter
 )
 
 // NewChartPanel returns a hidden chart panel.
@@ -81,6 +82,13 @@ func (c *ChartPanel) ShowHist(title string, bars []chartBar, skipped int) {
 	c.ShowBar(title, bars, skipped, barAggCount)
 	c.kind = chartKindHist
 	c.expanded = true
+}
+
+// ShowScatter populates an x/y scatter chart (Braille points, no polyline)
+// and makes the panel visible.
+func (c *ChartPanel) ShowScatter(title string, points []chartPoint, skipped int) {
+	c.ShowLine(title, points, skipped)
+	c.kind = chartKindScatter
 }
 
 // Hide closes the chart panel.
@@ -182,7 +190,7 @@ func (c *ChartPanel) adjustScroll(vh, n int) {
 }
 
 func (c ChartPanel) seriesLen() int {
-	if c.kind == chartKindLine {
+	if c.kind == chartKindLine || c.kind == chartKindScatter {
 		return len(c.points)
 	}
 	return len(c.visibleBars())
@@ -228,7 +236,7 @@ func (c ChartPanel) View() string {
 }
 
 func (c ChartPanel) bodyLines(inner int) []string {
-	if c.kind == chartKindLine {
+	if c.kind == chartKindLine || c.kind == chartKindScatter {
 		return c.lineBodyLines(inner)
 	}
 	return c.barBodyLines(inner)

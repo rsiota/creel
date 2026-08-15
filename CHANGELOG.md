@@ -12,9 +12,10 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
-- `:bar!` / `:line!` / `:hist!` / `:freq!` chart every row of the last SELECT (capped at 50,000), not just the current page.
+- `:bar!` / `:line!` / `:hist!` / `:freq!` / `:scatter!` chart every row of the last SELECT (capped at 50,000), not just the current page.
 - Histogram charts (`:hist`) of a numeric column, with optional bin count.
 - Frequency bar charts (`:freq`, or `:bar` with one column) of distinct values.
+- Scatter charts (`:scatter`) of two numeric columns, without connecting the points.
 
 ## [0.2.0] - 2026-08-14
 

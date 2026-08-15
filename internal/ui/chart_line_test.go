@@ -46,6 +46,23 @@ func TestExLineFromArgs(t *testing.T) {
 	}
 }
 
+func TestExScatterFromArgs(t *testing.T) {
+	m := &Model{results: NewResultsTable(), chartPanel: NewChartPanel()}
+	m.results.SetResult([]string{"t", "v"}, [][]string{{"1", "4"}, {"2", "8"}}, "")
+	if cmd := m.exScatter([]string{"t", "v"}, false); cmd != nil {
+		t.Fatal("unexpected cmd")
+	}
+	if !m.chartPanel.IsVisible() || m.chartPanel.kind != chartKindScatter {
+		t.Fatal("scatter chart should be visible")
+	}
+	if len(m.chartPanel.points) != 2 {
+		t.Fatalf("points = %d, want 2", len(m.chartPanel.points))
+	}
+	if !strings.Contains(m.chartPanel.title, "scatter") {
+		t.Errorf("title = %q", m.chartPanel.title)
+	}
+}
+
 func TestExLineFromMarks(t *testing.T) {
 	m := &Model{results: NewResultsTable(), chartPanel: NewChartPanel()}
 	m.results.SetResult([]string{"t", "v"}, [][]string{{"1", "4"}}, "")
@@ -205,6 +222,29 @@ func TestBrailleConnectsDistantPoints(t *testing.T) {
 	}
 	if filled < 8 {
 		t.Fatalf("filled cells = %d, want a continuous stroke across the plot", filled)
+	}
+}
+
+func TestScatterDoesNotConnectDistantPoints(t *testing.T) {
+	pts := []chartPoint{{x: 0, y: 0}, {x: 10, y: 10}}
+	line := rasterLineBraille(16, 8, pts, 0, 10, 0, 10)
+	scatter := rasterScatterBraille(16, 8, pts, 0, 10, 0, 10)
+	lineN, scatterN := 0, 0
+	for y := range line {
+		for x, ch := range line[y] {
+			if ch != ' ' {
+				lineN++
+			}
+			if scatter[y][x] != ' ' {
+				scatterN++
+			}
+		}
+	}
+	if scatterN < 1 {
+		t.Fatal("scatter should plot at least one cell")
+	}
+	if scatterN >= lineN {
+		t.Fatalf("scatter filled %d, line filled %d; scatter should not stroke between points", scatterN, lineN)
 	}
 }
 

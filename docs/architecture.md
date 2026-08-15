@@ -88,7 +88,7 @@ subsystem:
 - `filtering.go` — filter/sort stack, column visibility, backend LIKE search
 - `filter_picker.go` — DISTINCT-value multi-select filter (`g f`)
 - `stats.go` — column statistics + async total row count
-- `chart_panel.go` / `chart_line.go` / `chart_hist.go` / `chart_query.go` — bar, line, and histogram charts in the results slot (`:bar` / `:line` / `:hist` / column marks; bang re-queries the full result)
+- `chart_panel.go` / `chart_line.go` / `chart_hist.go` / `chart_query.go` — bar, line, scatter, and histogram charts in the results slot (`:bar` / `:line` / `:scatter` / `:hist` / `:freq` / column marks; bang re-queries the full result)
 - `inspector.go` — record inspector (right-side form view)
 - `cell_edit_popup.go`, `json_format.go` — cell editor + JSON pretty-print/highlight
 

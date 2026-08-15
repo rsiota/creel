@@ -11,7 +11,7 @@ import (
 	"github.com/rsiota/creel/internal/db"
 )
 
-// chartAllMaxRows caps a :bar! / :line! / :hist! / :freq! re-query so a huge result
+// chartAllMaxRows caps a :bar! / :line! / :hist! / :freq! / :scatter! re-query so a huge result
 // cannot blow memory. The status bar notes when the chart truncated.
 const chartAllMaxRows = 50_000
 
@@ -45,6 +45,8 @@ func (m *Model) applyChartReady(msg chartReadyMsg) {
 	switch msg.kind {
 	case chartKindLine:
 		m.chartPanel.ShowLine(msg.title, msg.points, msg.skipped)
+	case chartKindScatter:
+		m.chartPanel.ShowScatter(msg.title, msg.points, msg.skipped)
 	case chartKindHist:
 		m.chartPanel.ShowHist(msg.title, msg.bars, msg.skipped)
 	default:
@@ -74,7 +76,7 @@ func (m *Model) runChart(spec chartSpec, all bool) tea.Cmd {
 	}
 	query := strings.TrimRight(strings.TrimSpace(m.lastQuery), ";")
 	if query == "" {
-		m.schemaMsg = "no query to re-run — :bar! / :line! / :hist! / :freq! charts the last SELECT"
+		m.schemaMsg = "no query to re-run — :bar! / :line! / :hist! / :freq! / :scatter! charts the last SELECT"
 		return nil
 	}
 	execQuery := query
@@ -138,7 +140,7 @@ func buildChartReady(r ResultsTable, spec chartSpec, truncated bool) chartReadyM
 	}
 	msg := chartReadyMsg{kind: spec.kind, title: title, agg: spec.agg, truncated: truncated}
 	switch spec.kind {
-	case chartKindLine:
+	case chartKindLine, chartKindScatter:
 		pts, skipped := buildLineSeries(r, idxs[0], idxs[1])
 		if len(pts) == 0 {
 			msg.err = spec.emptyErr

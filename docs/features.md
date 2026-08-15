@@ -21,9 +21,10 @@ An overview of everything creel can do. For keys, see
   tables.
 - **Results grid** — sort, filter, search, hide/show columns, follow foreign
   keys (`g d`), mark rows and columns, bulk-delete rows, and chart marked
-  columns with `:bar` / `:line` / `:hist` / `:freq`. Large result sets are paged
-  (LIMIT/OFFSET) for speed and low memory. `:bar!`, `:line!`, `:hist!`, and
-  `:freq!` re-run the last SELECT without the page LIMIT (capped at 50,000 rows).
+  columns with `:bar` / `:line` / `:scatter` / `:hist` / `:freq`. Large result sets are paged
+  (LIMIT/OFFSET) for speed and low memory. Bang forms (`:bar!`, `:line!`,
+  `:scatter!`, `:hist!`, `:freq!`) re-run the last SELECT without the page
+  LIMIT (capped at 50,000 rows).
 
 ### Bar chart (`M` + `:bar`)
 
@@ -51,6 +52,12 @@ to plot them in the results slot, sorted by x. Or `:line <x> <y>`. `h`/`l`
 (or `j`/`k`) move a cursor along the series; `Esc`/`q` restores the grid.
 Non-numeric and NULL cells are skipped. Negative values are kept.
 `:line!` charts every row of the last SELECT.
+
+### Scatter chart (`M` + `:scatter`)
+
+Same columns as `:line`, but each sample is a point with no connecting
+stroke — use this for correlation (`amount` vs `age`) rather than a series.
+Or `:scatter <x> <y>`. Cursor and bang (`:scatter!`) work like `:line`.
 
 ### Histogram (`:hist`)
 
