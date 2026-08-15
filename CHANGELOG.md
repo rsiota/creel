@@ -18,6 +18,7 @@ commits, so it can come up empty).
 - Scatter charts (`:scatter`) of two numeric or datetime columns, without connecting the points.
 - `:line` / `:scatter` plot datetime x (ISO-8601, SQL timestamps, date-only) as Unix seconds, keeping the original text as the axis label.
 - `Enter` on a bar/hist/freq chart keeps rows for that bar and restores the grid.
+- Relationship explorer: `t` opens a node in a new tab; insert-related (`A`) restores the explorer after save or cancel.
 
 ## [0.2.0] - 2026-08-14
 

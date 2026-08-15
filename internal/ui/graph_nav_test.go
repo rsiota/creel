@@ -46,6 +46,68 @@ func TestNavDrillInPushesStack(t *testing.T) {
 	}
 }
 
+// TestExplorerOpenInTabLeavesParentTab verifies t opens the node's drill
+// query in a new tab without consuming the current tab's query stack.
+func TestExplorerOpenInTabLeavesParentTab(t *testing.T) {
+	conn := newSQLiteTestConn(t)
+	defer conn.Close()
+	for _, q := range []string{
+		`CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)`,
+		`CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users(id))`,
+		`INSERT INTO users VALUES (1,'Alice')`,
+		`INSERT INTO orders VALUES (10, 1)`,
+	} {
+		if _, err := conn.DB().Exec(q); err != nil {
+			t.Fatalf("exec: %v", err)
+		}
+	}
+	m := &Model{
+		connection: conn,
+		results:    NewResultsTable(),
+		editor:     NewQueryEditor(),
+		tabBar:     NewTabBar(),
+		tables:     []string{"users", "orders"},
+		pageSize:   50,
+	}
+	m.lastQuery = "SELECT * FROM users"
+	m.results.SetResult([]string{"id", "name"}, [][]string{{"1", "Alice"}}, "")
+	m.results.SetEditable("users", []string{"id"})
+	parent := NewResultsTab(1, "users")
+	m.resultsTabs = []*ResultsTab{parent}
+	m.activeTabID = 1
+	m.nextTabID = 2
+	m.saveTabState()
+	m.explorer.ShowDocked()
+
+	root := m.loadExplorer()().(explorerLoadedMsg).root
+	m.explorer.applyRoot(root, 0)
+	ordersEdge := findEdge(root, "orders")
+	ordersEdge.expanded = true
+	childMsg := m.loadExplorerChildren(ordersEdge)().(explorerChildrenMsg)
+	m.explorer.applyChildren(ordersEdge, childMsg.children)
+	orderRow := nonSynth(childMsg.children)[0]
+	m.explorer.cursorToNode(orderRow)
+
+	if cmd := m.explorerOpenInTab(); cmd == nil {
+		t.Fatal("open in tab returned nil")
+	}
+	if len(m.resultsTabs) != 2 {
+		t.Fatalf("tabs = %d, want 2", len(m.resultsTabs))
+	}
+	if m.resultsTabs[0].LastQuery != "SELECT * FROM users" {
+		t.Errorf("parent tab query = %q", m.resultsTabs[0].LastQuery)
+	}
+	if !strings.Contains(m.lastQuery, "orders") {
+		t.Errorf("active query = %q, want orders drill", m.lastQuery)
+	}
+	if len(m.queryStack) != 0 {
+		t.Errorf("new tab should not inherit the parent stack, len=%d", len(m.queryStack))
+	}
+	if m.resultsTabs[0].QueryStack != nil && len(m.resultsTabs[0].QueryStack) != 0 {
+		t.Errorf("parent stack should still be empty, got %d", len(m.resultsTabs[0].QueryStack))
+	}
+}
+
 // TestExplorerGoBackUsesStack ensures u / goBackQuery restores the prior query
 // and marks the explorer loading when it is open.
 func TestExplorerGoBackUsesStack(t *testing.T) {
@@ -174,6 +236,23 @@ func TestExplorerInsertRelatedPrefillsFK(t *testing.T) {
 	if mm.explorer.IsVisible() {
 		t.Error("explorer should yield the right slot to the inspector")
 	}
+	if !mm.restoreExplorerAfterInsert {
+		t.Error("insert related should remember to restore the explorer")
+	}
+
+	mm.inspector.CancelInsert()
+	if cmd := mm.maybeRestoreExplorerAfterInsert(); cmd == nil {
+		t.Error("restore should reload the explorer")
+	}
+	if !mm.explorer.IsVisible() {
+		t.Fatal("explorer should return after cancel")
+	}
+	if mm.inspector.IsVisible() {
+		t.Error("inspector should yield the right slot back to the explorer")
+	}
+	if mm.focus != FocusExplorer {
+		t.Errorf("focus = %v, want explorer", mm.focus)
+	}
 }
 
 // TestExplorerInsertRelatedRejectsOutbound ensures A on an outbound edge is a
@@ -208,4 +287,3 @@ func TestExplorerInsertRelatedRejectsOutbound(t *testing.T) {
 		t.Errorf("schemaMsg = %q", m.schemaMsg)
 	}
 }
-

@@ -125,7 +125,10 @@ related rows — edit without writing the JOIN.”
 **Shipped — first slice:**
 - Unified back from explorer: `u` / `backspace` / `g b` (same `queryStack`)
 - **Insert related** — `A` on an **inbound** edge prefills the child FK and
-  opens inspector insert (explorer yields the right slot)
+  opens inspector insert (explorer yields the right slot, then restores after
+  save or cancel)
+- **Open in a new tab** — `t` runs the node's drill query in a new results tab;
+  `Enter` still re-roots the current tab
 - Inbound edges with count `0` stay visible so the first related row is
   insertable
 - Empty-state status lines truncated so a long `emptyMsg` cannot wrap and
@@ -137,17 +140,12 @@ Files: `rel_explorer.go`, `editing.go`, `app.go`, `schema_ops.go`,
 `graph_nav_test.go`.
 
 **Next slices (suggested order):**
-1. **Keep explorer open across insert-related** — today `A` hides the explorer
-   so the inspector can use the right slot; after save/cancel, optionally
-   restore the explorer (or split/stack UX). Small polish.
-2. **Open node in a new tab** — Enter stays “re-root here”; e.g. `t` / `ctrl+t`
-   opens the drill query in a new results tab so the parent context stays.
-3. **Insert related without navigating away** — insert into the child table
+1. **Insert related without navigating away** — insert into the child table
    while the explorer root stays on the parent (harder: editable target ≠
-   current grid). Follows from (1).
-4. **ERD as launcher** — Enter / double-click a card → `SELECT *` (or last
+   current grid). Follows from restore-after-insert.
+2. **ERD as launcher** — Enter / double-click a card → `SELECT *` (or last
    filter); optional “generate JOIN” from a shortest path into the editor.
-5. **Cross-highlight** — grid FK cell ↔ explorer edge ↔ ERD card dim/vivid.
+3. **Cross-highlight** — grid FK cell ↔ explorer edge ↔ ERD card dim/vivid.
 
 **Explicitly defer:** editing *through* ERD arrows as a general UPDATE engine;
 force-directed layouts; omniscient DB “git blame.”

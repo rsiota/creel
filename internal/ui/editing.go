@@ -109,8 +109,25 @@ func (m *Model) explorerActivate() tea.Cmd {
 		return nil
 	}
 	m.pushQueryStack()
-	m.editor.SetValue(node.drillQuery)
-	m.lastQuery = node.drillQuery
+	m.applyExplorerDrill(node.drillQuery)
+	return m.runPageQuery()
+}
+
+// explorerOpenInTab (t) runs the selected node's drill query in a new results
+// tab so the parent grid stays on the previous tab. Enter still re-roots here.
+func (m *Model) explorerOpenInTab() tea.Cmd {
+	node := m.explorer.selectedNode()
+	if node == nil || node.synthetic || node.drillQuery == "" {
+		return nil
+	}
+	m.addTab(generateTabTitle(node.drillQuery), node.drillQuery)
+	m.applyExplorerDrill(node.drillQuery)
+	return m.runPageQuery()
+}
+
+func (m *Model) applyExplorerDrill(query string) {
+	m.editor.SetValue(query)
+	m.lastQuery = query
 	m.baseQuery = ""
 	m.filters = nil
 	m.sortCol = ""
@@ -120,7 +137,6 @@ func (m *Model) explorerActivate() tea.Cmd {
 	m.lastSearch = ""
 	m.pendingRelatedInsert = nil
 	m.explorer.markLoading()
-	return m.runPageQuery()
 }
 
 // explorerInsertRelated (A) starts an insert into an inbound relationship's

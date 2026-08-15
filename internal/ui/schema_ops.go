@@ -334,12 +334,14 @@ func (m *Model) startInsert() {
 
 // startInsertWithValues opens inspector insert mode, optionally prefilling
 // fields by column name (used by explorer "insert related"). The explorer
-// yields the right slot so the inspector is visible.
+// yields the right slot so the inspector is visible, then comes back after
+// save or cancel (restoreExplorerAfterInsert).
 func (m *Model) startInsertWithValues(byName map[string]string) {
 	if !m.results.IsEditable() || m.results.HasDirtyCells() || m.inspector.IsInserting() {
 		return
 	}
 	if m.explorer.IsVisible() {
+		m.restoreExplorerAfterInsert = true
 		m.explorer.Hide()
 	}
 	if !m.inspector.IsVisible() {
@@ -361,4 +363,26 @@ func (m *Model) startInsertWithValues(byName map[string]string) {
 	}
 	m.focus = FocusInspector
 	m.applyFocus()
+}
+
+// restoreExplorerPanel puts the docked explorer back in the right slot after
+// an insert that hid it. The caller decides whether to reload the tree.
+func (m *Model) restoreExplorerPanel() {
+	m.restoreExplorerAfterInsert = false
+	m.inspector.Hide()
+	m.assistant.Hide()
+	m.explorer.ShowDocked()
+	m.focus = FocusExplorer
+	m.layoutWorkspace()
+	m.applyFocus()
+}
+
+// maybeRestoreExplorerAfterInsert restores the explorer after insert cancel.
+func (m *Model) maybeRestoreExplorerAfterInsert() tea.Cmd {
+	if !m.restoreExplorerAfterInsert {
+		return nil
+	}
+	m.restoreExplorerPanel()
+	m.explorer.markLoading()
+	return m.loadExplorer()
 }

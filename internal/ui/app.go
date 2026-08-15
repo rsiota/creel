@@ -477,13 +477,16 @@ type Model struct {
 	// from the relationship explorer (A on an inbound edge). Applied once the
 	// target-table query finishes and cleared afterward.
 	pendingRelatedInsert map[string]string
-	historyStore         *history.Store
-	historyNavEntries    []string // cached queries for the current browse session
-	historyNavIdx        int      // -1 = not browsing; otherwise index into historyNavEntries (most recent = len-1)
-	historyNavSaved      string   // editor content before history browse started
-	bookmarkStore        *bookmarks.Store
-	connError            string
-	tables               []string
+	// restoreExplorerAfterInsert re-opens the docked explorer after an insert
+	// that borrowed the right slot for the inspector (save or cancel).
+	restoreExplorerAfterInsert bool
+	historyStore               *history.Store
+	historyNavEntries          []string // cached queries for the current browse session
+	historyNavIdx              int      // -1 = not browsing; otherwise index into historyNavEntries (most recent = len-1)
+	historyNavSaved            string   // editor content before history browse started
+	bookmarkStore              *bookmarks.Store
+	connError                  string
+	tables                     []string
 
 	// Pagination
 	page          int
@@ -1195,6 +1198,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.inspector.CancelInsert()
 			m.results.ConfirmSaved()
+			if m.restoreExplorerAfterInsert {
+				m.restoreExplorerPanel()
+			}
 			return m, m.runPageQuery()
 		}
 		return m, nil
@@ -3039,7 +3045,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Cancel new-record mode.
 		if m.inspector.IsInserting() && !m.inspector.IsEditing() {
 			m.inspector.CancelInsert()
-			return m, nil
+			return m, m.maybeRestoreExplorerAfterInsert()
 		}
 		// In insert mode, esc goes to the editor for vim mode switching.
 		// In normal mode, esc is a no-op (or could blur the editor).
@@ -4052,7 +4058,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc":
 			if m.inspector.IsInserting() {
 				m.inspector.CancelInsert()
-				return m, nil
+				return m, m.maybeRestoreExplorerAfterInsert()
 			}
 		case "D":
 			m.inspector.pendingG = false
@@ -4076,14 +4082,16 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case FocusExplorer:
 		// Docked relationship-explorer panel. Non-modal: global focus movement
 		// (ctrl+h/l) is handled before this switch. Tree nav: j/k move, → expands,
-		// ← collapses, Enter re-roots the grid, A inserts related, u/g b goes
-		// back, r retargets, esc/q close the panel.
+		// ← collapses, Enter re-roots the grid, t opens the node in a new tab,
+		// A inserts related, u/g b goes back, r retargets, esc/q close the panel.
 		switch msg.String() {
 		case "esc", "q":
 			m.closeDockedExplorer()
 			return m, nil
 		case "enter":
 			return m, m.explorerActivate()
+		case "t":
+			return m, m.explorerOpenInTab()
 		case "right", "l":
 			return m, m.explorerExpand()
 		case "left", "h":

@@ -121,3 +121,16 @@ In the add/edit form:
 | `P`        | Clone marked/cursor row                      |
 | `x`        | Export current page to CSV                 |
 | `g X`      | Export dialog (format · columns · scope)   |
+
+## Relationship explorer (`g r`)
+
+| Key        | Action                                          |
+| ---------- | ----------------------------------------------- |
+| `j/k`      | Move                                            |
+| `h/l`      | Collapse / expand                               |
+| `enter`    | Re-root this tab on the node                    |
+| `t`        | Open the node in a new tab                      |
+| `A`        | Insert related row (inbound edge)               |
+| `u` / `g b`| Go back                                         |
+| `r`        | Retarget / refresh                              |
+| `esc` / `q`| Close                                           |
