@@ -35,7 +35,8 @@ column is a frequency count: `:bar status`, a single `M` mark, or
 `:bar status count`. Duplicate labels are grouped (`sum` is the default on
 two columns); `:bar count` on two marked columns counts rows per label. The
 top 20 bars are kept and the rest fold into `(other)`; press `o` to unfold
-(and `o` again to fold). `Esc`/`q` restores the grid. Non-numeric and NULL
+(and `o` again to fold). `Enter` on a bar keeps rows with that label and
+restores the grid. `Esc`/`q` closes the chart. Non-numeric and NULL
 value cells are skipped for `sum`/`avg`. `:bar!` charts every row of the
 last SELECT (not just the current page).
 
@@ -43,7 +44,8 @@ last SELECT (not just the current page).
 
 Count distinct values in one column, using the same bar panel as `:bar`.
 `:freq` uses the cursor column (or a single `M` mark); `:freq status` names
-the column. `:freq!` uses every row of the last SELECT.
+the column. `Enter` on a bar keeps those rows. `:freq!` uses every row of
+the last SELECT.
 
 ### Line chart (`M` + `:line`)
 
@@ -65,8 +67,8 @@ Bin one numeric column into equal-width bars in the same panel. `:hist`
 uses the cursor column (or a single `M` mark); `:hist amount` names the
 column; `:hist amount 12` (or `:hist 12`) sets the bin count. Default bins
 follow Sturges' formula, clamped to 8–20 (max 100). Empty bins are shown;
-negatives are kept; there is no `(other)` fold. `:hist!` uses every row of
-the last SELECT.
+negatives are kept; there is no `(other)` fold. `Enter` on a bin keeps rows
+in that range. `:hist!` uses every row of the last SELECT.
 
 ### Relationship explorer (`g r` / `:explore panel`)
 

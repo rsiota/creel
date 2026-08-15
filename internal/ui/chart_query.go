@@ -25,6 +25,7 @@ type chartReadyMsg struct {
 	skipped   int
 	agg       barAgg
 	truncated bool
+	filterCol string
 	err       string
 }
 
@@ -52,6 +53,7 @@ func (m *Model) applyChartReady(msg chartReadyMsg) {
 	default:
 		m.chartPanel.ShowBar(msg.title, msg.bars, msg.skipped, msg.agg)
 	}
+	m.chartPanel.filterCol = msg.filterCol
 	m.focus = FocusResults
 	if msg.truncated {
 		m.schemaMsg = fmt.Sprintf("charted first %s rows", formatCount(chartAllMaxRows))
@@ -139,6 +141,9 @@ func buildChartReady(r ResultsTable, spec chartSpec, truncated bool) chartReadyM
 		title += " · all"
 	}
 	msg := chartReadyMsg{kind: spec.kind, title: title, agg: spec.agg, truncated: truncated}
+	if spec.kind != chartKindLine && spec.kind != chartKindScatter && len(spec.colNames) > 0 {
+		msg.filterCol = spec.colNames[0]
+	}
 	switch spec.kind {
 	case chartKindLine, chartKindScatter:
 		pts, skipped := buildLineSeries(r, idxs[0], idxs[1])

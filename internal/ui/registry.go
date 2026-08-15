@@ -363,6 +363,7 @@ func registry() []Section {
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
 				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/ctrl+u"},
 				{"o", []string{"o"}, "unfold / fold (other)", "o"},
+				{"enter", []string{"enter"}, "keep rows for this bar", "enter"},
 				{"esc", []string{"esc", "q"}, "close", "esc"},
 			},
 		},

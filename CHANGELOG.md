@@ -16,6 +16,7 @@ commits, so it can come up empty).
 - Histogram charts (`:hist`) of a numeric column, with optional bin count.
 - Frequency bar charts (`:freq`, or `:bar` with one column) of distinct values.
 - Scatter charts (`:scatter`) of two numeric columns, without connecting the points.
+- `Enter` on a bar/hist/freq chart keeps rows for that bar and restores the grid.
 
 ## [0.2.0] - 2026-08-14
 

@@ -2757,6 +2757,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc", "q", "ctrl+c":
 			m.chartPanel.Hide()
 			return m, nil
+		case "enter":
+			return m, m.drillChartBar()
 		}
 		m.chartPanel = m.chartPanel.Update(msg)
 		return m, nil

@@ -20,18 +20,19 @@ type chartBar struct {
 // ChartPanel renders a simple chart (currently horizontal bars) in the
 // results-panel slot. Esc/q closes it and restores the grid.
 type ChartPanel struct {
-	visible  bool
-	kind     chartKind
-	title    string // e.g. "bar · users × amount · sum"
-	bars     []chartBar
-	points   []chartPoint
-	agg      barAgg
-	expanded bool // true = show every grouped bar; false = top 20 + (other)
-	skipped  int  // rows skipped (NULL / non-numeric values)
-	cursor   int  // index into visibleBars / points
-	scroll   int
-	width    int
-	height   int
+	visible   bool
+	kind      chartKind
+	title     string // e.g. "bar · users × amount · sum"
+	bars      []chartBar
+	points    []chartPoint
+	agg       barAgg
+	expanded  bool // true = show every grouped bar; false = top 20 + (other)
+	skipped   int  // rows skipped (NULL / non-numeric values)
+	cursor    int  // index into visibleBars / points
+	scroll    int
+	width     int
+	height    int
+	filterCol string // bar/hist/freq label column; enter keeps matching rows
 }
 
 type chartKind int
