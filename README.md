@@ -12,7 +12,7 @@
     <img src="docs/images/demo.gif" alt="creel — recorded demo" width="760">
   </a>
 </p>
-<p align="center"><em>A quick tour of creel, recorded with <a href="https://asciinema.org">asciinema</a>. Play it live and interactive: <code>asciinema play demo.cast</code></em></p>
+<p align="center"><em>A quick tour of creel, recorded with <a href="https://asciinema.org">asciinema</a>. From a clone: <code>asciinema play demo.cast</code></em></p>
 
 A fast, memory-efficient SQL TUI for **SQLite**, **MySQL**, and **PostgreSQL**, written in Go.
 
@@ -22,7 +22,7 @@ Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `creel
 
 ```sh
 brew install rsiota/creel/creel        # or: go install github.com/rsiota/creel/cmd/creel@latest
-creel                                  # press n to add a connection, or point at any SQLite file
+creel                                  # press n to add a connection, or creel -database file.db
 ```
 
 To explore the bundled sample database (shown in the demo and screenshots):
@@ -32,13 +32,15 @@ git clone https://github.com/rsiota/creel.git && cd creel
 creel -database demo/creel-demo.db     # then press g R for the ERD, g r on a row for its relationships
 ```
 
+Linux, macOS, and Windows binaries are on the [latest release](https://github.com/rsiota/creel/releases/latest).
+
 ## Features
 
 **Connect**
 
-- Three databases, one interface — SQLite, MySQL, and PostgreSQL, with SSH tunneling for remote MySQL.
-- Secret storage — passwords live in the OS keychain (macOS/Windows/Linux), never plaintext config.
-- Read-only mode — point creel at production safely; per-connection flag or global `--readonly`.
+- Three databases, one interface — SQLite, MySQL, and PostgreSQL, with SSH tunneling for remote MySQL and PostgreSQL.
+- Secret storage — passwords live in the OS keychain (macOS/Windows/Linux), with a plaintext fallback if no keychain is available.
+- Read-only mode — point creel at production safely; per-connection flag or global `-readonly`.
 
 **Browse**
 
@@ -47,6 +49,10 @@ creel -database demo/creel-demo.db     # then press g R for the ERD, g r on a ro
 - Relationship explorer (`g r`) — browse a row's inbound/outbound FK graph like a folder.
 - Static ERD (`g R`) — graphical entity-relationship diagram; exportable as Mermaid.
 - EXPLAIN plans (`g e`), cross-table search (`S`), column statistics (`g s`).
+
+<p align="center">
+  <img src="docs/images/creel-erd.png" alt="creel static ERD of the demo database" width="760">
+</p>
 
 **Edit**
 
@@ -61,10 +67,11 @@ creel -database demo/creel-demo.db     # then press g R for the ERD, g r on a ro
 - Session restore — reopen a connection to find your tabs and buffers as you left them.
 - Record inspector — side panel form view tracking the results cursor.
 - Command palette (`Ctrl+P`) and help overlay (`?`).
+- AI assistant (`Ctrl+F`) — natural-language to SQL via any OpenAI-compatible endpoint.
 
-**Run anywhere** — large result sets are paged for speed and low memory, and a CLI mode runs a query and prints results without the TUI.
+**Run anywhere** — large result sets are paged for speed and low memory, and a CLI mode (`-e`, `-format`) runs a query and prints results without the TUI.
 
-See [Features](docs/features.md) for the full detail on the relationship explorer and ERD.
+See [Features](docs/features.md) for charts, the relationship explorer, the ERD, and the rest.
 
 ## How creel compares
 
@@ -77,7 +84,7 @@ creel isn't trying to replace a database GUI — it's a fast, keyboard-first ter
 | Interaction | vim modal editor + editable results grid | REPL prompt (optional vi mode) + pager | TUI | prompt-style (psql-like) |
 | Schema view | ERD (`g R`) + relationship explorer (`g r`) | — | — | — |
 
-In short: the **dbcli** tools are mature, battle-tested REPLs with excellent autocompletion — reach for them if you want a smart prompt. **sqlit** (which inspired creel) is a polished multi-database TUI in Python/Textual. **usq** is a Go universal CLI spanning many drivers. creel's angle is a **single, dependency-free Go binary** with a **vim-native editor** and **graphical schema exploration** built for browsing and editing relational data quickly.
+In short: the **dbcli** tools are mature, battle-tested REPLs with excellent autocompletion — reach for them if you want a smart prompt. **sqlit** (which inspired creel) is a polished multi-database TUI in Python/Textual. **usq** is a Go universal CLI spanning many drivers. creel's angle is a **single, dependency-free Go binary** with a **vim-native editor**, **graphical schema exploration**, and **in-grid charts**, built for browsing and editing relational data quickly.
 
 ## Documentation
 
@@ -91,6 +98,10 @@ In short: the **dbcli** tools are mature, battle-tested REPLs with excellent aut
 | [Architecture](docs/architecture.md) | Subsystem map and design decisions. |
 
 ## Install
+
+**GitHub Release** (Linux, macOS, Windows):
+
+Download the archive for your OS from the [latest release](https://github.com/rsiota/creel/releases/latest).
 
 **Homebrew** (tap):
 
@@ -112,42 +123,9 @@ cd creel
 go build -o creel ./cmd/creel/
 ```
 
-The config lives at `~/.config/creel/config.yaml` and is created on first run.
+The config lives at `~/.config/creel/config.yaml` and is created on first run. If you used the old `gsql` name, that directory migrates on first launch — see [Configuration](docs/configuration.md).
 
-## Architecture
-
-```
-cmd/creel/main.go        Entry point (TUI + CLI modes)
-internal/db/            Database abstraction layer
-  db.go                 DB interface + Connection wrapper
-  sqlite.go             SQLite driver (modernc.org/sqlite, pure Go)
-  mysql.go              MySQL driver
-  postgres.go           PostgreSQL driver (pgx/v5)
-  ssh_tunnel.go         SSH tunnel support
-  dump.go / import.go   Export & streaming import
-internal/config/        YAML config load/save
-internal/secrets/       OS keychain secret store (secret:// refs + plaintext fallback)
-internal/history/       Per-connection query history (JSON)
-internal/session/      Per-connection workspace state — open tabs, restored on reconnect (JSON)
-internal/bookmarks/     Saved queries
-internal/ui/            Bubble Tea components
-  app.go                Top-level Model (Elm-style state machine)
-  query_editor.go       SQL editor with vim mode
-  results_table.go      Results grid renderer
-  sidebar / inspector / editor overlays
-  registry.go           Single source of truth for keybindings
-  palette.go            Fuzzy command palette (Ctrl+P)
-```
-
-For the full subsystem map and design decisions, see [docs/architecture.md](docs/architecture.md).
-
-## Upgrading from gsql
-
-On first launch creel automatically migrates `~/.config/gsql/` to `~/.config/creel/` (connections, history, bookmarks, sessions) and keeps reading keychain secrets stored under the old `gsql` service. See [Configuration](docs/configuration.md) for details.
-
-## Roadmap
-
-See [ROADMAP.md](ROADMAP.md).
+The TUI is a Bubble Tea app over a small driver layer (SQLite, MySQL, PostgreSQL). See [Architecture](docs/architecture.md) for the subsystem map.
 
 ## Contributing
 
