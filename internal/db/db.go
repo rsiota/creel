@@ -157,6 +157,11 @@ type DB interface {
 	// ViewDefinition returns the defining SELECT statement of a view, or "" if
 	// the named relation is not a view or has no retrievable definition.
 	ViewDefinition(view string) (string, error)
+	// TableDefinition returns the native CREATE TABLE (or CREATE VIEW) DDL for
+	// the named relation, without a trailing semicolon. An empty string means
+	// the driver cannot retrieve native DDL and callers should reconstruct it
+	// from column/FK metadata.
+	TableDefinition(table string) (string, error)
 }
 
 // Tx runs statements within a single database transaction. Commit or

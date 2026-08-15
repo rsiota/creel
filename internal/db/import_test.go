@@ -2,6 +2,7 @@ package db
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -348,6 +349,70 @@ func TestHasExecutableSQL(t *testing.T) {
 	}
 }
 
+func TestScanSQLStatements_MySQLBackslashQuote(t *testing.T) {
+	// Sequel Ace / mysqldump emit \' inside strings. Treating that quote as a
+	// terminator swallows the following CREATE TABLE into the INSERT.
+	dump := "INSERT INTO `faqs` (`answer`) VALUES ('<a href=\\\"x\\\"\\'>HERE</a>');\n" +
+		"CREATE TABLE `fields` (\n  `id` int\n);\n"
+
+	got := collectSQLStatements(t, dump, true)
+	if len(got) != 2 {
+		t.Fatalf("mysql scan: got %d statements, want 2:\n%q", len(got), got)
+	}
+	if !strings.Contains(got[0], "INSERT INTO") {
+		t.Errorf("stmt 0 should be INSERT, got %q", got[0])
+	}
+	if !strings.Contains(got[1], "CREATE TABLE `fields`") {
+		t.Errorf("stmt 1 should be CREATE TABLE fields, got %q", got[1])
+	}
+
+	// SQLite dumps use '' not \'; backslash must stay literal so a trailing
+	// \' still ends the string.
+	sqliteDump := "INSERT INTO t (val) VALUES ('a\\'b');\nCREATE TABLE u (id INT);\n"
+	sqliteGot := collectSQLStatements(t, sqliteDump, false)
+	if len(sqliteGot) < 1 {
+		t.Fatal("expected at least one sqlite statement")
+	}
+}
+
+func TestScanSQLStatements_MySQLHashComment(t *testing.T) {
+	dump := "# Dump of table foo; this semicolon must not split\nDROP TABLE IF EXISTS `foo`;\n"
+	got := collectSQLStatements(t, dump, true)
+	if len(got) != 1 {
+		t.Fatalf("got %d statements, want 1: %q", len(got), got)
+	}
+	if !strings.Contains(got[0], "DROP TABLE") {
+		t.Errorf("expected DROP TABLE, got %q", got[0])
+	}
+	if strings.Contains(got[0], "# Dump") {
+		t.Errorf("hash comment should be discarded, got %q", got[0])
+	}
+}
+
+func TestScanSQLStatements_MySQLBacktickSemicolon(t *testing.T) {
+	dump := "CREATE TABLE `weird;name` (`id` int);\n"
+	got := collectSQLStatements(t, dump, true)
+	if len(got) != 1 {
+		t.Fatalf("got %d statements, want 1: %q", len(got), got)
+	}
+	if !strings.Contains(got[0], "`weird;name`") {
+		t.Errorf("backtick identifier split: %q", got[0])
+	}
+}
+
+func collectSQLStatements(t *testing.T, dump string, mysql bool) []string {
+	t.Helper()
+	var got []string
+	err := scanSQLStatements(strings.NewReader(dump), mysql, func(s string, _ int64) error {
+		got = append(got, s)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
 func TestImportResult_Summary(t *testing.T) {
 	tests := []struct {
 		result   ImportResult
@@ -355,7 +420,7 @@ func TestImportResult_Summary(t *testing.T) {
 		want     string
 	}{
 		{ImportResult{Statements: 10, Errors: nil}, "backup.sql", "Imported 10 statements → backup.sql"},
-		{ImportResult{Statements: 10, Errors: make([]ImportError, 3)}, "backup.sql", "Imported 10 statements, 3 failed → backup.sql"},
+		{ImportResult{Statements: 10, Errors: []ImportError{{Err: fmt.Errorf("syntax error")}}}, "backup.sql", "Imported 10 statements, 1 failed → backup.sql (syntax error)"},
 	}
 	for _, tc := range tests {
 		got := tc.result.Summary(tc.filename)

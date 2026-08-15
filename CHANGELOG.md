@@ -20,6 +20,10 @@ commits, so it can come up empty).
 - `Enter` on a bar/hist/freq chart keeps rows for that bar and restores the grid.
 - Relationship explorer: `t` opens a node in a new tab; insert-related (`A`) restores the explorer after save or cancel.
 
+### Fixed
+- SQL export (`X`) emits native CREATE TABLE DDL (MySQL `SHOW CREATE TABLE`, SQLite `sqlite_master`) so indexes, named foreign keys, ON DELETE/UPDATE, CHECK constraints, and ENGINE/CHARSET survive a dump round-trip. Unsigned integer values are no longer quoted as strings. MySQL string literals backslash-escape `\`, quotes, and control characters (mysqldump / Sequel Ace style) so PHP namespaces like `App\Models\User` round-trip.
+- SQL import (`I`) honours MySQL backslash escapes (`\'`), backtick identifiers, and `#` comments, so Sequel Ace / mysqldump files no longer swallow `CREATE TABLE` statements after a quoted apostrophe. Failed statements are named in the status bar.
+
 ## [0.2.0] - 2026-08-14
 
 Charts, a richer FK explorer, mouse-resizeable panels, and CLI output — plus a quicker path from the sidebar into results.

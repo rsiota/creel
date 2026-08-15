@@ -555,6 +555,23 @@ func isLetterDigit(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_'
 }
 
+// TableDefinition returns the original CREATE TABLE/VIEW SQL from sqlite_master,
+// or "" if the relation has no stored DDL (e.g. sqlite_sequence).
+func (s *SQLite) TableDefinition(table string) (string, error) {
+	var sqlStr sql.NullString
+	err := s.db.QueryRow(
+		`SELECT sql FROM sqlite_master WHERE name=? AND type IN ('table','view')`,
+		table,
+	).Scan(&sqlStr)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(strings.TrimSpace(sqlStr.String), ";"), nil
+}
+
 // ViewDefinition returns the CREATE VIEW SQL for a view, or "" if the named
 // relation is not a view.
 func (s *SQLite) ViewDefinition(view string) (string, error) {

@@ -55,7 +55,9 @@ func (m *MySQL) dsn() string {
 	if m.dialNet != "" {
 		netName = m.dialNet
 	}
-	return fmt.Sprintf("%s:%s@%s(%s:%d)/%s?parseTime=true",
+	// maxAllowedPacket=0 asks the driver to use the server's value so large
+	// dump INSERTs are not capped at the driver's 64MiB default.
+	return fmt.Sprintf("%s:%s@%s(%s:%d)/%s?parseTime=true&maxAllowedPacket=0",
 		m.config.Username,
 		m.config.Password,
 		netName,
@@ -493,6 +495,21 @@ func (m *MySQL) Triggers(table string) ([]Trigger, error) {
 		})
 	}
 	return triggers, rows.Err()
+}
+
+// TableDefinition returns SHOW CREATE TABLE output for a table (or view).
+// That statement includes indexes, named foreign keys, ON DELETE/UPDATE,
+// CHECK constraints, ENGINE, CHARSET, and COLLATE — unlike reconstructed DDL.
+func (m *MySQL) TableDefinition(table string) (string, error) {
+	var name, ddl string
+	err := m.db.QueryRow("SHOW CREATE TABLE " + quoteIdent(DriverMySQL, table)).Scan(&name, &ddl)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("show create table: %w", err)
+	}
+	return strings.TrimRight(strings.TrimSpace(ddl), ";"), nil
 }
 
 // ViewDefinition returns the body of a view from information_schema.views, or

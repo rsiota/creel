@@ -735,6 +735,12 @@ func parsePostgresTriggerDef(def string) (timing, event string) {
 	return "", ""
 }
 
+// TableDefinition returns "" because PostgreSQL has no SHOW CREATE TABLE
+// equivalent; dumps reconstruct DDL from column and foreign-key metadata.
+func (p *Postgres) TableDefinition(table string) (string, error) {
+	return "", nil
+}
+
 // ViewDefinition returns the pretty-printed definition of a view from
 // pg_views, or "" if the named relation is not a view.
 func (p *Postgres) ViewDefinition(view string) (string, error) {

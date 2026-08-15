@@ -41,12 +41,15 @@ implement the interface in a new file.
 - `sqlite.go` / `mysql.go` / `postgres.go` — driver implementations
 - `schema.go` — DDL builders + validation (add column, create/rename table)
 - `statements.go` — top-level statement splitter (powers "run statement under cursor")
-- `dump.go` / `import.go` — pure-Go export and streaming SQL import
+- `dump.go` / `import.go` — pure-Go export and streaming SQL import (MySQL dumps
+  use backslash string escapes, backticks, and `#` comments)
 - `ssh_tunnel.go` — SSH tunnel for remote MySQL
 
 The interface also exposes catalog metadata used by the structure panel:
-`Indexes`, `Triggers`, `ViewDefinition`, `CheckConstraints` — each implemented
-per driver against `sqlite_master` / `information_schema` / `pg_catalog`.
+`Indexes`, `Triggers`, `ViewDefinition`, `CheckConstraints`, `TableDefinition`
+— each implemented per driver against `sqlite_master` / `information_schema` /
+`pg_catalog` (MySQL `SHOW CREATE TABLE`). SQL dumps prefer `TableDefinition`
+so indexes, named FKs, and table options survive a round-trip.
 
 ## Supporting packages
 

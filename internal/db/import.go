@@ -24,7 +24,9 @@ func (r ImportResult) Summary(filename string) string {
 	if len(r.Errors) == 0 {
 		return fmt.Sprintf("Imported %d statements → %s", r.Statements, filename)
 	}
-	return fmt.Sprintf("Imported %d statements, %d failed → %s", r.Statements, len(r.Errors), filename)
+	first := r.Errors[0].Err.Error()
+	return fmt.Sprintf("Imported %d statements, %d failed → %s (%s)",
+		r.Statements, len(r.Errors), filename, truncate(first, 80))
 }
 
 // ImportSQL reads a SQL dump from r and executes each statement against the
@@ -34,13 +36,14 @@ func (r ImportResult) Summary(filename string) string {
 // The parser tracks single-quote strings (with '' escaping), double-quote
 // identifiers, line comments (-- ...), block comments (/* ... */), and MySQL
 // conditional comments (/*! ... */; which are executable, not real comments).
-// This allows semicolons inside string literals or comments to be ignored.
+// On MySQL it also honours backslash escapes inside strings (\'), backtick
+// identifiers, and # line comments, matching mysqldump / Sequel Ace dumps.
+// Semicolons inside string literals, identifiers, or comments are ignored.
 //
 // Each statement is executed via Exec. The onProgress callback (if non-nil)
 // is called after each statement with the byte offset and total file size,
 // enabling streaming progress reporting.
 func ImportSQL(r io.Reader, database DB, totalSize int64, onProgress func(bytesRead int64, total int64)) (ImportResult, error) {
-	scanner := bufio.NewReader(r)
 	var result ImportResult
 
 	// Pin to a single connection so session-scoped settings set by the dump
@@ -52,25 +55,15 @@ func ImportSQL(r io.Reader, database DB, totalSize int64, onProgress func(bytesR
 	}
 	defer session.Close()
 
-	var stmt strings.Builder
-	var inSingleQuote, inDoubleQuote bool
-	var inLineComment, inBlockComment, inMySQLComment bool
-	var bytesRead int64
-
-	flush := func() {
-		s := strings.TrimSpace(stmt.String())
-		stmt.Reset()
-		if s == "" {
-			return
-		}
+	_, isMySQL := database.(*MySQL)
+	err = scanSQLStatements(r, isMySQL, func(s string, bytesRead int64) error {
 		// Skip comment-only statements. A MySQL conditional comment
 		// (/*!...*/) is executable SQL on MySQL (it carries session setup like
 		// FOREIGN_KEY_CHECKS=0), so send it through there; on other engines it
 		// is an inert comment whose execution can return a nil driver result
 		// and panic on RowsAffected, so skip it.
-		_, isMySQL := database.(*MySQL)
 		if !hasExecutableSQL(s) && !(isMySQL && strings.HasPrefix(s, "/*!")) {
-			return
+			return nil
 		}
 		result.Statements++
 		if _, err := session.Exec(s); err != nil {
@@ -82,26 +75,70 @@ func ImportSQL(r io.Reader, database DB, totalSize int64, onProgress func(bytesR
 		if onProgress != nil {
 			onProgress(bytesRead, totalSize)
 		}
+		return nil
+	})
+	return result, err
+}
+
+// scanSQLStatements splits a SQL dump into statements and calls fn for each
+// non-empty statement. mysql enables MySQL lexical rules used by mysqldump and
+// Sequel Ace: backslash escapes in strings, backtick-quoted identifiers, and
+// # line comments.
+func scanSQLStatements(r io.Reader, mysql bool, fn func(stmt string, bytesRead int64) error) error {
+	scanner := bufio.NewReader(r)
+	var stmt strings.Builder
+	var inSingleQuote, inDoubleQuote, inBacktick bool
+	var inLineComment, inBlockComment, inMySQLComment bool
+	var bytesRead int64
+
+	readNext := func() (byte, bool) {
+		b, err := scanner.ReadByte()
+		if err != nil {
+			return 0, false
+		}
+		bytesRead++
+		return b, true
 	}
+
+	flush := func() error {
+		s := strings.TrimSpace(stmt.String())
+		stmt.Reset()
+		if s == "" {
+			return nil
+		}
+		return fn(s, bytesRead)
+	}
+
+	// writeEscaped consumes the byte after a backslash so \' does not end a
+	// string. Returns false on EOF after the backslash.
+	writeEscaped := func(backslash byte) bool {
+		stmt.WriteByte(backslash)
+		next, ok := readNext()
+		if !ok {
+			return false
+		}
+		stmt.WriteByte(next)
+		return true
+	}
+
+	inString := func() bool { return inSingleQuote || inDoubleQuote }
 
 	for {
 		b, err := scanner.ReadByte()
 		if err == io.EOF {
-			flush()
-			break
+			return flush()
 		}
 		if err != nil {
-			return result, err
+			return err
 		}
 		bytesRead++
 
 		ch := byte(0)
-		peek, err := scanner.Peek(1)
-		if err == nil {
+		if peek, err := scanner.Peek(1); err == nil {
 			ch = peek[0]
 		}
 
-		// Handle line comments (-- to end of line): discard entirely.
+		// Handle line comments (-- / # to end of line): discard entirely.
 		if inLineComment {
 			if b == '\n' {
 				inLineComment = false
@@ -111,8 +148,7 @@ func ImportSQL(r io.Reader, database DB, totalSize int64, onProgress func(bytesR
 		// Handle block comments (/* ... */): discard entirely.
 		if inBlockComment {
 			if b == '*' && ch == '/' {
-				scanner.ReadByte()
-				bytesRead++
+				readNext()
 				inBlockComment = false
 			}
 			continue
@@ -123,12 +159,17 @@ func ImportSQL(r io.Reader, database DB, totalSize int64, onProgress func(bytesR
 		// state is tracked so a */ inside a string literal doesn't end the
 		// comment prematurely; semicolons inside do NOT terminate the statement.
 		if inMySQLComment {
+			if mysql && inString() && b == '\\' {
+				if !writeEscaped(b) {
+					return flush()
+				}
+				continue
+			}
 			if b == '\'' && !inDoubleQuote {
 				if inSingleQuote && ch == '\'' {
 					stmt.WriteByte(b)
 					stmt.WriteByte(ch)
-					scanner.ReadByte()
-					bytesRead++
+					readNext()
 					continue
 				}
 				inSingleQuote = !inSingleQuote
@@ -138,30 +179,50 @@ func ImportSQL(r io.Reader, database DB, totalSize int64, onProgress func(bytesR
 			}
 			stmt.WriteByte(b)
 			if b == '*' && ch == '/' && !inSingleQuote && !inDoubleQuote {
-				scanner.ReadByte()
-				bytesRead++
+				readNext()
 				stmt.WriteByte('/')
 				inMySQLComment = false
 			}
 			continue
 		}
 
-		// Detect comment starts when not inside a string.
-		if !inSingleQuote && !inDoubleQuote {
+		// Backtick-quoted identifiers (MySQL): semicolons inside do not end
+		// the statement. Doubled backticks are an escaped backtick.
+		if inBacktick {
+			stmt.WriteByte(b)
+			if b == '`' {
+				if ch == '`' {
+					readNext()
+					stmt.WriteByte('`')
+					continue
+				}
+				inBacktick = false
+			}
+			continue
+		}
+
+		// Detect comment / identifier starts when not inside a string.
+		if !inString() {
+			if mysql && b == '`' {
+				inBacktick = true
+				stmt.WriteByte(b)
+				continue
+			}
+			if mysql && b == '#' {
+				inLineComment = true
+				continue
+			}
 			if b == '-' && ch == '-' {
-				scanner.ReadByte()
-				bytesRead++
+				readNext()
 				inLineComment = true
 				continue
 			}
 			if b == '/' && ch == '*' {
-				scanner.ReadByte()
-				bytesRead++
+				readNext()
 				// /*! starts a MySQL conditional comment: preserve it verbatim.
 				peek2, err := scanner.Peek(1)
 				if err == nil && peek2[0] == '!' {
-					scanner.ReadByte()
-					bytesRead++
+					readNext()
 					stmt.WriteString("/*!")
 					inMySQLComment = true
 				} else {
@@ -171,14 +232,23 @@ func ImportSQL(r io.Reader, database DB, totalSize int64, onProgress func(bytesR
 			}
 		}
 
+		// MySQL backslash escapes inside strings: \' is an apostrophe, not
+		// a terminator. Sequel Ace / mysqldump emit this form. SQLite and
+		// Postgres dumps use '' instead; treating \ as escape there would
+		// swallow the following quote.
+		if mysql && inString() && b == '\\' {
+			if !writeEscaped(b) {
+				return flush()
+			}
+			continue
+		}
+
 		// Track string state.
 		if b == '\'' && !inDoubleQuote {
-			// Check for escaped quote ('').
 			if inSingleQuote && ch == '\'' {
 				stmt.WriteByte(b)
 				stmt.WriteByte(ch)
-				scanner.ReadByte()
-				bytesRead++
+				readNext()
 				continue
 			}
 			inSingleQuote = !inSingleQuote
@@ -188,15 +258,15 @@ func ImportSQL(r io.Reader, database DB, totalSize int64, onProgress func(bytesR
 		}
 
 		// Statement terminator.
-		if b == ';' && !inSingleQuote && !inDoubleQuote {
-			flush()
+		if b == ';' && !inString() && !inBacktick {
+			if err := flush(); err != nil {
+				return err
+			}
 			continue
 		}
 
 		stmt.WriteByte(b)
 	}
-
-	return result, nil
 }
 
 // hasExecutableSQL reports whether stmt contains any SQL once all comments

@@ -47,13 +47,15 @@ func TestDumpSQL_BasicTable(t *testing.T) {
 	out := buf.String()
 
 	// Must contain expected structural elements.
+	// CREATE TABLE comes from sqlite_master (the original DDL), not a
+	// reconstructed statement — identifiers are unquoted as written.
 	for _, want := range []string{
 		"-- creel SQL dump",
 		`DROP TABLE IF EXISTS "users";`,
-		`CREATE TABLE "users" (`,
-		`"id" INTEGER PRIMARY KEY`,
-		`"name" TEXT NOT NULL`,
-		`"email" TEXT`,
+		`CREATE TABLE users (`,
+		`id INTEGER PRIMARY KEY`,
+		`name TEXT NOT NULL`,
+		`email TEXT`,
 		`INSERT INTO "users" ("id", "name", "email") VALUES`,
 		`(1, 'alice', 'alice@test.com')`,
 		`(2, 'bob', 'bob@test.com')`,
@@ -87,7 +89,7 @@ func TestDumpSQL_EmptyTable(t *testing.T) {
 	if strings.Contains(out, "INSERT INTO") {
 		t.Errorf("empty table should not produce INSERTs:\n%s", out)
 	}
-	if !strings.Contains(out, `CREATE TABLE "empty"`) {
+	if !strings.Contains(out, `CREATE TABLE empty`) {
 		t.Errorf("missing CREATE TABLE:\n%s", out)
 	}
 }
@@ -370,7 +372,7 @@ func TestFormatSQLValue(t *testing.T) {
 		{"2026-05-08T18:38:00Z", "TEXT", "'2026-05-08T18:38:00Z'"},
 	}
 	for _, tc := range tests {
-		got := formatSQLValue(tc.value, tc.colType)
+		got := formatSQLValue(tc.value, tc.colType, DriverSQLite)
 		if got != tc.want {
 			t.Errorf("formatSQLValue(%q, %q) = %q, want %q", tc.value, tc.colType, got, tc.want)
 		}
@@ -393,17 +395,113 @@ func TestIsDateTimeType(t *testing.T) {
 }
 
 func TestIsNumericType(t *testing.T) {
-	numeric := []string{"INT", "integer", "BIGINT", "DECIMAL(10,2)", "REAL", "FLOAT", "BOOLEAN", "bool", "TINYINT"}
+	numeric := []string{
+		"INT", "integer", "BIGINT", "DECIMAL(10,2)", "REAL", "FLOAT", "BOOLEAN", "bool", "TINYINT",
+		"BIGINT UNSIGNED", "bigint unsigned", "INT UNSIGNED", "int unsigned",
+		"TINYINT UNSIGNED", "SMALLINT UNSIGNED", "MEDIUMINT UNSIGNED",
+		"BIGINT(20) UNSIGNED", "INT(11) UNSIGNED", "DECIMAL(10,2) UNSIGNED",
+		"unsigned big int", "UNSIGNED BIGINT",
+	}
 	for _, ty := range numeric {
 		if !isNumericType(ty) {
 			t.Errorf("isNumericType(%q) = false, want true", ty)
 		}
 	}
-	nonNumeric := []string{"TEXT", "VARCHAR(255)", "BLOB", "", "DATE"}
+	nonNumeric := []string{"TEXT", "VARCHAR(255)", "BLOB", "", "DATE", "JSON"}
 	for _, ty := range nonNumeric {
 		if isNumericType(ty) {
 			t.Errorf("isNumericType(%q) = true, want false", ty)
 		}
+	}
+}
+
+func TestDumpSQL_PreservesTableConstraints(t *testing.T) {
+	s := newTestSQLiteDB(t)
+	_, err := s.Exec(`CREATE TABLE items (
+		id INTEGER PRIMARY KEY,
+		email TEXT NOT NULL UNIQUE,
+		n INTEGER CHECK (n > 0),
+		parent_id INTEGER,
+		FOREIGN KEY (parent_id) REFERENCES items(id) ON DELETE CASCADE
+	)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if err := DumpTables(&buf, s, DriverSQLite, "test", []string{"items"}, FormatSQL); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"UNIQUE",
+		"CHECK (n > 0)",
+		"ON DELETE CASCADE",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dump dropped %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestTableDefinition_SQLite(t *testing.T) {
+	s := newTestSQLiteDB(t)
+	_, err := s.Exec(`CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT UNIQUE)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ddl, err := s.TableDefinition("t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ddl, "CREATE TABLE t") {
+		t.Errorf("TableDefinition missing CREATE TABLE: %q", ddl)
+	}
+	if !strings.Contains(ddl, "UNIQUE") {
+		t.Errorf("TableDefinition dropped UNIQUE: %q", ddl)
+	}
+	if strings.HasSuffix(ddl, ";") {
+		t.Errorf("TableDefinition should not end with semicolon: %q", ddl)
+	}
+
+	missing, err := s.TableDefinition("no_such_table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing != "" {
+		t.Errorf("missing table: got %q, want empty", missing)
+	}
+}
+
+func TestFormatSQLValue_MySQLEscapes(t *testing.T) {
+	got := formatSQLValue(`App\Models\Auth\User`, "VARCHAR", DriverMySQL)
+	want := "'" + `App\\Models\\Auth\\User` + "'"
+	if got != want {
+		t.Errorf("namespace: got %q want %q", got, want)
+	}
+
+	if got := formatSQLValue("it's", "TEXT", DriverMySQL); got != "'"+`it\'s`+"'" {
+		t.Errorf("apostrophe: %s", got)
+	}
+
+	if got := formatSQLValue("line1\nline2", "TEXT", DriverMySQL); got != "'"+`line1\nline2`+"'" {
+		t.Errorf("newline: %s", got)
+	}
+
+	if got := formatSQLValue(`foo\`, "TEXT", DriverMySQL); got != "'"+`foo\\`+"'" {
+		t.Errorf("trailing backslash: %s", got)
+	}
+
+	href := formatSQLValue(`href="shops"'`, "TEXT", DriverMySQL)
+	if !strings.Contains(href, `\"`) || !strings.Contains(href, `\'`) {
+		t.Errorf("href quotes not escaped: %s", href)
+	}
+}
+
+func TestFormatSQLValue_UnsignedIntsUnquoted(t *testing.T) {
+	got := formatSQLValue("87", "BIGINT UNSIGNED", DriverMySQL)
+	if got != "87" {
+		t.Errorf("formatSQLValue(87, BIGINT UNSIGNED) = %q, want 87", got)
 	}
 }
 

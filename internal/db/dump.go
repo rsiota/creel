@@ -27,8 +27,8 @@ const insertBatchSize = 100
 //
 // For FormatSQL the output is a logical SQL dump in the source driver's own
 // dialect (SQLite syntax for SQLite sources, MySQL syntax for MySQL sources).
-// Each table is preceded by DROP TABLE IF EXISTS, followed by CREATE TABLE,
-// then batched INSERT statements.
+// Each table is preceded by DROP TABLE IF EXISTS, followed by CREATE TABLE
+// (native DDL when the driver exposes it), then batched INSERT statements.
 //
 // For incremental / streaming use, callers may instead invoke DumpHeader,
 // DumpTable, and DumpFooter directly.
@@ -98,19 +98,13 @@ func DumpFooter(w io.Writer, driver Driver) error {
 
 // DumpTable writes a single table's DROP, CREATE, and INSERT statements.
 func DumpTable(w io.Writer, database DB, driver Driver, table string) error {
-	cols, err := database.TableColumnInfo(table)
-	if err != nil {
-		return err
-	}
-	fks, err := database.ForeignKeys(table)
-	if err != nil {
-		return err
-	}
-
 	fmt.Fprintf(w, "--\n-- Table: %s\n--\n", table)
 	fmt.Fprintf(w, "DROP TABLE IF EXISTS %s;\n", quoteIdent(driver, table))
 
-	createSQL := buildCreateTableFromInfo(driver, table, cols, fks)
+	createSQL, err := tableCreateSQL(database, driver, table)
+	if err != nil {
+		return err
+	}
 	fmt.Fprintf(w, "%s;\n\n", createSQL)
 
 	result, err := database.Execute("SELECT * FROM " + quoteIdent(driver, table))
@@ -150,7 +144,7 @@ func DumpTable(w io.Writer, database DB, driver Driver, table string) error {
 			if data, ok := result.Blobs[BlobKey{Row: i, Col: j}]; ok {
 				values[j] = BlobSQLLiteral(data, colTypes[j])
 			} else {
-				values[j] = formatSQLValue(val, colTypes[j])
+				values[j] = formatSQLValue(val, colTypes[j], driver)
 			}
 		}
 		fmt.Fprintf(w, "  (%s)", strings.Join(values, ", "))
@@ -164,10 +158,35 @@ func DumpTable(w io.Writer, database DB, driver Driver, table string) error {
 	return nil
 }
 
+// tableCreateSQL prefers the driver's native CREATE TABLE (MySQL SHOW CREATE
+// TABLE, SQLite sqlite_master) so indexes, named FKs, ON DELETE/UPDATE, CHECKs,
+// and engine/charset options survive a dump. When the driver has no native
+// definition, the statement is reconstructed from column and FK metadata.
+func tableCreateSQL(database DB, driver Driver, table string) (string, error) {
+	ddl, err := database.TableDefinition(table)
+	if err != nil {
+		return "", err
+	}
+	ddl = strings.TrimRight(strings.TrimSpace(ddl), ";")
+	if ddl != "" {
+		return ddl, nil
+	}
+	cols, err := database.TableColumnInfo(table)
+	if err != nil {
+		return "", err
+	}
+	fks, err := database.ForeignKeys(table)
+	if err != nil {
+		return "", err
+	}
+	return buildCreateTableFromInfo(driver, table, cols, fks), nil
+}
+
 // buildCreateTableFromInfo reconstructs a CREATE TABLE statement from column
 // metadata. Single-column primary keys are emitted inline; composite primary
 // keys use a table-level constraint. Foreign keys are appended as table-level
-// constraints.
+// constraints. Used when TableDefinition is empty (Postgres, or catalogs that
+// store no original DDL).
 func buildCreateTableFromInfo(driver Driver, table string, cols []TableColumnInfo, fks []ForeignKey) string {
 	var pkCols []string
 	for _, c := range cols {
@@ -231,9 +250,10 @@ func buildCreateTableFromInfo(driver Driver, table string, cols []TableColumnInf
 // treated as SQL NULL (consistent with how Execute represents null cells).
 // Numeric column types are left unquoted; date/time types are normalized from
 // the ISO-8601 format the driver emits (parseTime) to 'YYYY-MM-DD HH:MM:SS',
-// which both MySQL and SQLite accept; all other values are single-quoted with
-// embedded single quotes doubled.
-func formatSQLValue(value, colType string) string {
+// which both MySQL and SQLite accept. SQLite/Postgres strings double embedded
+// quotes; MySQL strings also backslash-escape \, ', ", and control chars
+// (mysqldump / Sequel Ace style) so a value like App\Models\User round-trips.
+func formatSQLValue(value, colType string, driver Driver) string {
 	if value == "NULL" {
 		return "NULL"
 	}
@@ -244,7 +264,44 @@ func formatSQLValue(value, colType string) string {
 	if IsDateTimeType(colType) {
 		v = FormatDateTimeLiteral(v)
 	}
+	if driver == DriverMySQL {
+		return mysqlQuoteString(v)
+	}
 	return "'" + strings.ReplaceAll(v, "'", "''") + "'"
+}
+
+// mysqlQuoteString quotes v as a MySQL string literal, matching mysqldump:
+// backslash, quote, newline, carriage return, tab, NUL, and Ctrl-Z are escaped.
+// Without this, a PHP namespace like App\Models\User is imported as
+// AppModelsUser, and a trailing backslash swallows the closing quote.
+func mysqlQuoteString(v string) string {
+	var b strings.Builder
+	b.Grow(len(v) + 2)
+	b.WriteByte('\'')
+	for i := 0; i < len(v); i++ {
+		switch v[i] {
+		case '\\':
+			b.WriteString(`\\`)
+		case '\'':
+			b.WriteString(`\'`)
+		case '"':
+			b.WriteString(`\"`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\t':
+			b.WriteString(`\t`)
+		case 0:
+			b.WriteString(`\0`)
+		case 0x1a:
+			b.WriteString(`\Z`)
+		default:
+			b.WriteByte(v[i])
+		}
+	}
+	b.WriteByte('\'')
+	return b.String()
 }
 
 // IsDateTimeType reports whether a column type stores a date, time, or
@@ -292,14 +349,25 @@ func isNumericType(dbType string) bool {
 	if dbType == "" {
 		return false
 	}
-	t := strings.ToLower(dbType)
+	t := strings.ToLower(strings.TrimSpace(dbType))
+	// Strip size specifiers while keeping a trailing UNSIGNED/SIGNED:
+	// DECIMAL(10,2), BIGINT(20) UNSIGNED, BIGINT UNSIGNED.
 	if i := strings.IndexByte(t, '('); i > 0 {
-		t = t[:i]
+		if j := strings.IndexByte(t[i:], ')'); j >= 0 {
+			t = t[:i] + t[i+j+1:]
+		} else {
+			t = t[:i]
+		}
 	}
+	t = strings.TrimSpace(t)
+	t = strings.TrimSuffix(t, " unsigned")
+	t = strings.TrimSuffix(t, " signed")
 	t = strings.TrimSpace(t)
 	switch t {
 	case "int", "integer", "tinyint", "smallint", "mediumint", "bigint",
 		"unsigned", "int unsigned", "unsigned big int",
+		"unsigned int", "unsigned bigint", "unsigned tinyint",
+		"unsigned smallint", "unsigned mediumint",
 		"real", "double", "float", "decimal", "numeric", "boolean", "bool",
 		"double precision", "serial", "bigserial", "smallserial", "money":
 		return true

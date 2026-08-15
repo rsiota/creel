@@ -193,9 +193,12 @@ erDiagram
 - **Table structure view** (`d`) — a tabbed structure editor: columns (editable
   grid), foreign keys, indexes, check constraints, and triggers in one view,
   plus a definition tab for views.
-- **Import / export** — streaming SQL dump importer (`I`) and a pure-Go
-  `mysqldump`-compatible exporter (`X`); result-set export via the `g X` dialog
-  (format, columns, and whole-table/marked/page scope) or instant CSV (`x`).
+- **Import / export** — streaming SQL dump importer (`I`) that understands
+  MySQL/Sequel Ace dumps (`\'` escapes, backticks, `#` comments) and a
+  pure-Go `mysqldump`-compatible exporter (`X`) that uses native CREATE TABLE
+  DDL (MySQL `SHOW CREATE TABLE`, SQLite `sqlite_master`); result-set export
+  via the `g X` dialog (format, columns, and whole-table/marked/page scope)
+  or instant CSV (`x`).
 
 ## Workflow
 
