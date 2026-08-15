@@ -798,7 +798,7 @@ func exCommands() []exCmdSpec {
 		},
 		{
 			verbs:    []string{"line"},
-			desc:     "line chart from two numeric result columns (bang = all rows)",
+			desc:     "line chart from two numeric or datetime columns (bang = all rows)",
 			usage:    ":line[!] [x] [y]",
 			argKind:  exArgOptional,
 			complete: completeLineColumns,
@@ -806,7 +806,7 @@ func exCommands() []exCmdSpec {
 		},
 		{
 			verbs:    []string{"scatter"},
-			desc:     "scatter chart from two numeric result columns (bang = all rows)",
+			desc:     "scatter chart from two numeric or datetime columns (bang = all rows)",
 			usage:    ":scatter[!] [x] [y]",
 			argKind:  exArgOptional,
 			complete: completeLineColumns,

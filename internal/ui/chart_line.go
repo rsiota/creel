@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -15,17 +17,19 @@ type chartPoint struct {
 	xLabel string
 }
 
-// buildLineSeries walks the current result page into x/y points. Both columns
-// must parse as numbers; NULL / non-numeric cells are skipped. Points are
-// sorted by x ascending. Negative values are kept (unlike bar charts).
+// buildLineSeries walks the current result page into x/y points. Each cell
+// must parse as a number or a datetime; NULL / other text is skipped. Points
+// are sorted by x ascending. Negative numbers are kept (unlike bar charts).
+// Datetime cells become Unix seconds so they scale on the axis; xLabel keeps
+// the original text.
 func buildLineSeries(r ResultsTable, xCol, yCol int) (pts []chartPoint, skipped int) {
 	n := r.NumRows()
 	pts = make([]chartPoint, 0, n)
 	for i := 0; i < n; i++ {
 		xr := r.RowValue(i, xCol)
 		yr := r.RowValue(i, yCol)
-		x, xok := parseFloat(xr)
-		y, yok := parseFloat(yr)
+		x, xok := parseChartScalar(xr)
+		y, yok := parseChartScalar(yr)
 		if !xok || !yok || math.IsNaN(x) || math.IsNaN(y) || math.IsInf(x, 0) || math.IsInf(y, 0) {
 			skipped++
 			continue
@@ -43,6 +47,48 @@ func buildLineSeries(r ResultsTable, xCol, yCol int) (pts []chartPoint, skipped 
 		return pts[i].y < pts[j].y
 	})
 	return pts, skipped
+}
+
+// parseChartScalar parses a chart axis cell as a float, then as a datetime
+// (Unix seconds). strconv is required so "2026-01-07" is not read as 2026.
+func parseChartScalar(s string) (float64, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "NULL" {
+		return 0, false
+	}
+	if f, err := strconv.ParseFloat(s, 64); err == nil {
+		return f, true
+	}
+	t, ok := parseChartTime(s)
+	if !ok {
+		return 0, false
+	}
+	return float64(t.Unix()) + float64(t.Nanosecond())/1e9, true
+}
+
+var chartTimeLayouts = []string{
+	time.RFC3339Nano,
+	time.RFC3339,
+	"2006-01-02T15:04:05.999999999",
+	"2006-01-02T15:04:05",
+	"2006-01-02 15:04:05.999999999Z07:00",
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02 15:04:05Z07:00",
+	"2006-01-02 15:04:05",
+	"2006-01-02 15:04",
+	"2006-01-02",
+	"15:04:05.999999999",
+	"15:04:05",
+	"15:04",
+}
+
+func parseChartTime(s string) (time.Time, bool) {
+	for _, layout := range chartTimeLayouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 const (

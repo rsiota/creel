@@ -15,7 +15,8 @@ commits, so it can come up empty).
 - `:bar!` / `:line!` / `:hist!` / `:freq!` / `:scatter!` chart every row of the last SELECT (capped at 50,000), not just the current page.
 - Histogram charts (`:hist`) of a numeric column, with optional bin count.
 - Frequency bar charts (`:freq`, or `:bar` with one column) of distinct values.
-- Scatter charts (`:scatter`) of two numeric columns, without connecting the points.
+- Scatter charts (`:scatter`) of two numeric or datetime columns, without connecting the points.
+- `:line` / `:scatter` plot datetime x (ISO-8601, SQL timestamps, date-only) as Unix seconds, keeping the original text as the axis label.
 - `Enter` on a bar/hist/freq chart keeps rows for that bar and restores the grid.
 
 ## [0.2.0] - 2026-08-14

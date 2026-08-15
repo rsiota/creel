@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -92,8 +93,62 @@ func TestExLineErrors(t *testing.T) {
 	}
 	m.schemaMsg = ""
 	m.exLine([]string{"a", "b"}, false)
-	if !strings.Contains(m.schemaMsg, "no numeric") {
+	if !strings.Contains(m.schemaMsg, "no numeric or datetime") {
 		t.Errorf("schemaMsg = %q", m.schemaMsg)
+	}
+}
+
+func TestParseChartScalarDatetimeNotYear(t *testing.T) {
+	got, ok := parseChartScalar("2026-01-07")
+	if !ok {
+		t.Fatal("date-only should parse")
+	}
+	want := float64(time.Date(2026, 1, 7, 0, 0, 0, 0, time.UTC).Unix())
+	if got != want {
+		t.Errorf("x = %v, want unix %v (not year 2026)", got, want)
+	}
+	if got == 2026 {
+		t.Fatal("date-only must not parse as year 2026")
+	}
+}
+
+func TestParseChartScalarNumeric(t *testing.T) {
+	got, ok := parseChartScalar("3.5")
+	if !ok || got != 3.5 {
+		t.Errorf("got %v ok=%v, want 3.5", got, ok)
+	}
+	got, ok = parseChartScalar("1767744000")
+	if !ok || got != 1767744000 {
+		t.Errorf("unix epoch string = %v ok=%v", got, ok)
+	}
+	if _, ok := parseChartScalar("not-a-value"); ok {
+		t.Fatal("text should not parse")
+	}
+}
+
+func TestBuildLineSeriesDatetimeSortsAndKeepsLabel(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"created_at", "amount"}, [][]string{
+		{"2026-01-09", "30"},
+		{"2026-01-07T00:00:00Z", "10"},
+		{"2026-01-08 12:00:00", "20"},
+		{"nope", "1"},
+	}, "")
+	pts, skipped := buildLineSeries(r, 0, 1)
+	if skipped != 1 {
+		t.Errorf("skipped = %d, want 1", skipped)
+	}
+	if len(pts) != 3 {
+		t.Fatalf("points = %d, want 3: %+v", len(pts), pts)
+	}
+	if pts[0].xLabel != "2026-01-07T00:00:00Z" || pts[0].y != 10 {
+		t.Errorf("pts[0] = %+v", pts[0])
+	}
+	if pts[1].xLabel != "2026-01-08 12:00:00" || pts[2].xLabel != "2026-01-09" {
+		t.Errorf("labels = %q %q", pts[1].xLabel, pts[2].xLabel)
+	}
+	if !(pts[0].x < pts[1].x && pts[1].x < pts[2].x) {
+		t.Errorf("x order = %v %v %v", pts[0].x, pts[1].x, pts[2].x)
 	}
 }
 

@@ -2559,7 +2559,7 @@ func (m *Model) exLine(args []string, force bool) tea.Cmd {
 		kind:     chartKindLine,
 		colNames: []string{xName, yName},
 		title:    title,
-		emptyErr: "no numeric x/y pairs in " + xName + " × " + yName,
+		emptyErr: "no numeric or datetime x/y pairs in " + xName + " × " + yName,
 	}, force)
 }
 
@@ -2583,7 +2583,7 @@ func (m *Model) exScatter(args []string, force bool) tea.Cmd {
 		kind:     chartKindScatter,
 		colNames: []string{xName, yName},
 		title:    title,
-		emptyErr: "no numeric x/y pairs in " + xName + " × " + yName,
+		emptyErr: "no numeric or datetime x/y pairs in " + xName + " × " + yName,
 	}, force)
 }
 

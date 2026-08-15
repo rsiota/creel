@@ -49,11 +49,13 @@ the last SELECT.
 
 ### Line chart (`M` + `:line`)
 
-Mark two numeric columns with `M` (first = x, second = y), then run `:line`
-to plot them in the results slot, sorted by x. Or `:line <x> <y>`. `h`/`l`
-(or `j`/`k`) move a cursor along the series; `Esc`/`q` restores the grid.
-Non-numeric and NULL cells are skipped. Negative values are kept.
-`:line!` charts every row of the last SELECT.
+Mark two numeric or datetime columns with `M` (first = x, second = y), then
+run `:line` to plot them in the results slot, sorted by x. Or `:line <x> <y>`.
+`h`/`l` (or `j`/`k`) move a cursor along the series; `Esc`/`q` restores the
+grid. Datetime cells (ISO-8601, `YYYY-MM-DD HH:MM:SS`, date-only) are placed
+by Unix time; the original text is the axis label. Other non-numeric and NULL
+cells are skipped. Negative numbers are kept. `:line!` charts every row of
+the last SELECT.
 
 ### Scatter chart (`M` + `:scatter`)
 
