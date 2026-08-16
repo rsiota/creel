@@ -27,8 +27,9 @@ func formKey(r rune) tea.KeyMsg {
 // The visible field set depends on the driver and the SSH tunnel toggle:
 //
 //	sqlite           → 6  (Name, Driver, Database, Secrets, Read-only, Group)
-//	mysql/pg, no SSH → 11  (+ Host, Port, User, Pass, SSH Tunnel)
-//	mysql/pg + SSH   → 17  (+ 6 SSH fields)
+//	sqlite           → 6   (Name, Driver, Database, Secrets, Read-only, Group)
+//	mysql/pg, no SSH → 13  (+ Host, Port, Socket, User, Pass, SSL, SSH Tunnel)
+//	mysql/pg + SSH   → 19  (+ 6 SSH fields)
 func TestConnectionFormConditionalFields(t *testing.T) {
 	f := NewConnectionForm()
 	f.SetSize(67, f.contentHeight()) // tall enough to fit every visible field
@@ -43,7 +44,7 @@ func TestConnectionFormConditionalFields(t *testing.T) {
 			t.Errorf("sqlite: %q should be visible", l)
 		}
 	}
-	for _, l := range []string{"Host", "Port", "Username", "Password", "SSH Tunnel", "SSH Host"} {
+	for _, l := range []string{"Host", "Port", "Username", "Password", "SSL", "Socket", "SSH Tunnel", "SSH Host"} {
 		if strings.Contains(view, l) {
 			t.Errorf("sqlite: %q should be hidden", l)
 		}
@@ -53,11 +54,17 @@ func TestConnectionFormConditionalFields(t *testing.T) {
 	f.fields[fieldDriver].SetValue("mysql")
 	f.SetSize(67, f.contentHeight())
 	view = formStripANSI(f.View())
-	if got := countTopBorders(view); got != 11 {
-		t.Errorf("mysql no-ssh: visible fields=%d, want 11\n%s", got, view)
+	if got := countTopBorders(view); got != 13 {
+		t.Errorf("mysql no-ssh: visible fields=%d, want 13\n%s", got, view)
 	}
 	if !strings.Contains(view, "SSH Tunnel") {
 		t.Error("mysql: SSH Tunnel toggle should be visible")
+	}
+	if !strings.Contains(view, "SSL") {
+		t.Error("mysql: SSL field should be visible")
+	}
+	if !strings.Contains(view, "Socket") {
+		t.Error("mysql: Socket field should be visible")
 	}
 	for _, l := range []string{"SSH Host", "SSH Port", "SSH Key"} {
 		if strings.Contains(view, l) {
@@ -69,8 +76,8 @@ func TestConnectionFormConditionalFields(t *testing.T) {
 	f.fields[fieldSSHTunnel].SetValue("yes")
 	f.SetSize(67, f.contentHeight())
 	view = formStripANSI(f.View())
-	if got := countTopBorders(view); got != 17 {
-		t.Errorf("mysql+ssh: visible fields=%d, want 17\n%s", got, view)
+	if got := countTopBorders(view); got != 19 {
+		t.Errorf("mysql+ssh: visible fields=%d, want 19\n%s", got, view)
 	}
 	for _, l := range []string{"SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass"} {
 		if !strings.Contains(view, l) {
@@ -274,8 +281,8 @@ func TestConnectionFormDriverSelectorCycling(t *testing.T) {
 	if f.driver() != "mysql" {
 		t.Errorf("after l: driver=%q, want mysql", f.driver())
 	}
-	if got := len(f.visibleFields()); got != 11 {
-		t.Errorf("mysql visible fields=%d, want 11", got)
+	if got := len(f.visibleFields()); got != 13 {
+		t.Errorf("mysql visible fields=%d, want 13", got)
 	}
 
 	// l: mysql -> postgres.
@@ -315,8 +322,9 @@ func TestConnectionFormSSHToggleRevealsFields(t *testing.T) {
 	f.fields[fieldDriver].SetValue("mysql")
 	f.SetSize(67, fieldCount*linesPerField+1) // cap that always fits, even with SSH on
 
-	// Walk to the SSH Tunnel field (position 7 in the mysql list).
-	for i := 0; i < 7; i++ {
+	// Walk to the SSH Tunnel field (position 9 in the mysql list:
+	// Name, Driver, Database, Host, Port, Socket, User, Pass, SSL, SSH Tunnel).
+	for i := 0; i < 9; i++ {
 		f, _ = f.Update(formKey('j'))
 	}
 	if f.activeField() != fieldSSHTunnel {

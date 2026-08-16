@@ -18,6 +18,8 @@ const (
 	VimInsert
 )
 
+const maxEditorUndo = 80
+
 // vimPending tracks pending operator state in normal mode (e.g. 'd' waiting for 'd').
 type vimPending int
 
@@ -27,6 +29,13 @@ const (
 	vimPendingG                // 'g' pressed, waiting for 'g'
 	vimPendingEqual            // '=' pressed, waiting for '='
 )
+
+// editorSnap is one undo/redo checkpoint: buffer text plus cursor.
+type editorSnap struct {
+	value string
+	line  int
+	col   int
+}
 
 // QueryEditor wraps a textarea with vim-style modal editing.
 type QueryEditor struct {
@@ -40,6 +49,20 @@ type QueryEditor struct {
 	yank    string
 
 	completion completion
+
+	undo []editorSnap
+	redo []editorSnap
+	// insertBase is the buffer from the moment insert mode was entered. On
+	// esc, if the text changed, it becomes one undo unit (vim-style).
+	insertBase *editorSnap
+
+	searching    bool
+	searchQuery  string
+	searchFocus  string // last confirmed / query; n/N replay this
+	searchOffset int    // last match rune offset; n/N step from here
+
+	visualLine   bool
+	visualAnchor int // logical line where V was pressed
 }
 
 // NewQueryEditor creates a new SQL query editor with vim mode.
@@ -67,10 +90,34 @@ func (e QueryEditor) Value() string {
 	return e.textarea.Value()
 }
 
-// SetValue replaces the editor contents.
+// SetValue replaces the editor contents. If the text actually changes it
+// pushes an undo checkpoint so AI / :e / openTable / history drops are
+// reversible with `u`.
 func (e *QueryEditor) SetValue(s string) {
-	e.textarea.SetValue(s)
+	if e.Value() == s {
+		return
+	}
+	e.pushUndo()
+	e.setValueRaw(s)
 }
+
+func (e *QueryEditor) setValueRaw(s string) {
+	e.textarea.SetValue(s)
+	e.visualLine = false
+}
+
+// CapturingKeys reports whether the editor should swallow keys that the
+// workspace would otherwise treat as global (q, :, ctrl+p, …): insert mode
+// and an open `/` search prompt.
+func (e QueryEditor) CapturingKeys() bool {
+	return e.vimMode == VimInsert || e.searching || e.visualLine
+}
+
+// IsSearching reports whether the `/` prompt is open.
+func (e QueryEditor) IsSearching() bool { return e.searching }
+
+// IsVisual reports whether visual-line mode is active.
+func (e QueryEditor) IsVisual() bool { return e.visualLine }
 
 // VimMode returns the current vim mode.
 func (e QueryEditor) VimMode() VimMode {
@@ -79,7 +126,12 @@ func (e QueryEditor) VimMode() VimMode {
 
 // VimModeStr returns a human-readable mode name.
 func (e QueryEditor) VimModeStr() string {
-	if e.vimMode == VimNormal {
+	switch {
+	case e.searching:
+		return "SEARCH"
+	case e.visualLine:
+		return "V-LINE"
+	case e.vimMode == VimNormal:
 		return "NORMAL"
 	}
 	return "INSERT"
@@ -102,12 +154,23 @@ func (e QueryEditor) Focused() bool {
 
 // Reset clears the editor contents.
 func (e *QueryEditor) Reset() {
+	if e.Value() != "" {
+		e.pushUndo()
+	}
 	e.textarea.Reset()
+	e.visualLine = false
+	e.searching = false
 }
 
 // Update handles messages for the query editor.
 func (e QueryEditor) Update(msg tea.Msg) (QueryEditor, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		if e.searching {
+			return e.handleSearch(keyMsg)
+		}
+		if e.visualLine {
+			return e.handleVisualLine(keyMsg)
+		}
 		if e.vimMode == VimNormal {
 			return e.handleNormalMode(keyMsg)
 		}
@@ -151,6 +214,7 @@ func (e QueryEditor) handleInsertMode(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
 	}
 
 	if msg.String() == "esc" {
+		e.commitInsertUndo()
 		e.vimMode = VimNormal
 		e.sendKey("left")
 		return e, nil
@@ -175,6 +239,7 @@ func (e QueryEditor) handleNormalMode(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
 		e.pending = vimPendingNone
 		switch key {
 		case "d":
+			e.pushUndo()
 			e.yank = e.currentLineText()
 			e.sendKey("home")
 			e.sendKey("ctrl+k")
@@ -182,6 +247,7 @@ func (e QueryEditor) handleNormalMode(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
 				e.sendKey("backspace")
 			}
 		case "w":
+			e.pushUndo()
 			e.sendKey("alt+d")
 		}
 		return e, nil
@@ -196,8 +262,9 @@ func (e QueryEditor) handleNormalMode(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
 	if e.pending == vimPendingEqual {
 		e.pending = vimPendingNone
 		if key == "=" {
+			e.pushUndo()
 			formatted := formatSQL(e.textarea.Value())
-			e.textarea.SetValue(formatted)
+			e.setValueRaw(formatted)
 			e.sendKey("ctrl+home")
 		}
 		return e, nil
@@ -238,32 +305,34 @@ func (e QueryEditor) handleNormalMode(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
 
 	// Enter insert mode
 	case "i":
-		e.vimMode = VimInsert
+		e.beginInsert()
 	case "a":
 		e.sendKey("right")
-		e.vimMode = VimInsert
+		e.beginInsert()
 	case "A":
 		e.sendKey("end")
-		e.vimMode = VimInsert
+		e.beginInsert()
 	case "I":
 		e.sendKey("home")
-		e.vimMode = VimInsert
+		e.beginInsert()
 	case "o":
+		e.beginInsert()
 		e.sendKey("end")
 		e.sendKey("enter")
-		e.vimMode = VimInsert
 	case "O":
+		e.beginInsert()
 		e.sendKey("home")
 		e.sendKey("enter")
 		e.sendKey("up")
-		e.vimMode = VimInsert
 
 	// Delete operations
 	case "x":
+		e.pushUndo()
 		e.sendKey("delete")
 	case "d":
 		e.pending = vimPendingD
 	case "D":
+		e.pushUndo()
 		e.yank = e.currentLineText()
 		e.sendKey("ctrl+k")
 
@@ -272,6 +341,7 @@ func (e QueryEditor) handleNormalMode(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
 		e.yank = e.currentLineText()
 	case "p":
 		if e.yank != "" {
+			e.pushUndo()
 			e.sendKey("end")
 			e.sendKey("enter")
 			e.textarea.InsertString(e.yank)
@@ -279,11 +349,31 @@ func (e QueryEditor) handleNormalMode(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
 
 	// Delete character under cursor and enter insert mode
 	case "c":
+		e.beginInsert()
 		e.sendKey("ctrl+k")
-		e.vimMode = VimInsert
 	case "C":
+		e.beginInsert()
 		e.sendKey("ctrl+k")
-		e.vimMode = VimInsert
+
+	// Undo / redo. U is redo so we don't steal global ctrl+r (refresh).
+	case "u":
+		e.undoOnce()
+	case "U":
+		e.redoOnce()
+
+	// Buffer search
+	case "/":
+		e.searching = true
+		e.searchQuery = ""
+	case "n":
+		e.jumpSearch(1)
+	case "N":
+		e.jumpSearch(-1)
+
+	// Visual line
+	case "V":
+		e.visualLine = true
+		e.visualAnchor = e.textarea.Line()
 
 	// Misc
 	case "enter":
@@ -292,6 +382,262 @@ func (e QueryEditor) handleNormalMode(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
 	}
 
 	return e, nil
+}
+
+func (e QueryEditor) snap() editorSnap {
+	line, col := e.cursorLineCol()
+	return editorSnap{value: e.Value(), line: line, col: col}
+}
+
+func (e *QueryEditor) pushSnap(s editorSnap) {
+	e.undo = append(e.undo, s)
+	if len(e.undo) > maxEditorUndo {
+		e.undo = e.undo[len(e.undo)-maxEditorUndo:]
+	}
+	e.redo = nil
+}
+
+func (e *QueryEditor) pushUndo() {
+	e.pushSnap(e.snap())
+}
+
+func (e *QueryEditor) restoreSnap(s editorSnap) {
+	e.setValueRaw(s.value)
+	e.restoreCursor(s.line, s.col)
+}
+
+func (e *QueryEditor) restoreCursor(line, col int) {
+	e.sendKey("ctrl+home")
+	for i := 0; i < line; i++ {
+		e.sendKey("down")
+	}
+	for i := 0; i < col; i++ {
+		e.sendKey("right")
+	}
+}
+
+func (e *QueryEditor) beginInsert() {
+	s := e.snap()
+	e.insertBase = &s
+	e.vimMode = VimInsert
+}
+
+func (e *QueryEditor) commitInsertUndo() {
+	if e.insertBase == nil {
+		return
+	}
+	if e.Value() != e.insertBase.value {
+		e.pushSnap(*e.insertBase)
+	}
+	e.insertBase = nil
+}
+
+func (e *QueryEditor) undoOnce() {
+	if len(e.undo) == 0 {
+		return
+	}
+	cur := e.snap()
+	last := e.undo[len(e.undo)-1]
+	e.undo = e.undo[:len(e.undo)-1]
+	e.redo = append(e.redo, cur)
+	e.restoreSnap(last)
+}
+
+func (e *QueryEditor) redoOnce() {
+	if len(e.redo) == 0 {
+		return
+	}
+	cur := e.snap()
+	last := e.redo[len(e.redo)-1]
+	e.redo = e.redo[:len(e.redo)-1]
+	e.undo = append(e.undo, cur)
+	e.restoreSnap(last)
+}
+
+func (e QueryEditor) visualRange() (lo, hi int) {
+	cur := e.textarea.Line()
+	lo, hi = e.visualAnchor, cur
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+	return lo, hi
+}
+
+func (e QueryEditor) handleSearch(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "ctrl+c":
+		e.searching = false
+		e.searchQuery = ""
+		return e, nil
+	case "enter":
+		e.searchFocus = e.searchQuery
+		e.searching = false
+		e.searchQuery = ""
+		e.searchOffset = e.cursorOffset() - 1
+		e.jumpSearch(1)
+		return e, nil
+	case "backspace":
+		runes := []rune(e.searchQuery)
+		if len(runes) > 0 {
+			e.searchQuery = string(runes[:len(runes)-1])
+		}
+		return e, nil
+	}
+	if msg.Type == tea.KeyRunes && len(msg.Runes) > 0 && msg.Runes[0] >= 0x20 {
+		e.searchQuery += string(msg.Runes[0])
+	}
+	return e, nil
+}
+
+func (e QueryEditor) handleVisualLine(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
+	key := msg.String()
+	if e.pending == vimPendingG {
+		e.pending = vimPendingNone
+		if key == "g" {
+			e.sendKey("ctrl+home")
+		}
+		return e, nil
+	}
+	switch key {
+	case "esc", "ctrl+c", "v":
+		e.visualLine = false
+	case "j", "down":
+		e.sendKey("down")
+	case "k", "up":
+		e.sendKey("up")
+	case "G":
+		e.sendKey("ctrl+end")
+	case "g":
+		e.pending = vimPendingG
+	case "y":
+		e.yankVisual()
+		e.visualLine = false
+	case "d", "x":
+		e.deleteVisual()
+		e.visualLine = false
+	}
+	return e, nil
+}
+
+func (e *QueryEditor) yankVisual() {
+	lo, hi := e.visualRange()
+	lines := strings.Split(e.Value(), "\n")
+	if lo < 0 {
+		lo = 0
+	}
+	if hi >= len(lines) {
+		hi = len(lines) - 1
+	}
+	if lo > hi || len(lines) == 0 {
+		return
+	}
+	e.yank = strings.Join(lines[lo:hi+1], "\n")
+}
+
+func (e *QueryEditor) deleteVisual() {
+	e.yankVisual()
+	e.pushUndo()
+	lo, hi := e.visualRange()
+	lines := strings.Split(e.Value(), "\n")
+	if lo < 0 {
+		lo = 0
+	}
+	if hi >= len(lines) {
+		hi = len(lines) - 1
+	}
+	newLines := append(append([]string{}, lines[:lo]...), lines[hi+1:]...)
+	e.setValueRaw(strings.Join(newLines, "\n"))
+	e.restoreCursor(lo, 0)
+}
+
+func (e QueryEditor) cursorOffset() int {
+	line, col := e.cursorLineCol()
+	lines := strings.Split(e.Value(), "\n")
+	off := 0
+	for i := 0; i < line && i < len(lines); i++ {
+		off += len([]rune(lines[i])) + 1
+	}
+	off += col
+	return off
+}
+
+func (e *QueryEditor) jumpSearch(dir int) {
+	q := e.searchFocus
+	if q == "" {
+		return
+	}
+	lower := strings.ToLower(e.Value())
+	needle := strings.ToLower(q)
+	if needle == "" {
+		return
+	}
+	var starts []int
+	for i := 0; ; {
+		j := strings.Index(lower[i:], needle)
+		if j < 0 {
+			break
+		}
+		starts = append(starts, i+j)
+		i += j + 1
+		if i >= len(lower) {
+			break
+		}
+	}
+	if len(starts) == 0 {
+		return
+	}
+	cur := e.searchOffset
+	pick := starts[0]
+	if dir >= 0 {
+		for _, s := range starts {
+			if s > cur {
+				pick = s
+				break
+			}
+		}
+	} else {
+		pick = starts[len(starts)-1]
+		for i := len(starts) - 1; i >= 0; i-- {
+			if starts[i] < cur {
+				pick = starts[i]
+				break
+			}
+		}
+	}
+	e.searchOffset = pick
+	e.moveToByteOffset(pick)
+}
+
+func (e *QueryEditor) moveToByteOffset(off int) {
+	val := e.Value()
+	if off < 0 {
+		off = 0
+	}
+	if off > len(val) {
+		off = len(val)
+	}
+	prefix := val[:off]
+	line := strings.Count(prefix, "\n")
+	col := 0
+	if i := strings.LastIndex(prefix, "\n"); i >= 0 {
+		col = len([]rune(prefix[i+1:]))
+	} else {
+		col = len([]rune(prefix))
+	}
+	e.restoreCursor(line, col)
+}
+
+func (e QueryEditor) searchPrompt(width int) string {
+	q := e.searchQuery
+	var b strings.Builder
+	b.WriteString(lipgloss.NewStyle().Foreground(colorPrimary).Render("/"))
+	if q == "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorAccent).Underline(true).Render(" "))
+	} else {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorPrimary).Render(q))
+		b.WriteString(lipgloss.NewStyle().Foreground(colorAccent).Underline(true).Render(" "))
+	}
+	return lipgloss.NewStyle().Width(width).Render(b.String())
 }
 
 // sendKey dispatches a synthetic key event to the textarea.

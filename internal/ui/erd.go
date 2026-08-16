@@ -186,15 +186,66 @@ func (m *Model) openERD(focus string) tea.Cmd {
 	mermaid := buildMermaidERD(targets, m.columnCache, m.pkCache, m.fkCache)
 	m.erdPanel.Show(title, layout, mermaid)
 	m.erdPanel.SetSize(m.width, m.height-1)
+	m.applyERDCrossHighlight()
 	return nil
 }
 
-// erdEnter is the ERD panel's Enter-key action: re-focus the ERD on the
-// keyboard-focused card's neighbourhood (openERD on that table), centring on
-// the new root. It is a no-op when there is no focused card or it is already
-// the root. Extracted from the model's key routing so it can be exercised
-// directly without the full connection/Update path.
+// applyERDCrossHighlight, after the panel is shown, traces the FK path from
+// the current results table to the referenced table under the grid cursor (or
+// the explorer's selected edge). The ERD is a full-screen overlay so this is
+// the moment the three views can meet.
+func (m *Model) applyERDCrossHighlight() {
+	if m.erdPanel.layout == nil {
+		return
+	}
+	from := m.currentTable()
+	to := ""
+	if m.explorer.IsVisible() {
+		if n := m.explorer.selectedNode(); n != nil && n.isEdge() {
+			to = n.edge.targetTable
+		}
+	}
+	if to == "" {
+		if fk, ok := m.results.ForeignKeyAtCursor(); ok {
+			to = fk.RefTable
+		}
+	}
+	if to == "" || m.erdPanel.cardNamed(to) == nil {
+		return
+	}
+	if from != "" && !strings.EqualFold(from, to) && m.erdPanel.cardNamed(from) != nil {
+		if path := erdShortestPath(m.erdPanel.layout, from, to); len(path) > 0 {
+			m.erdPanel.pathFrom = from
+			m.erdPanel.pathCards = path
+			m.erdPanel.selected = ""
+		}
+	} else if c := m.erdPanel.cardNamed(to); c != nil {
+		m.erdPanel = m.erdPanel.toggleHighlight(c)
+	}
+	m.erdPanel = m.erdPanel.setFocus(to)
+	if c := m.erdPanel.cardNamed(to); c != nil {
+		m.erdPanel = m.erdPanel.centerOnCard(c)
+	}
+	m.erdPanel.graph = m.erdPanel.renderedGraph()
+}
+
+// erdEnter is the ERD panel's Enter-key action: close the overlay and browse
+// the focused card with SELECT * (openTable). Neighbourhood drill is `f` /
+// the ◎ header click — see erdDrillIn.
 func (m Model) erdEnter() (Model, tea.Cmd) {
+	c := m.erdPanel.focusCard()
+	if c == nil {
+		return m, nil
+	}
+	name := c.name
+	m.erdPanel.Hide()
+	return m, m.openTable(name)
+}
+
+// erdDrillIn re-focuses the ERD on the keyboard-focused card's neighbourhood
+// (the previous Enter behaviour). A no-op when there is no focused card or it
+// is already the root.
+func (m Model) erdDrillIn() (Model, tea.Cmd) {
 	c := m.erdPanel.focusCard()
 	if c == nil {
 		return m, nil

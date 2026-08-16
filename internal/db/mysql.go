@@ -51,19 +51,46 @@ func (m *MySQL) Connect() error {
 }
 
 func (m *MySQL) dsn() string {
-	netName := "tcp"
-	if m.dialNet != "" {
-		netName = m.dialNet
+	return mysqlDSN(m.config, m.dialNet)
+}
+
+// mysqlDSN builds a go-sql-driver DSN. dialNet is the registered SSH-tunnel
+// network name (empty for a direct connection). Extracted so tests can assert
+// tls= and unix() without opening a server.
+func mysqlDSN(cfg ConnectionConfig, dialNet string) string {
+	var netAddr string
+	switch {
+	case dialNet != "":
+		host := cfg.Host
+		if host == "" {
+			host = "localhost"
+		}
+		port := cfg.Port
+		if port == 0 {
+			port = 3306
+		}
+		netAddr = fmt.Sprintf("%s(%s:%d)", dialNet, host, port)
+	case cfg.socketPath() != "":
+		netAddr = fmt.Sprintf("unix(%s)", cfg.socketPath())
+	default:
+		host := cfg.Host
+		if host == "" {
+			host = "localhost"
+		}
+		port := cfg.Port
+		if port == 0 {
+			port = 3306
+		}
+		netAddr = fmt.Sprintf("tcp(%s:%d)", host, port)
 	}
 	// maxAllowedPacket=0 asks the driver to use the server's value so large
 	// dump INSERTs are not capped at the driver's 64MiB default.
-	return fmt.Sprintf("%s:%s@%s(%s:%d)/%s?parseTime=true&maxAllowedPacket=0",
-		m.config.Username,
-		m.config.Password,
-		netName,
-		m.config.Host,
-		m.config.Port,
-		m.config.Database,
+	return fmt.Sprintf("%s:%s@%s/%s?parseTime=true&maxAllowedPacket=0&tls=%s",
+		cfg.Username,
+		cfg.Password,
+		netAddr,
+		cfg.Database,
+		mysqlTLSParam(cfg.SSLMode),
 	)
 }
 
@@ -502,7 +529,7 @@ func (m *MySQL) Triggers(table string) ([]Trigger, error) {
 // CHECK constraints, ENGINE, CHARSET, and COLLATE — unlike reconstructed DDL.
 func (m *MySQL) TableDefinition(table string) (string, error) {
 	var name, ddl string
-	err := m.db.QueryRow("SHOW CREATE TABLE " + quoteIdent(DriverMySQL, table)).Scan(&name, &ddl)
+	err := m.db.QueryRow("SHOW CREATE TABLE "+quoteIdent(DriverMySQL, table)).Scan(&name, &ddl)
 	if err == sql.ErrNoRows {
 		return "", nil
 	}

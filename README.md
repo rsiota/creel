@@ -38,7 +38,7 @@ Linux, macOS, and Windows binaries are on the [latest release](https://github.co
 
 **Connect**
 
-- Three databases, one interface — SQLite, MySQL, and PostgreSQL, with SSH tunneling for remote MySQL and PostgreSQL.
+- Three databases, one interface — SQLite, MySQL, and PostgreSQL, with SSH tunneling, TLS (`sslmode`), and unix sockets for remote MySQL and PostgreSQL.
 - Secret storage — passwords live in the OS keychain (macOS/Windows/Linux), with a plaintext fallback if no keychain is available.
 - Read-only mode — point creel at production safely; per-connection flag or global `-readonly`.
 
@@ -62,7 +62,7 @@ Linux, macOS, and Windows binaries are on the [latest release](https://github.co
 
 **Workflow**
 
-- Vim-mode editor — normal/insert modes, motions, operators, SQL autocompletion.
+- Vim-mode editor — normal/insert modes, motions, operators, undo/redo, buffer search, visual line, SQL autocompletion.
 - Query history & bookmarks — per-connection, persisted, searchable.
 - Session restore — reopen a connection to find your tabs and buffers as you left them.
 - Record inspector — side panel form view tracking the results cursor.

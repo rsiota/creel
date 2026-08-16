@@ -22,6 +22,8 @@ const (
 	fieldPort
 	fieldUser
 	fieldPass
+	fieldSSLMode   // disable / prefer / require / verify-full
+	fieldSocket    // unix socket path; hides nothing — TCP host is ignored at connect if set
 	fieldSSHTunnel // no/yes toggle: reveals the SSH fields below when "yes"
 	fieldSSHHost
 	fieldSSHPort
@@ -39,6 +41,7 @@ const (
 // indices above. It is shared by rendering and any label lookups.
 var formLabels = [...]string{
 	"Name", "Driver", "Database", "Host", "Port", "Username", "Password",
+	"SSL", "Socket",
 	"SSH Tunnel", "SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass", "SSH Passphrase",
 	"Secrets", "Read-only", "Group",
 }
@@ -48,6 +51,7 @@ var formLabels = [...]string{
 // Fields absent from the map are free-text and edited with e/i/a.
 var formChoices = map[int][]string{
 	fieldDriver:    {"sqlite", "mysql", "postgres"},
+	fieldSSLMode:   {"disable", "prefer", "require", "verify-full"},
 	fieldSSHTunnel: {"no", "yes"},
 	fieldSecrets:   {"keychain", "plain"},
 	fieldReadOnly:  {"no", "yes"},
@@ -107,6 +111,12 @@ func NewConnectionFormEdit(cfg config.ConnectionConfig) ConnectionForm {
 	}
 	f.fields[fieldUser].SetValue(cfg.Username)
 	f.fields[fieldPass].SetValue(resolveSecretOrKeep(cfg.Password))
+	ssl := cfg.SSLMode
+	if ssl == "" {
+		ssl = "prefer"
+	}
+	f.fields[fieldSSLMode].SetValue(ssl)
+	f.fields[fieldSocket].SetValue(cfg.Socket)
 	f.fields[fieldSSHHost].SetValue(cfg.SSHHost)
 	if cfg.SSHPort > 0 {
 		f.fields[fieldSSHPort].SetValue(strconv.Itoa(cfg.SSHPort))
@@ -163,6 +173,8 @@ func newForm(mode formMode, name string) ConnectionForm {
 	fields[fieldPort] = newTextInput("Port (mysql default 3306, postgres default 5432)", "3306", false)
 	fields[fieldUser] = newTextInput("Username", "root", false)
 	fields[fieldPass] = newTextInput("Password", "", true)
+	fields[fieldSSLMode] = newTextInput("disable / prefer / require / verify-full", "prefer", false)
+	fields[fieldSocket] = newTextInput("Unix socket path", "/tmp/mysql.sock", false)
 	fields[fieldSSHTunnel] = newTextInput("no / yes", "", false)
 	fields[fieldSSHHost] = newTextInput("SSH host", "", false)
 	fields[fieldSSHPort] = newTextInput("SSH port (default 22)", "22", false)
@@ -176,6 +188,7 @@ func newForm(mode formMode, name string) ConnectionForm {
 
 	fields[fieldName].SetValue(name)
 	fields[fieldDriver].SetValue("sqlite")
+	fields[fieldSSLMode].SetValue("prefer")
 	fields[fieldSSHTunnel].SetValue("no")
 	fields[fieldSecrets].SetValue("keychain")
 	fields[fieldReadOnly].SetValue("no")
@@ -239,7 +252,7 @@ func (f ConnectionForm) sshEnabled() bool {
 func (f ConnectionForm) visibleFields() []int {
 	out := []int{fieldName, fieldDriver, fieldDatabase}
 	if isNetworkDriver(f.driver()) {
-		out = append(out, fieldHost, fieldPort, fieldUser, fieldPass, fieldSSHTunnel)
+		out = append(out, fieldHost, fieldPort, fieldSocket, fieldUser, fieldPass, fieldSSLMode, fieldSSHTunnel)
 		if f.sshEnabled() {
 			out = append(out, fieldSSHHost, fieldSSHPort, fieldSSHUser, fieldSSHKeyPath, fieldSSHPassword, fieldSSHPassphrase)
 		}
@@ -659,6 +672,11 @@ func (f *ConnectionForm) EnterPressed() (config.ConnectionConfig, string) {
 
 		cfg.Username = f.fields[fieldUser].Value()
 		cfg.Password = f.fields[fieldPass].Value()
+		cfg.SSLMode = strings.TrimSpace(f.fields[fieldSSLMode].Value())
+		if cfg.SSLMode == "" {
+			cfg.SSLMode = "prefer"
+		}
+		cfg.Socket = strings.TrimSpace(f.fields[fieldSocket].Value())
 
 		if f.sshEnabled() {
 			cfg.SSHHost = f.fields[fieldSSHHost].Value()

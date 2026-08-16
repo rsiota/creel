@@ -129,11 +129,80 @@ func TestConnectionFormSQLiteDatabaseRequired(t *testing.T) {
 	}
 }
 
+func TestConnectionFormSSLAndSocket(t *testing.T) {
+	f := NewConnectionForm()
+	f.fields[fieldName].SetValue("cloud")
+	f.fields[fieldDriver].SetValue("postgres")
+	f.fields[fieldDatabase].SetValue("app")
+	f.fields[fieldHost].SetValue("db.example")
+	f.fields[fieldSSLMode].SetValue("require")
+	f.fields[fieldSocket].SetValue("/var/run/postgresql")
+
+	cfg, errMsg := f.EnterPressed()
+	if errMsg != "" {
+		t.Fatalf("unexpected error: %s", errMsg)
+	}
+	if cfg.SSLMode != "require" {
+		t.Errorf("SSLMode=%q, want require", cfg.SSLMode)
+	}
+	if cfg.Socket != "/var/run/postgresql" {
+		t.Errorf("Socket=%q", cfg.Socket)
+	}
+
+	// Default sslmode on a fresh form is prefer.
+	f2 := NewConnectionForm()
+	f2.fields[fieldName].SetValue("local")
+	f2.fields[fieldDriver].SetValue("mysql")
+	f2.fields[fieldDatabase].SetValue("app")
+	cfg, errMsg = f2.EnterPressed()
+	if errMsg != "" {
+		t.Fatalf("unexpected error: %s", errMsg)
+	}
+	if cfg.SSLMode != "prefer" {
+		t.Errorf("default SSLMode=%q, want prefer", cfg.SSLMode)
+	}
+
+	// SQLite does not persist SSL/socket.
+	f3 := NewConnectionForm()
+	f3.fields[fieldName].SetValue("file")
+	f3.fields[fieldDriver].SetValue("sqlite")
+	f3.fields[fieldDatabase].SetValue("/tmp/x.db")
+	cfg, errMsg = f3.EnterPressed()
+	if errMsg != "" {
+		t.Fatalf("unexpected error: %s", errMsg)
+	}
+	if cfg.SSLMode != "" || cfg.Socket != "" {
+		t.Errorf("sqlite should omit ssl/socket, got ssl=%q socket=%q", cfg.SSLMode, cfg.Socket)
+	}
+}
+
+func TestConnectionFormEditPrefillsSSL(t *testing.T) {
+	f := NewConnectionFormEdit(config.ConnectionConfig{
+		Name:     "prod",
+		Driver:   "postgres",
+		Database: "app",
+		Host:     "db.internal",
+		SSLMode:  "verify-full",
+		Socket:   "",
+	})
+	if f.fields[fieldSSLMode].Value() != "verify-full" {
+		t.Errorf("SSLMode field=%q, want verify-full", f.fields[fieldSSLMode].Value())
+	}
+	// Empty saved sslmode shows the effective default.
+	f2 := NewConnectionFormEdit(config.ConnectionConfig{Name: "x", Driver: "mysql", Database: "d"})
+	if f2.fields[fieldSSLMode].Value() != "prefer" {
+		t.Errorf("empty sslmode should display prefer, got %q", f2.fields[fieldSSLMode].Value())
+	}
+}
+
 // Ensure textinput.Model compiles with our field setup.
 func TestConnectionFormFieldCount(t *testing.T) {
 	f := NewConnectionForm()
 	if len(f.fields) != fieldCount {
 		t.Errorf("expected %d fields, got %d", fieldCount, len(f.fields))
+	}
+	if len(formLabels) != fieldCount {
+		t.Errorf("formLabels has %d entries, fieldCount=%d", len(formLabels), fieldCount)
 	}
 	for i, field := range f.fields {
 		if field.EchoMode != textinput.EchoNormal && i != fieldPass && i != fieldSSHPassword && i != fieldSSHPassphrase {

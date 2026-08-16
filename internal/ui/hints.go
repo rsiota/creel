@@ -106,7 +106,7 @@ func (m Model) resolveHints() (section string, hints []string) {
 		if m.erdPanel.merm {
 			return "ERD", []string{"j/k", "enter", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"}
 		}
-		return "ERD", []string{"j/k/h/l", "space", "enter", "zz", "zc/zo/za", "zM/zR", "/", "p", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"}
+		return "ERD", []string{"j/k/h/l", "space", "enter", "f", "zz", "zc/zo/za", "zM/zR", "/", "p", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"}
 	case m.explorer.IsVisible():
 		return "Relationship Explorer", hintsForSection("Relationship Explorer")
 	case m.providerPicker.IsVisible():

@@ -12,7 +12,9 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
-- `:bar!` / `:line!` / `:hist!` / `:freq!` / `:scatter!` chart every row of the last SELECT (capped at 50,000), not just the current page.
+- TLS (`sslmode`) and unix sockets on MySQL/Postgres connections (form, YAML, `-sslmode`/`-socket`). Empty `sslmode` means `prefer`.
+- Query editor: `u`/`U` undo/redo, `/` buffer search with `n`/`N`, `V` visual-line yank/delete.
+- ERD Enter / double-click browses the focused table (`SELECT *`); `f` keeps neighbourhood drill. Opening the ERD traces the FK path from the grid cursor; the explorer highlights the matching edge.
 - Histogram charts (`:hist`) of a numeric column, with optional bin count.
 - Frequency bar charts (`:freq`, or `:bar` with one column) of distinct values.
 - Scatter charts (`:scatter`) of two numeric or datetime columns, without connecting the points.

@@ -165,6 +165,9 @@ func (f ConnectionForm) classifyTestError(err error) map[int]testState {
 		if vis[fieldPort] {
 			out[fieldPort] = testOK
 		}
+		if vis[fieldSSLMode] {
+			out[fieldSSLMode] = testOK
+		}
 		if vis[fieldUser] {
 			out[fieldUser] = testFail
 		}
@@ -187,8 +190,24 @@ func (f ConnectionForm) classifyTestError(err error) map[int]testState {
 		if vis[fieldPass] {
 			out[fieldPass] = testOK
 		}
+		if vis[fieldSSLMode] {
+			out[fieldSSLMode] = testOK
+		}
 		if vis[fieldDatabase] {
 			out[fieldDatabase] = testFail
+		}
+
+	case strings.Contains(msg, "ssl") || strings.Contains(msg, "tls") ||
+		strings.Contains(msg, "x509") || strings.Contains(msg, "certificate"):
+		if vis[fieldSSLMode] {
+			out[fieldSSLMode] = testFail
+		}
+
+	case vis[fieldSocket] && f.fields[fieldSocket].Value() != "" &&
+		(strings.Contains(msg, "socket") || strings.Contains(msg, "unix") ||
+			strings.Contains(msg, "no such file")):
+		if vis[fieldSocket] {
+			out[fieldSocket] = testFail
 		}
 
 	default:

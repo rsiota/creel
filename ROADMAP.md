@@ -143,12 +143,95 @@ Files: `rel_explorer.go`, `editing.go`, `app.go`, `schema_ops.go`,
 1. **Insert related without navigating away** — insert into the child table
    while the explorer root stays on the parent (harder: editable target ≠
    current grid). Follows from restore-after-insert.
-2. **ERD as launcher** — Enter / double-click a card → `SELECT *` (or last
-   filter); optional “generate JOIN” from a shortest path into the editor.
-3. **Cross-highlight** — grid FK cell ↔ explorer edge ↔ ERD card dim/vivid.
+2. **ERD as launcher** — shipped (2026-08-16): Enter / double-click a card
+   → `SELECT *` and close the overlay; `f` (and the ◎ header click) keep
+   neighbourhood drill. Optional “generate JOIN” from a shortest path into the
+   editor is still open.
+3. **Cross-highlight** — shipped (2026-08-16): grid FK cell ↔ explorer
+   outbound edge; opening the ERD traces the FK path from the current table to
+   the referenced one. ERD is a full-screen overlay, so grid+ERD cannot share
+   a frame — highlight is applied at open.
 
 **Explicitly defer:** editing *through* ERD arrows as a general UPDATE engine;
 force-directed layouts; omniscient DB “git blame.”
+
+### Product review — 2026-08-16
+
+Suggestions from a pass over the shipped surface: polish the daily-driver
+loop, then deepen the graph+charts identity rather than growing another REPL.
+The three **Now** items are the first slice; everything else stays demand-gated
+or sequenced behind them.
+
+**Now (shipping)**
+- **TLS / SSL + unix sockets** — Postgres no longer hardcodes `sslmode=disable`;
+  MySQL DSN carries `tls=`. `sslmode` + `socket` on the connection form, YAML,
+  and CLI (`-sslmode`, `-socket`). Empty `sslmode` means `prefer`. A host
+  starting with `/` is treated as a socket. Files: `db.go`, `postgres.go`,
+  `mysql.go`, `connection_form.go`, `connection_ops.go`, `cmd/creel/main.go`.
+  Tests: `connparams_test.go`, `connection_form_test.go`.
+- **Editor undo + `/` + visual line** — `u`/`U` undo/redo, `/`+`n`/`N`
+  in-buffer search, `V` visual-line yank/delete. Redo is `U` so global
+  `ctrl+r` (refresh) is untouched. Files: `query_editor.go`, `editor_render.go`,
+  `registry.go`. Tests: `editor_cursor_test.go`.
+- **ERD as launcher + cross-highlight** — Enter / double-click → `SELECT *`;
+  `f` and the ◎ header click keep neighbourhood drill. Grid FK cell highlights
+  the explorer edge; opening the ERD traces the FK path. Files: `erd.go`,
+  `mouse.go`, `rel_explorer.go`, `app.go`. Tests: `erd_test.go`,
+  `graph_nav_test.go`.
+
+**Next (connection / editing polish)**
+- **Reconnect / keep-alive** — dropped SSH tunnel or idle Postgres currently
+  means leaving the workspace. Auto-reconnect with a status-bar
+  “reconnecting…”.
+- **Transaction isolation** — already listed above (`:begin serializable`).
+- **Jump to syntax error** — highlight the token Postgres/MySQL reports
+  (`syntax error at line 12`) in the editor.
+- **`:copyrow` keybinding** — the verb shipped; a chord (not `Y`, which is
+  INSERT) would make “paste into Slack/Sheets” discoverable.
+
+**Graph / charts (after the Now slice)**
+- **ERD mini-map** — already listed above.
+- **Persist ERD drag positions** in the session snapshot.
+- **Keyboard move for ERD cards** (`H/J/K/L` or a modifier) for no-mouse/SSH.
+- **ERD tooltip nullability/defaults** — needs `TableColumnInfo` on hover
+  (deferred from the 2026-07-30 tooltip work).
+- **`:pie`** — same data as `:freq`, different read.
+- **Export a chart** as a Unicode snapshot or SVG.
+- **`:watch` + chart** — redraw the last chart on refresh; highlight changed
+  rows on `:watch` / `:tail`.
+
+**AI**
+- “Explain this query” / “why is this slow” with the last `EXPLAIN` attached.
+- “Fix this error” with the last failed statement + driver error.
+- Restrict schema context to the focused table + FK neighbourhood (cheaper
+  and more accurate than the first 100 tables).
+- Optional: run generated SQL in a scratch tab (read-only) and iterate on the
+  error. Keep `ctrl+e` as the default — do not auto-run DDL.
+
+**Fits the product (later)**
+- Last-connection / recent list on the picker; first-run hint to open the
+  demo database.
+- Query parameters (`:param start 2026-01-01` then `WHERE created_at > :start`).
+- DuckDB as a fourth driver (charts + CSV/Parquet; stays in the static-binary
+  lane better than SQL Server).
+- JSON/JSONB foldable tree in the inspector (`E` already pretty-prints).
+- Color FK / PK columns in the grid (the `→` follow cue already exists).
+- Result-set diff of two tabs (not schema-diff — that stays rejected).
+- CLI: `-e` from stdin (`cat q.sql | creel -c prod -e -`) and non-zero exit
+  on query failure.
+
+**Demand-gated / skip**
+- `:who` / `:locks` / `:kill` — already demand-gated.
+- Macros, `:shell`, a second favorites system — already rejected.
+- More themes (~570 is enough).
+- SQL Server / Turso just to match sqlit’s comparison table.
+
+**Docs / consistency**
+- `docs/features.md` and `docs/architecture.md` still say SSH is MySQL-only;
+  Postgres tunneling already exists.
+- Fuzzy verb matching for `:` (`:g<tab>` → `goto`) — last wave-2 leftover.
+- `cursor_style` is reserved but unused; ship block/underline or drop the
+  field.
 
 ---
 

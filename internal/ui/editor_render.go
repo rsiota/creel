@@ -13,6 +13,7 @@ type editorDisplayLine struct {
 	cursorLine bool
 	cursorCol  int
 	hasCursor  bool
+	visual     bool
 }
 
 func (e *QueryEditor) syncViewOffset() {
@@ -67,9 +68,13 @@ func (e QueryEditor) highlightedView() string {
 	}
 
 	displayLines := e.buildDisplayLines()
+	bufHeight := e.height
+	if e.searching && bufHeight > 1 {
+		bufHeight--
+	}
 
 	var s strings.Builder
-	for i := 0; i < e.height; i++ {
+	for i := 0; i < bufHeight; i++ {
 		displayIdx := e.viewYOffset + i
 		prompt := inheritStyle(style.Base, style.Prompt).Render(ta.Prompt)
 
@@ -84,6 +89,7 @@ func (e QueryEditor) highlightedView() string {
 
 			plain := dl.segment
 			plainWidth := uniseg.StringWidth(plain)
+			visualStyle := lipgloss.NewStyle().Background(colorPrimary).Foreground(colorBg)
 
 			if dl.hasCursor && e.Focused() {
 				segRunes := []rune(plain)
@@ -92,7 +98,11 @@ func (e QueryEditor) highlightedView() string {
 					absCol = len(segRunes)
 				}
 
-				s.WriteString(highlightSubstring(plain, 0, absCol))
+				left := highlightSubstring(plain, 0, absCol)
+				if dl.visual {
+					left = visualStyle.Render(string(segRunes[:absCol]))
+				}
+				s.WriteString(left)
 
 				cursorChar := " "
 				if absCol < len(segRunes) {
@@ -107,7 +117,13 @@ func (e QueryEditor) highlightedView() string {
 				}
 				s.WriteString(cursorStyle.Render(cursorChar))
 
-				s.WriteString(highlightSubstring(plain, absCol+1, len(segRunes)))
+				right := highlightSubstring(plain, absCol+1, len(segRunes))
+				if dl.visual && absCol+1 < len(segRunes) {
+					right = visualStyle.Render(string(segRunes[absCol+1:]))
+				}
+				s.WriteString(right)
+			} else if dl.visual {
+				s.WriteString(visualStyle.Render(plain))
 			} else {
 				s.WriteString(highlightSegment(plain))
 			}
@@ -123,6 +139,10 @@ func (e QueryEditor) highlightedView() string {
 			s.WriteString(inheritStyle(style.Base, style.EndOfBuffer).Render(eob + rightGap))
 		}
 		s.WriteRune('\n')
+	}
+
+	if e.searching {
+		s.WriteString(e.searchPrompt(ta.Width() + 1))
 	}
 
 	return style.Base.Render(strings.TrimSuffix(s.String(), "\n"))
@@ -165,6 +185,7 @@ func (e QueryEditor) buildDisplayLines() []editorDisplayLine {
 	cursorRow := ta.Line()
 	info := ta.LineInfo()
 	width := ta.Width()
+	visLo, visHi := e.visualRange()
 
 	var out []editorDisplayLine
 	for lineIdx, line := range lines {
@@ -174,6 +195,7 @@ func (e QueryEditor) buildDisplayLines() []editorDisplayLine {
 			dl := editorDisplayLine{
 				segment:    string(segment),
 				cursorLine: lineIdx == cursorRow,
+				visual:     e.visualLine && lineIdx >= visLo && lineIdx <= visHi,
 			}
 
 			if lineIdx == cursorRow && info.RowOffset == wrapIdx {

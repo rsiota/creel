@@ -7,7 +7,8 @@ An overview of everything creel can do. For keys, see
 ## Connecting
 
 - **Three databases, one interface** — connect to SQLite, MySQL, or PostgreSQL,
-  with SSH tunneling for remote MySQL.
+  with SSH tunneling for remote MySQL and PostgreSQL, TLS (`sslmode`), and
+  unix sockets.
 - **Secret storage** — passwords and SSH passwords are stored in the OS keychain
   (macOS Keychain, Windows Credential Manager, Linux Secret Service) rather than
   plaintext config, falling back to plaintext on systems without a keychain. See
@@ -81,7 +82,9 @@ row to see *its* edges, and so on (depth-capped); `Enter` opens a node in the
 grid (replacing this tab), `t` opens it in a new tab so the parent stays,
 `A` on an inbound edge inserts a related row (the explorer yields the
 inspector, then comes back on save or cancel), `←` collapses, `r` retargets.
-The panel stays open and re-roots as the cursor moves. Counts and child rows
+The panel stays open and re-roots as the cursor moves. When the results
+cursor sits on a foreign-key column, the matching outbound edge is highlighted
+(and selected, while the grid has focus). Counts and child rows
 fan out concurrently across all three drivers.
 
 ### Static ERD (`g R` / `:erd`)
@@ -96,11 +99,12 @@ Navigate by mouse — hover a card to pop up a tooltip of the info it doesn't
 already show (an expanded card lists its FK references, e.g.
 `user_id → users.id`, which you'd otherwise trace an arrow for; a collapsed
 card reveals its hidden columns), click a card to highlight its relationships
-(dimming the rest), double-click to re-centre, or in a focused ERD click a
-related table's header (marked `◎`) to re-focus on its neighbourhood — or by
-keyboard: `j`/`k`/`h`/`l` move a focus between cards (the viewport follows),
-`Space` highlights the focused card, `Enter` re-focuses the ERD on it, `/`
-jumps to a table by name (`Tab` cycles matches), `p` traces the shortest FK
+(dimming the rest), double-click to browse the table (`SELECT *`, same as
+Enter), or in a focused ERD click a related table's header (marked `◎`) to
+re-focus on its neighbourhood — or by keyboard: `j`/`k`/`h`/`l` move a focus
+between cards (the viewport follows), `Space` highlights the focused card,
+`Enter` closes the ERD and runs `SELECT *` on that table, `f` re-focuses the
+ERD on its neighbourhood, `/` jumps to a table by name (`Tab` cycles matches), `p` traces the shortest FK
 path between two tables (anchor one, move to the other, `p` again), `zz` fits
 all cards to the viewport, `zc`/`zo`/`za` collapse/expand/toggle a focused card
 to a header-only bar to declutter dense schemas (▸ marks a folded card),
@@ -203,7 +207,8 @@ erDiagram
 ## Workflow
 
 - **Vim-mode editor** — normal/insert modes, motions (`h/j/k/l`, `w/b`),
-  operators (`dd`, `dw`, `x`, `D`), yank/paste, and SQL autocompletion.
+  operators (`dd`, `dw`, `x`, `D`), yank/paste, undo/redo (`u`/`U`), buffer
+  search (`/` + `n`/`N`), visual line (`V`), and SQL autocompletion.
 - **Query history & bookmarks** — per-connection, persisted, searchable.
 - **Session restore** — reopening a connection brings back your open tabs and
   editor buffers from the last visit (keyed per connection + database). Buffers

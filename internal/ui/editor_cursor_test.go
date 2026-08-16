@@ -96,3 +96,74 @@ func TestEditorOpenLineShowsCursor(t *testing.T) {
 		t.Fatalf("cursor invisible after 'o' on empty line")
 	}
 }
+
+func TestEditorUndoRedo(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(40, 5)
+	e.Focus()
+
+	e, _ = e.Update(runeKey('i'))
+	e, _ = e.Update(runeKey('x'))
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if e.Value() != "x" {
+		t.Fatalf("after insert: %q", e.Value())
+	}
+	e, _ = e.Update(runeKey('u'))
+	if e.Value() != "" {
+		t.Fatalf("undo should restore empty, got %q", e.Value())
+	}
+	e, _ = e.Update(runeKey('U'))
+	if e.Value() != "x" {
+		t.Fatalf("redo should restore x, got %q", e.Value())
+	}
+}
+
+func TestEditorSearch(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(40, 5)
+	e.SetValue("select foo from bar where foo > 1")
+	e.Focus()
+	e, _ = e.Update(runeKey('0')) // start of buffer
+
+	e, _ = e.Update(runeKey('/'))
+	if !e.IsSearching() {
+		t.Fatal("expected search prompt")
+	}
+	e, _ = e.Update(runeKey('f'))
+	e, _ = e.Update(runeKey('o'))
+	e, _ = e.Update(runeKey('o'))
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if e.IsSearching() {
+		t.Fatal("enter should close the search prompt")
+	}
+	_, col := e.cursorLineCol()
+	if col != 7 { // "select " is 7 runes; first "foo" starts at 7
+		t.Fatalf("first match col=%d, want 7", col)
+	}
+	e, _ = e.Update(runeKey('n'))
+	_, col = e.cursorLineCol()
+	if col != 26 { // "select foo from bar where " is 26
+		t.Fatalf("n: col=%d, want 26", col)
+	}
+}
+
+func TestEditorVisualLineYank(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(40, 5)
+	e.SetValue("one\ntwo\nthree")
+	e.Focus()
+	e, _ = e.Update(runeKey('g'))
+	e, _ = e.Update(runeKey('g')) // top
+	e, _ = e.Update(runeKey('V'))
+	if !e.IsVisual() {
+		t.Fatal("expected visual line")
+	}
+	e, _ = e.Update(runeKey('j'))
+	e, _ = e.Update(runeKey('y'))
+	if e.IsVisual() {
+		t.Fatal("y should leave visual mode")
+	}
+	if e.yank != "one\ntwo" {
+		t.Fatalf("yank=%q, want one\\ntwo", e.yank)
+	}
+}

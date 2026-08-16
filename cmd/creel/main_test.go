@@ -21,7 +21,7 @@ func TestApplyOverrides(t *testing.T) {
 	t.Run("no flags set leaves conn untouched", func(t *testing.T) {
 		c := base()
 		before := *c
-		applyOverrides(c, map[string]bool{}, "postgres", "other", "h", 1, "u", "p")
+		applyOverrides(c, map[string]bool{}, "postgres", "other", "h", 1, "u", "p", "", "")
 		if *c != before {
 			t.Errorf("conn mutated: got %+v, want %+v", *c, before)
 		}
@@ -29,7 +29,7 @@ func TestApplyOverrides(t *testing.T) {
 
 	t.Run("only database overrides", func(t *testing.T) {
 		c := base()
-		applyOverrides(c, map[string]bool{"database": true}, "ignored", "local_turniq", "ignored", 9999, "ignored", "ignored")
+		applyOverrides(c, map[string]bool{"database": true}, "ignored", "local_turniq", "ignored", 9999, "ignored", "ignored", "", "")
 		if c.Database != "local_turniq" {
 			t.Errorf("Database = %q, want local_turniq", c.Database)
 		}
@@ -41,7 +41,7 @@ func TestApplyOverrides(t *testing.T) {
 
 	t.Run("multiple overrides", func(t *testing.T) {
 		c := base()
-		applyOverrides(c, map[string]bool{"host": true, "port": true, "user": true, "password": true}, "x", "x", "127.0.0.1", 13306, "admin", "pw")
+		applyOverrides(c, map[string]bool{"host": true, "port": true, "user": true, "password": true}, "x", "x", "127.0.0.1", 13306, "admin", "pw", "", "")
 		if c.Host != "127.0.0.1" || c.Port != 13306 || c.Username != "admin" || c.Password != "pw" {
 			t.Errorf("overrides not applied: %+v", c)
 		}
@@ -53,9 +53,17 @@ func TestApplyOverrides(t *testing.T) {
 
 	t.Run("driver override", func(t *testing.T) {
 		c := base()
-		applyOverrides(c, map[string]bool{"driver": true}, "postgres", "x", "x", 1, "x", "x")
+		applyOverrides(c, map[string]bool{"driver": true}, "postgres", "x", "x", 1, "x", "x", "", "")
 		if c.Driver != db.DriverPostgres {
 			t.Errorf("Driver = %q, want postgres", c.Driver)
+		}
+	})
+
+	t.Run("sslmode and socket overrides", func(t *testing.T) {
+		c := base()
+		applyOverrides(c, map[string]bool{"sslmode": true, "socket": true}, "x", "x", "x", 1, "x", "x", "require", "/tmp/mysql.sock")
+		if c.SSLMode != "require" || c.Socket != "/tmp/mysql.sock" {
+			t.Errorf("ssl/socket not applied: %+v", c)
 		}
 	})
 }

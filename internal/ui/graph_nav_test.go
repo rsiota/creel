@@ -3,6 +3,8 @@ package ui
 import (
 	"strings"
 	"testing"
+
+	"github.com/rsiota/creel/internal/db"
 )
 
 // TestNavDrillInPushesStack verifies that Enter on an explorer node
@@ -285,5 +287,34 @@ func TestExplorerInsertRelatedRejectsOutbound(t *testing.T) {
 	}
 	if !strings.Contains(m.schemaMsg, "inbound") {
 		t.Errorf("schemaMsg = %q", m.schemaMsg)
+	}
+}
+
+func TestExplorerHighlightLinkedFK(t *testing.T) {
+	conn := newSQLiteTestConn(t)
+	defer conn.Close()
+	for _, q := range []string{
+		`CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)`,
+		`CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users(id))`,
+		`INSERT INTO users VALUES (1,'Alice')`,
+		`INSERT INTO orders VALUES (10, 1)`,
+	} {
+		if _, err := conn.DB().Exec(q); err != nil {
+			t.Fatalf("exec: %v", err)
+		}
+	}
+	m := &Model{connection: conn, results: NewResultsTable(), editor: NewQueryEditor(), tables: []string{"users", "orders"}}
+	m.results.SetResult([]string{"id", "user_id"}, [][]string{{"10", "1"}}, "")
+	m.results.SetEditable("orders", []string{"id"})
+	m.results.SetForeignKeys("orders", []db.ForeignKey{{Column: "user_id", RefTable: "users", RefColumn: "id"}})
+	m.results.SetCursor(0, 1)
+	m.focus = FocusResults
+
+	root := m.loadExplorer()().(explorerLoadedMsg).root
+	m.explorer.applyRoot(root, 0)
+	m.syncExplorerFKHighlight()
+	n := m.explorer.selectedNode()
+	if n == nil || !n.isEdge() || n.edge.targetTable != "users" {
+		t.Fatalf("linked cursor = %+v, want outbound users edge", n)
 	}
 }

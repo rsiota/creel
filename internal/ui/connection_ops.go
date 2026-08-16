@@ -227,6 +227,8 @@ func connConfigToDB(cfg config.ConnectionConfig, forceReadOnly bool) db.Connecti
 		Port:     cfg.Port,
 		Username: cfg.Username,
 		Password: cfg.Password,
+		SSLMode:  cfg.SSLMode,
+		Socket:   cfg.Socket,
 
 		SSHHost:       cfg.SSHHost,
 		SSHPort:       cfg.SSHPort,

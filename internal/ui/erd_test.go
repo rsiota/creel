@@ -650,17 +650,19 @@ func TestHandleERDMouse(t *testing.T) {
 		t.Errorf("single-click should not pan: scroll=(%d,%d)", ep.scrollX, ep.scrollY)
 	}
 
-	// Double left-click on the same card recentres on it. The first click
-	// (press+release) seeds lastERDClick; the second release detects the pair.
-	m5 := Model{erdPanel: ERDPanel{width: 10, height: 6}}
+	// Double left-click on the same card browses it (SELECT *), closing the ERD.
+	m5 := Model{erdPanel: ERDPanel{width: 10, height: 6}, editor: NewQueryEditor()}
 	m5.erdPanel.graph = newGcanvas(40, 30)
 	m5.erdPanel.cards = []*gcard{{name: "t", x: 5, y: 4, w: 4, h: 3}}
 	m5.lastERDClickTime = time.Now()
 	m5.lastERDClickCard = "t"
 	mm5, _ := m5.handleERDMouse(tea.MouseMsg{Type: tea.MouseLeft, X: 6, Y: 5})
 	mm5, _ = mm5.(Model).handleERDMouse(tea.MouseMsg{Type: tea.MouseRelease, X: 6, Y: 5})
-	if ep := mm5.(Model).erdPanel; ep.scrollX != 2 || ep.scrollY != 2 {
-		t.Errorf("double-click card: scroll=(%d,%d) want (2,2)", ep.scrollX, ep.scrollY)
+	if ep := mm5.(Model).erdPanel; ep.IsVisible() {
+		t.Errorf("double-click card should close the ERD")
+	}
+	if got := mm5.(Model).editor.Value(); !strings.Contains(got, "SELECT * FROM t") {
+		t.Errorf("double-click editor = %q, want SELECT * FROM t", got)
 	}
 
 	// Left-click on empty space clears any highlight.
@@ -1127,9 +1129,47 @@ func TestERDKeyboardHighlight(t *testing.T) {
 	}
 }
 
-// TestERDEnterDrillIn checks Enter re-focuses the ERD on the keyboard-focused
-// card's neighbourhood (through the model's key routing + openERD).
-func TestERDEnterDrillIn(t *testing.T) {
+// TestERDEnterOpensTable checks Enter closes the ERD and loads SELECT * for
+// the focused card (through erdEnter → openTable).
+func TestERDEnterOpensTable(t *testing.T) {
+	tables := []string{"users", "orders", "posts"}
+	schemas := map[string][]db.Column{
+		"users":  {{Name: "id", Type: "int"}, {Name: "name", Type: "text"}},
+		"orders": {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+		"posts":  {{Name: "id", Type: "int"}, {Name: "user_id", Type: "int"}},
+	}
+	pks := map[string][]string{"users": {"id"}, "orders": {"id"}, "posts": {"id"}}
+	fks := map[string][]db.ForeignKey{
+		"orders": {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"posts":  {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+	}
+	m := Model{
+		connection:  &db.Connection{},
+		tables:      tables,
+		columnCache: schemas,
+		pkCache:     pks,
+		fkCache:     fks,
+		width:       80,
+		height:      24,
+		editor:      NewQueryEditor(),
+	}
+	m.openERD("")
+	if !m.erdPanel.IsVisible() {
+		t.Fatal("openERD(\"\") did not show the panel")
+	}
+	m.erdPanel.focusName = "orders"
+	mm, _ := m.erdEnter()
+	if mm.erdPanel.IsVisible() {
+		t.Error("enter should close the ERD overlay")
+	}
+	if got := mm.editor.Value(); !strings.Contains(got, "SELECT * FROM orders") {
+		t.Errorf("editor = %q, want SELECT * FROM orders", got)
+	}
+}
+
+// TestERDDrillIn checks `f` re-focuses the ERD on the keyboard-focused card's
+// neighbourhood (the previous Enter behaviour).
+func TestERDDrillIn(t *testing.T) {
 	tables := []string{"users", "orders", "posts"}
 	schemas := map[string][]db.Column{
 		"users":  {{Name: "id", Type: "int"}, {Name: "name", Type: "text"}},
@@ -1156,19 +1196,18 @@ func TestERDEnterDrillIn(t *testing.T) {
 		width:       80,
 		height:      24,
 	}
-	// Open the whole-schema ERD, focus orders, and press Enter.
 	m.openERD("")
 	if !m.erdPanel.IsVisible() {
 		t.Fatal("openERD(\"\") did not show the panel")
 	}
 	m.erdPanel.focusName = "orders"
-	mm, _ := m.erdEnter()
+	mm, _ := m.erdDrillIn()
 	got := mm.erdPanel
 	if focusOf(got) != "orders" {
-		t.Errorf("enter: layout focus=%q want orders", focusOf(got))
+		t.Errorf("f: layout focus=%q want orders", focusOf(got))
 	}
 	if got.cardNamed("orders") == nil {
-		t.Error("enter: orders card missing from re-focused ERD")
+		t.Error("f: orders card missing from re-focused ERD")
 	}
 }
 
@@ -2767,4 +2806,31 @@ func TestERDHoverClearedOnInput(t *testing.T) {
 			t.Errorf("drag promote did not clear hoverCard: %q", m.erdPanel.hoverCard)
 		}
 	})
+}
+
+func TestERDCrossHighlightPath(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	m := Model{
+		connection:  &db.Connection{},
+		tables:      tables,
+		columnCache: schemas,
+		pkCache:     pks,
+		fkCache:     fks,
+		width:       80,
+		height:      24,
+		results:     NewResultsTable(),
+		editor:      NewQueryEditor(),
+	}
+	m.results.SetResult([]string{"id", "user_id", "total"}, [][]string{{"1", "2", "9"}}, "")
+	m.results.SetEditable("orders", []string{"id"})
+	m.results.SetForeignKeys("orders", []db.ForeignKey{{Column: "user_id", RefTable: "users", RefColumn: "id"}})
+	m.results.SetCursor(0, 1) // user_id
+
+	m.openERD("")
+	if len(m.erdPanel.pathCards) < 2 {
+		t.Fatalf("pathCards=%v, want a path from orders to users", m.erdPanel.pathCards)
+	}
+	if m.erdPanel.focusName != "users" {
+		t.Errorf("focus=%q, want users (FK target)", m.erdPanel.focusName)
+	}
 }

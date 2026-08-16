@@ -51,15 +51,18 @@ creel -c localhost -database local_turniq -e "SELECT * FROM users"   # -database
 | `-port`       | Database port (MySQL/Postgres)                                       | `3306`      |
 | `-user`       | Username (MySQL/Postgres)                                            | `root`      |
 | `-password`   | Password (MySQL/Postgres)                                            |             |
+| `-sslmode`    | TLS policy: `disable`, `prefer`, `require`, `verify-ca`, `verify-full` | `prefer` (when empty) |
+| `-socket`     | Unix socket path (MySQL/Postgres); overrides `-host`                 |             |
 | `-cli`        | Force CLI mode                                                       | `false`     |
 | `-readonly`   | Force read-only mode for all connections (reject writes)             | `false`     |
 | `-version`    | Print version information and exit                                   |             |
 
 `-port` defaults to MySQL's `3306`; pass `-port 5432` for PostgreSQL. With
 `-c`, the saved connection is loaded and its secrets resolved, then any
-**explicitly-set** `-driver`/`-database`/`-host`/`-port`/`-user`/`-password`
-flags override the matching fields — handy when a saved connection has no
-default `database`, or you want to point at a different DB on the same server.
+**explicitly-set** `-driver`/`-database`/`-host`/`-port`/`-user`/`-password`/
+`-sslmode`/`-socket` flags override the matching fields — handy when a saved
+connection has no default `database`, or you want to point at a different DB
+on the same server.
 Combine `-c` with `-readonly` to force a saved connection read-only for a
 one-off. See [Configuration](configuration.md#read-only-mode) for the
 per-connection `readonly: true` alternative to `--readonly`.

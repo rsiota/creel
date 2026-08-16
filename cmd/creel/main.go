@@ -24,6 +24,8 @@ func main() {
 		portFlag     int
 		userFlag     string
 		passFlag     string
+		sslModeFlag  string
+		socketFlag   string
 		cliMode      bool
 		readOnlyFlag bool
 		versionFlag  bool
@@ -38,7 +40,9 @@ func main() {
 	flag.StringVar(&hostFlag, "host", "localhost", "Database host (MySQL only)")
 	flag.IntVar(&portFlag, "port", 3306, "Database port (MySQL or Postgres only)")
 	flag.StringVar(&userFlag, "user", "root", "Database username (MySQL only)")
-	flag.StringVar(&passFlag, "password", "", "Database password (MySQL only)")
+	flag.StringVar(&passFlag, "password", "", "Database password (MySQL or Postgres)")
+	flag.StringVar(&sslModeFlag, "sslmode", "", "TLS policy for MySQL/Postgres: disable, prefer, require, verify-ca, verify-full (default prefer)")
+	flag.StringVar(&socketFlag, "socket", "", "Unix socket path (MySQL/Postgres); overrides -host")
 	flag.BoolVar(&cliMode, "cli", false, "Run in CLI mode (non-interactive)")
 	flag.BoolVar(&readOnlyFlag, "readonly", false, "Force read-only mode for all connections (reject writes)")
 	flag.BoolVar(&versionFlag, "version", false, "Print version information and exit")
@@ -55,7 +59,7 @@ func main() {
 	if queryFlag != "" || cliMode {
 		setFlags := make(map[string]bool)
 		flag.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
-		connCfg, err := buildConnConfig(setFlags, connFlag, driverFlag, databaseFlag, hostFlag, portFlag, userFlag, passFlag, readOnlyFlag)
+		connCfg, err := buildConnConfig(setFlags, connFlag, driverFlag, databaseFlag, hostFlag, portFlag, userFlag, passFlag, sslModeFlag, socketFlag, readOnlyFlag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
@@ -80,7 +84,7 @@ func main() {
 	if databaseFlag != "" || connFlag != "" {
 		setFlags := make(map[string]bool)
 		flag.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
-		startupConn, err = buildConnConfig(setFlags, connFlag, driverFlag, databaseFlag, hostFlag, portFlag, userFlag, passFlag, readOnlyFlag)
+		startupConn, err = buildConnConfig(setFlags, connFlag, driverFlag, databaseFlag, hostFlag, portFlag, userFlag, passFlag, sslModeFlag, socketFlag, readOnlyFlag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
@@ -100,7 +104,7 @@ func main() {
 // -c is used, any explicitly-set flat flags (tracked in setFlags) override the
 // matching field of the saved connection, so e.g. `-c localhost -database x`
 // fills in a different database instead of discarding the flag.
-func buildConnConfig(setFlags map[string]bool, name, driver, database, host string, port int, user, pass string, readOnly bool) (*db.ConnectionConfig, error) {
+func buildConnConfig(setFlags map[string]bool, name, driver, database, host string, port int, user, pass, sslmode, socket string, readOnly bool) (*db.ConnectionConfig, error) {
 	if name != "" {
 		cfg, err := config.Load()
 		if err != nil {
@@ -110,10 +114,10 @@ func buildConnConfig(setFlags map[string]bool, name, driver, database, host stri
 		if err != nil {
 			return nil, err
 		}
-		applyOverrides(conn, setFlags, driver, database, host, port, user, pass)
+		applyOverrides(conn, setFlags, driver, database, host, port, user, pass, sslmode, socket)
 		return conn, nil
 	}
-	if database == "" {
+	if database == "" && socket == "" {
 		return nil, fmt.Errorf("database is required (use -database or -c <name>)")
 	}
 	return &db.ConnectionConfig{
@@ -123,6 +127,8 @@ func buildConnConfig(setFlags map[string]bool, name, driver, database, host stri
 		Port:     port,
 		Username: user,
 		Password: pass,
+		SSLMode:  sslmode,
+		Socket:   socket,
 		ReadOnly: readOnly,
 	}, nil
 }
@@ -131,7 +137,7 @@ func buildConnConfig(setFlags map[string]bool, name, driver, database, host stri
 // set on the command line (present in setFlags). Used so -c <name> composes
 // with individual flags instead of replacing them wholesale. ReadOnly is
 // handled separately via forceReadOnly in ResolveConnection.
-func applyOverrides(conn *db.ConnectionConfig, setFlags map[string]bool, driver, database, host string, port int, user, pass string) {
+func applyOverrides(conn *db.ConnectionConfig, setFlags map[string]bool, driver, database, host string, port int, user, pass, sslmode, socket string) {
 	if setFlags["driver"] {
 		conn.Driver = db.Driver(driver)
 	}
@@ -149,6 +155,12 @@ func applyOverrides(conn *db.ConnectionConfig, setFlags map[string]bool, driver,
 	}
 	if setFlags["password"] {
 		conn.Password = pass
+	}
+	if setFlags["sslmode"] {
+		conn.SSLMode = sslmode
+	}
+	if setFlags["socket"] {
+		conn.Socket = socket
 	}
 }
 

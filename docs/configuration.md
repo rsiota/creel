@@ -27,6 +27,7 @@ connections:
     port: 3306
     username: admin
     password: secret://staging/password   # looked up in the OS keychain
+    sslmode: prefer                       # disable | prefer | require | verify-full
     group: Work                            # optional folder in the connection list
   - name: prod-pg
     driver: postgres
@@ -53,6 +54,23 @@ A `password:` value that is **not** a `secret://` reference is treated as
 plaintext and used directly, so existing configs keep working. Set the
 connection form's **Secrets** field to `plain` to opt out of the keychain for a
 specific connection.
+
+### TLS and unix sockets
+
+MySQL and PostgreSQL connections accept `sslmode` (libpq names: `disable`,
+`prefer`, `require`, `verify-ca`, `verify-full`) and `socket` (a unix-domain
+socket path). Empty `sslmode` means `prefer`, so existing configs reach
+TLS-required cloud hosts without a rewrite. A `host` that starts with `/` is
+also treated as a socket. SSH tunnels always use TCP, so `socket` is ignored
+when a tunnel is set.
+
+```yaml
+  - name: local-pg
+    driver: postgres
+    database: app
+    socket: /var/run/postgresql
+    sslmode: disable
+```
 
 ### Secret storage
 

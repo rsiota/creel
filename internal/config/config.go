@@ -47,6 +47,12 @@ type ConnectionConfig struct {
 	Username string `yaml:"username,omitempty"`
 	Password string `yaml:"password,omitempty"`
 
+	// SSLMode is the libpq-style TLS policy (disable/prefer/require/verify-ca/
+	// verify-full). Empty means prefer at connect time. See db.ConnectionConfig.
+	SSLMode string `yaml:"sslmode,omitempty"`
+	// Socket is a unix-domain socket path. See db.ConnectionConfig.
+	Socket string `yaml:"socket,omitempty"`
+
 	// ReadOnly disables writes on this connection (see db.ConnectionConfig).
 	ReadOnly bool `yaml:"readonly,omitempty"`
 

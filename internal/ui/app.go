@@ -866,7 +866,7 @@ func (m *Model) handleTabKey(msg tea.KeyMsg) bool {
 	if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() ||
 		m.searching || m.ex.visible || m.backendSearching ||
 		m.sidebarFiltering || m.inspector.IsFiltering() ||
-		(m.focus == FocusEditor && m.editor.VimMode() == VimInsert) {
+		(m.focus == FocusEditor && m.editor.CapturingKeys()) {
 		return false
 	}
 
@@ -1029,7 +1029,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// different row, re-root the tree. Cheap anchor check; reloads only on a
 		// real change.
 		if mm, ok := nm.(Model); ok {
-			if rcmd := mm.maybeReloadDockedExplorer(); rcmd != nil {
+			if rcmd := (&mm).maybeReloadDockedExplorer(); rcmd != nil {
 				ncmd = tea.Batch(ncmd, rcmd)
 			}
 			return mm, ncmd
@@ -1506,6 +1506,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Record the row this tree is now rooted at, so the docked panel can tell
 		// a real cursor move from a redundant reload.
 		m.explorer.anchor = m.explorerAnchor()
+		m.syncExplorerFKHighlight()
 		return m, nil
 	case explorerChildrenMsg:
 		if !m.explorer.IsVisible() || msg.parent == nil {
@@ -2817,10 +2818,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.saveERDToFile("erd.mmd", m.erdPanel.MermaidLines())
 				return m, nil
 			case "enter":
-				// Re-focus the ERD on the keyboard-focused card's neighbourhood (a
-				// no-op when it is already the root). Lives on the model since it
-				// drives openERD; extracted as erdEnter so it can be tested directly.
+				// Browse the focused card (SELECT *); neighbourhood drill is `f`.
 				nm, cmd := m.erdEnter()
+				return nm, cmd
+			case "f":
+				nm, cmd := m.erdDrillIn()
 				return nm, cmd
 			}
 		}
@@ -2854,7 +2856,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Ex command line — not while a text-input / editing mode is active.
 		if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() || m.inspector.IsFiltering() ||
 			m.sidebarFiltering || m.searching || m.backendSearching ||
-			(m.focus == FocusEditor && m.editor.VimMode() == VimInsert) {
+			(m.focus == FocusEditor && m.editor.CapturingKeys()) {
 			break
 		}
 		m.ex.Open()
@@ -2862,7 +2864,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+p":
 		// Command palette — but not while the editor is in insert mode,
 		// where ctrl+p navigates the completion popup.
-		if m.focus == FocusEditor && m.editor.VimMode() == VimInsert {
+		if m.focus == FocusEditor && m.editor.CapturingKeys() {
 			break
 		}
 		m.palette.Open()
@@ -2877,7 +2879,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.bookmarks.IsVisible() ||
 			m.backendSearching ||
 			m.focus == FocusAssistant ||
-			(m.focus == FocusEditor && m.editor.VimMode() == VimInsert) {
+			(m.focus == FocusEditor && m.editor.CapturingKeys()) {
 			break
 		}
 		m.beginQuit()
@@ -2928,7 +2930,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "B":
 		// Bookmark the current editor query (shared with :bookmark). Don't
 		// intercept it while typing in the editor's insert mode.
-		if m.focus == FocusEditor && m.editor.VimMode() == VimInsert {
+		if m.focus == FocusEditor && m.editor.CapturingKeys() {
 			break
 		}
 		m.bookmarkCurrentQuery()
@@ -2938,7 +2940,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() {
 			return m, nil
 		}
-		if m.focus == FocusEditor && m.editor.VimMode() == VimInsert {
+		if m.focus == FocusEditor && m.editor.CapturingKeys() {
 			break // let it fall through to the editor
 		}
 		m = m.moveFocus(msg.String())
@@ -3049,7 +3051,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// In insert mode, esc goes to the editor for vim mode switching.
 		// In normal mode, esc is a no-op (or could blur the editor).
-		if m.focus == FocusEditor && m.editor.VimMode() == VimInsert {
+		if m.focus == FocusEditor && m.editor.CapturingKeys() {
 			m.editor, cmd = m.editor.Update(msg)
 			return m, cmd
 		}

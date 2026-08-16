@@ -65,6 +65,16 @@ type ConnectionConfig struct {
 	Username string `yaml:"username,omitempty" json:"username,omitempty"`
 	Password string `yaml:"password,omitempty" json:"password,omitempty"`
 
+	// SSLMode is the libpq-style TLS policy for MySQL and Postgres: disable,
+	// prefer (default when empty), require, verify-ca, verify-full. Empty
+	// means prefer so saved connections without the field still reach
+	// TLS-required cloud servers. Ignored for SQLite.
+	SSLMode string `yaml:"sslmode,omitempty" json:"sslmode,omitempty"`
+	// Socket is a unix-domain socket path (MySQL socket file, or a Postgres
+	// socket directory). When set — or when Host starts with '/' — TCP
+	// host/port are not used. Ignored when an SSH tunnel is configured.
+	Socket string `yaml:"socket,omitempty" json:"socket,omitempty"`
+
 	// ReadOnly disables all writes on this connection: Exec/Execute reject
 	// write statements, Begin/Session are refused, and the driver opens the
 	// connection read-only at the engine level where supported (SQLite
@@ -78,6 +88,53 @@ type ConnectionConfig struct {
 	SSHPassword   string `yaml:"ssh_password,omitempty" json:"ssh_password,omitempty"`
 	SSHKeyPath    string `yaml:"ssh_key_path,omitempty" json:"ssh_key_path,omitempty"`
 	SSHPassphrase string `yaml:"ssh_passphrase,omitempty" json:"ssh_passphrase,omitempty"`
+}
+
+// NormalizeSSLMode maps a user-supplied sslmode to one of the libpq names.
+// Empty or unknown values become "prefer" — TLS if the server offers it,
+// plaintext otherwise — so saved connections without the field reach cloud
+// hosts that require SSL without breaking local servers that don't.
+func NormalizeSSLMode(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "disable", "allow", "prefer", "require", "verify-ca", "verify-full":
+		return strings.ToLower(strings.TrimSpace(s))
+	}
+	return "prefer"
+}
+
+// sslMode returns the effective TLS policy for this connection.
+func (c ConnectionConfig) sslMode() string {
+	return NormalizeSSLMode(c.SSLMode)
+}
+
+// socketPath is the unix-socket path to dial, or "" to use TCP. An SSH tunnel
+// always uses TCP (the tunnel's local end), so a socket is ignored then. A
+// Host that starts with '/' is treated as a socket, matching libpq.
+func (c ConnectionConfig) socketPath() string {
+	if c.SSHHost != "" {
+		return ""
+	}
+	if c.Socket != "" {
+		return c.Socket
+	}
+	if strings.HasPrefix(c.Host, "/") {
+		return c.Host
+	}
+	return ""
+}
+
+// mysqlTLSParam maps sslmode onto go-sql-driver/mysql's tls= DSN value.
+func mysqlTLSParam(sslmode string) string {
+	switch NormalizeSSLMode(sslmode) {
+	case "disable":
+		return "false"
+	case "require":
+		return "skip-verify"
+	case "verify-ca", "verify-full":
+		return "true"
+	default: // prefer, allow
+		return "preferred"
+	}
 }
 
 // Connection wraps an open database connection with metadata.

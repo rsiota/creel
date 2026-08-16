@@ -690,7 +690,8 @@ func (m Model) handleHelpMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // The wheel scrolls the diagram (shift+wheel, or a terminal's native horizontal
 // wheel, pans sideways). Left-clicks on cards toggle a highlight (or, on a
 // non-root card's header — cued by ⤢ — re-focus the ERD on that table's
-// neighbourhood), and a double-click recentres the viewport. A click-and-drag
+// neighbourhood), and a double-click browses the table (SELECT *, same as
+// Enter). A click-and-drag
 // on a card body moves the card freely: the press is recorded as pending, the
 // first motion event promotes it to a drag (the card tracks the cursor while
 // arrows re-route around it live), and release drops it. A press with no motion
@@ -755,7 +756,7 @@ func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.erdPanel.dragPending != "" {
 			clicked := m.erdPanel.cardNamed(m.erdPanel.dragPending)
 			m.erdPanel.dragPending = ""
-			m = m.runERDCardClick(clicked)
+			return m.runERDCardClick(clicked)
 		}
 	case tea.MouseLeft:
 		cx, cy, ok := m.erdPanel.contentToCanvas(msg.X, msg.Y)
@@ -813,29 +814,26 @@ func (m Model) handleERDMouseHover(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 // runERDCardClick runs the deferred body-click logic for an ERD card on mouse
-// release: a double-click (same card within doubleClickInterval) recentres the
-// viewport on it; otherwise a single click toggles its highlight. Extracted
-// from the MouseRelease path so the press→drag→release flow can call it for a
-// click that never promoted to a drag. clicked may be nil (then nothing fires —
-// the empty-space clear already happened on press).
-func (m Model) runERDCardClick(clicked *gcard) Model {
+// release: a double-click (same card within doubleClickInterval) browses the
+// table (SELECT *, same as Enter); otherwise a single click toggles its
+// highlight. Extracted from the MouseRelease path so the press→drag→release
+// flow can call it for a click that never promoted to a drag. clicked may be
+// nil (then nothing fires — the empty-space clear already happened on press).
+func (m Model) runERDCardClick(clicked *gcard) (Model, tea.Cmd) {
 	if clicked == nil {
-		return m
+		return m, nil
 	}
 	now := time.Now()
 	if !m.lastERDClickTime.IsZero() &&
 		now.Sub(m.lastERDClickTime) <= doubleClickInterval &&
 		m.lastERDClickCard == clicked.name {
-		// Double-click on a card → re-centre the viewport on it (and move the
-		// keyboard focus to it, matching a single click).
 		m.lastERDClickTime = time.Time{}
 		m.erdPanel = m.erdPanel.setFocus(clicked.name)
-		m.erdPanel = m.erdPanel.centerOnCard(clicked)
-		return m
+		return m.erdEnter()
 	}
 	// Single-click → toggle highlight.
 	m.lastERDClickTime = now
 	m.lastERDClickCard = clicked.name
 	m.erdPanel = m.erdPanel.toggleHighlight(clicked)
-	return m
+	return m, nil
 }

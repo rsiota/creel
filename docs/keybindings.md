@@ -76,6 +76,10 @@ In the add/edit form:
 | `h/j/k/l`, `w/b` | Move                       |
 | `x` / `dd` / `dw` / `D` | Delete              |
 | `y` / `p`    | Yank / paste                    |
+| `u` / `U`    | Undo / redo                     |
+| `/`          | Search in buffer                |
+| `n` / `N`    | Next / previous search match    |
+| `V`          | Visual line (yank / delete)     |
 | `ctrl+n`     | Autocomplete                    |
 | `==`         | Format SQL                      |
 

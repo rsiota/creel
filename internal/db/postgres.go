@@ -54,17 +54,22 @@ func (p *Postgres) Connect() error {
 // pgx.ParseConfig on a keyword/value DSN so that quoting and escaping are
 // handled correctly.
 func (p *Postgres) connConfig() (*pgx.ConnConfig, error) {
-	host := p.config.Host
-	if host == "" {
-		host = "localhost"
-	}
 	port := p.config.Port
 	if port == 0 {
 		port = 5432
 	}
 
 	var parts []string
-	parts = append(parts, "host="+quoteDSNValue(host))
+	if sock := p.config.socketPath(); sock != "" {
+		// libpq: host=/dir port=N connects to /dir/.s.PGSQL.N
+		parts = append(parts, "host="+quoteDSNValue(sock))
+	} else {
+		host := p.config.Host
+		if host == "" {
+			host = "localhost"
+		}
+		parts = append(parts, "host="+quoteDSNValue(host))
+	}
 	parts = append(parts, fmt.Sprintf("port=%d", port))
 	if p.config.Username != "" {
 		parts = append(parts, "user="+quoteDSNValue(p.config.Username))
@@ -75,7 +80,7 @@ func (p *Postgres) connConfig() (*pgx.ConnConfig, error) {
 	if p.config.Database != "" {
 		parts = append(parts, "dbname="+quoteDSNValue(p.config.Database))
 	}
-	parts = append(parts, "sslmode=disable")
+	parts = append(parts, "sslmode="+p.config.sslMode())
 	if p.config.ReadOnly {
 		// Sent in the startup packet so every pooled connection is read-only.
 		parts = append(parts, "default_transaction_read_only=on")

@@ -21,7 +21,8 @@ import (
 // `y`/`s` always copy/save the Mermaid source (the exportable text format);
 // the graph is for looking. In the graph view j/k/h/l move a keyboard focus
 // between table cards (the viewport follows), Space toggles highlight, Enter
-// re-focuses the ERD on the focused table, and g/G/ctrl+d/ctrl+u page the
+// browses the focused table (SELECT *), `f` re-focuses the ERD on that table's
+// neighbourhood, and g/G/ctrl+d/ctrl+u page the view; in the Mermaid view
 // view; in the Mermaid view j/k/g/G/ctrl+d/ctrl+u scroll the source. esc/q
 // close.
 type ERDPanel struct {
