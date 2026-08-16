@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	mysql "github.com/go-sql-driver/mysql"
 	"golang.org/x/crypto/ssh"
 )
+
+const sshKeepAliveInterval = 30 * time.Second
 
 // mysqlRegisterDialContext registers a custom dialer for the MySQL driver
 // that routes connections through the SSH tunnel.
@@ -22,6 +25,8 @@ func mysqlRegisterDialContext(name string, tunnel *SSHTunnel) {
 // SSHTunnel manages an SSH connection used to tunnel database traffic.
 type SSHTunnel struct {
 	client *ssh.Client
+	stop   chan struct{}
+	once   sync.Once
 }
 
 // NewSSHTunnel establishes an SSH connection to the bastion host.
@@ -54,7 +59,9 @@ func NewSSHTunnel(cfg ConnectionConfig) (*SSHTunnel, error) {
 		return nil, fmt.Errorf("ssh dial %s: %w", addr, err)
 	}
 
-	return &SSHTunnel{client: client}, nil
+	t := &SSHTunnel{client: client, stop: make(chan struct{})}
+	go t.keepAlive()
+	return t, nil
 }
 
 // DialContext opens a connection to the target through the SSH tunnel.
@@ -62,12 +69,38 @@ func (t *SSHTunnel) DialContext(ctx context.Context, network, addr string) (net.
 	return t.client.Dial(network, addr)
 }
 
-// Close closes the underlying SSH client connection.
+// Close closes the underlying SSH client connection and stops keepalives.
 func (t *SSHTunnel) Close() error {
-	if t == nil || t.client == nil {
+	if t == nil {
+		return nil
+	}
+	t.once.Do(func() {
+		close(t.stop)
+	})
+	if t.client == nil {
 		return nil
 	}
 	return t.client.Close()
+}
+
+// keepAlive sends OpenSSH keepalive requests so idle bastion sessions (and
+// intervening NATs) do not drop the tunnel. On failure the client is closed
+// so the next DB Ping/Dial fails fast and the UI can reconnect.
+func (t *SSHTunnel) keepAlive() {
+	ticker := time.NewTicker(sshKeepAliveInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-t.stop:
+			return
+		case <-ticker.C:
+			_, _, err := t.client.SendRequest("keepalive@openssh.com", true, nil)
+			if err != nil {
+				_ = t.client.Close()
+				return
+			}
+		}
+	}
 }
 
 func sshAuthMethods(cfg ConnectionConfig) ([]ssh.AuthMethod, error) {

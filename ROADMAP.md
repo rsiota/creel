@@ -179,9 +179,9 @@ or sequenced behind them.
   `graph_nav_test.go`.
 
 **Next (connection / editing polish)**
-- **Reconnect / keep-alive** — dropped SSH tunnel or idle Postgres currently
-  means leaving the workspace. Auto-reconnect with a status-bar
-  “reconnecting…”.
+- **Reconnect / keep-alive** — shipped: pool idle/lifetime caps, Postgres TCP
+  keepalives, SSH tunnel keepalive, 30s Ping for MySQL/Postgres, and in-place
+  reconnect (status-bar “reconnecting…”, `:reconnect`) that keeps the workspace.
 - **Transaction isolation** — already listed above (`:begin serializable`).
 - **Jump to syntax error** — highlight the token Postgres/MySQL reports
   (`syntax error at line 12`) in the editor.
@@ -226,8 +226,6 @@ or sequenced behind them.
 - SQL Server / Turso just to match sqlit’s comparison table.
 
 **Docs / consistency**
-- `docs/features.md` and `docs/architecture.md` still say SSH is MySQL-only;
-  Postgres tunneling already exists.
 - Fuzzy verb matching for `:` (`:g<tab>` → `goto`) — last wave-2 leftover.
 - `cursor_style` is reserved but unused; ship block/underline or drop the
   field.

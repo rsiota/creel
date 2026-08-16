@@ -9,6 +9,9 @@ An overview of everything creel can do. For keys, see
 - **Three databases, one interface** — connect to SQLite, MySQL, or PostgreSQL,
   with SSH tunneling for remote MySQL and PostgreSQL, TLS (`sslmode`), and
   unix sockets.
+- **Keep-alive / reconnect** — MySQL and Postgres connections are pinged in the
+  background; dropped SSH tunnels or idle sessions rebuild in place with a
+  status-bar “reconnecting…” (also `:reconnect`). The workspace stays open.
 - **Secret storage** — passwords and SSH passwords are stored in the OS keychain
   (macOS Keychain, Windows Credential Manager, Linux Secret Service) rather than
   plaintext config, falling back to plaintext on systems without a keychain. See

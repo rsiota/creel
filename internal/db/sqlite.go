@@ -47,6 +47,14 @@ func (s *SQLite) Close() error {
 	return s.db.Close()
 }
 
+// Ping verifies the SQLite connection is still usable.
+func (s *SQLite) Ping() error {
+	if s.db == nil {
+		return fmt.Errorf("not connected")
+	}
+	return s.db.Ping()
+}
+
 // Databases returns the single configured database for SQLite.
 func (s *SQLite) Databases() ([]string, error) {
 	return []string{s.config.Database}, nil

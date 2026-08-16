@@ -44,10 +44,17 @@ func (m *MySQL) Connect() error {
 	if err != nil {
 		return fmt.Errorf("failed to open mysql: %w", err)
 	}
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
+	configurePool(db)
 	m.db = db
 	return db.Ping()
+}
+
+// Ping verifies the MySQL connection (and SSH tunnel, if any) is still live.
+func (m *MySQL) Ping() error {
+	if m.db == nil {
+		return fmt.Errorf("not connected")
+	}
+	return m.db.Ping()
 }
 
 func (m *MySQL) dsn() string {
@@ -128,8 +135,7 @@ func (m *MySQL) UseDatabase(name string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open mysql: %w", err)
 	}
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
+	configurePool(db)
 	m.db = db
 	return db.Ping()
 }

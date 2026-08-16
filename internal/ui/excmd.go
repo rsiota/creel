@@ -1131,6 +1131,25 @@ func (m *Model) exConnect(args []string) tea.Cmd {
 	return cmd
 }
 
+// exReconnect rebuilds the active MySQL/Postgres connection (and SSH tunnel)
+// in place so a dropped session does not kick the user back to the picker.
+func (m *Model) exReconnect() tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if !m.needsKeepAlive() {
+		m.schemaMsg = "reconnect is for MySQL/Postgres connections"
+		return nil
+	}
+	if m.reconnecting {
+		m.schemaMsg = "already reconnecting…"
+		return nil
+	}
+	m.reconnectRetry = false
+	return m.reconnectInPlace()
+}
+
 // exDB lists or switches databases (:db / :use [database]). Bare opens the
 // picker (ctrl+b); with an argument switches directly. SQLite gets an explicit
 // message rather than a silent no-op.

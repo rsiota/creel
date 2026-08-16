@@ -114,6 +114,9 @@ func (m Model) statusMessage() string {
 			sbMuted.Render(fmt.Sprintf(" asking model… %s (esc to cancel)", elapsed))
 	}
 	switch {
+	case m.reconnecting:
+		frame := spinnerFrames[m.querySpinner%len(spinnerFrames)]
+		return sbPrimary.Render(frame) + sbMuted.Render(" reconnecting…")
 	case m.results.SaveError() != "":
 		return sbError.Render(m.results.SaveError())
 	case m.results.IsEditing():

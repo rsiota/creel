@@ -49,7 +49,7 @@ func TestExRegistryConsistency(t *testing.T) {
 func TestExLookupResolvesKnownVerbs(t *testing.T) {
 	known := []string{
 		"e", "edit", "w", "write", "q", "quit", "qa", "wq", "x", "sort", "goto", "gt",
-		"export", "copy", "connect", "c", "connections", "db", "use", "schema",
+		"export", "copy", "connect", "c", "reconnect", "connections", "db", "use", "schema",
 		"refs", "references", "uses", "begin", "transaction",
 		"commit", "rollback", "help", "h", "run", "r",
 		"explain", "plan", "new", "version", "recent",

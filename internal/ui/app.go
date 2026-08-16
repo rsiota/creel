@@ -468,6 +468,11 @@ type Model struct {
 	sessionStore      *session.Store
 	startupFileLoaded bool    // creel -f: suppress the first session restore so the file wins
 	startupCmd        tea.Cmd // creel -database/-c: follow-up cmds after auto-connect (focus, prefetch)
+	// reconnect / keep-alive (MySQL + Postgres): background Ping + in-place
+	// rebuild when the tunnel or idle session dies, without leaving the workspace.
+	keepAliveGen   uint64
+	reconnecting   bool
+	reconnectRetry bool // re-run lastQuery after a successful reconnect
 	// colWidthMem is the in-memory column-width map for the active
 	// connection+database (table → column → width). Loaded from / saved with
 	// the session so widths survive reconnects.
@@ -1095,6 +1100,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		if msg.err != nil {
+			if ok, rcmd := m.maybeReconnectOnError(msg.err, true); ok {
+				return m, rcmd
+			}
 			m.results.SetError(msg.err.Error())
 			if m.restoreCursor {
 				m.restoreCursor = false
@@ -1158,7 +1166,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case spinnerTickMsg:
-		if !m.queryRunning && !m.aiRunning {
+		if !m.queryRunning && !m.aiRunning && !m.reconnecting {
 			return m, nil
 		}
 		m.querySpinner = (m.querySpinner + 1) % len(spinnerFrames)
@@ -1166,6 +1174,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case saveResultMsg:
 		if msg.err != nil {
+			if ok, rcmd := m.maybeReconnectOnError(msg.err, false); ok {
+				return m, rcmd
+			}
 			m.results.SetSaveError(msg.err.Error())
 		} else {
 			// Apply dirty values to the underlying rows so the display stays consistent.
@@ -1181,6 +1192,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case insertResultMsg:
 		if msg.err != nil {
+			if ok, rcmd := m.maybeReconnectOnError(msg.err, false); ok {
+				return m, rcmd
+			}
 			m.results.SetSaveError(msg.err.Error())
 		} else {
 			m.inspector.CancelInsert()
@@ -1460,6 +1474,15 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case watchTickMsg:
 		return m.handleWatchTick(msg)
+
+	case keepAliveTickMsg:
+		return m.handleKeepAliveTick(msg)
+
+	case keepAliveFailMsg:
+		return m.handleKeepAliveFail(msg)
+
+	case reconnectResultMsg:
+		return m.handleReconnectResult(msg)
 
 	case explainResultMsg:
 		if msg.err != nil {

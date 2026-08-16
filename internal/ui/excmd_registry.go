@@ -294,6 +294,13 @@ func exCommands() []exCmdSpec {
 			complete: completeConnection,
 		},
 		{
+			verbs:   []string{"reconnect"},
+			desc:    "rebuild the active connection without leaving the workspace",
+			usage:   ":reconnect",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exReconnect() },
+		},
+		{
 			verbs:   []string{"connections"},
 			desc:    "open the connection list",
 			usage:   ":connections",

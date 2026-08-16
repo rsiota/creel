@@ -149,6 +149,8 @@ type DB interface {
 	Connect() error
 	// Close closes the database connection.
 	Close() error
+	// Ping verifies the connection is still alive (keep-alive / reconnect).
+	Ping() error
 	// Tables returns the list of tables and views in the database.
 	Tables() ([]string, error)
 	// Views returns the list of views in the database (excluding base tables).

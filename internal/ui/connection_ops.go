@@ -100,7 +100,7 @@ func (m *Model) connectWithConfig(dbCfg db.ConnectionConfig) tea.Cmd {
 		}
 		m.dbPicker.Show(dbs, true)
 		m.layoutWorkspace()
-		return nil
+		return m.scheduleKeepAlive()
 	}
 
 	m.loadTables()
@@ -109,7 +109,7 @@ func (m *Model) connectWithConfig(dbCfg db.ConnectionConfig) tea.Cmd {
 	m.layoutWorkspace()
 	m.applyFocus()
 
-	return tea.Batch(cmd, m.prefetchSchemas(), m.fetchTableRowCounts())
+	return tea.Batch(cmd, m.prefetchSchemas(), m.fetchTableRowCounts(), m.scheduleKeepAlive())
 }
 
 // resetWorkspaceForNewConnection clears query/results/tab state after a
@@ -161,6 +161,7 @@ func (m *Model) resetWorkspaceForNewConnection() {
 // picker. Shared by ctrl+t, :connections, and bare :connect.
 func (m *Model) showConnectionList() tea.Cmd {
 	m.saveSession()
+	m.stopKeepAlive()
 	if m.connection != nil {
 		m.rollbackTxn()
 		m.connection.Close()

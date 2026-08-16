@@ -44,10 +44,17 @@ func (p *Postgres) Connect() error {
 	}
 
 	db := stdlib.OpenDB(*config)
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
+	configurePool(db)
 	p.db = db
 	return db.Ping()
+}
+
+// Ping verifies the Postgres connection (and SSH tunnel, if any) is still live.
+func (p *Postgres) Ping() error {
+	if p.db == nil {
+		return fmt.Errorf("not connected")
+	}
+	return p.db.Ping()
 }
 
 // connConfig builds a pgx.ConnConfig from the connection parameters. It uses
@@ -81,6 +88,9 @@ func (p *Postgres) connConfig() (*pgx.ConnConfig, error) {
 		parts = append(parts, "dbname="+quoteDSNValue(p.config.Database))
 	}
 	parts = append(parts, "sslmode="+p.config.sslMode())
+	// TCP keepalives so idle sessions through NAT / cloud LBs stay up between
+	// UI pings. Harmless when connecting via unix socket.
+	parts = append(parts, "keepalives=1", "keepalives_idle=30", "keepalives_interval=10")
 	if p.config.ReadOnly {
 		// Sent in the startup packet so every pooled connection is read-only.
 		parts = append(parts, "default_transaction_read_only=on")
@@ -207,8 +217,7 @@ func (p *Postgres) reopen() error {
 	}
 
 	db := stdlib.OpenDB(*config)
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
+	configurePool(db)
 	p.db = db
 	return db.Ping()
 }

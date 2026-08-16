@@ -21,6 +21,7 @@ commits, so it can come up empty).
 - `:line` / `:scatter` plot datetime x (ISO-8601, SQL timestamps, date-only) as Unix seconds, keeping the original text as the axis label.
 - `Enter` on a bar/hist/freq chart keeps rows for that bar and restores the grid.
 - Relationship explorer: `t` opens a node in a new tab; insert-related (`A`) inserts into the child table without leaving the parent grid, then restores the explorer after save or cancel.
+- Auto-reconnect for MySQL/Postgres: keep-alive Ping, SSH tunnel keepalive, and in-place rebuild with a status-bar “reconnecting…” (`:reconnect`). Workspace tabs/editor stay put.
 
 ### Fixed
 - SQL export (`X`) emits native CREATE TABLE DDL (MySQL `SHOW CREATE TABLE`, SQLite `sqlite_master`) so indexes, named foreign keys, ON DELETE/UPDATE, CHECK constraints, and ENGINE/CHARSET survive a dump round-trip. Unsigned integer values are no longer quoted as strings. MySQL string literals backslash-escape `\`, quotes, and control characters (mysqldump / Sequel Ace style) so PHP namespaces like `App\Models\User` round-trip.
