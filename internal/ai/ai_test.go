@@ -51,6 +51,35 @@ func TestExtractSQL_Empty(t *testing.T) {
 	}
 }
 
+func TestFixSystemPrompt(t *testing.T) {
+	p := FixSystemPrompt("CREATE TABLE users (id INT);")
+	for _, want := range []string{
+		"corrected SQL",
+		"CREATE TABLE users",
+		"DROP/TRUNCATE/DELETE",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("FixSystemPrompt missing %q\n%s", want, p)
+		}
+	}
+	if strings.Contains(p, "Prefer a SELECT") {
+		t.Error("fix prompt must not force SELECT-only like SystemPrompt")
+	}
+}
+
+func TestFixUserPrompt(t *testing.T) {
+	got := FixUserPrompt("SELECT * FORM users;", `near "FORM": syntax error`)
+	for _, want := range []string{
+		"SELECT * FORM users;",
+		`near "FORM": syntax error`,
+		"corrected SQL statement only",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("FixUserPrompt missing %q\n%s", want, got)
+		}
+	}
+}
+
 func TestSchemaContext(t *testing.T) {
 	conn := &fakeConn{
 		tables: []string{"users", "orders"},

@@ -128,7 +128,11 @@ render exactly as before when none of your connections use groups.
 
 The assistant panel (and the `:ai` command) turn a natural-language question
 into SQL using any OpenAI-compatible endpoint (OpenAI, z.ai, OpenRouter,
-Ollama, LM Studio, …). Configure it **in-app** from the assistant panel:
+Ollama, LM Studio, …). After a query fails, `:aifix` (alias `:fixsql`) sends
+the failed statement and driver error to the same provider and drops a
+corrected candidate into the editor for review — it never auto-runs.
+
+Configure it **in-app** from the assistant panel:
 
 - `M` opens the provider picker. From there `n` adds a provider, `e` edits the
   one under the cursor, `d` deletes it (a `y/n` prompt confirms first, like

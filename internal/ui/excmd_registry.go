@@ -903,6 +903,14 @@ func exCommands() []exCmdSpec {
 				return m.exAI(strings.Join(args, " "))
 			},
 		},
+		{
+			verbs: []string{"aifix", "fixsql"},
+			desc:  "ask the AI to fix the last failed query",
+			usage: ":aifix",
+			run: func(m *Model, _ []string, _ bool) tea.Cmd {
+				return m.exAIFix()
+			},
+		},
 	}
 }
 

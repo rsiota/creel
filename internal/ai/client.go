@@ -293,6 +293,37 @@ func SystemPrompt(schema string) string {
 	return systemPrompt(schema)
 }
 
+// FixSystemPrompt instructs the model to correct a failed SQL statement.
+// Unlike SystemPrompt it does not force SELECT — the rewrite should match the
+// original intent — but still asks for a single statement with no prose.
+func FixSystemPrompt(schema string) string {
+	var b strings.Builder
+	b.WriteString("You are a SQL assistant inside a database browser. ")
+	b.WriteString("The user ran a SQL statement that failed. Reply with ONLY a single ")
+	b.WriteString("corrected SQL statement — no explanation, no markdown fences. ")
+	b.WriteString("Make the smallest change that fixes the error. Preserve the user's intent ")
+	b.WriteString("(do not turn a SELECT into a write, or invent DROP/TRUNCATE/DELETE). ")
+	b.WriteString("Use the exact table and column names from the schema.\n\n")
+	b.WriteString("Database schema:\n")
+	if schema == "" {
+		b.WriteString("(schema unavailable)")
+	} else {
+		b.WriteString(schema)
+	}
+	return b.String()
+}
+
+// FixUserPrompt builds the user turn for a fix-this-error request.
+func FixUserPrompt(failedSQL, errMsg string) string {
+	var b strings.Builder
+	b.WriteString("The following SQL failed. Return a corrected SQL statement only.\n\n")
+	b.WriteString("SQL:\n")
+	b.WriteString(strings.TrimSpace(failedSQL))
+	b.WriteString("\n\nError:\n")
+	b.WriteString(strings.TrimSpace(errMsg))
+	return b.String()
+}
+
 // systemPrompt instructs the model to return a single read-only SQL statement
 // for the given schema. It forbids prose and asks for a SELECT so a
 // misunderstood request cannot mutate data — a safety default we can relax

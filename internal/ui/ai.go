@@ -268,6 +268,52 @@ func (m *Model) exAI(question string) tea.Cmd {
 	return m.dispatchAI(messages, false, q)
 }
 
+// aiFixQuestion is the internal label shown in the pending hint / result toast
+// for :aifix (not sent to the model as the user turn).
+const aiFixQuestion = "fix last error"
+
+// recordQueryFailure remembers the last failed editor statement for :aifix.
+func (m *Model) recordQueryFailure(query string, err error) {
+	if err == nil {
+		return
+	}
+	q := strings.TrimSpace(strings.TrimRight(query, ";"))
+	if q == "" {
+		return
+	}
+	m.lastQueryFailSQL = q
+	m.lastQueryFailErr = err.Error()
+}
+
+// clearQueryFailure drops the :aifix context (successful run or disconnect).
+func (m *Model) clearQueryFailure() {
+	m.lastQueryFailSQL = ""
+	m.lastQueryFailErr = ""
+}
+
+// exAIFix asks the model to rewrite the last failed statement. The candidate
+// lands in the editor for review — never auto-run.
+func (m *Model) exAIFix() tea.Cmd {
+	if m.connection == nil {
+		m.aiMsg = ":aifix needs an open connection"
+		return nil
+	}
+	if m.lastQueryFailSQL == "" || m.lastQueryFailErr == "" {
+		m.aiMsg = "no failed query to fix — run a statement first"
+		return nil
+	}
+	if m.aiRunning {
+		m.aiMsg = "ai request already in progress"
+		return nil
+	}
+	schema, _ := ai.SchemaContext(m.aiIntrospector())
+	messages := []ai.Message{
+		{Role: "system", Content: ai.FixSystemPrompt(schema)},
+		{Role: "user", Content: ai.FixUserPrompt(m.lastQueryFailSQL, m.lastQueryFailErr)},
+	}
+	return m.dispatchAI(messages, false, aiFixQuestion)
+}
+
 // sendAssistant dispatches a request from the assistant panel. The full
 // transcript is sent as conversation context so follow-up turns ("now filter
 // to active users") work; the result is appended to the panel's transcript.

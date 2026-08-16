@@ -573,6 +573,12 @@ type Model struct {
 	aiStart    time.Time
 	aiMsg      string
 
+	// Last failed editor query, for :aifix. Cleared on a successful run or
+	// when leaving the connection. query is what the user wrote (not the
+	// pagination wrap); err is the driver message.
+	lastQueryFailSQL string
+	lastQueryFailErr string
+
 	// :timing — when on, the status bar shows the last query's elapsed time.
 	showTiming       bool
 	lastQueryElapsed time.Duration
@@ -1105,12 +1111,14 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if ok, rcmd := m.maybeReconnectOnError(msg.err, true); ok {
 				return m, rcmd
 			}
+			m.recordQueryFailure(msg.query, msg.err)
 			m.results.SetError(msg.err.Error())
 			if m.restoreCursor {
 				m.restoreCursor = false
 			}
 			m.maybeJumpToQueryError(msg.err, msg.query, msg.execQuery)
 		} else {
+			m.clearQueryFailure()
 			cols := make([]string, len(msg.result.Columns))
 			for i, c := range msg.result.Columns {
 				cols[i] = c.Name
@@ -1576,7 +1584,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.editor.SetValue(msg.sql)
 			m.focus = FocusEditor
 			m.applyFocus()
-			m.aiMsg = fmt.Sprintf("AI generated query for %q — review then ctrl+e to run", q)
+			if q == aiFixQuestion {
+				m.aiMsg = "AI fixed query — review then ctrl+e to run"
+			} else {
+				m.aiMsg = fmt.Sprintf("AI generated query for %q — review then ctrl+e to run", q)
+			}
 			return m, nil
 		}
 

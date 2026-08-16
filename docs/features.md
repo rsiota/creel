@@ -226,5 +226,7 @@ erDiagram
   `:session save` snapshots now.
 - **Command palette** (`Ctrl+P`) and a full **help overlay** (`?`).
 - **AI assistant** — turn a natural-language question into SQL using any
-  OpenAI-compatible endpoint. See
+  OpenAI-compatible endpoint (`:ai`, assistant panel). After a failed query,
+  `:aifix` (alias `:fixsql`) asks the model to rewrite it; review then
+  `ctrl+e` — never auto-run. See
   [Configuration → AI assistant](configuration.md#ai-assistant).

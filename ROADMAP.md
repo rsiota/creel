@@ -202,7 +202,9 @@ or sequenced behind them.
 
 **AI**
 - “Explain this query” / “why is this slow” with the last `EXPLAIN` attached.
-- “Fix this error” with the last failed statement + driver error.
+- **“Fix this error”** — shipped: `:aifix` / `:fixsql` remembers the last failed
+  statement + driver error, asks the model for a corrected statement, and
+  drops it in the editor for review (`ctrl+e`). No auto-run.
 - Restrict schema context to the focused table + FK neighbourhood (cheaper
   and more accurate than the first 100 tables).
 - Optional: run generated SQL in a scratch tab (read-only) and iterate on the
