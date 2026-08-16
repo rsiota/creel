@@ -3594,6 +3594,15 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				m.resultsPendingY = true
 				return m, nil
+			case "r":
+				// y r — copy marked/cursor rows as TSV (same as :copyrow).
+				// Completes the pending-Y chord; yy remains copy-cell, g r
+				// remains the explorer (handled above when pending-G).
+				if m.resultsPendingY {
+					m.resultsPendingY = false
+					m.resultsPendingG = false
+					return m, m.copyRowsDelimited(fmtTSV)
+				}
 			case "p":
 				m.resultsPendingG = false
 				m.resultsPendingY = false

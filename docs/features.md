@@ -193,7 +193,8 @@ erDiagram
 ## Editing
 
 - **Inline editing** — edit cells directly, insert rows, clone rows, paste from
-  clipboard.
+  clipboard. Copy helpers: `y y` (cell), `y r` / `:copyrow` (rows as TSV for
+  Sheets/Slack), `Y` / `:copyinsert` (rows as INSERT).
 - **Manual transactions** — `:begin` / `:commit` / `:rollback`, with optional
   isolation (`:begin serializable`, `:begin repeatable read`, `:begin read
   committed`, …). The status bar shows `TXN ●` (or `TXN S` / `TXN RR` / …).

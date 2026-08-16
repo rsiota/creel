@@ -84,6 +84,7 @@ var chordReplays = map[string][]string{
 	"g X": {"g", "X"},
 	"dd":  {"d", "d"},
 	"y y": {"y", "y"},
+	"y r": {"y", "r"},
 }
 
 // replayTokens returns the key sequence the command palette should replay to

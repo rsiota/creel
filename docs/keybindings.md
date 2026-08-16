@@ -120,7 +120,9 @@ In the add/edit form:
 | `g H`      | Show all columns                             |
 | `v`        | Column visibility overlay                    |
 | `:`        | Ex command line (`:q`, `:sort`, `:goto`, …; column jump in results) |
-| `y` / `p`  | Copy cell / paste to cell                    |
+| `y y`      | Copy cell                                    |
+| `y r`      | Copy rows as TSV (Sheets/Slack; same as `:copyrow`) |
+| `p`        | Paste clipboard to cell                      |
 | `Y`        | Copy rows as INSERT statements               |
 | `P`        | Clone marked/cursor row                      |
 | `x`        | Export current page to CSV                 |

@@ -186,8 +186,8 @@ or sequenced behind them.
 - **Jump to syntax error** — shipped: on query failure, parse MySQL/Postgres/
   SQLite position hints and move the editor cursor to the token (unwraps the
   pagination `SELECT * FROM (…)` wrapper). Status: “jumped to error near …”.
-- **`:copyrow` keybinding** — the verb shipped; a chord (not `Y`, which is
-  INSERT) would make “paste into Slack/Sheets” discoverable.
+- **`:copyrow` keybinding** — shipped: `y r` copies marked/cursor rows as TSV
+  (same helper as `:copyrow`); `Y` stays INSERT, `y y` stays cell copy.
 
 **Graph / charts (after the Now slice)**
 - **ERD mini-map** — already listed above.
@@ -413,10 +413,10 @@ palette). Never copy a key handler body into an ex executor. A full unified
     marked rows (or the cursor row when none are marked) to the clipboard as
     TSV (default) or `csv`/`md`/`json`/`jsonl`, reusing `serializeFormat`.
     Fills the gap between `:copy` (one cell) and `:copyinsert` (rows as SQL) —
-    the common "paste this row into Sheets/Slack" case. Keybinding deferred
-    (ship the verb first, per the design guidance). Files: `results_table.go`,
-    `editing.go`, `excmd.go`, `excmd_registry.go`. Tests: `null_copy_test.go`,
-    `excmd_results_test.go`.
+    the common "paste this row into Sheets/Slack" case. Keybinding: `y r`
+    (same helper). Files: `results_table.go`, `editing.go`, `excmd.go`,
+    `excmd_registry.go`, `app.go`. Tests: `null_copy_test.go`,
+    `excmd_results_test.go`, `copyrow_keybind_test.go`.
 18. **Multi-line cell viewer** (2026-08-05) — the cell-expand popup (`E`,
     `CellEditPopup`) already covered long-truncated values and pretty-printed
     JSON, but it (a) was gated on editability so it no-op'd on read-only mode /
