@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -473,10 +472,10 @@ type Model struct {
 	// connection+database (table → column → width). Loaded from / saved with
 	// the session so widths survive reconnects.
 	colWidthMem map[string]map[string]int
-	// pendingRelatedInsert holds column→value prefills for an insert started
-	// from the relationship explorer (A on an inbound edge). Applied once the
-	// target-table query finishes and cleared afterward.
-	pendingRelatedInsert map[string]string
+	// insertTarget is a shadow results table used while inserting into a
+	// table that is not the current grid (explorer "insert related"). The
+	// inspector and saveInsert read columns from this instead of m.results.
+	insertTarget *ResultsTable
 	// restoreExplorerAfterInsert re-opens the docked explorer after an insert
 	// that borrowed the right slot for the inspector (save or cancel).
 	restoreExplorerAfterInsert bool
@@ -704,6 +703,7 @@ func (m *Model) setActiveTab(id int) {
 			m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
 			m.restoreTabState()
 			m.inspector.Reset()
+			m.insertTarget = nil
 			m.layoutWorkspace()
 			return
 		}
@@ -755,6 +755,7 @@ func (m *Model) closeTab(id int) {
 		m.cancelTransientModes()
 		m.restoreTabState()
 		m.inspector.Reset()
+		m.insertTarget = nil
 		m.layoutWorkspace()
 	} else {
 		m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
@@ -1138,21 +1139,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// paging onto a short page (or re-querying) does not shrink columns.
 			m.syncColWidthMemory()
 			m.inspector.Reset()
-			// Finish an explorer "insert related" (A on an inbound edge): open
-			// the inspector with the FK prefilled once the target table is live.
-			// Must run after Reset so insert state is not wiped.
-			if prefills := m.pendingRelatedInsert; prefills != nil {
-				m.pendingRelatedInsert = nil
-				if m.results.IsEditable() && !m.results.HasDirtyCells() {
-					m.startInsertWithValues(prefills)
-					cols := make([]string, 0, len(prefills))
-					for c := range prefills {
-						cols = append(cols, c)
-					}
-					sort.Strings(cols)
-					m.schemaMsg = fmt.Sprintf("insert related — %s prefilled", strings.Join(cols, ", "))
-				}
-			}
+			m.insertTarget = nil
 			if m.restoreCursor {
 				m.results.SetCursor(m.restoreCursorRow, m.restoreCursorCol)
 				m.restoreCursor = false
@@ -1198,8 +1185,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.inspector.CancelInsert()
 			m.results.ConfirmSaved()
+			m.insertTarget = nil
 			if m.restoreExplorerAfterInsert {
 				m.restoreExplorerPanel()
+				m.explorer.markLoading()
+				return m, m.loadExplorer()
 			}
 			return m, m.runPageQuery()
 		}
@@ -3986,7 +3976,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.inspector.cursorField = 0
 				return m, nil
 			case "enter":
-				m.inspector.CommitFilter(m.results)
+				m.inspector.CommitFilter(m.inspectorResults())
 				return m, nil
 			case "backspace":
 				m.inspector.FilterBackspace()
@@ -3995,7 +3985,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.inspector.CursorUp()
 				return m, nil
 			case "down", "j":
-				m.inspector.CursorDown(m.results)
+				m.inspector.CursorDown(m.inspectorResults())
 				return m, nil
 			}
 			if msg.Type == tea.KeyRunes {
@@ -4011,11 +4001,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "down", "j":
 			m.inspector.pendingG = false
-			m.inspector.CursorDown(m.results)
+			m.inspector.CursorDown(m.inspectorResults())
 			return m, nil
 		case "G":
 			m.inspector.pendingG = false
-			m.inspector.CursorBottom(m.results)
+			m.inspector.CursorBottom(m.inspectorResults())
 			return m, nil
 		case "g":
 			if m.inspector.pendingG {
@@ -4030,19 +4020,20 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "e", "i":
 			m.inspector.pendingG = false
-			col := m.inspector.selectedColumn(m.results)
+			src := m.inspectorResults()
+			col := m.inspector.selectedColumn(src)
 			if !m.inspector.IsInserting() && m.results.IsBlobCell(m.results.CursorRow(), col) {
 				return m, m.openCellEditPopup(m.results.CursorRow(), col)
 			}
-			if !m.inspector.IsInserting() && m.inspector.IsFieldTruncated(m.results) {
+			if !m.inspector.IsInserting() && m.inspector.IsFieldTruncated(src) {
 				return m, m.openCellEditPopup(m.results.CursorRow(), col)
 			}
-			m.inspector.StartFieldEdit(m.results)
+			m.inspector.StartFieldEdit(src)
 			return m, nil
 		case "E":
 			m.inspector.pendingG = false
 			if !m.inspector.IsInserting() {
-				col := m.inspector.selectedColumn(m.results)
+				col := m.inspector.selectedColumn(m.inspectorResults())
 				return m, m.openCellEditPopup(m.results.CursorRow(), col)
 			}
 		case "ctrl+s":
@@ -4491,7 +4482,7 @@ func (m Model) viewWorkspace() string {
 			Height(slotContentHeight).
 			Border(panelBorder()).
 			BorderForeground(m.borderForFocus(FocusInspector)).
-			Render(m.inspector.View(m.results))
+			Render(m.inspector.View(m.inspectorResults()))
 	} else if m.assistant.IsVisible() {
 		slotContentHeight := lipgloss.Height(rightPanel) - borderOverhead
 		if slotContentHeight < 3 {

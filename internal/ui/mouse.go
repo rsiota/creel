@@ -169,7 +169,7 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 		// Map the click to a field. The inspector's top border is at Y=0,
 		// so content starts at Y=1.
-		col := m.inspector.ClickField(msg.Y-1, m.results)
+		col := m.inspector.ClickField(msg.Y-1, m.inspectorResults())
 
 		// Double-click on the same field within doubleClickInterval →
 		// enter field edit mode (mirrors the "e"/"i" key binding).

@@ -80,8 +80,9 @@ tree of the focused row's inbound and outbound foreign keys, with a live
 per-edge count. Expand an edge (`→`) to see the related rows inline, expand a
 row to see *its* edges, and so on (depth-capped); `Enter` opens a node in the
 grid (replacing this tab), `t` opens it in a new tab so the parent stays,
-`A` on an inbound edge inserts a related row (the explorer yields the
-inspector, then comes back on save or cancel), `←` collapses, `r` retargets.
+`A` on an inbound edge inserts a related row into the child table without
+leaving the parent grid (the explorer yields the inspector, then comes back
+on save or cancel), `←` collapses, `r` retargets.
 The panel stays open and re-roots as the cursor moves. When the results
 cursor sits on a foreign-key column, the matching outbound edge is highlighted
 (and selected, while the grid has focus). Counts and child rows

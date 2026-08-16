@@ -134,7 +134,7 @@ In the add/edit form:
 | `h/l`      | Collapse / expand                               |
 | `enter`    | Re-root this tab on the node                    |
 | `t`        | Open the node in a new tab                      |
-| `A`        | Insert related row (inbound edge)               |
+| `A`        | Insert related row (inbound edge; stays on parent) |
 | `u` / `g b`| Go back                                         |
 | `r`        | Retarget / refresh                              |
 | `esc` / `q`| Close                                           |

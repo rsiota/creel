@@ -135,14 +135,13 @@ func (m *Model) applyExplorerDrill(query string) {
 	m.page = 0
 	m.results.SetSearchMatcher(nil)
 	m.lastSearch = ""
-	m.pendingRelatedInsert = nil
 	m.explorer.markLoading()
 }
 
 // explorerInsertRelated (A) starts an insert into an inbound relationship's
 // child table with the FK column prefilled from the parent row. Select an
-// inbound edge (e.g. orders under users) and press A — the grid navigates to
-// that related set and the inspector opens in insert mode with the link set.
+// inbound edge (e.g. orders under users) and press A — the inspector opens
+// insert mode for the child table while the grid stays on the parent.
 func (m *Model) explorerInsertRelated() tea.Cmd {
 	if m.isReadOnly() {
 		m.schemaMsg = "read-only — cannot insert"
@@ -174,21 +173,21 @@ func (m *Model) explorerInsertRelated() tea.Cmd {
 		return nil
 	}
 
-	prefills := map[string]string{edge.edge.targetColumn: edge.filterVal}
-	m.pendingRelatedInsert = prefills
-	m.pushQueryStack()
-	query := edgeDrillQuery(m.connection.Config().Driver, edge.edge, edge.filterVal)
-	m.editor.SetValue(query)
-	m.lastQuery = query
-	m.baseQuery = ""
-	m.filters = nil
-	m.sortCol = ""
-	m.sortDir = ""
-	m.page = 0
-	m.results.SetSearchMatcher(nil)
-	m.lastSearch = ""
-	m.explorer.markLoading()
-	return m.runPageQuery()
+	child := edge.edge.targetTable
+	target, err := m.newInsertTarget(child)
+	if err != nil {
+		m.schemaMsg = fmt.Sprintf("cannot insert related: %v", err)
+		return nil
+	}
+	m.insertTarget = target
+	m.startInsertWithValues(map[string]string{edge.edge.targetColumn: edge.filterVal})
+	if !m.inspector.IsInserting() {
+		m.insertTarget = nil
+		m.schemaMsg = "cannot insert related"
+		return nil
+	}
+	m.schemaMsg = fmt.Sprintf("insert related into %s — %s prefilled", child, edge.edge.targetColumn)
+	return nil
 }
 
 func (m *Model) goBackQuery() tea.Cmd {
@@ -209,7 +208,6 @@ func (m *Model) goBackQuery() tea.Cmd {
 	m.restoreCursor = true
 	m.restoreCursorRow = entry.cursorRow
 	m.restoreCursorCol = entry.cursorCol
-	m.pendingRelatedInsert = nil
 	if m.explorer.IsVisible() {
 		m.explorer.markLoading()
 	}
@@ -391,14 +389,15 @@ func (m *Model) startInspectorFieldEdit() tea.Cmd {
 	if !m.inspector.IsVisible() {
 		return nil
 	}
-	col := m.inspector.selectedColumn(m.results)
+	src := m.inspectorResults()
+	col := m.inspector.selectedColumn(src)
 	if !m.inspector.IsInserting() && m.results.IsBlobCell(m.results.CursorRow(), col) {
 		return m.openCellEditPopup(m.results.CursorRow(), col)
 	}
-	if !m.inspector.IsInserting() && m.inspector.IsFieldTruncated(m.results) {
+	if !m.inspector.IsInserting() && m.inspector.IsFieldTruncated(src) {
 		return m.openCellEditPopup(m.results.CursorRow(), col)
 	}
-	m.inspector.StartFieldEdit(m.results)
+	m.inspector.StartFieldEdit(src)
 	return nil
 }
 
@@ -522,7 +521,8 @@ func (m *Model) saveChanges() tea.Cmd {
 
 // saveInsert writes a new row from inspector insert mode.
 func (m *Model) saveInsert() tea.Cmd {
-	if !m.inspector.IsInserting() || m.connection == nil || !m.results.IsEditable() {
+	src := m.inspectorResults()
+	if !m.inspector.IsInserting() || m.connection == nil || !src.IsEditable() {
 		return nil
 	}
 	if m.txnBlocksWrite() {
@@ -530,9 +530,9 @@ func (m *Model) saveInsert() tea.Cmd {
 	}
 
 	conn := m.connection
-	table := m.results.SourceTable()
-	columns := m.results.TableColumns()
-	values := insertValuesByName(m.results, m.inspector.InsertValues())
+	table := src.SourceTable()
+	columns := src.TableColumns()
+	values := insertValuesByName(src, m.inspector.InsertValues())
 
 	driver := conn.Config().Driver
 	query, args, err := buildInsertQuery(driver, table, columns, values, nil)

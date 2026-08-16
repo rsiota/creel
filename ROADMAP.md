@@ -125,8 +125,8 @@ related rows — edit without writing the JOIN.”
 **Shipped — first slice:**
 - Unified back from explorer: `u` / `backspace` / `g b` (same `queryStack`)
 - **Insert related** — `A` on an **inbound** edge prefills the child FK and
-  opens inspector insert (explorer yields the right slot, then restores after
-  save or cancel)
+  opens inspector insert against the child table **without navigating the
+  grid** (explorer yields the right slot, then restores after save or cancel)
 - **Open in a new tab** — `t` runs the node's drill query in a new results tab;
   `Enter` still re-roots the current tab
 - Inbound edges with count `0` stay visible so the first related row is
@@ -140,9 +140,8 @@ Files: `rel_explorer.go`, `editing.go`, `app.go`, `schema_ops.go`,
 `graph_nav_test.go`.
 
 **Next slices (suggested order):**
-1. **Insert related without navigating away** — insert into the child table
-   while the explorer root stays on the parent (harder: editable target ≠
-   current grid). Follows from restore-after-insert.
+1. **Insert related without navigating away** — shipped: insert into the child
+   table while the explorer root and grid stay on the parent.
 2. **ERD as launcher** — shipped (2026-08-16): Enter / double-click a card
    → `SELECT *` and close the overlay; `f` (and the ◎ header click) keep
    neighbourhood drill. Optional “generate JOIN” from a shortest path into the

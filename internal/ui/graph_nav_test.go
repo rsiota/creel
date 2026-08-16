@@ -169,8 +169,8 @@ func TestInboundZeroCountEdgesVisible(t *testing.T) {
 	}
 }
 
-// TestExplorerInsertRelatedPrefillsFK: A on an inbound edge navigates to the
-// child table and opens insert with the FK set.
+// TestExplorerInsertRelatedPrefillsFK: A on an inbound edge opens insert into
+// the child table without navigating the grid away from the parent.
 func TestExplorerInsertRelatedPrefillsFK(t *testing.T) {
 	conn := newSQLiteTestConn(t)
 	defer conn.Close()
@@ -198,34 +198,29 @@ func TestExplorerInsertRelatedPrefillsFK(t *testing.T) {
 	}
 	m.explorer.cursorToNode(ordersEdge)
 
-	cmd := m.explorerInsertRelated()
-	if cmd == nil {
-		t.Fatalf("insert related returned nil: %q", m.schemaMsg)
+	if cmd := m.explorerInsertRelated(); cmd != nil {
+		t.Fatalf("insert related should not run a query, got cmd: %q", m.schemaMsg)
 	}
-	if m.pendingRelatedInsert["user_id"] != "1" {
-		t.Errorf("pending prefills = %v, want user_id=1", m.pendingRelatedInsert)
+	if !strings.Contains(m.lastQuery, "users") || strings.Contains(m.lastQuery, "orders") {
+		t.Errorf("lastQuery = %q, want parent users SELECT", m.lastQuery)
 	}
-	if !strings.Contains(m.lastQuery, "orders") || !strings.Contains(m.lastQuery, "user_id") {
-		t.Errorf("lastQuery = %q", m.lastQuery)
+	if len(m.queryStack) != 0 {
+		t.Errorf("query stack should stay empty, len=%d", len(m.queryStack))
 	}
-
-	// Simulate the query completing with an empty orders page.
-	res, err := conn.DB().Execute(m.lastQuery)
-	if err != nil {
-		t.Fatalf("execute: %v", err)
+	if m.results.SourceTable() != "users" {
+		t.Errorf("grid table = %q, want users", m.results.SourceTable())
 	}
-	msg := queryExecutedMsg{query: m.lastQuery, result: res, page: 0, pageSize: m.pageSize}
-	updated, _ := m.Update(msg)
-	mm := updated.(Model)
-
-	if !mm.inspector.IsInserting() {
-		t.Fatal("inspector should be in insert mode after related insert")
+	if m.insertTarget == nil || m.insertTarget.SourceTable() != "orders" {
+		t.Fatal("insert target should be the child table")
 	}
-	vals := mm.inspector.InsertValues()
-	// Find user_id column index on orders results.
+	if !m.inspector.IsInserting() {
+		t.Fatalf("inspector should be in insert mode: %q", m.schemaMsg)
+	}
+	vals := m.inspector.InsertValues()
 	found := false
-	for i := 0; i < mm.results.NumCols(); i++ {
-		if strings.EqualFold(mm.results.ColumnName(i), "user_id") {
+	src := m.inspectorResults()
+	for i := 0; i < src.NumCols(); i++ {
+		if strings.EqualFold(src.ColumnName(i), "user_id") {
 			if vals[i] != "1" {
 				t.Errorf("user_id prefill = %q, want 1", vals[i])
 			}
@@ -233,27 +228,101 @@ func TestExplorerInsertRelatedPrefillsFK(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("user_id column not in results")
+		t.Fatal("user_id column not in insert target")
 	}
-	if mm.explorer.IsVisible() {
+	if m.explorer.IsVisible() {
 		t.Error("explorer should yield the right slot to the inspector")
 	}
-	if !mm.restoreExplorerAfterInsert {
+	if !m.restoreExplorerAfterInsert {
 		t.Error("insert related should remember to restore the explorer")
 	}
 
-	mm.inspector.CancelInsert()
-	if cmd := mm.maybeRestoreExplorerAfterInsert(); cmd == nil {
+	m.inspector.CancelInsert()
+	if cmd := m.maybeRestoreExplorerAfterInsert(); cmd == nil {
 		t.Error("restore should reload the explorer")
 	}
-	if !mm.explorer.IsVisible() {
+	if !m.explorer.IsVisible() {
 		t.Fatal("explorer should return after cancel")
 	}
-	if mm.inspector.IsVisible() {
+	if m.inspector.IsVisible() {
 		t.Error("inspector should yield the right slot back to the explorer")
 	}
-	if mm.focus != FocusExplorer {
-		t.Errorf("focus = %v, want explorer", mm.focus)
+	if m.focus != FocusExplorer {
+		t.Errorf("focus = %v, want explorer", m.focus)
+	}
+	if m.insertTarget != nil {
+		t.Error("insert target should clear on cancel")
+	}
+	if !strings.Contains(m.lastQuery, "users") {
+		t.Errorf("lastQuery after cancel = %q, want users", m.lastQuery)
+	}
+}
+
+// TestExplorerInsertRelatedSavesInPlace: save writes the child row and
+// reloads the explorer without changing the parent grid query.
+func TestExplorerInsertRelatedSavesInPlace(t *testing.T) {
+	conn := newSQLiteTestConn(t)
+	defer conn.Close()
+	for _, q := range []string{
+		`CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)`,
+		`CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, status TEXT, FOREIGN KEY (user_id) REFERENCES users(id))`,
+		`INSERT INTO users VALUES (1,'Alice')`,
+	} {
+		if _, err := conn.DB().Exec(q); err != nil {
+			t.Fatalf("exec: %v", err)
+		}
+	}
+	m := &Model{connection: conn, results: NewResultsTable(), editor: NewQueryEditor(), tables: []string{"users", "orders"}}
+	m.pageSize = 50
+	m.lastQuery = "SELECT * FROM users"
+	m.results.SetResult([]string{"id", "name"}, [][]string{{"1", "Alice"}}, "")
+	m.results.SetEditable("users", []string{"id"})
+	m.explorer.ShowDocked()
+
+	root := m.loadExplorer()().(explorerLoadedMsg).root
+	m.explorer.applyRoot(root, 0)
+	m.explorer.cursorToNode(findEdge(root, "orders"))
+	m.explorerInsertRelated()
+	if !m.inspector.IsInserting() {
+		t.Fatalf("not inserting: %q", m.schemaMsg)
+	}
+
+	cmd := m.saveInsert()
+	if cmd == nil {
+		t.Fatal("saveInsert returned nil")
+	}
+	msg := cmd()
+	irm, ok := msg.(insertResultMsg)
+	if !ok {
+		t.Fatalf("got %T, want insertResultMsg", msg)
+	}
+	if irm.err != nil {
+		t.Fatalf("insert: %v", irm.err)
+	}
+	updated, follow := m.Update(irm)
+	mm := updated.(Model)
+	if mm.lastQuery != "SELECT * FROM users" {
+		t.Errorf("lastQuery = %q, want parent users SELECT", mm.lastQuery)
+	}
+	if mm.results.SourceTable() != "users" {
+		t.Errorf("grid table = %q, want users", mm.results.SourceTable())
+	}
+	if mm.insertTarget != nil {
+		t.Error("insert target should clear after save")
+	}
+	if !mm.explorer.IsVisible() {
+		t.Fatal("explorer should return after save")
+	}
+	if follow == nil {
+		t.Error("save should reload the explorer")
+	}
+
+	res, err := conn.DB().Execute(`SELECT user_id FROM orders`)
+	if err != nil {
+		t.Fatalf("select orders: %v", err)
+	}
+	if len(res.Rows) != 1 || res.Rows[0][0] != "1" {
+		t.Fatalf("orders rows = %#v, want one row with user_id=1", res.Rows)
 	}
 }
 

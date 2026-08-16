@@ -526,7 +526,11 @@ func (i Inspector) View(results ResultsTable) string {
 
 	var rendered strings.Builder
 	if i.inserting {
-		rendered.WriteString(successStyle.Render(" [new record]"))
+		title := " [new record]"
+		if t := results.SourceTable(); t != "" {
+			title += " " + t
+		}
+		rendered.WriteString(successStyle.Render(title))
 		rendered.WriteString("\n")
 	}
 

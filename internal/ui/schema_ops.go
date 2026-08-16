@@ -329,7 +329,48 @@ func (m Model) resultsShowTable(table string) bool {
 
 // startInsert opens inspector new-record mode for the current editable table.
 func (m *Model) startInsert() {
+	m.insertTarget = nil
 	m.startInsertWithValues(nil)
+}
+
+// inspectorResults is the table the inspector (and insert save) should read.
+// During "insert related" this is the child-table overlay, not the grid.
+func (m *Model) inspectorResults() ResultsTable {
+	if m.insertTarget != nil {
+		return *m.insertTarget
+	}
+	return m.results
+}
+
+// newInsertTarget builds a shadow editable table from schema metadata so
+// insert can target a table that is not the current results grid.
+func (m *Model) newInsertTarget(table string) (*ResultsTable, error) {
+	if m.connection == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	cols, err := m.connection.DB().TableColumnInfo(table)
+	if err != nil {
+		return nil, err
+	}
+	if len(cols) == 0 {
+		return nil, fmt.Errorf("no columns on %s", table)
+	}
+	pkCols, err := m.connection.DB().PrimaryKeys(table)
+	if err != nil {
+		pkCols = nil
+	}
+	names := make([]string, len(cols))
+	types := make(map[string]string, len(cols))
+	for i, c := range cols {
+		names[i] = c.Name
+		types[c.Name] = c.Type
+	}
+	target := NewResultsTable()
+	target.SetResult(names, nil, "")
+	target.SetEditable(table, pkCols)
+	target.SetTableColumns(cols)
+	target.SetColumnTypes(types)
+	return &target, nil
 }
 
 // startInsertWithValues opens inspector insert mode, optionally prefilling
@@ -337,7 +378,8 @@ func (m *Model) startInsert() {
 // yields the right slot so the inspector is visible, then comes back after
 // save or cancel (restoreExplorerAfterInsert).
 func (m *Model) startInsertWithValues(byName map[string]string) {
-	if !m.results.IsEditable() || m.results.HasDirtyCells() || m.inspector.IsInserting() {
+	src := m.inspectorResults()
+	if !src.IsEditable() || m.results.HasDirtyCells() || m.inspector.IsInserting() {
 		return
 	}
 	if m.explorer.IsVisible() {
@@ -350,8 +392,8 @@ func (m *Model) startInsertWithValues(byName map[string]string) {
 	m.inspector.StartInsert()
 	if len(byName) > 0 {
 		vals := make(map[int]string, len(byName))
-		for i := 0; i < m.results.NumCols(); i++ {
-			name := m.results.ColumnName(i)
+		for i := 0; i < src.NumCols(); i++ {
+			name := src.ColumnName(i)
 			for k, v := range byName {
 				if strings.EqualFold(name, k) {
 					vals[i] = v
@@ -369,6 +411,7 @@ func (m *Model) startInsertWithValues(byName map[string]string) {
 // an insert that hid it. The caller decides whether to reload the tree.
 func (m *Model) restoreExplorerPanel() {
 	m.restoreExplorerAfterInsert = false
+	m.insertTarget = nil
 	m.inspector.Hide()
 	m.assistant.Hide()
 	m.explorer.ShowDocked()
@@ -380,6 +423,7 @@ func (m *Model) restoreExplorerPanel() {
 // maybeRestoreExplorerAfterInsert restores the explorer after insert cancel.
 func (m *Model) maybeRestoreExplorerAfterInsert() tea.Cmd {
 	if !m.restoreExplorerAfterInsert {
+		m.insertTarget = nil
 		return nil
 	}
 	m.restoreExplorerPanel()
