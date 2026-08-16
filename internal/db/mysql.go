@@ -447,11 +447,11 @@ func (m *MySQL) Session() (SessionRunner, error) {
 	return &sqlConnSession{conn: conn}, nil
 }
 
-func (m *MySQL) Begin() (Tx, error) {
+func (m *MySQL) Begin(level IsolationLevel) (Tx, error) {
 	if m.config.ReadOnly {
 		return nil, ErrReadOnly
 	}
-	return beginTx(m.db)
+	return beginTx(m.db, level)
 }
 
 // Indexes returns the secondary indexes on a table from information_schema.

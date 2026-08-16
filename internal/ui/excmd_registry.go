@@ -378,11 +378,12 @@ func exCommands() []exCmdSpec {
 			complete: completeTable,
 		},
 		{
-			verbs:   []string{"begin", "transaction"},
-			desc:    "start a manual transaction",
-			usage:   ":begin",
-			argKind: exArgNone,
-			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exBegin() },
+			verbs:    []string{"begin", "transaction"},
+			desc:     "start a manual transaction (optional isolation)",
+			usage:    ":begin [serializable|repeatable read|read committed|read uncommitted]",
+			argKind:  exArgText,
+			complete: completeIsolation,
+			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exBegin(args) },
 		},
 		{
 			verbs:   []string{"commit"},
@@ -1024,6 +1025,30 @@ func completeTheme(_ *Model, args []string, _ string) []string {
 		return nil
 	}
 	return themeNames()
+}
+
+// completeIsolation offers isolation-level tokens for :begin. Hyphenated
+// single tokens complete first; after "read" / "repeatable" the second word
+// is offered so spaced forms work too.
+func completeIsolation(_ *Model, args []string, partial string) []string {
+	switch len(args) {
+	case 0:
+		return rankStrings(partial, []string{
+			"serializable",
+			"repeatable-read",
+			"read-committed",
+			"read-uncommitted",
+			"rr", "rc", "s", "ru",
+		})
+	case 1:
+		switch strings.ToLower(args[0]) {
+		case "read":
+			return rankStrings(partial, []string{"committed", "uncommitted"})
+		case "repeatable":
+			return rankStrings(partial, []string{"read"})
+		}
+	}
+	return nil
 }
 
 // completeEnum builds a completer for a fixed set of literal values (e.g.

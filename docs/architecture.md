@@ -143,7 +143,7 @@ subsystem:
 
 ## Key design decisions
 
-- **Driver interface** — `internal/db/db.go` defines the `DB` interface; every driver implements it, so adding a database is self-contained. It includes `Begin() (Tx, error)` for transactional batch writes (inline edits & row clones are atomic).
+- **Driver interface** — `internal/db/db.go` defines the `DB` interface; every driver implements it, so adding a database is self-contained. It includes `Begin(level IsolationLevel) (Tx, error)` for transactional batch writes (inline edits & row clones are atomic) and for manual `:begin [isolation]` transactions.
 - **Elm-style state machine** — the UI is an immutable state machine in `app.go` (`stateConnections` → `stateWorkspace`), with `Focus` cycling between panels. Model methods use value receivers (the model is immutable; updates return a new copy).
 - **Pure-Go SQLite** — `modernc.org/sqlite`, no CGO, which simplifies cross-compilation. Please don't introduce a CGO dependency.
 - **Keybinding registry** — `registry.go` is the single source of truth for both the `?` help overlay and the `Ctrl+P` palette. Each `Binding` carries a `Display` string, dispatch `Tokens`, and a `Desc`; `help.go` only renders it. The `TestKeybindingsMatchDispatch` test parses dispatch (`case` literals + `key.WithKeys` args) via `go/parser` and asserts every documented token is actually implemented, preventing help/dispatch drift.

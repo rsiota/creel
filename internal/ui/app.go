@@ -463,8 +463,9 @@ type Model struct {
 
 	config            *config.Config
 	connection        *db.Connection
-	tx                db.Tx // active manual transaction (:begin/:commit/:rollback); nil = autocommit
-	forceReadOnly     bool  // --readonly CLI flag: forces every connection read-only
+	tx                db.Tx             // active manual transaction (:begin/:commit/:rollback); nil = autocommit
+	txIsolation       db.IsolationLevel // isolation requested for tx (status bar)
+	forceReadOnly     bool              // --readonly CLI flag: forces every connection read-only
 	sessionStore      *session.Store
 	startupFileLoaded bool    // creel -f: suppress the first session restore so the file wins
 	startupCmd        tea.Cmd // creel -database/-c: follow-up cmds after auto-connect (focus, prefetch)

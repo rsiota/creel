@@ -110,11 +110,10 @@ the 2026-08-04 History entries; later follow-ups:
 - **Column-width memory** ✅ DONE (2026-08-12) — per-(connection,database,table)
   widths in session JSON; max-merge so short pages don't shrink columns.
   Cleared by `:session clear`.
-- **Transaction isolation level** — `:begin`/`:commit`/`:rollback` exist but
-  there's no isolation-level control, which matters for Postgres/MySQL work. A
-  `:begin {read committed|repeatable read|serializable}` form (or `:isolation`)
-  would round out the transaction story; driver-specific but bounded. Files:
-  `db.go`, `excmd.go`, `excmd_registry.go`.
+- **Transaction isolation level** ✅ DONE — `:begin [serializable|repeatable
+  read|read committed|read uncommitted]` (also `s`/`rr`/`rc`/`ru` and
+  hyphenated forms). Status bar shows `TXN S` / `TXN RR` / …. Files:
+  `isolation.go`, `db.go`, `excmd.go`, `excmd_registry.go`, `statusbar.go`.
 
 ### Graph UX — browse/edit via the FK graph (in progress)
 
@@ -182,7 +181,8 @@ or sequenced behind them.
 - **Reconnect / keep-alive** — shipped: pool idle/lifetime caps, Postgres TCP
   keepalives, SSH tunnel keepalive, 30s Ping for MySQL/Postgres, and in-place
   reconnect (status-bar “reconnecting…”, `:reconnect`) that keeps the workspace.
-- **Transaction isolation** — already listed above (`:begin serializable`).
+- **Transaction isolation** — shipped: `:begin [serializable|…]` with status-bar
+  `TXN S` / `TXN RR` / ….
 - **Jump to syntax error** — highlight the token Postgres/MySQL reports
   (`syntax error at line 12`) in the editor.
 - **`:copyrow` keybinding** — the verb shipped; a chord (not `Y`, which is

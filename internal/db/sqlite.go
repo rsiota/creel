@@ -345,11 +345,11 @@ func (s *SQLite) Session() (SessionRunner, error) {
 	return &sqlDBSession{db: s.db}, nil
 }
 
-func (s *SQLite) Begin() (Tx, error) {
+func (s *SQLite) Begin(level IsolationLevel) (Tx, error) {
 	if s.config.ReadOnly {
 		return nil, ErrReadOnly
 	}
-	return beginTx(s.db)
+	return beginTx(s.db, level)
 }
 
 // Indexes returns the indexes created on a table via PRAGMA index_list /

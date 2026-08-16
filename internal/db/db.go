@@ -201,9 +201,10 @@ type DB interface {
 	// are per-connection and would otherwise be lost across a connection pool.
 	// The caller must Close the returned runner when done.
 	Session() (SessionRunner, error)
-	// Begin starts a transaction. Statements run on the returned Tx are atomic;
-	// Commit or Rollback must be called exactly once to finish it.
-	Begin() (Tx, error)
+	// Begin starts a transaction at the given isolation level
+	// (IsolationDefault leaves the driver default). Statements run on the
+	// returned Tx are atomic; Commit or Rollback must be called exactly once.
+	Begin(level IsolationLevel) (Tx, error)
 	// Indexes returns the secondary indexes on a table. The primary-key index is
 	// excluded where the driver can distinguish it; use PrimaryKeys for the PK.
 	Indexes(table string) ([]Index, error)
@@ -324,10 +325,15 @@ func (t *sqlTx) ExecuteContext(ctx context.Context, query string) (Result, error
 func (t *sqlTx) Commit() error   { return t.tx.Commit() }
 func (t *sqlTx) Rollback() error { return t.tx.Rollback() }
 
-// beginTx starts a transaction on the given pool and adapts it to the Tx
-// interface. Shared by all drivers since they wrap a *sql.DB.
-func beginTx(database *sql.DB) (Tx, error) {
-	tx, err := database.BeginTx(context.Background(), nil)
+// beginTx starts a transaction on the given pool at the requested isolation
+// level and adapts it to the Tx interface. Shared by all drivers since they
+// wrap a *sql.DB.
+func beginTx(database *sql.DB, level IsolationLevel) (Tx, error) {
+	var opts *sql.TxOptions
+	if level != IsolationDefault {
+		opts = &sql.TxOptions{Isolation: level.SQL()}
+	}
+	tx, err := database.BeginTx(context.Background(), opts)
 	if err != nil {
 		return nil, err
 	}

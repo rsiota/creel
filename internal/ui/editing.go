@@ -457,7 +457,7 @@ func (m *Model) saveEdits() tea.Cmd {
 
 	return func() tea.Msg {
 		driver := conn.Config().Driver
-		tx, err := conn.DB().Begin()
+		tx, err := conn.DB().Begin(db.IsolationDefault)
 		if err != nil {
 			return saveResultMsg{saved: 0, err: err}
 		}
@@ -596,7 +596,7 @@ func (m *Model) cloneRows() tea.Cmd {
 	}
 
 	return func() tea.Msg {
-		tx, err := conn.DB().Begin()
+		tx, err := conn.DB().Begin(db.IsolationDefault)
 		if err != nil {
 			return cloneResultMsg{table: table, err: err}
 		}

@@ -194,6 +194,9 @@ erDiagram
 
 - **Inline editing** — edit cells directly, insert rows, clone rows, paste from
   clipboard.
+- **Manual transactions** — `:begin` / `:commit` / `:rollback`, with optional
+  isolation (`:begin serializable`, `:begin repeatable read`, `:begin read
+  committed`, …). The status bar shows `TXN ●` (or `TXN S` / `TXN RR` / …).
 - **Record inspector** — side panel with a vertical form view that tracks the
   results cursor.
 - **Schema editing** — add columns, rename tables, create/drop/truncate tables,

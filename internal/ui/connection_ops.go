@@ -18,6 +18,7 @@ func (m *Model) rollbackTxn() {
 	if m.tx != nil {
 		_ = m.tx.Rollback()
 		m.tx = nil
+		m.txIsolation = db.IsolationDefault
 	}
 }
 

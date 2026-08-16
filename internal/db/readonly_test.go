@@ -140,7 +140,7 @@ func TestSQLiteReadOnlyAllowsReads(t *testing.T) {
 func TestSQLiteReadOnlyBlocksTxnAndSession(t *testing.T) {
 	s := setupReadOnlySQLite(t)
 
-	if _, err := s.Begin(); !errors.Is(err, ErrReadOnly) {
+	if _, err := s.Begin(IsolationDefault); !errors.Is(err, ErrReadOnly) {
 		t.Errorf("Begin: want ErrReadOnly, got %v", err)
 	}
 	if _, err := s.Session(); !errors.Is(err, ErrReadOnly) {

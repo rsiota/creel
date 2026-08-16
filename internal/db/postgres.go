@@ -572,11 +572,11 @@ func (p *Postgres) Session() (SessionRunner, error) {
 	return &sqlConnSession{conn: conn}, nil
 }
 
-func (p *Postgres) Begin() (Tx, error) {
+func (p *Postgres) Begin(level IsolationLevel) (Tx, error) {
 	if p.config.ReadOnly {
 		return nil, ErrReadOnly
 	}
-	return beginTx(p.db)
+	return beginTx(p.db, level)
 }
 
 // Indexes returns the secondary indexes on a table from pg_index. The primary

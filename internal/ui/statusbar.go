@@ -33,6 +33,14 @@ func (m Model) connectionInfo(name string) string {
 	return s
 }
 
+// txnStatusLabel is the status-bar token for an open manual transaction.
+func txnStatusLabel(level db.IsolationLevel) string {
+	if short := level.Short(); short != "" {
+		return "TXN " + short
+	}
+	return "TXN ●"
+}
+
 // isReadOnly reports whether the active connection (or the global --readonly
 // flag) disables writes, for status-bar indication.
 func (m Model) isReadOnly() bool {
@@ -183,7 +191,7 @@ func (m Model) statusBar(connName string) string {
 	}
 
 	if m.tx != nil {
-		parts = append(parts, sbAccent.Render("TXN ●"))
+		parts = append(parts, sbAccent.Render(txnStatusLabel(m.txIsolation)))
 	}
 
 	if m.watchActive {

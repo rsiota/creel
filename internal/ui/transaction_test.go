@@ -131,3 +131,72 @@ func TestExTransactionRollback(t *testing.T) {
 		t.Errorf(":rollback -> %q", m.schemaMsg)
 	}
 }
+
+func TestExBeginIsolation(t *testing.T) {
+	conn := newSQLiteTestConn(t)
+	defer conn.Close()
+	m := &Model{connection: conn, results: NewResultsTable(), editor: NewQueryEditor()}
+
+	m.runExCommand("begin bogosity")
+	if m.tx != nil {
+		t.Fatal("bad isolation should not open a tx")
+	}
+	if !strings.Contains(m.schemaMsg, "unknown isolation") {
+		t.Errorf("bad isolation -> %q", m.schemaMsg)
+	}
+
+	// SQLite accepts serializable (its effective level).
+	m.runExCommand("begin serializable")
+	if m.tx == nil {
+		t.Fatalf(":begin serializable failed: %q", m.schemaMsg)
+	}
+	if m.txIsolation != db.IsolationSerializable {
+		t.Errorf("txIsolation = %v", m.txIsolation)
+	}
+	if !strings.Contains(m.schemaMsg, "serializable") {
+		t.Errorf(":begin serializable -> %q", m.schemaMsg)
+	}
+	bar := m.statusBar("")
+	if !strings.Contains(bar, "TXN S") {
+		t.Errorf("status bar = %q, want TXN S", bar)
+	}
+	m.runExCommand("rollback")
+
+	m.runExCommand("begin rr")
+	if m.tx == nil {
+		t.Fatalf(":begin rr failed: %q", m.schemaMsg)
+	}
+	if m.txIsolation != db.IsolationRepeatableRead {
+		t.Errorf("txIsolation = %v, want RR", m.txIsolation)
+	}
+	if !strings.Contains(m.statusBar(""), "TXN RR") {
+		t.Errorf("status bar missing TXN RR: %q", m.statusBar(""))
+	}
+	m.runExCommand("commit")
+	if m.txIsolation != db.IsolationDefault {
+		t.Error("commit should clear txIsolation")
+	}
+}
+
+func TestExBeginRepeatableReadSpaced(t *testing.T) {
+	conn := newSQLiteTestConn(t)
+	defer conn.Close()
+	m := &Model{connection: conn, results: NewResultsTable()}
+	m.runExCommand("begin repeatable read")
+	if m.tx == nil {
+		t.Fatalf(":begin repeatable read failed: %q", m.schemaMsg)
+	}
+	if m.txIsolation != db.IsolationRepeatableRead {
+		t.Errorf("got %v", m.txIsolation)
+	}
+	m.runExCommand("rollback")
+}
+
+func TestTxnStatusLabel(t *testing.T) {
+	if got := txnStatusLabel(db.IsolationDefault); got != "TXN ●" {
+		t.Errorf("default = %q", got)
+	}
+	if got := txnStatusLabel(db.IsolationSerializable); got != "TXN S" {
+		t.Errorf("serializable = %q", got)
+	}
+}

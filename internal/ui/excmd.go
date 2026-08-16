@@ -1388,18 +1388,22 @@ func (m *Model) exGoto(name string) tea.Cmd {
 	return m.openTable(items[target].text)
 }
 
-// exBegin starts a manual transaction (:begin). While it is active, statements
-// run from the editor execute on the tx — so SELECTs see the tx's own
-// uncommitted writes — and :commit / :rollback finish it. Cell edits / inserts
-// / deletes / DDL are refused for the duration (they use their own autocommit
-// path and would commit outside the tx). Refused while read-only, while a
-// query is in flight, or when a transaction is already open.
+// exBegin starts a manual transaction (:begin [isolation]). While it is
+// active, statements run from the editor execute on the tx — so SELECTs see
+// the tx's own uncommitted writes — and :commit / :rollback finish it. Cell
+// edits / inserts / deletes / DDL are refused for the duration (they use their
+// own autocommit path and would commit outside the tx). Refused while
+// read-only, while a query is in flight, or when a transaction is already open.
+//
+// Isolation is optional: `:begin`, `:begin serializable`, `:begin repeatable
+// read`, `:begin read committed`, `:begin read uncommitted` (also hyphenated
+// or short forms: rr, rc, s, ru). SQLite is effectively always serializable.
 //
 // begin/commit/rollback run synchronously: they're rare, explicit actions
 // that transfer no row data, and doing them inline (rather than as a goroutine
 // command) keeps the tx lifecycle single-threaded. The queryRunning guard
 // ensures no in-flight query goroutine is touching the tx when they run.
-func (m *Model) exBegin() tea.Cmd {
+func (m *Model) exBegin(args []string) tea.Cmd {
 	if m.connection == nil {
 		m.schemaMsg = "not connected"
 		return nil
@@ -1416,13 +1420,23 @@ func (m *Model) exBegin() tea.Cmd {
 		m.schemaMsg = "wait for the running query to finish"
 		return nil
 	}
-	tx, err := m.connection.DB().Begin()
+	level, err := db.ParseIsolation(strings.Join(args, " "))
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	tx, err := m.connection.DB().Begin(level)
 	if err != nil {
 		m.schemaMsg = "begin failed: " + err.Error()
 		return nil
 	}
 	m.tx = tx
-	m.schemaMsg = "transaction started — :commit or :rollback to finish"
+	m.txIsolation = level
+	if level == db.IsolationDefault {
+		m.schemaMsg = "transaction started — :commit or :rollback to finish"
+	} else {
+		m.schemaMsg = fmt.Sprintf("transaction started (%s) — :commit or :rollback to finish", level)
+	}
 	return nil
 }
 
@@ -1442,9 +1456,11 @@ func (m *Model) exCommit() tea.Cmd {
 	if err := m.tx.Commit(); err != nil {
 		m.schemaMsg = "commit failed: " + err.Error()
 		m.tx = nil // don't reuse a (likely) dead tx
+		m.txIsolation = db.IsolationDefault
 		return nil
 	}
 	m.tx = nil
+	m.txIsolation = db.IsolationDefault
 	m.schemaMsg = "transaction committed"
 	return nil
 }
@@ -1462,9 +1478,11 @@ func (m *Model) exRollback() tea.Cmd {
 	if err := m.tx.Rollback(); err != nil {
 		m.schemaMsg = "rollback failed: " + err.Error()
 		m.tx = nil
+		m.txIsolation = db.IsolationDefault
 		return nil
 	}
 	m.tx = nil
+	m.txIsolation = db.IsolationDefault
 	m.schemaMsg = "transaction rolled back"
 	return nil
 }
