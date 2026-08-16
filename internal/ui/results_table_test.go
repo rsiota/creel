@@ -3,6 +3,8 @@ package ui
 import (
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestResultsTableCursorNavigation(t *testing.T) {
@@ -415,6 +417,20 @@ func TestResultsTableClearAndSetResult(t *testing.T) {
 	}
 	if r.NumRows() != 0 {
 		t.Errorf("expected 0 rows after Clear, got %d", r.NumRows())
+	}
+}
+
+func TestResultsTableErrorFitsPanel(t *testing.T) {
+	r := NewResultsTable()
+	r.SetSize(40, 5)
+	long := strings.Repeat("syntax error near FORM ", 20)
+	r.SetError(long)
+	view := r.View()
+	if lipgloss.Width(view) > 40 {
+		t.Errorf("error view width %d > panel 40", lipgloss.Width(view))
+	}
+	if lipgloss.Height(view) > 5 {
+		t.Errorf("error view height %d > panel 5", lipgloss.Height(view))
 	}
 }
 

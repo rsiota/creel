@@ -211,8 +211,8 @@ func (m *Model) runPageQuery() tea.Cmd {
 	// both tables have an "id" column).
 	var execQuery string
 	if isSelectQuery(query) && !hasJoinClause(query) {
-		execQuery = fmt.Sprintf("SELECT * FROM (%s) AS _creel_page LIMIT %d OFFSET %d",
-			query, pageSize+1, offset)
+		execQuery = fmt.Sprintf("%s%s) AS _creel_page LIMIT %d OFFSET %d",
+			db.PageWrapPrefix, query, pageSize+1, offset)
 	} else {
 		execQuery = query
 	}
@@ -233,6 +233,7 @@ func (m *Model) runPageQuery() tea.Cmd {
 		}
 		return queryExecutedMsg{
 			query:     lastQuery,
+			execQuery: execQuery,
 			result:    result,
 			err:       err,
 			page:      page,
@@ -243,6 +244,26 @@ func (m *Model) runPageQuery() tea.Cmd {
 	}
 
 	return tea.Batch(execCmd, spinnerTick())
+}
+
+// maybeJumpToQueryError moves the editor cursor to a driver-reported syntax
+// error location when one can be parsed. Focuses the editor so the caret is
+// visible. No-op for non-syntax failures (permission denied, missing table, …).
+func (m *Model) maybeJumpToQueryError(err error, userQuery, execQuery string) {
+	pos := db.LocateQueryError(err, userQuery, execQuery)
+	if !pos.OK {
+		return
+	}
+	if !m.editor.JumpToQueryPos(userQuery, pos.Line, pos.Col) {
+		return
+	}
+	m.focus = FocusEditor
+	m.applyFocus()
+	if pos.Token != "" {
+		m.schemaMsg = fmt.Sprintf("jumped to error near %q", pos.Token)
+	} else {
+		m.schemaMsg = fmt.Sprintf("jumped to error at line %d", pos.Line+1)
+	}
 }
 
 // isSelectQuery returns true if the query is a SELECT (or WITH ... SELECT)

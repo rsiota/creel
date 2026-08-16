@@ -169,7 +169,11 @@ func (m Model) statusMessage() string {
 		return sbMuted.Render(fmt.Sprintf("%d unsaved", m.results.DirtyCellCount()))
 	case m.totalRowsSet && m.pageMsg != "":
 		return sbMuted.Render(m.pageMsg)
-	case m.results.HasResult() && m.results.Message() != "":
+	case m.results.HasResult() && m.results.NumCols() > 0 && m.results.Message() != "":
+		// Only surface success/status messages (e.g. "42 rows") here. Query
+		// errors live in the results panel via SetError — echoing them on the
+		// status bar duplicates a long MySQL/Postgres message and wraps the
+		// one-line bar, shoving the workspace up a row.
 		return sbSuccess.Render(m.results.Message())
 	case m.pageMsg != "":
 		return sbMuted.Render(m.pageMsg)

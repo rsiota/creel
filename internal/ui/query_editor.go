@@ -407,13 +407,24 @@ func (e *QueryEditor) restoreSnap(s editorSnap) {
 }
 
 func (e *QueryEditor) restoreCursor(line, col int) {
-	e.sendKey("ctrl+home")
+	if line < 0 {
+		line = 0
+	}
+	if col < 0 {
+		col = 0
+	}
+	// Prefer the textarea's line/column API over synthetic keys: ctrl+home is
+	// not always honoured, which left the caret at EOF after SetValue.
+	for e.textarea.Line() > 0 {
+		e.textarea.CursorUp()
+	}
 	for i := 0; i < line; i++ {
-		e.sendKey("down")
+		if e.textarea.Line() >= e.textarea.LineCount()-1 {
+			break
+		}
+		e.textarea.CursorDown()
 	}
-	for i := 0; i < col; i++ {
-		e.sendKey("right")
-	}
+	e.textarea.SetCursor(col)
 }
 
 func (e *QueryEditor) beginInsert() {
@@ -625,6 +636,83 @@ func (e *QueryEditor) moveToByteOffset(off int) {
 		col = len([]rune(prefix))
 	}
 	e.restoreCursor(line, col)
+}
+
+// JumpToQueryPos moves the cursor to line/col (0-based) within query, which
+// must appear as a statement (or substring) in the editor buffer. Used to land
+// on a driver-reported syntax error. Returns false if query cannot be found.
+func (e *QueryEditor) JumpToQueryPos(query string, line, col int) bool {
+	query = strings.TrimSpace(strings.TrimRight(query, ";"))
+	if query == "" {
+		return false
+	}
+	buf := e.Value()
+	base := findQueryBaseOffset(buf, query)
+	if base < 0 {
+		return false
+	}
+	// Convert line/col within query to a byte offset within query, then into buf.
+	qOff := lineColToByteOffset(query, line, col)
+	if qOff > len(query) {
+		qOff = len(query)
+	}
+	e.moveToByteOffset(base + qOff)
+	return true
+}
+
+// findQueryBaseOffset returns the byte offset in buf where query begins, or -1.
+func findQueryBaseOffset(buf, query string) int {
+	for _, s := range db.SplitStatements(buf) {
+		trimmed := strings.TrimSpace(strings.TrimRight(s.Text, ";"))
+		if trimmed != query && s.Text != query {
+			continue
+		}
+		// s.Start/End are rune indexes into buf; locate Text inside that span.
+		runes := []rune(buf)
+		if s.Start < 0 || s.Start >= len(runes) {
+			break
+		}
+		end := s.End + 1
+		if end > len(runes) {
+			end = len(runes)
+		}
+		segment := string(runes[s.Start:end])
+		rel := strings.Index(segment, s.Text)
+		if rel < 0 {
+			rel = strings.Index(segment, query)
+		}
+		if rel < 0 {
+			continue
+		}
+		return len(string(runes[:s.Start])) + len(segment[:rel])
+	}
+	if i := strings.Index(buf, query); i >= 0 {
+		return i
+	}
+	return -1
+}
+
+func lineColToByteOffset(s string, line, col int) int {
+	if line < 0 {
+		line = 0
+	}
+	if col < 0 {
+		col = 0
+	}
+	off := 0
+	for i := 0; i < line; i++ {
+		n := strings.IndexByte(s[off:], '\n')
+		if n < 0 {
+			return len(s)
+		}
+		off += n + 1
+	}
+	rest := s[off:]
+	runes := []rune(rest)
+	if col > len(runes) {
+		col = len(runes)
+	}
+	return off + len(string(runes[:col]))
 }
 
 func (e QueryEditor) searchPrompt(width int) string {

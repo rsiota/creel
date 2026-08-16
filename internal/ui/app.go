@@ -104,7 +104,8 @@ type spinnerTickMsg struct{}
 
 // queryExecutedMsg is sent when a query finishes executing.
 type queryExecutedMsg struct {
-	query     string
+	query     string // lastQuery / user statement
+	execQuery string // bytes actually sent (may include pagination wrap)
 	result    db.Result
 	err       error
 	page      int
@@ -1108,6 +1109,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.restoreCursor {
 				m.restoreCursor = false
 			}
+			m.maybeJumpToQueryError(msg.err, msg.query, msg.execQuery)
 		} else {
 			cols := make([]string, len(msg.result.Columns))
 			for i, c := range msg.result.Columns {

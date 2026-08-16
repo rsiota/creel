@@ -148,6 +148,34 @@ func TestExReconnectRejectsSQLite(t *testing.T) {
 	}
 }
 
+func TestStatusMessageSkipsQueryErrors(t *testing.T) {
+	m := Model{results: NewResultsTable()}
+	m.results.SetError("You have an error in your SQL syntax; check the manual " +
+		"that corresponds to your MySQL server version for the right syntax to " +
+		"use near 'FORM users) AS _creel_page LIMIT 51 OFFSET 0' at line 1")
+	if got := m.statusMessage(); got != "" {
+		t.Errorf("query errors must not echo on the status bar, got %q", got)
+	}
+
+	m.results.SetResult([]string{"id"}, [][]string{{"1"}}, "1 row")
+	got := m.statusMessage()
+	if !strings.Contains(ansiStrip.ReplaceAllString(got, ""), "1 row") {
+		t.Errorf("row-count message should still show, got %q", got)
+	}
+}
+
+func TestStatusMessageJumpFlashNotError(t *testing.T) {
+	m := Model{results: NewResultsTable(), schemaMsg: `jumped to error near "FORM"`}
+	m.results.SetError("syntax error at or near \"FORM\"")
+	got := ansiStrip.ReplaceAllString(m.statusMessage(), "")
+	if !strings.Contains(got, "jumped to error") {
+		t.Errorf("jump flash should win, got %q", got)
+	}
+	if strings.Contains(got, "syntax error") {
+		t.Errorf("full error must not share the status bar with the jump flash: %q", got)
+	}
+}
+
 func TestStatusMessageReconnecting(t *testing.T) {
 	m := Model{reconnecting: true, querySpinner: 0}
 	got := m.statusMessage()

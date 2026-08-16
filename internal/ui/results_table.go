@@ -1815,7 +1815,17 @@ func (r ResultsTable) View() string {
 	}
 
 	if r.message != "" && len(r.columns) == 0 {
-		return errorStyle.Render(r.message)
+		// Keep the error inside the panel: wrap to width and cap height so a
+		// long driver message cannot blow past the allocated results slot.
+		w := r.width
+		if w < 1 {
+			w = 40
+		}
+		style := errorStyle.Width(w)
+		if r.height > 0 {
+			style = style.MaxHeight(r.height)
+		}
+		return style.Render(r.message)
 	}
 
 	if len(r.columns) == 0 || r.height < 4 {

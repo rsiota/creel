@@ -183,8 +183,9 @@ or sequenced behind them.
   reconnect (status-bar “reconnecting…”, `:reconnect`) that keeps the workspace.
 - **Transaction isolation** — shipped: `:begin [serializable|…]` with status-bar
   `TXN S` / `TXN RR` / ….
-- **Jump to syntax error** — highlight the token Postgres/MySQL reports
-  (`syntax error at line 12`) in the editor.
+- **Jump to syntax error** — shipped: on query failure, parse MySQL/Postgres/
+  SQLite position hints and move the editor cursor to the token (unwraps the
+  pagination `SELECT * FROM (…)` wrapper). Status: “jumped to error near …”.
 - **`:copyrow` keybinding** — the verb shipped; a chord (not `Y`, which is
   INSERT) would make “paste into Slack/Sheets” discoverable.
 
