@@ -15,11 +15,12 @@ import (
 )
 
 // AI integration. The :ai <question> ex-command and the assistant panel build
-// a schema context from the active connection, ask the model to turn the
-// question into SQL asynchronously, and — on success — drop the SQL into the
-// editor for review (the user runs it with ctrl+e). Errors and short feedback
-// are shown via the transient status bar (m.aiMsg), exactly like the other
-// result-message fields.
+// a schema context from the focused table plus its FK neighbourhood (falling
+// back to the first 100 tables when nothing is in focus), ask the model to
+// turn the question into SQL asynchronously, and — on success — drop the SQL
+// into the editor for review (the user runs it with ctrl+e). Errors and short
+// feedback are shown via the transient status bar (m.aiMsg), exactly like the
+// other result-message fields.
 //
 // Providers are configured in the `ai:` config block (edited in-app via the
 // `M` picker → n/e provider form, which stores the API key in the OS keychain
@@ -136,6 +137,40 @@ func (c cachedAIIntrospector) ForeignKeys(table string) ([]ai.ForeignKey, error)
 		return aiForeignKeys(fks), nil
 	}
 	return c.live.ForeignKeys(table)
+}
+
+// aiSchemaFocus collects table names that should centre the AI schema dump:
+// the focused table (results source, or the sidebar cursor when the sidebar
+// is focused) and any known tables mentioned in texts (the :ai question, a
+// failed statement for :aifix). SchemaContext expands each seed by one FK hop.
+func (m Model) aiSchemaFocus(texts ...string) []string {
+	seen := make(map[string]bool)
+	var out []string
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		for _, t := range m.tables {
+			if strings.EqualFold(t, name) {
+				name = t
+				break
+			}
+		}
+		key := strings.ToLower(name)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, name)
+	}
+	add(m.currentTable())
+	for _, text := range texts {
+		for _, t := range ai.MentionedTables(text, m.tables) {
+			add(t)
+		}
+	}
+	return out
 }
 
 // aiIntrospector builds a schema introspector for an AI request: cache-backed
@@ -260,7 +295,7 @@ func (m *Model) exAI(question string) tea.Cmd {
 		m.aiMsg = ":ai needs a question — try :ai 10 most recent users"
 		return nil
 	}
-	schema, _ := ai.SchemaContext(m.aiIntrospector())
+	schema, _ := ai.SchemaContext(m.aiIntrospector(), m.aiSchemaFocus(q)...)
 	messages := []ai.Message{
 		{Role: "system", Content: ai.SystemPrompt(schema)},
 		{Role: "user", Content: q},
@@ -306,7 +341,7 @@ func (m *Model) exAIFix() tea.Cmd {
 		m.aiMsg = "ai request already in progress"
 		return nil
 	}
-	schema, _ := ai.SchemaContext(m.aiIntrospector())
+	schema, _ := ai.SchemaContext(m.aiIntrospector(), m.aiSchemaFocus(m.lastQueryFailSQL)...)
 	messages := []ai.Message{
 		{Role: "system", Content: ai.FixSystemPrompt(schema)},
 		{Role: "user", Content: ai.FixUserPrompt(m.lastQueryFailSQL, m.lastQueryFailErr)},
@@ -321,7 +356,7 @@ func (m *Model) sendAssistant(question string) tea.Cmd {
 	if m.connection == nil {
 		return nil
 	}
-	schema, _ := ai.SchemaContext(m.aiIntrospector())
+	schema, _ := ai.SchemaContext(m.aiIntrospector(), m.aiSchemaFocus(question)...)
 	messages := []ai.Message{{Role: "system", Content: ai.SystemPrompt(schema)}}
 	for _, t := range m.assistant.ConversationMessages() {
 		messages = append(messages, ai.Message{Role: t.role, Content: t.content})

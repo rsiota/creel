@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -120,6 +121,117 @@ func TestSchemaContext_NilConn(t *testing.T) {
 	}
 	if got != "" {
 		t.Errorf("expected empty context for nil conn, got %q", got)
+	}
+}
+
+func TestSchemaContext_Neighbourhood(t *testing.T) {
+	conn := &fakeConn{
+		tables: []string{"users", "orders", "order_items", "products", "audit_log"},
+		schema: map[string][]Column{
+			"users":       {{Name: "id", Type: "INTEGER"}},
+			"orders":      {{Name: "id", Type: "INTEGER"}, {Name: "user_id", Type: "INTEGER"}},
+			"order_items": {{Name: "id", Type: "INTEGER"}, {Name: "order_id", Type: "INTEGER"}},
+			"products":    {{Name: "id", Type: "INTEGER"}},
+			"audit_log":   {{Name: "id", Type: "INTEGER"}},
+		},
+		pks: map[string][]string{
+			"users": {"id"}, "orders": {"id"}, "order_items": {"id"},
+			"products": {"id"}, "audit_log": {"id"},
+		},
+		fks: map[string][]ForeignKey{
+			"orders":      {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+			"order_items": {{Column: "order_id", RefTable: "orders", RefColumn: "id"}},
+		},
+	}
+
+	got, err := SchemaContext(conn, "orders")
+	if err != nil {
+		t.Fatalf("SchemaContext: %v", err)
+	}
+	for _, want := range []string{
+		"CREATE TABLE users",
+		"CREATE TABLE orders",
+		"CREATE TABLE order_items",
+		"Restricted to the focused table",
+		"Other tables (columns omitted): products, audit_log",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("neighbourhood missing %q\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "CREATE TABLE products") || strings.Contains(got, "CREATE TABLE audit_log") {
+		t.Errorf("unrelated tables should not be expanded:\n%s", got)
+	}
+
+	// Two hops away (order_items) must not appear when focused on users.
+	usersOnly, err := SchemaContext(conn, "USERS") // case-insensitive
+	if err != nil {
+		t.Fatalf("SchemaContext users: %v", err)
+	}
+	if !strings.Contains(usersOnly, "CREATE TABLE users") || !strings.Contains(usersOnly, "CREATE TABLE orders") {
+		t.Errorf("users neighbourhood should include inbound orders:\n%s", usersOnly)
+	}
+	if strings.Contains(usersOnly, "CREATE TABLE order_items") {
+		t.Errorf("users neighbourhood should be one hop, not order_items:\n%s", usersOnly)
+	}
+}
+
+func TestSchemaContext_UnknownFocusFallsBack(t *testing.T) {
+	conn := &fakeConn{
+		tables: []string{"users", "orders"},
+		schema: map[string][]Column{
+			"users":  {{Name: "id", Type: "INTEGER"}},
+			"orders": {{Name: "id", Type: "INTEGER"}},
+		},
+	}
+	got, err := SchemaContext(conn, "nope")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "CREATE TABLE users") || !strings.Contains(got, "CREATE TABLE orders") {
+		t.Errorf("unknown focus should dump the whole schema:\n%s", got)
+	}
+	if strings.Contains(got, "Restricted to") {
+		t.Errorf("fallback should not claim a neighbourhood:\n%s", got)
+	}
+}
+
+func TestSchemaContext_NoFocusCapsAtMax(t *testing.T) {
+	tables := make([]string, maxTablesInContext+5)
+	schema := make(map[string][]Column, len(tables))
+	for i := range tables {
+		name := fmt.Sprintf("t%03d", i)
+		tables[i] = name
+		schema[name] = []Column{{Name: "id", Type: "INTEGER"}}
+	}
+	conn := &fakeConn{tables: tables, schema: schema}
+	got, err := SchemaContext(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "CREATE TABLE t000") {
+		t.Error("expected first table")
+	}
+	if strings.Contains(got, "CREATE TABLE t100") {
+		t.Error("table past the cap should not be expanded")
+	}
+	if !strings.Contains(got, "Other tables (columns omitted): t100") {
+		t.Errorf("expected omitted-name list, got:\n%s", got[len(got)-200:])
+	}
+}
+
+func TestMentionedTables(t *testing.T) {
+	tables := []string{"users", "orders", "products"}
+	got := MentionedTables("SELECT * FROM orders JOIN users ON users.id = orders.user_id", tables)
+	if len(got) != 2 || got[0] != "users" || got[1] != "orders" {
+		t.Errorf("got %v, want [users orders] in table-list order", got)
+	}
+	if MentionedTables("the user count", tables) != nil {
+		// "user" must not match "users"
+		t.Errorf("partial ident should not match: %v", MentionedTables("the user count", tables))
+	}
+	if got := MentionedTables("FROM PRODUCTS", tables); len(got) != 1 || got[0] != "products" {
+		t.Errorf("case-insensitive mention: %v", got)
 	}
 }
 

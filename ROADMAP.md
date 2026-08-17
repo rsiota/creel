@@ -211,8 +211,10 @@ or sequenced behind them.
 - **“Fix this error”** — shipped: `:aifix` / `:fixsql` remembers the last failed
   statement + driver error, asks the model for a corrected statement, and
   drops it in the editor for review (`ctrl+e`). No auto-run.
-- Restrict schema context to the focused table + FK neighbourhood (cheaper
-  and more accurate than the first 100 tables).
+- Restrict schema context to the focused table + FK neighbourhood — shipped:
+  `:ai` / `:aifix` / the assistant dump the current grid (or sidebar) table
+  plus one FK hop, and any other tables named in the question or failed SQL.
+  No focus still caps at the first 100 tables; omitted names stay in a comment.
 - Optional: run generated SQL in a scratch tab (read-only) and iterate on the
   error. Keep `ctrl+e` as the default — do not auto-run DDL.
 

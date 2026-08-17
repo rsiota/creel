@@ -128,9 +128,12 @@ render exactly as before when none of your connections use groups.
 
 The assistant panel (and the `:ai` command) turn a natural-language question
 into SQL using any OpenAI-compatible endpoint (OpenAI, z.ai, OpenRouter,
-Ollama, LM Studio, …). After a query fails, `:aifix` (alias `:fixsql`) sends
-the failed statement and driver error to the same provider and drops a
-corrected candidate into the editor for review — it never auto-runs.
+Ollama, LM Studio, …). The schema sent to the model is the current results
+(or sidebar) table plus its foreign-key neighbours, and any other tables
+named in the question — not the first 100 tables of the database. After a
+query fails, `:aifix` (alias `:fixsql`) sends the failed statement and driver
+error to the same provider and drops a corrected candidate into the editor
+for review — it never auto-runs.
 
 Configure it **in-app** from the assistant panel:
 

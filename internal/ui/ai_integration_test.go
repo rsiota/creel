@@ -133,3 +133,34 @@ func TestCachedAIIntrospector_ColdFallback(t *testing.T) {
 		t.Errorf("cold cache did not fall back to the live DB: %q", got)
 	}
 }
+
+func TestAISchemaFocusSeeds(t *testing.T) {
+	m := Model{
+		tables:  []string{"users", "orders", "products"},
+		results: NewResultsTable(),
+	}
+	m.results.SetResult([]string{"id"}, [][]string{{"1"}}, "")
+	m.results.SetEditable("orders", []string{"id"})
+
+	got := m.aiSchemaFocus("top products by price")
+	want := []string{"orders", "products"}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("aiSchemaFocus = %v, want %v", got, want)
+	}
+
+	// No grid, no mentions, editor focused → empty focus (whole schema).
+	m2 := Model{tables: []string{"users"}, results: NewResultsTable(), focus: FocusEditor}
+	if seeds := m2.aiSchemaFocus("how many rows"); len(seeds) != 0 {
+		t.Errorf("expected no seeds, got %v", seeds)
+	}
+
+	// Sidebar cursor counts only while the sidebar is focused.
+	m3 := Model{
+		tables:  []string{"users", "orders"},
+		results: NewResultsTable(),
+		focus:   FocusConnections,
+	}
+	if seeds := m3.aiSchemaFocus(""); len(seeds) != 1 || seeds[0] != "users" {
+		t.Errorf("sidebar-focused seeds = %v, want [users]", seeds)
+	}
+}
