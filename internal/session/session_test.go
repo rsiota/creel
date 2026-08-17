@@ -19,6 +19,9 @@ func TestStoreSaveLoadRoundTrip(t *testing.T) {
 		ColWidths: map[string]map[string]int{
 			"users": {"email": 28, "name": 12},
 		},
+		ERDPositions: map[string]map[string]ERDPos{
+			"*": {"users": {X: 2, Y: 1}, "orders": {X: 40, Y: 8}},
+		},
 	}
 	if err := s.Save("Work DB", "appdb", st); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -35,6 +38,9 @@ func TestStoreSaveLoadRoundTrip(t *testing.T) {
 	}
 	if got.ColWidths["users"]["email"] != 28 || got.ColWidths["users"]["name"] != 12 {
 		t.Errorf("col widths round-trip mismatch: %+v", got.ColWidths)
+	}
+	if got.ERDPositions["*"]["users"] != (ERDPos{X: 2, Y: 1}) || got.ERDPositions["*"]["orders"] != (ERDPos{X: 40, Y: 8}) {
+		t.Errorf("erd positions round-trip mismatch: %+v", got.ERDPositions)
 	}
 }
 
@@ -100,5 +106,11 @@ func TestHasContent(t *testing.T) {
 	}
 	if !(State{Tabs: []Tab{{LastQuery: "SELECT 1"}}}).HasContent() {
 		t.Error("tab with a last query should have content")
+	}
+	if (State{ColWidths: map[string]map[string]int{"t": {"c": 10}}}).HasContent() {
+		t.Error("column widths alone should not count as content")
+	}
+	if (State{ERDPositions: map[string]map[string]ERDPos{"*": {"t": {X: 1, Y: 2}}}}).HasContent() {
+		t.Error("erd positions alone should not count as content")
 	}
 }

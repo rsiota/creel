@@ -1,7 +1,8 @@
 // Package session persists per-connection workspace state — the open tabs,
-// their editor buffers, and which tab is active — so reopening a connection
-// restores where the user left off. State is keyed by (connection, database)
-// and stored as JSON under <configDir>/sessions/.
+// their editor buffers, which tab is active, remembered column widths, and
+// ERD card positions — so reopening a connection restores where the user
+// left off. State is keyed by (connection, database) and stored as JSON
+// under <configDir>/sessions/.
 //
 // It intentionally mirrors internal/history's shape (per-key JSON files, a
 // mutex-guarded in-memory cache, a shared sanitize helper) but is kept as a
@@ -36,13 +37,24 @@ type State struct {
 	// (or paging onto a short page) does not shrink columns the user already
 	// saw wider. Outer key is the table name; inner key is the column name.
 	ColWidths map[string]map[string]int `json:"col_widths,omitempty"`
+	// ERDPositions remembers free-form ERD card coordinates so a drag or
+	// H/J/K/L nudge survives reopen. Outer key is the layout scope ("*" for
+	// the whole schema, otherwise the focused table); inner key is the card
+	// (table) name.
+	ERDPositions map[string]map[string]ERDPos `json:"erd_positions,omitempty"`
+}
+
+// ERDPos is one card's logical canvas origin in an ERD layout.
+type ERDPos struct {
+	X int `json:"x"`
+	Y int `json:"y"`
 }
 
 // HasContent reports whether s carries anything worth restoring. A session
 // made up only of blank tabs (no editor content, no executed query) is treated
 // as empty so reconnecting keeps the default single "New Query" tab.
-// Column-width memory alone does not count — those widths are still loaded
-// by restoreSession even when this returns false.
+// Column-width memory and ERD positions alone do not count — those maps
+// are still loaded by restoreSession even when this returns false.
 func (s State) HasContent() bool {
 	for _, t := range s.Tabs {
 		if t.Editor != "" || t.LastQuery != "" {

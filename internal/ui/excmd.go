@@ -1570,6 +1570,7 @@ func (m *Model) exSession(args []string) tea.Cmd {
 			return nil
 		}
 		m.colWidthMem = nil
+		m.erdPosMem = nil
 		m.schemaMsg = "session cleared — reconnect will start fresh"
 		return nil
 	case "save":

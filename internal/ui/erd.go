@@ -179,9 +179,13 @@ func (m *Model) openERD(focus string) tea.Cmd {
 		targets = erdFocusSet(focus, tables, m.fkCache)
 		title = "ERD — " + focus + " + neighbours"
 	}
+	// Capture the layout being replaced (whole-schema ↔ neighbourhood, or a
+	// reopen) so a drag isn't lost when Show rebuilds the cards.
+	m.snapshotERDPositions()
 	layout := computeERDLayout(targets, m.columnCache, m.pkCache, m.fkCache)
 	if layout != nil {
 		layout.focus = focus
+		m.applyRememberedERDPositions(layout)
 	}
 	mermaid := buildMermaidERD(targets, m.columnCache, m.pkCache, m.fkCache)
 	m.erdPanel.Show(title, layout, mermaid)
@@ -238,8 +242,16 @@ func (m Model) erdEnter() (Model, tea.Cmd) {
 		return m, nil
 	}
 	name := c.name
-	m.erdPanel.Hide()
+	m.hideERD()
 	return m, m.openTable(name)
+}
+
+// hideERD snapshots card positions then closes the overlay. Hide keeps the
+// layout in memory, but snapshotting here means a later :session save (or a
+// table rename) sees the latest drag without waiting for reopen.
+func (m *Model) hideERD() {
+	m.snapshotERDPositions()
+	m.erdPanel.Hide()
 }
 
 // erdDrillIn re-focuses the ERD on the keyboard-focused card's neighbourhood

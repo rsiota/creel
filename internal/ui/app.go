@@ -479,6 +479,11 @@ type Model struct {
 	// connection+database (table → column → width). Loaded from / saved with
 	// the session so widths survive reconnects.
 	colWidthMem map[string]map[string]int
+	// erdPosMem is the in-memory ERD card-position map for the active
+	// connection+database (scope → table → x,y). Loaded from / saved with
+	// the session so a drag or H/J/K/L nudge survives reopen. Scope is "*"
+	// for the whole schema, otherwise the focused table name.
+	erdPosMem map[string]map[string]session.ERDPos
 	// insertTarget is a shadow results table used while inserting into a
 	// table that is not the current grid (explorer "insert related"). The
 	// inspector and saveInsert read columns from this instead of m.results.
@@ -2831,10 +2836,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.erdPanel = m.erdPanel.clearPath()
 					return m, nil
 				}
-				m.erdPanel.Hide()
+				m.hideERD()
 				return m, nil
 			case "q", "ctrl+c":
-				m.erdPanel.Hide()
+				m.hideERD()
 				return m, nil
 			case "y", "Y":
 				m.erdPanel.zPrefix = false // these app-level actions aren't fold
@@ -2855,6 +2860,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.erdPanel = m.erdPanel.Update(msg)
+		m.snapshotERDPositions()
 		return m, nil
 	}
 

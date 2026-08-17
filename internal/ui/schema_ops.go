@@ -228,6 +228,7 @@ func (m *Model) applyTableRename(oldName, newName string) {
 
 	m.results.RenameTableReferences(oldName, newName)
 	m.renameColWidthTable(oldName, newName)
+	m.renameERDPosTable(oldName, newName)
 
 	if parseSimpleSelectTable(m.lastQuery) == oldName {
 		m.lastQuery = replaceSimpleSelectTable(m.lastQuery, oldName, newName)

@@ -115,7 +115,9 @@ all cards to the viewport, `zc`/`zo`/`za` collapse/expand/toggle a focused card
 to a header-only bar to declutter dense schemas (▸ marks a folded card),
 `zM`/`zR` collapse/expand every card at once (the layout contracts to reclaim
 the freed space, arrows re-route, and the view reframes), and `g`/`G`/`ctrl+d`/
-`ctrl+u` page the view.
+`ctrl+u` page the view. Dragged and nudged card positions are remembered in
+the connection's session snapshot (whole-schema and neighbourhood layouts
+separately) so they come back on reopen.
 
 <details>
 <summary><b>Mermaid source for the bundled demo database</b></summary>
@@ -223,8 +225,9 @@ erDiagram
 - **Session restore** — reopening a connection brings back your open tabs and
   editor buffers from the last visit (keyed per connection + database). Buffers
   are restored but not re-executed; a `creel -f` startup file still takes
-  precedence on first connect. `:session clear` wipes the saved snapshot,
-  `:session save` snapshots now.
+  precedence on first connect. Column widths and ERD card positions restore
+  even when the tabs themselves are blank. `:session clear` wipes the saved
+  snapshot, `:session save` snapshots now.
 - **Command palette** (`Ctrl+P`) and a full **help overlay** (`?`).
 - **AI assistant** — turn a natural-language question into SQL using any
   OpenAI-compatible endpoint (`:ai`, assistant panel). After a failed query,

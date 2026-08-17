@@ -751,6 +751,7 @@ func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		// click logic (double-click re-centre / single-click highlight).
 		if m.erdPanel.dragCard != "" {
 			m.erdPanel = m.erdPanel.dragCommit()
+			m.snapshotERDPositions()
 			return m, nil
 		}
 		if m.erdPanel.dragPending != "" {

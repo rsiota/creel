@@ -18,10 +18,10 @@ func (m *Model) sessionKey() (conn, database string, ok bool) {
 }
 
 // saveSession persists the current workspace (open tabs, their editor buffers,
-// the active tab, and remembered column widths) for the active
-// connection+database. It is best-effort: write errors are ignored, matching
-// the other persistence sites. Called at connection/database teardown and on
-// quit so reopening a connection restores where the user left off.
+// the active tab, remembered column widths, and ERD card positions) for the
+// active connection+database. It is best-effort: write errors are ignored,
+// matching the other persistence sites. Called at connection/database teardown
+// and on quit so reopening a connection restores where the user left off.
 func (m *Model) saveSession() {
 	conn, database, ok := m.sessionKey()
 	if !ok || m.sessionStore == nil {
@@ -30,8 +30,9 @@ func (m *Model) saveSession() {
 	// Flush the active editor into its ResultsTab so the buffer under the
 	// cursor is captured alongside the inactive tabs.
 	m.saveTabState()
+	m.snapshotERDPositions()
 
-	st := session.State{ColWidths: m.colWidthMem}
+	st := session.State{ColWidths: m.colWidthMem, ERDPositions: m.erdPosMem}
 	for i, t := range m.resultsTabs {
 		st.Tabs = append(st.Tabs, session.Tab{
 			Title:     t.Title,
@@ -52,8 +53,9 @@ func (m *Model) saveSession() {
 // mirroring the creel -f startup flag (avoids stale data and side-effecting
 // writes on reconnect).
 //
-// Column-width memory is always reloaded when a session file exists, even if
-// the tabs themselves are blank (HasContent is false).
+// Column-width memory and ERD card positions are always reloaded when a
+// session file exists, even if the tabs themselves are blank (HasContent is
+// false).
 func (m *Model) restoreSession() {
 	conn, database, ok := m.sessionKey()
 	if !ok || m.sessionStore == nil {
@@ -71,6 +73,7 @@ func (m *Model) restoreSession() {
 		return
 	}
 	m.colWidthMem = cloneColWidthMem(st.ColWidths)
+	m.erdPosMem = cloneERDPosMem(st.ERDPositions)
 
 	if !st.HasContent() {
 		return
@@ -220,4 +223,146 @@ func cloneColWidthMem(src map[string]map[string]int) map[string]map[string]int {
 		out[table] = cp
 	}
 	return out
+}
+
+// erdScopeAll is the ERDPositions outer key for a whole-schema layout
+// (layout.focus == ""). Neighbourhood layouts use the focused table name so
+// a drag in one view cannot land on the other — ranks differ.
+const erdScopeAll = "*"
+
+func erdScopeKey(focus string) string {
+	if strings.TrimSpace(focus) == "" {
+		return erdScopeAll
+	}
+	return strings.TrimSpace(focus)
+}
+
+// snapshotERDPositions copies the current ERD layout's card origins into
+// erdPosMem for that layout's scope. No-op while a drag is in flight (cancel
+// must restore the last committed positions, not an intermediate frame) or
+// when there is no layout.
+func (m *Model) snapshotERDPositions() {
+	if m.erdPanel.layout == nil || m.erdPanel.dragCard != "" {
+		return
+	}
+	pos := snapshotERDLayout(m.erdPanel.layout)
+	if len(pos) == 0 {
+		return
+	}
+	if m.erdPosMem == nil {
+		m.erdPosMem = make(map[string]map[string]session.ERDPos)
+	}
+	m.erdPosMem[erdScopeKey(m.erdPanel.layout.focus)] = pos
+}
+
+// applyRememberedERDPositions overlays saved x/y for layout's scope onto its
+// cards and re-routes arrows when anything moved. Unknown tables keep the
+// freshly computed origin so a schema that grew still places new cards.
+func (m *Model) applyRememberedERDPositions(layout *erdLayout) {
+	if layout == nil || len(m.erdPosMem) == 0 {
+		return
+	}
+	scope := erdScopeKey(layout.focus)
+	saved := m.erdPosMem[scope]
+	if saved == nil {
+		for name, pos := range m.erdPosMem {
+			if strings.EqualFold(name, scope) {
+				saved = pos
+				break
+			}
+		}
+	}
+	applyERDPositions(layout, saved)
+}
+
+// renameERDPosTable moves remembered ERD coordinates when a table is renamed:
+// both the neighbourhood scope key and every inner card name.
+func (m *Model) renameERDPosTable(oldName, newName string) {
+	if m.erdPosMem == nil || oldName == "" || newName == "" {
+		return
+	}
+	next := make(map[string]map[string]session.ERDPos, len(m.erdPosMem))
+	for scope, tables := range m.erdPosMem {
+		newScope := scope
+		if strings.EqualFold(scope, oldName) {
+			newScope = newName
+		}
+		inner := make(map[string]session.ERDPos, len(tables))
+		for name, pos := range tables {
+			key := name
+			if strings.EqualFold(name, oldName) {
+				key = newName
+			}
+			inner[key] = pos
+		}
+		next[newScope] = inner
+	}
+	m.erdPosMem = next
+}
+
+// cloneERDPosMem deep-copies an ERD-position map so mutating memory cannot
+// alias the session store's cached State.
+func cloneERDPosMem(src map[string]map[string]session.ERDPos) map[string]map[string]session.ERDPos {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]map[string]session.ERDPos, len(src))
+	for scope, tables := range src {
+		cp := make(map[string]session.ERDPos, len(tables))
+		for name, pos := range tables {
+			cp[name] = pos
+		}
+		out[scope] = cp
+	}
+	return out
+}
+
+// snapshotERDLayout records each card's logical origin. Returns nil when the
+// layout is empty so callers can skip writing an empty scope.
+func snapshotERDLayout(layout *erdLayout) map[string]session.ERDPos {
+	if layout == nil || len(layout.cards) == 0 {
+		return nil
+	}
+	out := make(map[string]session.ERDPos, len(layout.cards))
+	for _, c := range layout.cards {
+		if c == nil || c.name == "" {
+			continue
+		}
+		out[c.name] = session.ERDPos{X: c.x, Y: c.y}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// applyERDPositions writes saved origins onto matching cards (case-insensitive
+// table names) and re-routes arrows if anything actually moved.
+func applyERDPositions(layout *erdLayout, saved map[string]session.ERDPos) {
+	if layout == nil || len(saved) == 0 {
+		return
+	}
+	moved := false
+	for _, c := range layout.cards {
+		if c == nil {
+			continue
+		}
+		p, ok := saved[c.name]
+		if !ok {
+			for name, pos := range saved {
+				if strings.EqualFold(name, c.name) {
+					p, ok = pos, true
+					break
+				}
+			}
+		}
+		if !ok || (c.x == p.X && c.y == p.Y) {
+			continue
+		}
+		c.x, c.y = p.X, p.Y
+		moved = true
+	}
+	if moved {
+		rerouteArrows(layout)
+	}
 }

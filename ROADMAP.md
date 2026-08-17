@@ -35,12 +35,13 @@ collapse/expand `zc`/`zo`/`za` (2026-07-29) are all done. What remains:
   `TableColumnInfo` fetch and is deferred.
 - **Mini-map** — a tiny overview with a viewport rectangle for very large
   schemas. Medium-high effort.
-- **Drag deferred follow-ups:** persisted positions across sessions (the
-  in-memory MVP is intentional — wait for the ask); snap-to-grid on drop (free
-  cell today); Level C bend-optimal routing (A* on the cell grid; the current
-  Level B router always produces a visible, correct arrow but isn't
-  bend-optimal in pathological layouts); a keyboard equivalent of drag for
-  no-mouse/SSH contexts.
+- **Drag deferred follow-ups:** persisted positions ✅ DONE (2026-08-17) —
+  per-connection session snapshot, scoped by whole-schema (`*`) vs
+  neighbourhood (focused table) so a drag in one view cannot land on the
+  other; snap-to-grid on drop (free cell today); Level C bend-optimal
+  routing (A* on the cell grid; the current Level B router always produces
+  a visible, correct arrow but isn't bend-optimal in pathological layouts).
+  Keyboard nudge (`H`/`J`/`K`/`L`) shipped 2026-08-17.
 
 ### `:` argument completion — wave 2 (#10 v2)
 Wave 1 shipped (2026-07-28): each `exCmdSpec` gained an optional `complete`
@@ -191,7 +192,10 @@ or sequenced behind them.
 
 **Graph / charts (after the Now slice)**
 - **ERD mini-map** — already listed above.
-- **Persist ERD drag positions** in the session snapshot.
+- **Persist ERD drag positions** — shipped: card `x/y` (mouse drag and
+  `H`/`J`/`K`/`L`) live in the per-connection session snapshot, keyed by
+  layout scope so whole-schema and neighbourhood layouts stay independent.
+  Restored on `:erd` / `g R`; cleared by `:session clear`.
 - **Keyboard move for ERD cards** — shipped: `H`/`J`/`K`/`L` nudges the focused
   card (same helper path as a mouse drag: re-route arrows, grow the canvas,
   keep the card in view). Lowercase `h`/`j`/`k`/`l` still hop focus.
