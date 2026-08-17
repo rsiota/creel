@@ -724,6 +724,32 @@ func (e ERDPanel) dragMove(cx, cy int) ERDPanel {
 	return e
 }
 
+// erdNudgeStep is how many cells H/J/K/L move the focused card. Two cells is
+// snappy over SSH without overshooting a typical card.
+const erdNudgeStep = 2
+
+// nudgeFocusCard moves the keyboard-focused card by (dx, dy) cells — the
+// no-mouse counterpart of drag. Arrows re-route and the viewport follows so
+// the card stays on screen. With no focus it lands on the initial card first.
+func (e ERDPanel) nudgeFocusCard(dx, dy int) ERDPanel {
+	if e.layout == nil || len(e.cards) == 0 {
+		return e
+	}
+	c := e.focusCard()
+	if c == nil {
+		c = e.initialFocusCard()
+		if c == nil {
+			return e
+		}
+		e.focusName = c.name
+	}
+	c.x = clampInt(c.x+dx, -erdDragMaxBound, erdDragMaxBound)
+	c.y = clampInt(c.y+dy, -erdDragMaxBound, erdDragMaxBound)
+	rerouteArrows(e.layout)
+	e.graph = e.renderedGraph()
+	return e.ensureVisible(c)
+}
+
 // dragCommit finalizes a drag on MouseRelease: the card stays where it was
 // dropped (arrows were re-routed live during the move) and drag state clears.
 // A final re-route keeps the result consistent if the terminal skipped any
@@ -856,9 +882,10 @@ const (
 )
 
 // Update routes keys to the active view. `m` toggles Mermaid; in the graph view
-// j/k/h/l move the keyboard focus between cards (viewport follows), Space
-// toggles highlight on it, and g/G/ctrl+d/ctrl+u page the view; in the Mermaid
-// view j/k/g/G/ctrl+d/ctrl+u scroll the source lines.
+// j/k/h/l move the keyboard focus between cards (viewport follows), H/J/K/L
+// nudge the focused card, Space toggles highlight on it, and g/G/ctrl+d/ctrl+u
+// page the view; in the Mermaid view j/k/g/G/ctrl+d/ctrl+u scroll the source
+// lines.
 func (e ERDPanel) Update(msg tea.KeyMsg) ERDPanel {
 	// Any keyboard input clears the hover tooltip: the diagram may shift under
 	// a static cursor (focus move, fold, scroll), so the cached hovered card is
@@ -886,12 +913,13 @@ func (e ERDPanel) Update(msg tea.KeyMsg) ERDPanel {
 }
 
 // updateGraph handles keys in the graph view: j/k/h/l focus the nearest card in
-// that direction, Space toggles highlight on the focused card, and g/G and
-// ctrl+d/ctrl+u page the viewport (the focus stays put and the next j/k/h/l
-// pulls it back into view). `z` is a vim-style prefix: `zz` fits the diagram,
-// `zc`/`zo`/`za` collapse/expand/toggle the focused card, `zM`/`zR` collapse/
-// expand all cards (re-routing arrows and reframing); `z` + an unrecognized
-// key clears the prefix and falls through to that key's normal action.
+// that direction, H/J/K/L nudge the focused card (same path as a mouse drag),
+// Space toggles highlight on the focused card, and g/G and ctrl+d/ctrl+u page
+// the viewport (the focus stays put and the next j/k/h/l pulls it back into
+// view). `z` is a vim-style prefix: `zz` fits the diagram, `zc`/`zo`/`za`
+// collapse/expand/toggle the focused card, `zM`/`zR` collapse/expand all cards
+// (re-routing arrows and reframing); `z` + an unrecognized key clears the
+// prefix and falls through to that key's normal action.
 func (e ERDPanel) updateGraph(msg tea.KeyMsg) ERDPanel {
 	// Resolve a pending z-prefix. An unrecognized second key clears it and falls
 	// through to the switch below, so `zj` still moves focus down.
@@ -923,6 +951,14 @@ func (e ERDPanel) updateGraph(msg tea.KeyMsg) ERDPanel {
 		e = e.moveFocus(erdFocusLeft)
 	case "l", "right":
 		e = e.moveFocus(erdFocusRight)
+	case "H":
+		e = e.nudgeFocusCard(-erdNudgeStep, 0)
+	case "J":
+		e = e.nudgeFocusCard(0, erdNudgeStep)
+	case "K":
+		e = e.nudgeFocusCard(0, -erdNudgeStep)
+	case "L":
+		e = e.nudgeFocusCard(erdNudgeStep, 0)
 	case " ":
 		e = e.toggleHighlight(e.focusCard())
 	case "z":

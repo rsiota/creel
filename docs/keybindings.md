@@ -140,3 +140,20 @@ In the add/edit form:
 | `u` / `g b`| Go back                                         |
 | `r`        | Retarget / refresh                              |
 | `esc` / `q`| Close                                           |
+
+## Static ERD (`g R`)
+
+| Key        | Action                                          |
+| ---------- | ----------------------------------------------- |
+| `j/k/h/l`  | Move focus between cards                        |
+| `H/J/K/L`  | Nudge the focused card                          |
+| `space`    | Highlight focused card's relations              |
+| `enter`    | Browse the focused table (`SELECT *`)           |
+| `f`        | Re-focus on the focused card's neighbourhood    |
+| `zz`       | Fit all cards to the viewport                   |
+| `zc/zo/za` | Collapse / expand / toggle the focused card     |
+| `/`        | Jump to a table by name                         |
+| `p`        | Trace the FK path between two tables            |
+| `m`        | Toggle Mermaid source                           |
+| `y` / `s`  | Copy / save Mermaid source                      |
+| `esc` / `q`| Close                                           |

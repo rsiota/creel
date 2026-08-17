@@ -1090,6 +1090,77 @@ func TestERDKeyboardNav(t *testing.T) {
 	}
 }
 
+// TestERDKeyboardNudge moves the focused card with H/J/K/L without changing
+// which card is focused (lowercase hjkl still hop between cards).
+func TestERDKeyboardNudge(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	layout.focus = ""
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "orders"}
+	ep.graph = ep.renderedGraph()
+	orders := ep.cardNamed("orders")
+	origX, origY := orders.x, orders.y
+
+	// Lowercase hops focus (orders → users) and must not move the card.
+	ep = ep.Update(key("h"))
+	if ep.focusName != "users" {
+		t.Fatalf("h from orders: focus=%q want users", ep.focusName)
+	}
+	if orders.x != origX || orders.y != origY {
+		t.Errorf("h nudged the card: (%d,%d) want (%d,%d)", orders.x, orders.y, origX, origY)
+	}
+	ep.focusName = "orders"
+	ep.graph = ep.renderedGraph()
+
+	ep = ep.Update(key("L"))
+	if ep.focusName != "orders" {
+		t.Fatalf("L moved focus: %q", ep.focusName)
+	}
+	if orders.x != origX+erdNudgeStep || orders.y != origY {
+		t.Errorf("L: card at (%d,%d) want (%d,%d)", orders.x, orders.y, origX+erdNudgeStep, origY)
+	}
+
+	ep = ep.Update(key("J"))
+	if orders.y != origY+erdNudgeStep {
+		t.Errorf("J: y=%d want %d", orders.y, origY+erdNudgeStep)
+	}
+
+	ep = ep.Update(key("H"))
+	if orders.x != origX {
+		t.Errorf("H: x=%d want %d (back to origin x)", orders.x, origX)
+	}
+
+	ep = ep.Update(key("K"))
+	if orders.x != origX || orders.y != origY {
+		t.Errorf("K: card at (%d,%d) want (%d,%d)", orders.x, orders.y, origX, origY)
+	}
+}
+
+// TestERDKeyboardNudgeGrowsCanvas confirms H can push a card left of the origin
+// the same way a mouse drag does, so SSH sessions aren't trapped at x=0.
+func TestERDKeyboardNudgeGrowsCanvas(t *testing.T) {
+	tables, schemas, pks, fks := erdFixture()
+	layout := computeERDLayout(tables, schemas, pks, fks)
+	layout.focus = ""
+	ep := ERDPanel{cards: layout.cards, layout: layout, width: 80, height: 24, focusName: "users"}
+	ep.graph = ep.renderedGraph()
+	users := ep.cardNamed("users")
+	beforeW := layout.canvasW
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+
+	// Nudge left until the card crosses the origin.
+	for i := 0; i < 20 && users.x >= 0; i++ {
+		ep = ep.Update(key("H"))
+	}
+	if users.x >= 0 {
+		t.Fatalf("H did not move users left of origin: x=%d", users.x)
+	}
+	if layout.canvasW <= beforeW && layout.originX >= 0 {
+		t.Errorf("canvas did not grow left: canvasW=%d originX=%d (beforeW=%d)", layout.canvasW, layout.originX, beforeW)
+	}
+}
+
 // TestERDKeyboardHighlight checks Space toggles highlight on the focused card
 // (and that a selected+focused card renders primary, not accent).
 func TestERDKeyboardHighlight(t *testing.T) {
@@ -1369,13 +1440,13 @@ func TestERDRegistrySection(t *testing.T) {
 	for _, b := range sec.Items {
 		displays[b.Display] = true
 	}
-	for _, want := range []string{"esc / q / ctrl+c", "j/k/h/l", "space", "enter", "m", "g / G", "ctrl+d / ctrl+u", "y", "s"} {
+	for _, want := range []string{"esc / q / ctrl+c", "j/k/h/l", "H/J/K/L", "space", "enter", "m", "g / G", "ctrl+d / ctrl+u", "y", "s"} {
 		if !displays[want] {
 			t.Errorf("ERD section missing binding %q", want)
 		}
 	}
 	hints := strings.Join(hintsForSection("ERD"), " ")
-	for _, want := range []string{"j/k/h/l", "space", "enter", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"} {
+	for _, want := range []string{"j/k/h/l", "H/J/K/L", "space", "enter", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"} {
 		if !strings.Contains(hints, want) {
 			t.Errorf("ERD hints missing %q: got %v", want, hints)
 		}

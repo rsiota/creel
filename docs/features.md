@@ -106,7 +106,8 @@ card reveals its hidden columns), click a card to highlight its relationships
 (dimming the rest), double-click to browse the table (`SELECT *`, same as
 Enter), or in a focused ERD click a related table's header (marked `◎`) to
 re-focus on its neighbourhood — or by keyboard: `j`/`k`/`h`/`l` move a focus
-between cards (the viewport follows), `Space` highlights the focused card,
+between cards (the viewport follows), `H`/`J`/`K`/`L` nudge the focused card
+(same as a mouse drag, for SSH / no-mouse), `Space` highlights the focused card,
 `Enter` closes the ERD and runs `SELECT *` on that table, `f` re-focuses the
 ERD on its neighbourhood, `/` jumps to a table by name (`Tab` cycles matches), `p` traces the shortest FK
 path between two tables (anchor one, move to the other, `p` again), `zz` fits

@@ -26,6 +26,7 @@ commits, so it can come up empty).
 - Jump the editor cursor to MySQL/Postgres/SQLite syntax-error positions (line / `near "…"`, including pagination-wrapped SELECTs).
 - Results chord `y r` copies marked/cursor rows as TSV (same as `:copyrow`); `Y` remains INSERT, `y y` remains cell copy.
 - `:aifix` (alias `:fixsql`) asks the configured AI to rewrite the last failed query; the candidate lands in the editor for review (never auto-run).
+- ERD `H`/`J`/`K`/`L` nudges the focused card (same as a mouse drag) so the diagram is usable over SSH / without a mouse.
 
 ### Fixed
 - SQL export (`X`) emits native CREATE TABLE DDL (MySQL `SHOW CREATE TABLE`, SQLite `sqlite_master`) so indexes, named foreign keys, ON DELETE/UPDATE, CHECK constraints, and ENGINE/CHARSET survive a dump round-trip. Unsigned integer values are no longer quoted as strings. MySQL string literals backslash-escape `\`, quotes, and control characters (mysqldump / Sequel Ace style) so PHP namespaces like `App\Models\User` round-trip.

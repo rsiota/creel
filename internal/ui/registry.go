@@ -121,6 +121,7 @@ func registry() []Section {
 			Items: []Binding{
 				{"esc / q / ctrl+c", []string{"esc", "q", "ctrl+c"}, "close ERD panel", "esc"},
 				{"j/k/h/l", []string{"j", "k", "h", "l", "up", "down", "left", "right"}, "move focus between cards / scroll source", "j/k/h/l"},
+				{"H/J/K/L", []string{"H", "J", "K", "L"}, "nudge the focused card", "H/J/K/L"},
 				{"space", []string{" "}, "highlight focused card's relations", "space"},
 				{"enter", []string{"enter"}, "browse the focused table (SELECT *)", "enter"},
 				{"f", []string{"f"}, "re-focus on the focused card's neighbourhood", "f"},

@@ -192,7 +192,9 @@ or sequenced behind them.
 **Graph / charts (after the Now slice)**
 - **ERD mini-map** — already listed above.
 - **Persist ERD drag positions** in the session snapshot.
-- **Keyboard move for ERD cards** (`H/J/K/L` or a modifier) for no-mouse/SSH.
+- **Keyboard move for ERD cards** — shipped: `H`/`J`/`K`/`L` nudges the focused
+  card (same helper path as a mouse drag: re-route arrows, grow the canvas,
+  keep the card in view). Lowercase `h`/`j`/`k`/`l` still hop focus.
 - **ERD tooltip nullability/defaults** — needs `TableColumnInfo` on hover
   (deferred from the 2026-07-30 tooltip work).
 - **`:pie`** — same data as `:freq`, different read.
