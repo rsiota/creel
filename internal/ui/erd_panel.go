@@ -24,7 +24,8 @@ import (
 // browses the focused table (SELECT *), `f` re-focuses the ERD on that table's
 // neighbourhood, and g/G/ctrl+d/ctrl+u page the view; in the Mermaid view
 // view; in the Mermaid view j/k/g/G/ctrl+d/ctrl+u scroll the source. esc/q
-// close.
+// close. A mini-map overlays the bottom-right when the diagram is larger
+// than the viewport; click or drag it to pan.
 type ERDPanel struct {
 	visible   bool
 	title     string
@@ -82,6 +83,12 @@ type ERDPanel struct {
 	// handlers no-op on MouseMotion, so enabling all-motion is safe.
 	hoverCard string
 
+	// Mini-map pan-drag. Set on a MouseLeft that lands on the overlay; motion
+	// then pans and release clears it. Distinct from card drag because click
+	// and drag are the same action here (pan), so there is no pending/promote
+	// step — see erd_minimap.go.
+	minimapDrag bool
+
 	// z-prefix fold/fit family. `z` is a vim-style prefix: `zz` fits the
 	// diagram, `zc`/`zo`/`za` collapse/expand/toggle the focused card. The flag
 	// is set on a bare `z` and consumed by the next key; an unrecognized second
@@ -118,6 +125,7 @@ func (e *ERDPanel) Show(title string, layout *erdLayout, mermaid []string) {
 	e.pathMsg = ""
 	e.dragPending = ""
 	e.dragCard = ""
+	e.minimapDrag = false
 	e.zPrefix = false
 	e.hoverCard = ""
 }
@@ -131,6 +139,7 @@ func (e *ERDPanel) Hide() {
 	e.visible = false
 	e.dragPending = ""
 	e.dragCard = ""
+	e.minimapDrag = false
 	e.zPrefix = false
 	e.hoverCard = ""
 }
@@ -1564,6 +1573,11 @@ func (e ERDPanel) View() string {
 		if e.hoverCard != "" {
 			if c := e.cardNamed(e.hoverCard); c != nil {
 				body = e.overlayTooltip(body, c, cw, ch)
+			}
+		}
+		if mm := e.renderMinimap(); mm != "" {
+			if mx, my, _, _, ok := e.minimapBounds(); ok {
+				body = placeOverlay(body, mm, mx, my)
 			}
 		}
 		if e.dragCard != "" {

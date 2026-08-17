@@ -115,7 +115,9 @@ all cards to the viewport, `zc`/`zo`/`za` collapse/expand/toggle a focused card
 to a header-only bar to declutter dense schemas (▸ marks a folded card),
 `zM`/`zR` collapse/expand every card at once (the layout contracts to reclaim
 the freed space, arrows re-route, and the view reframes), and `g`/`G`/`ctrl+d`/
-`ctrl+u` page the view. Dragged and nudged card positions are remembered in
+`ctrl+u` page the view. When the diagram is larger than the viewport, a mini-map
+in the bottom-right shows every card as a block and a rectangle for the current
+view; click or drag it to pan. Dragged and nudged card positions are remembered in
 the connection's session snapshot (whole-schema and neighbourhood layouts
 separately) so they come back on reopen.
 

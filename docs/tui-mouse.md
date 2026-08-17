@@ -178,11 +178,14 @@ and `dragCard` (an active drag). Rules that fall out of this:
   in immediately on *press* — there's no press→release dance, because the
   header click and a body drag share the same card.
 
-Anything that adds drag elsewhere (e.g. moving a results column, a future
-mini-map viewport, panel splitters) should reuse this shape rather than
-inventing a fourth mouse protocol. The editor↔results, sidebar↔centre, and
-centre↔right-slot splitters (`handleSplitDrag` / `handleSidebarDrag` /
-`handleRightSlotDrag`) are the second consumers.
+Anything that adds drag elsewhere (e.g. moving a results column, panel
+splitters) should reuse this shape rather than inventing a fourth mouse
+protocol. The editor↔results, sidebar↔centre, and centre↔right-slot
+splitters (`handleSplitDrag` / `handleSidebarDrag` / `handleRightSlotDrag`)
+are the second consumers. The ERD mini-map is the exception that proves the
+rule: click and drag are the *same* action there (pan), so it pans on press
+and on every motion instead of using pending/promote — see
+[ERD mini-map](#erd-mini-map).
 
 ---
 
@@ -312,6 +315,29 @@ field anywhere in the schema extraction (`TableColumnInfo` has NotNull/Default
 but the ERD cards only load `[]db.Column`). Showing those would need a
 per-table async `TableColumnInfo` fetch; deferred — the type + PK/FK markers
 are the available detail today.
+
+---
+
+## ERD mini-map (implemented 2026-08-17)
+
+A bottom-right overlay when the graph is larger than the viewport. Cards
+paint as `█` blocks; a box-drawing rectangle traces the current view.
+Click or drag to pan.
+
+**Why it doesn't use the press→promote→click machine.** That protocol exists
+because a card press has two meanings (click = highlight, drag = move) and
+the click must not fire until release proves there was no motion. On the
+mini-map, click and drag are the *same* action — pan the viewport — so pan
+happens on press and on every subsequent motion. `minimapDrag` is just a
+"button is down on the map" flag, cleared on release. Hit-testing the overlay
+*before* `contentToCanvas` is the other essential: without it, a click on
+the map would land on whatever card sits underneath in canvas space.
+
+Hover over the map clears `hoverCard` so a tooltip never paints for a card
+the overlay is hiding. An in-flight *card* drag keeps going if the cursor
+crosses the map (card drag is checked first on button-held motion).
+
+Tests: `erd_minimap_test.go`.
 
 ---
 

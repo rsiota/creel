@@ -696,6 +696,8 @@ func (m Model) handleHelpMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // first motion event promotes it to a drag (the card tracks the cursor while
 // arrows re-route around it live), and release drops it. A press with no motion
 // is still a click, so drag never steals a click. Esc cancels an in-flight drag.
+// A mini-map in the bottom-right (when the diagram overflows) steals clicks
+// from cards underneath; press and drag on it pan the viewport.
 func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// Left-button drag motion is reported as Type=MouseLeft + Action=Motion
 	// (bubbletea's backward-compat mapping; Type=MouseMotion is button-less
@@ -709,6 +711,13 @@ func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		// card move, neither disturbing the other.
 		if msg.Type == tea.MouseMotion {
 			return m.handleERDMouseHover(msg)
+		}
+		// Mini-map pan-drag: click and drag are the same action, so pan on
+		// every motion while the press started on the overlay. An in-flight
+		// card drag keeps going even if the cursor crosses the map.
+		if m.erdPanel.minimapDrag {
+			m.erdPanel = m.erdPanel.minimapPan(msg.X, msg.Y)
+			return m, nil
 		}
 		if m.erdPanel.dragPending == "" && m.erdPanel.dragCard == "" {
 			return m, nil
@@ -747,6 +756,10 @@ func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelRight:
 		m.erdPanel = m.erdPanel.Wheel(0, 1)
 	case tea.MouseRelease:
+		if m.erdPanel.minimapDrag {
+			m.erdPanel.minimapDrag = false
+			return m, nil
+		}
 		// Drop an active drag; or, if a press never promoted, run the deferred
 		// click logic (double-click re-centre / single-click highlight).
 		if m.erdPanel.dragCard != "" {
@@ -760,6 +773,11 @@ func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m.runERDCardClick(clicked)
 		}
 	case tea.MouseLeft:
+		if m.erdPanel.minimapContains(msg.X, msg.Y) {
+			m.erdPanel.minimapDrag = true
+			m.erdPanel = m.erdPanel.minimapPan(msg.X, msg.Y)
+			return m, nil
+		}
 		cx, cy, ok := m.erdPanel.contentToCanvas(msg.X, msg.Y)
 		// A click on a non-root card's header (the whole title row, cued by the
 		// ⤢ glyph) takes precedence and re-focuses the ERD on that table's
@@ -801,7 +819,7 @@ func (m Model) handleERDMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // motion from drag motion; see docs/tui-mouse.md.
 func (m Model) handleERDMouseHover(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	var hovered string
-	if !m.erdPanel.merm {
+	if !m.erdPanel.merm && !m.erdPanel.minimapContains(msg.X, msg.Y) {
 		if cx, cy, ok := m.erdPanel.contentToCanvas(msg.X, msg.Y); ok {
 			if c := m.erdPanel.cardAt(cx, cy); c != nil {
 				hovered = c.name

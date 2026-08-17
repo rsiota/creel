@@ -33,8 +33,14 @@ collapse/expand `zc`/`zo`/`za` (2026-07-29) are all done. What remains:
   tooltips section). Note: `db.Column` carries only name + type, so
   nullability/default/comments aren't shown — that needs a per-table
   `TableColumnInfo` fetch and is deferred.
-- **Mini-map** — a tiny overview with a viewport rectangle for very large
-  schemas. Medium-high effort.
+- **Mini-map** ✅ DONE (2026-08-17) — a tiny overview with a viewport rectangle
+  for very large schemas. Auto-shown in the bottom-right when the diagram is
+  larger than the viewport (hidden in Mermaid, or when the terminal is too
+  small to host it). Cards paint as filled blocks (focused = accent, selected
+  / path = primary); a box traces the current view. Click or drag the map to
+  pan — click and drag are the same action here, so pan happens on press and
+  on every motion (no pending/promote step; see `docs/tui-mouse.md`). Files:
+  `erd_minimap.go`, `erd_panel.go`, `mouse.go`. Tests: `erd_minimap_test.go`.
 - **Drag deferred follow-ups:** persisted positions ✅ DONE (2026-08-17) —
   per-connection session snapshot, scoped by whole-schema (`*`) vs
   neighbourhood (focused table) so a drag in one view cannot land on the
@@ -191,7 +197,8 @@ or sequenced behind them.
   (same helper as `:copyrow`); `Y` stays INSERT, `y y` stays cell copy.
 
 **Graph / charts (after the Now slice)**
-- **ERD mini-map** — already listed above.
+- **ERD mini-map** — shipped: bottom-right overlay when the diagram overflows;
+  click/drag to pan. See Open work.
 - **Persist ERD drag positions** — shipped: card `x/y` (mouse drag and
   `H`/`J`/`K`/`L`) live in the per-connection session snapshot, keyed by
   layout scope so whole-schema and neighbourhood layouts stay independent.

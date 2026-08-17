@@ -29,7 +29,7 @@ Connect, then try the showcase features:
 
 | Keys   | What you get                                         |
 | ------ | ---------------------------------------------------- |
-| `g R`  | **Static ERD** — table cards + FK arrows; `zz` fits  |
+| `g R`  | **Static ERD** — table cards + FK arrows; `zz` fits, mini-map pans |
 | `s`    | `SELECT *` from a table into the results grid        |
 | `g r`  | **Relationship explorer** — a row's FK graph         |
 | `g c`  | Theme picker (live preview)                          |
