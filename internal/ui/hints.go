@@ -100,13 +100,13 @@ func (m Model) resolveHints() (section string, hints []string) {
 	case m.erdPanel.searching:
 		return "", []string{"tab", "enter", "esc"}
 	case m.erdPanel.IsVisible():
-		// Graph view shows the spatial-nav keys (j/k/h/l, space, enter) plus the
-		// "/" jump-to-table search; the Mermaid source view only scrolls with
-		// j/k, so its hint set is smaller.
+		// Graph view shows the spatial-nav keys (j/k/h/l, H/J/K/L, space, enter)
+		// plus the "/" jump-to-table search; the Mermaid source view only scrolls
+		// with j/k, so its hint set is smaller.
 		if m.erdPanel.merm {
 			return "ERD", []string{"j/k", "enter", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"}
 		}
-		return "ERD", []string{"j/k/h/l", "space", "enter", "f", "zz", "zc/zo/za", "zM/zR", "/", "p", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"}
+		return "ERD", []string{"j/k/h/l", "H/J/K/L", "space", "enter", "f", "zz", "zc/zo/za", "zM/zR", "/", "p", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"}
 	case m.explorer.IsVisible():
 		return "Relationship Explorer", hintsForSection("Relationship Explorer")
 	case m.providerPicker.IsVisible():

@@ -1401,7 +1401,7 @@ func TestERDHintsOnStatusBar(t *testing.T) {
 	m.erdPanel.visible = true
 
 	graph := strings.Join(m.hintList(), " ")
-	for _, want := range []string{"j/k/h/l", "space", "enter", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"} {
+	for _, want := range []string{"j/k/h/l", "H/J/K/L", "space", "enter", "m", "g/G", "ctrl+d/ctrl+u", "y", "esc"} {
 		if !strings.Contains(graph, want) {
 			t.Errorf("graph hints missing %q: got %v", want, m.hintList())
 		}
@@ -1415,7 +1415,7 @@ func TestERDHintsOnStatusBar(t *testing.T) {
 		}
 	}
 	// Mermaid view must not advertise the graph-only keys.
-	for _, gone := range []string{"space", "h/l", "j/k/h/l"} {
+	for _, gone := range []string{"space", "h/l", "j/k/h/l", "H/J/K/L"} {
 		if strings.Contains(merm, gone) {
 			t.Errorf("mermaid hints should not include %q: got %v", gone, m.hintList())
 		}
