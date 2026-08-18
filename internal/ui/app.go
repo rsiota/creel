@@ -4195,13 +4195,9 @@ func (m *Model) refreshCompletionCandidates() {
 		candidates = append(candidates, completionItem{text: t, kind: kindTable})
 	}
 
-	seen := make(map[string]bool)
-	for _, cols := range m.columnCache {
+	for table, cols := range m.columnCache {
 		for _, c := range cols {
-			if !seen[c.Name] {
-				candidates = append(candidates, completionItem{text: c.Name, kind: kindColumn})
-				seen[c.Name] = true
-			}
+			candidates = append(candidates, completionItem{text: c.Name, kind: kindColumn, table: table})
 		}
 	}
 

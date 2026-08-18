@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/db"
 )
 
 func TestFilterCandidates(t *testing.T) {
@@ -277,6 +278,10 @@ func TestAutoTriggerFromApp(t *testing.T) {
 	m := NewModel(cfg)
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m.tables = []string{"users", "orders"}
+	m.columnCache = map[string][]db.Column{
+		"users":  {{Name: "id"}, {Name: "email"}},
+		"orders": {{Name: "id"}, {Name: "total"}},
+	}
 	m.state = stateWorkspace
 	m.focus = FocusEditor
 	m.refreshCompletionCandidates()
@@ -290,9 +295,6 @@ func TestAutoTriggerFromApp(t *testing.T) {
 	if !m.editor.CompletionVisible() {
 		t.Fatal("expected popup visible after 1 char")
 	}
-	if !m.editor.CompletionVisible() {
-		t.Fatal("expected popup visible after 'us'")
-	}
 
 	found := false
 	for _, c := range m.editor.completion.candidates {
@@ -303,5 +305,17 @@ func TestAutoTriggerFromApp(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected 'users' in candidates")
+	}
+
+	m.editor.SetValue("")
+	m.editor.textarea.InsertString("SELECT * FROM users WHERE ")
+	m.editor, _ = m.editor.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	if !m.editor.CompletionVisible() {
+		t.Fatal("expected popup visible after WHERE e")
+	}
+	for _, c := range m.editor.completion.candidates {
+		if c.text == "total" {
+			t.Fatal("orders.total should not appear after FROM users WHERE")
+		}
 	}
 }

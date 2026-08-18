@@ -12,6 +12,7 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- Editor SQL completion is contextual: after `FROM`/`JOIN` it offers tables, after `WHERE`/`ON`/`SET` only columns of those tables (and `alias.`).
 - TLS (`sslmode`) and unix sockets on MySQL/Postgres connections (form, YAML, `-sslmode`/`-socket`). Empty `sslmode` means `prefer`.
 - Query editor: `u`/`U` undo/redo, `/` buffer search with `n`/`N`, `V` visual-line yank/delete.
 - ERD Enter / double-click browses the focused table (`SELECT *`); `f` keeps neighbourhood drill. Opening the ERD traces the FK path from the grid cursor; the explorer highlights the matching edge.

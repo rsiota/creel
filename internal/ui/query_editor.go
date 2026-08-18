@@ -865,7 +865,7 @@ func (e *QueryEditor) StartCompletion() {
 	partial, wordStart := e.wordBeforeCursor()
 	e.completion.partial = partial
 	e.completion.wordStart = wordStart
-	e.completion.candidates = filterCandidates(e.completion.allCandidates, partial)
+	e.completion.candidates = filterCandidates(e.contextualCandidates(), partial)
 	e.completion.selected = 0
 	if len(e.completion.candidates) > 0 {
 		e.completion.visible = true
@@ -875,13 +875,14 @@ func (e *QueryEditor) StartCompletion() {
 // tryAutoTrigger shows the popup if the current word is long enough and has matches.
 func (e *QueryEditor) tryAutoTrigger() {
 	partial, wordStart := e.wordBeforeCursor()
-	if len(partial) < minAutoTriggerChars {
+	scope := sqlCompleteScopeFrom(e.textBeforePartial(), knownTablesFrom(e.completion.allCandidates))
+	if len(partial) < minAutoTriggerChars && scope.qualifier == "" {
 		e.completion.visible = false
 		return
 	}
 	e.completion.partial = partial
 	e.completion.wordStart = wordStart
-	e.completion.candidates = filterCandidates(e.completion.allCandidates, partial)
+	e.completion.candidates = filterCandidates(scope.filter(e.completion.allCandidates), partial)
 	e.completion.selected = 0
 	e.completion.visible = len(e.completion.candidates) > 0
 }
@@ -924,11 +925,47 @@ func (e *QueryEditor) RefilterCompletion() {
 	partial, wordStart := e.wordBeforeCursor()
 	e.completion.partial = partial
 	e.completion.wordStart = wordStart
-	e.completion.candidates = filterCandidates(e.completion.allCandidates, partial)
+	e.completion.candidates = filterCandidates(e.contextualCandidates(), partial)
 	e.completion.selected = 0
 	if len(e.completion.candidates) == 0 {
 		e.completion.visible = false
 	}
+}
+
+// contextualCandidates restricts the catalog to tables or columns based on the
+// SQL to the left of the token being typed (FROM/JOIN → tables, WHERE/ON →
+// columns of those tables).
+func (e QueryEditor) contextualCandidates() []completionItem {
+	scope := sqlCompleteScopeFrom(e.textBeforePartial(), knownTablesFrom(e.completion.allCandidates))
+	return scope.filter(e.completion.allCandidates)
+}
+
+func (e QueryEditor) textBeforeCursor() string {
+	value := e.Value()
+	cursorLine, cursorCol := e.cursorLineCol()
+	lines := strings.Split(value, "\n")
+	var b strings.Builder
+	for i := 0; i < cursorLine && i < len(lines); i++ {
+		b.WriteString(lines[i])
+		b.WriteByte('\n')
+	}
+	if cursorLine >= 0 && cursorLine < len(lines) {
+		runes := []rune(lines[cursorLine])
+		if cursorCol > len(runes) {
+			cursorCol = len(runes)
+		}
+		b.WriteString(string(runes[:cursorCol]))
+	}
+	return b.String()
+}
+
+func (e QueryEditor) textBeforePartial() string {
+	text := e.textBeforeCursor()
+	partial, _ := e.wordBeforeCursor()
+	if partial != "" && strings.HasSuffix(text, partial) {
+		return strings.TrimSuffix(text, partial)
+	}
+	return text
 }
 
 // CompletionView renders the popup box.

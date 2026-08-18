@@ -35,6 +35,7 @@ const (
 type completionItem struct {
 	text     string
 	kind     completionKind
+	table    string // owning table for columns; empty otherwise
 	matchIdx []int
 }
 
@@ -119,7 +120,7 @@ func filterCandidates(all []completionItem, partial string) []completionItem {
 		func(a, b fuzzyResult[completionItem]) bool { return a.Item.text < b.Item.text })
 	out := make([]completionItem, len(ranked))
 	for i, r := range ranked {
-		out[i] = completionItem{text: r.Item.text, kind: r.Item.kind, matchIdx: r.MatchIdx}
+		out[i] = completionItem{text: r.Item.text, kind: r.Item.kind, table: r.Item.table, matchIdx: r.MatchIdx}
 	}
 	return out
 }
