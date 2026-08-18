@@ -2568,9 +2568,19 @@ func (m *Model) exBar(args []string, force bool) tea.Cmd {
 }
 
 // exFreq opens a frequency bar chart of one column (count of each distinct
-// value). The column comes from args, a single column mark, or the cursor
 // column. `:freq!` re-runs lastQuery without the page LIMIT.
 func (m *Model) exFreq(args []string, force bool) tea.Cmd {
+	return m.exFreqLike(args, force, chartKindBar, "freq")
+}
+
+// exPie opens a pie chart of one column (same counts as :freq). The column
+// comes from args, a single column mark, or the cursor column. `:pie!`
+// re-runs lastQuery without the page LIMIT.
+func (m *Model) exPie(args []string, force bool) tea.Cmd {
+	return m.exFreqLike(args, force, chartKindPie, "pie")
+}
+
+func (m *Model) exFreqLike(args []string, force bool, kind chartKind, prefix string) tea.Cmd {
 	if m.results.NumRows() == 0 {
 		m.schemaMsg = "no results to chart"
 		return nil
@@ -2582,10 +2592,10 @@ func (m *Model) exFreq(args []string, force bool) tea.Cmd {
 	}
 	name := m.results.ColumnName(col)
 	return m.runChart(chartSpec{
-		kind:     chartKindBar,
+		kind:     kind,
 		agg:      barAggCount,
 		colNames: []string{name, name},
-		title:    fmt.Sprintf("freq · %s", name),
+		title:    fmt.Sprintf("%s · %s", prefix, name),
 		emptyErr: "no values to chart",
 	}, force)
 }
@@ -2745,7 +2755,7 @@ func (m *Model) resolveHistColumn(args []string) (col, bins int, err string) {
 	}
 }
 
-// resolveFreqColumn picks the column for :freq. With no name, a single M mark
+// resolveFreqColumn picks the column for :freq / :pie. With no name, a single M mark
 // wins, else the cursor column (same as :hist / :stats).
 func (m *Model) resolveFreqColumn(args []string) (col int, err string) {
 	defaultCol := func() (int, string) {
@@ -2756,7 +2766,7 @@ func (m *Model) resolveFreqColumn(args []string) (col int, err string) {
 		case 1:
 			return marked[0], ""
 		default:
-			return 0, "mark 1 column with M, or :freq <column>"
+			return 0, "mark 1 column with M, or :freq/:pie <column>"
 		}
 	}
 	switch len(args) {
@@ -2768,7 +2778,7 @@ func (m *Model) resolveFreqColumn(args []string) (col int, err string) {
 		}
 		return 0, fmt.Sprintf("no such column: %s", args[0])
 	default:
-		return 0, "usage: :freq [column]"
+		return 0, "usage: :freq [column] (or :pie [column])"
 	}
 }
 

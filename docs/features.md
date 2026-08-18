@@ -25,9 +25,9 @@ An overview of everything creel can do. For keys, see
   tables.
 - **Results grid** — sort, filter, search, hide/show columns, follow foreign
   keys (`g d`), mark rows and columns, bulk-delete rows, and chart marked
-  columns with `:bar` / `:line` / `:scatter` / `:hist` / `:freq`. Large result sets are paged
+  columns with `:bar` / `:line` / `:scatter` / `:hist` / `:freq` / `:pie`. Large result sets are paged
   (LIMIT/OFFSET) for speed and low memory. Bang forms (`:bar!`, `:line!`,
-  `:scatter!`, `:hist!`, `:freq!`) re-run the last SELECT without the page
+  `:scatter!`, `:hist!`, `:freq!`, `:pie!`) re-run the last SELECT without the page
   LIMIT (capped at 50,000 rows).
 
 ### Bar chart (`M` + `:bar`)
@@ -50,6 +50,14 @@ Count distinct values in one column, using the same bar panel as `:bar`.
 `:freq` uses the cursor column (or a single `M` mark); `:freq status` names
 the column. `Enter` on a bar keeps those rows. `:freq!` uses every row of
 the last SELECT.
+
+### Pie chart (`:pie`)
+
+Same counts as `:freq`, drawn as a Braille pie with a colour legend
+(label, count, %). `:pie` uses the cursor column (or a single `M` mark);
+`:pie status` names the column. `Enter` on a slice keeps those rows.
+`:pie!` uses every row of the last SELECT. The top 20 slices are kept and
+the rest fold into `(other)`; press `o` to unfold.
 
 ### Line chart (`M` + `:line`)
 

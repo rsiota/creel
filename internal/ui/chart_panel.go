@@ -42,6 +42,7 @@ const (
 	chartKindLine
 	chartKindHist
 	chartKindScatter
+	chartKindPie
 )
 
 // NewChartPanel returns a hidden chart panel.
@@ -130,7 +131,7 @@ func (c ChartPanel) Update(msg tea.KeyMsg) ChartPanel {
 	}
 	switch msg.String() {
 	case "o":
-		if c.kind == chartKindBar && len(c.bars) > chartBarLimit {
+		if (c.kind == chartKindBar || c.kind == chartKindPie) && len(c.bars) > chartBarLimit {
 			was := c.expanded
 			c.expanded = !c.expanded
 			n = c.seriesLen()
@@ -239,6 +240,9 @@ func (c ChartPanel) View() string {
 func (c ChartPanel) bodyLines(inner int) []string {
 	if c.kind == chartKindLine || c.kind == chartKindScatter {
 		return c.lineBodyLines(inner)
+	}
+	if c.kind == chartKindPie {
+		return c.pieBodyLines(inner)
 	}
 	return c.barBodyLines(inner)
 }

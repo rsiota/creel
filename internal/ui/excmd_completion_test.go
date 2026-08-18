@@ -415,7 +415,7 @@ func TestExArgCompletionColumnsNoResults(t *testing.T) {
 // TestExArgCompletionColumnsAllVerbs: each of the column-name commands is wired
 // to completeColumn (so a typo in the registry can't silently drop one).
 func TestExArgCompletionColumnsAllVerbs(t *testing.T) {
-	for _, verb := range []string{"sort", "hidecolumn", "stats", "filter", "freq"} {
+	for _, verb := range []string{"sort", "hidecolumn", "stats", "filter", "freq", "pie"} {
 		spec := exLookup(verb)
 		if spec == nil {
 			t.Errorf("missing spec for :%s", verb)

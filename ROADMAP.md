@@ -208,7 +208,7 @@ or sequenced behind them.
   keep the card in view). Lowercase `h`/`j`/`k`/`l` still hop focus.
 - **ERD tooltip nullability/defaults** — needs `TableColumnInfo` on hover
   (deferred from the 2026-07-30 tooltip work).
-- **`:pie`** — same data as `:freq`, different read.
+- **`:pie`** — shipped: same data as `:freq`, Braille pie + legend; `:pie!` for all rows.
 - **Export a chart** as a Unicode snapshot or SVG.
 - **`:watch` + chart** — redraw the last chart on refresh; highlight changed
   rows on `:watch` / `:tail`.

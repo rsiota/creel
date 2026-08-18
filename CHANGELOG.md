@@ -17,6 +17,7 @@ commits, so it can come up empty).
 - ERD Enter / double-click browses the focused table (`SELECT *`); `f` keeps neighbourhood drill. Opening the ERD traces the FK path from the grid cursor; the explorer highlights the matching edge.
 - Histogram charts (`:hist`) of a numeric column, with optional bin count.
 - Frequency bar charts (`:freq`, or `:bar` with one column) of distinct values.
+- Pie charts (`:pie`) of a column — same counts as `:freq`, Braille pie + legend.
 - Scatter charts (`:scatter`) of two numeric or datetime columns, without connecting the points.
 - `:line` / `:scatter` plot datetime x (ISO-8601, SQL timestamps, date-only) as Unix seconds, keeping the original text as the axis label.
 - `Enter` on a bar/hist/freq chart keeps rows for that bar and restores the grid.

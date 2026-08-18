@@ -805,6 +805,14 @@ func exCommands() []exCmdSpec {
 			run:      func(m *Model, args []string, force bool) tea.Cmd { return m.exFreq(args, force) },
 		},
 		{
+			verbs:    []string{"pie"},
+			desc:     "pie chart of a column (same data as :freq; bang = all rows)",
+			usage:    ":pie[!] [column]",
+			argKind:  exArgOptional,
+			complete: completeColumn,
+			run:      func(m *Model, args []string, force bool) tea.Cmd { return m.exPie(args, force) },
+		},
+		{
 			verbs:    []string{"line"},
 			desc:     "line chart from two numeric or datetime columns (bang = all rows)",
 			usage:    ":line[!] [x] [y]",

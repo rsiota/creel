@@ -14,7 +14,7 @@ const histBarDash = "–"
 func (m *Model) drillChartBar() tea.Cmd {
 	c := m.chartPanel
 	if c.kind == chartKindLine || c.kind == chartKindScatter {
-		m.schemaMsg = "enter opens rows for a bar — use :bar, :freq, or :hist"
+		m.schemaMsg = "enter opens rows for a bar — use :bar, :freq, :pie, or :hist"
 		return nil
 	}
 	if !m.canFilter() {
