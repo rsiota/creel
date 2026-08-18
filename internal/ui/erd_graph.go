@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -1256,6 +1257,62 @@ func erdShortestPath(l *erdLayout, from, to string) []string {
 		path[i], path[j] = path[j], path[i]
 	}
 	return path
+}
+
+// erdJoinHop resolves the FK edge between two consecutive tables on a path.
+func erdJoinHop(fks map[string][]db.ForeignKey, l *erdLayout, left, right string) (child, parent, childCol, parentCol string, ok bool) {
+	for _, fk := range fks[right] {
+		if strings.EqualFold(fk.RefTable, left) {
+			return right, left, fk.Column, fk.RefColumn, true
+		}
+	}
+	for _, fk := range fks[left] {
+		if strings.EqualFold(fk.RefTable, right) {
+			return left, right, fk.Column, fk.RefColumn, true
+		}
+	}
+	if l != nil {
+		for _, a := range l.arrows {
+			switch {
+			case a.child.name == left && a.parent.name == right:
+				return left, right, a.childCol, a.parentCol, true
+			case a.child.name == right && a.parent.name == left:
+				return right, left, a.childCol, a.parentCol, true
+			}
+		}
+	}
+	return "", "", "", "", false
+}
+
+// erdPathJoinSQL builds a SELECT with JOINs along an ordered FK path.
+func erdPathJoinSQL(driver db.Driver, l *erdLayout, fks map[string][]db.ForeignKey, path []string) (string, error) {
+	if len(path) < 2 {
+		return "", fmt.Errorf("path too short for JOIN")
+	}
+	var b strings.Builder
+	b.WriteString("SELECT *\nFROM ")
+	b.WriteString(quoteIdentD(driver, path[0]))
+	for i := 0; i < len(path)-1; i++ {
+		left, right := path[i], path[i+1]
+		child, parent, fkCol, pkCol, ok := erdJoinHop(fks, l, left, right)
+		if !ok {
+			return "", fmt.Errorf("no FK between %s and %s", left, right)
+		}
+		qc := quoteIdentD(driver, child)
+		qp := quoteIdentD(driver, parent)
+		b.WriteString("\nJOIN ")
+		b.WriteString(quoteIdentD(driver, right))
+		b.WriteString(" ON ")
+		b.WriteString(qc)
+		b.WriteString(".")
+		b.WriteString(quoteIdentD(driver, fkCol))
+		b.WriteString(" = ")
+		b.WriteString(qp)
+		b.WriteString(".")
+		b.WriteString(quoteIdentD(driver, pkCol))
+	}
+	b.WriteString(";")
+	return b.String(), nil
 }
 
 // render paints the layout into a fresh canvas. With no selection every card is

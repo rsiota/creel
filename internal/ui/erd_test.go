@@ -1609,6 +1609,71 @@ func TestERDShortestPath(t *testing.T) {
 	}
 }
 
+func TestERDPathJoinSQL(t *testing.T) {
+	layout := erdPathFixture()
+	fks := map[string][]db.ForeignKey{
+		"orders":      {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"order_items": {{Column: "order_id", RefTable: "orders", RefColumn: "id"}},
+	}
+	path := erdShortestPath(layout, "users", "order_items")
+	sql, err := erdPathJoinSQL(db.DriverSQLite, layout, fks, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `SELECT *
+FROM "users"
+JOIN "orders" ON "orders"."user_id" = "users"."id"
+JOIN "order_items" ON "order_items"."order_id" = "orders"."id";`
+	if sql != want {
+		t.Errorf("join SQL:\n%s\nwant:\n%s", sql, want)
+	}
+
+	rev := erdShortestPath(layout, "order_items", "users")
+	sqlRev, err := erdPathJoinSQL(db.DriverSQLite, layout, fks, rev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRev := `SELECT *
+FROM "order_items"
+JOIN "orders" ON "order_items"."order_id" = "orders"."id"
+JOIN "users" ON "orders"."user_id" = "users"."id";`
+	if sqlRev != wantRev {
+		t.Errorf("reverse join SQL:\n%s\nwant:\n%s", sqlRev, wantRev)
+	}
+}
+
+func TestERDInsertPathJoin(t *testing.T) {
+	fks := map[string][]db.ForeignKey{
+		"orders":      {{Column: "user_id", RefTable: "users", RefColumn: "id"}},
+		"order_items": {{Column: "order_id", RefTable: "orders", RefColumn: "id"}},
+	}
+	conn, err := db.New(db.ConnectionConfig{Driver: db.DriverSQLite, Database: ":memory:"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := Model{
+		connection: conn,
+		fkCache:    fks,
+		erdPanel:   ERDPanel{layout: erdPathFixture(), visible: true},
+		editor:     NewQueryEditor(),
+	}
+	m.erdPanel.pathCards = []string{"users", "orders", "order_items"}
+	nm, cmd := m.erdInsertPathJoin()
+	if cmd != nil {
+		t.Fatal("expected no cmd")
+	}
+	if nm.erdPanel.IsVisible() {
+		t.Error("ERD should close after insert JOIN")
+	}
+	if nm.focus != FocusEditor {
+		t.Errorf("focus = %v, want editor", nm.focus)
+	}
+	sql := nm.editor.Value()
+	if !strings.Contains(sql, `JOIN "orders"`) || !strings.Contains(sql, `"orders"."user_id"`) {
+		t.Errorf("editor SQL missing orders join:\n%s", sql)
+	}
+}
+
 // TestERDPathToggle covers the three-state "p" cycle: anchor → trace → clear.
 func TestERDPathToggle(t *testing.T) {
 	layout := erdPathFixture()

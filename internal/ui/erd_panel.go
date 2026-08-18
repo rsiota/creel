@@ -1233,7 +1233,7 @@ func (e ERDPanel) pathStatusLine(width int) string {
 			hp = "hop"
 		}
 		chain := lipgloss.NewStyle().Foreground(colorPrimary).Render("◆ " + strings.Join(e.pathCards, " → "))
-		msg = chain + " " + mutedStyle.Render(fmt.Sprintf("(%d %s, p to clear)", hops, hp))
+		msg = chain + " " + mutedStyle.Render(fmt.Sprintf("(%d %s, i insert JOIN, p to clear)", hops, hp))
 	default: // anchored, not yet traced
 		msg = lipgloss.NewStyle().Foreground(colorAccent).Render("◆ path start: "+e.pathFrom) +
 			" " + mutedStyle.Render("(move to target, p to trace)")

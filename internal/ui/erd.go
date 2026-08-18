@@ -246,6 +246,27 @@ func (m Model) erdEnter() (Model, tea.Cmd) {
 	return m, m.openTable(name)
 }
 
+// erdInsertPathJoin drops a JOIN query for the traced FK path into the editor.
+func (m Model) erdInsertPathJoin() (Model, tea.Cmd) {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return m, nil
+	}
+	path := append([]string(nil), m.erdPanel.pathCards...)
+	sql, err := erdPathJoinSQL(m.connection.Config().Driver, m.erdPanel.layout, m.fkCache, path)
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return m, nil
+	}
+	chain := strings.Join(path, " → ")
+	m.hideERD()
+	m.editor.SetValue(sql)
+	m.focus = FocusEditor
+	m.applyFocus()
+	m.schemaMsg = "JOIN for " + chain
+	return m, nil
+}
+
 // hideERD snapshots card positions then closes the overlay. Hide keeps the
 // layout in memory, but snapshotting here means a later :session save (or a
 // table rename) sees the latest drag without waiting for reopen.

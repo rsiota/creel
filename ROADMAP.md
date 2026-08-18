@@ -150,8 +150,8 @@ Files: `rel_explorer.go`, `editing.go`, `app.go`, `schema_ops.go`,
    table while the explorer root and grid stay on the parent.
 2. **ERD as launcher** — shipped (2026-08-16): Enter / double-click a card
    → `SELECT *` and close the overlay; `f` (and the ◎ header click) keep
-   neighbourhood drill. Optional “generate JOIN” from a shortest path into the
-   editor is still open.
+   neighbourhood drill. **Generate JOIN from shortest path** — shipped: trace
+   with `p`, then `i` drops JOIN SQL into the editor.
 3. **Cross-highlight** — shipped (2026-08-16): grid FK cell ↔ explorer
    outbound edge; opening the ERD traces the FK path from the current table to
    the referenced one. ERD is a full-screen overlay, so grid+ERD cannot share
@@ -209,6 +209,7 @@ or sequenced behind them.
 - **ERD tooltip nullability/defaults** — needs `TableColumnInfo` on hover
   (deferred from the 2026-07-30 tooltip work).
 - **`:pie`** — shipped: same data as `:freq`, Braille pie + legend; `:pie!` for all rows.
+- **JOIN from ERD path** — shipped: trace with `p`, press `i` to insert JOIN SQL.
 - **Export a chart** as a Unicode snapshot or SVG.
 - **`:watch` + chart** — redraw the last chart on refresh; highlight changed
   rows on `:watch` / `:tail`.

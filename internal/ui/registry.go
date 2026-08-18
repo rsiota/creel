@@ -130,6 +130,7 @@ func registry() []Section {
 				{"zM / zR", []string{"M", "R"}, "collapse / expand all cards (contract layout + re-route arrows)", "zM/zR"},
 				{"/", []string{"/"}, "jump to a table by name (tab cycles matches)", "/"},
 				{"p", []string{"p"}, "trace the FK path between two tables", "p"},
+				{"i", []string{"i", "I"}, "insert JOIN SQL for the traced path into the editor", "i"},
 				{"m", []string{"m"}, "toggle Mermaid erDiagram source", "m"},
 				{"g / G", []string{"g", "G"}, "top / bottom of diagram", "g/G"},
 				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/ctrl+u"},

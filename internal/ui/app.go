@@ -2857,6 +2857,13 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case "f":
 				nm, cmd := m.erdDrillIn()
 				return nm, cmd
+			case "i", "I":
+				m.erdPanel.zPrefix = false
+				if len(m.erdPanel.pathCards) >= 2 {
+					return m.erdInsertPathJoin()
+				}
+				m.schemaMsg = "trace an FK path first (p)"
+				return m, nil
 			}
 		}
 		m.erdPanel = m.erdPanel.Update(msg)

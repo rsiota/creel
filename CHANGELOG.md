@@ -30,6 +30,7 @@ commits, so it can come up empty).
 - ERD `H`/`J`/`K`/`L` nudges the focused card (same as a mouse drag) so the diagram is usable over SSH / without a mouse.
 - ERD card positions (mouse drag and `H`/`J`/`K`/`L`) persist in the per-connection session snapshot, scoped by whole-schema vs neighbourhood layout.
 - ERD mini-map in the bottom-right when the diagram is larger than the viewport; click or drag it to pan.
+- ERD `i` inserts JOIN SQL for a traced FK path (`p`) into the editor.
 - AI schema context is the focused table plus its FK neighbours (and any tables named in the question or failed SQL), instead of the first 100 tables.
 
 ### Fixed

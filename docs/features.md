@@ -118,7 +118,8 @@ between cards (the viewport follows), `H`/`J`/`K`/`L` nudge the focused card
 (same as a mouse drag, for SSH / no-mouse), `Space` highlights the focused card,
 `Enter` closes the ERD and runs `SELECT *` on that table, `f` re-focuses the
 ERD on its neighbourhood, `/` jumps to a table by name (`Tab` cycles matches), `p` traces the shortest FK
-path between two tables (anchor one, move to the other, `p` again), `zz` fits
+path between two tables (anchor one, move to the other, `p` again), `i` inserts a
+JOIN query for the traced path into the editor, `zz` fits
 all cards to the viewport, `zc`/`zo`/`za` collapse/expand/toggle a focused card
 to a header-only bar to declutter dense schemas (▸ marks a folded card),
 `zM`/`zR` collapse/expand every card at once (the layout contracts to reclaim
