@@ -4784,7 +4784,7 @@ func (m Model) viewWorkspace() string {
 
 	// Overlay discard confirmation dialog if visible
 	if m.discardConfirm {
-		dialog := renderConfirmDialog("Discard all unsaved changes?")
+		dialog := renderConfirmDialogBare("Discard all unsaved changes?")
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)
 		dlgX := (m.width - dlgW) / 2
