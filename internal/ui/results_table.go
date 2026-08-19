@@ -208,7 +208,7 @@ func (r ResultsTable) IsCellTruncated(row, col int) bool {
 	if w < 1 {
 		w = 1
 	}
-	return runeLen(r.RowValue(row, col)) > w
+	return runeLen(sanitizeCellValue(r.RowValue(row, col))) > w
 }
 
 // ResultTable returns the source table for the current results, if known.
@@ -1057,6 +1057,23 @@ func (r *ResultsTable) ConfirmSaved() {
 	r.copied = false
 }
 
+// ApplySavedEdits moves dirty cell values into the displayed and raw row
+// buffers, then clears the dirty map. Display rows are sanitized; raw rows
+// keep the exact saved text for viewers like the cell-edit popup.
+func (r *ResultsTable) ApplySavedEdits() {
+	for ref, val := range r.dirtyCells {
+		if ref.row >= 0 && ref.row < len(r.rows) &&
+			ref.col >= 0 && ref.col < len(r.rows[ref.row]) {
+			r.rows[ref.row][ref.col] = sanitizeCellValue(val)
+		}
+		if ref.row >= 0 && ref.row < len(r.rawRows) &&
+			ref.col >= 0 && ref.col < len(r.rawRows[ref.row]) {
+			r.rawRows[ref.row][ref.col] = val
+		}
+	}
+	r.ConfirmSaved()
+}
+
 // StartCopyFeedback marks the current cell as copied and begins a flash animation.
 func (r *ResultsTable) StartCopyFeedback() {
 	r.copied = true
@@ -1654,17 +1671,23 @@ func (r ResultsTable) Update(msg tea.Msg) (ResultsTable, tea.Cmd) {
 	return r, nil
 }
 
+// sanitizeCellValue replaces control characters (newlines, tabs, etc.)
+// with spaces so a cell value renders on a single grid line.
+func sanitizeCellValue(v string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' || r == '\t' || r == '\v' || r == '\f' {
+			return ' '
+		}
+		return r
+	}, v)
+}
+
 // sanitizeCellRow replaces control characters (newlines, tabs, etc.)
 // with spaces so cell values render on a single line.
 func sanitizeCellRow(row []string) []string {
 	out := make([]string, len(row))
 	for i, v := range row {
-		out[i] = strings.Map(func(r rune) rune {
-			if r == '\n' || r == '\r' || r == '\t' || r == '\v' || r == '\f' {
-				return ' '
-			}
-			return r
-		}, v)
+		out[i] = sanitizeCellValue(v)
 	}
 	return out
 }
@@ -1974,7 +1997,7 @@ func (r ResultsTable) View() string {
 				val = row[i]
 			}
 			if isDirty {
-				val = dirtyVal
+				val = sanitizeCellValue(dirtyVal)
 			}
 
 			// If this is the cell being edited, show the input buffer.

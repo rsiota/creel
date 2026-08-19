@@ -572,6 +572,77 @@ func TestSanitizeCellRow(t *testing.T) {
 	if row[0] != "hello" || row[1] != "NULL" || row[2] != "world" {
 		t.Errorf("sanitizeCellRow should preserve values, got %v", row)
 	}
+	multi := sanitizeCellValue("line one\nline two")
+	if multi != "line one line two" {
+		t.Errorf("sanitizeCellValue = %q, want %q", multi, "line one line two")
+	}
+}
+
+// TestResultsTableApplySavedEditsMultiline verifies saved multiline values stay
+// in rawRows for the cell viewer while display rows remain single-line.
+func TestResultsTableApplySavedEditsMultiline(t *testing.T) {
+	r := NewResultsTable()
+	r.SetSize(80, 10)
+	r.SetResult(
+		[]string{"id", "body"},
+		[][]string{{"1", "short"}},
+		"1 row",
+	)
+	r.SetDirtyCell(0, 1, "line one\nline two")
+	r.ApplySavedEdits()
+
+	if r.HasDirtyCells() {
+		t.Fatal("dirty cells should be cleared after ApplySavedEdits")
+	}
+	if got := r.rows[0][1]; got != "line one line two" {
+		t.Errorf("display row = %q, want sanitized single line", got)
+	}
+	if got := r.RawRowValue(0, 1); got != "line one\nline two" {
+		t.Errorf("raw row = %q, want preserved newlines", got)
+	}
+
+	view := r.View()
+	lines := strings.Split(strings.TrimRight(view, "\n"), "\n")
+	headerW := lipgloss.Width(lines[0])
+	for _, line := range lines[2:] {
+		if strings.TrimSpace(line) == "" || !strings.Contains(line, "│") {
+			continue
+		}
+		if w := lipgloss.Width(line); w != headerW {
+			t.Errorf("data row width %d != header width %d: %q", w, headerW, line)
+		}
+	}
+}
+
+// TestResultsTableDirtyMultilineRowWidth verifies that a dirty cell edited in
+// the popup with embedded newlines still renders on one grid line so columns
+// stay aligned with the header row.
+func TestResultsTableDirtyMultilineRowWidth(t *testing.T) {
+	r := NewResultsTable()
+	r.SetSize(80, 10)
+	r.SetResult(
+		[]string{"id", "body"},
+		[][]string{{"1", "short"}},
+		"1 row",
+	)
+	r.SetDirtyCell(0, 1, "line one\nline two")
+	view := r.View()
+	lines := strings.Split(strings.TrimRight(view, "\n"), "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected header+sep+data rows, got %d lines", len(lines))
+	}
+	headerW := lipgloss.Width(lines[0])
+	for _, line := range lines[2:] {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if !strings.Contains(line, "│") {
+			continue
+		}
+		if w := lipgloss.Width(line); w != headerW {
+			t.Errorf("data row width %d != header width %d: %q", w, headerW, line)
+		}
+	}
 }
 
 func TestTruncateCell(t *testing.T) {

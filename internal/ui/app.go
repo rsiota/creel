@@ -1195,14 +1195,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.results.SetSaveError(msg.err.Error())
 		} else {
-			// Apply dirty values to the underlying rows so the display stays consistent.
-			for _, edit := range m.results.DirtyCells() {
-				if edit.Row >= 0 && edit.Row < len(m.results.rows) &&
-					edit.Col >= 0 && edit.Col < len(m.results.rows[edit.Row]) {
-					m.results.rows[edit.Row][edit.Col] = edit.NewValue
-				}
-			}
-			m.results.ConfirmSaved()
+			m.results.ApplySavedEdits()
 		}
 		return m, nil
 
