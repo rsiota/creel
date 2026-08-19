@@ -54,6 +54,16 @@ func synthesizeKeyMsg(token string) (tea.KeyMsg, bool) {
 	return tea.KeyMsg{}, false
 }
 
+// keyFilterChar reports whether msg is a printable character suitable for
+// extending a filter or search prompt, and returns the character to append.
+// Space arrives as tea.KeySpace (not KeyRunes) in Bubble Tea.
+func keyFilterChar(msg tea.KeyMsg) (string, bool) {
+	if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
+		return msg.String(), true
+	}
+	return "", false
+}
+
 // replayKeySequence builds a tea.Cmd that synthesizes the given key sequence
 // through the normal dispatch. A single key produces one command; a chord
 // (e.g. ["g","d"]) uses tea.Sequence so the stateful pending-G/pending-D flag

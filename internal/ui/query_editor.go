@@ -494,8 +494,8 @@ func (e QueryEditor) handleSearch(msg tea.KeyMsg) (QueryEditor, tea.Cmd) {
 		}
 		return e, nil
 	}
-	if msg.Type == tea.KeyRunes && len(msg.Runes) > 0 && msg.Runes[0] >= 0x20 {
-		e.searchQuery += string(msg.Runes[0])
+	if ch, ok := keyFilterChar(msg); ok {
+		e.searchQuery += ch
 	}
 	return e, nil
 }

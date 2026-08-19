@@ -113,8 +113,8 @@ func (h *HelpPanel) HandleKey(msg tea.KeyMsg) bool {
 		case "up", "down", "left", "right", "pgup", "pgdown", "home", "end":
 			return true // swallow navigation while typing
 		}
-		if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
-			h.query += msg.String()
+		if ch, ok := keyFilterChar(msg); ok {
+			h.query += ch
 			h.afterQueryChange()
 			return true
 		}

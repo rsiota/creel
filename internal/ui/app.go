@@ -1812,8 +1812,8 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.connList.MoveCursor(1)
 			return m, nil
 		}
-		if msg.Type == tea.KeyRunes {
-			m.connList.FilterAddChar(msg.String())
+		if ch, ok := keyFilterChar(msg); ok {
+			m.connList.FilterAddChar(ch)
 			return m, nil
 		}
 		return m, nil
@@ -2070,8 +2070,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		if msg.Type == tea.KeyRunes {
-			m.dropDBInput += msg.String()
+		if ch, ok := keyFilterChar(msg); ok {
+			m.dropDBInput += ch
 			return m, nil
 		}
 		return m, nil
@@ -2100,8 +2100,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.createDBErr = ""
 			return m, nil
 		}
-		if msg.Type == tea.KeyRunes {
-			m.createDBInput += msg.String()
+		if ch, ok := keyFilterChar(msg); ok {
+			m.createDBInput += ch
 			m.createDBErr = ""
 			return m, nil
 		}
@@ -2130,8 +2130,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.dbPicker.FilterBackspace()
 				return m, nil
 			}
-			if msg.Type == tea.KeyRunes {
-				m.dbPicker.FilterAddChar(msg.String())
+			if ch, ok := keyFilterChar(msg); ok {
+				m.dbPicker.FilterAddChar(ch)
 				return m, nil
 			}
 			return m, nil
@@ -2496,8 +2496,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.themePicker.FilterBackspace()
 			return m, nil
 		}
-		if msg.Type == tea.KeyRunes {
-			m.themePicker.FilterAddChar(msg.String())
+		if ch, ok := keyFilterChar(msg); ok {
+			m.themePicker.FilterAddChar(ch)
 			return m, nil
 		}
 		return m, nil
@@ -2524,8 +2524,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		if msg.Type == tea.KeyRunes {
-			m.dropTableInput += msg.String()
+		if ch, ok := keyFilterChar(msg); ok {
+			m.dropTableInput += ch
 			return m, nil
 		}
 		return m, nil
@@ -3164,8 +3164,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		// Printable characters extend the filter.
-		if msg.Type == tea.KeyRunes {
-			m.history.filter += msg.String()
+		if ch, ok := keyFilterChar(msg); ok {
+			m.history.filter += ch
 			m.history.cursor = 0
 			m.history.scrollRow = 0
 			return m, nil
@@ -3228,8 +3228,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		// Printable characters extend the filter.
-		if msg.Type == tea.KeyRunes {
-			m.bookmarks.filter += msg.String()
+		if ch, ok := keyFilterChar(msg); ok {
+			m.bookmarks.filter += ch
 			m.bookmarks.cursor = 0
 			m.bookmarks.scrollRow = 0
 			return m, nil
@@ -3269,8 +3269,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.crossSearch.CursorDown()
 			return m, nil
 		}
-		if msg.Type == tea.KeyRunes || msg.String() == " " {
-			m.crossSearch.AddQueryChar(msg.String())
+		if ch, ok := keyFilterChar(msg); ok {
+			m.crossSearch.AddQueryChar(ch)
 			return m, nil
 		}
 	}
@@ -3398,8 +3398,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.results.SetSearchMatcher(nil)
 				return m, nil
 			}
-			if msg.Type == tea.KeyRunes {
-				m.searchQuery += msg.String()
+			if ch, ok := keyFilterChar(msg); ok {
+				m.searchQuery += ch
 				updateSearchMatcher()
 				return m, nil
 			}
@@ -3421,8 +3421,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			if msg.Type == tea.KeyRunes {
-				m.backendSearchInput += msg.String()
+			if ch, ok := keyFilterChar(msg); ok {
+				m.backendSearchInput += ch
 				return m, m.scheduleBackendSearch()
 			}
 			return m, nil
@@ -3906,8 +3906,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			// Printable characters extend the filter.
-			if msg.Type == tea.KeyRunes {
-				m.sidebarFilter += msg.String()
+			if ch, ok := keyFilterChar(msg); ok {
+				m.sidebarFilter += ch
 				m.sidebarCursor = 0
 				return m, nil
 			}
@@ -4048,8 +4048,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.inspector.CursorDown(m.inspectorResults())
 				return m, nil
 			}
-			if msg.Type == tea.KeyRunes {
-				m.inspector.FilterAddChar(msg.String())
+			if ch, ok := keyFilterChar(msg); ok {
+				m.inspector.FilterAddChar(ch)
 				return m, nil
 			}
 			return m, nil

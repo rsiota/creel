@@ -1115,8 +1115,8 @@ func (e ERDPanel) updateSearch(msg tea.KeyMsg) ERDPanel {
 		return e
 	}
 	// Append a printable rune to the query.
-	if msg.Type == tea.KeyRunes && len(msg.Runes) > 0 && msg.Runes[0] >= 0x20 {
-		e.searchQuery += string(msg.Runes[0])
+	if ch, ok := keyFilterChar(msg); ok {
+		e.searchQuery += ch
 		e.searchIndex = 0
 		e = e.applySearch()
 	}

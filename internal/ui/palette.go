@@ -186,8 +186,8 @@ func (p palette) Update(msg tea.KeyMsg) (palette, tea.Cmd) {
 		}
 		return p, nil
 	}
-	if msg.Type == tea.KeyRunes {
-		p.input += msg.String()
+	if ch, ok := keyFilterChar(msg); ok {
+		p.input += ch
 		p.refilter()
 	}
 	return p, nil

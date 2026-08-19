@@ -117,8 +117,8 @@ func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return *m, nil
 	}
-	if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
-		m.ex.input += msg.String()
+	if ch, ok := keyFilterChar(msg); ok {
+		m.ex.input += ch
 		m.ex.recalling = false
 		m.recomputeExCompletion()
 	}
