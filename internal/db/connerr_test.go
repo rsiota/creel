@@ -34,3 +34,30 @@ func TestIsConnError(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatConnectError(t *testing.T) {
+	cases := []struct {
+		driver Driver
+		err    error
+		want   string
+	}{
+		{DriverMySQL, fmt.Errorf("dial tcp 127.0.0.1:3306: connect: connection refused"),
+			"MySQL is not running or not accepting connections on that host and port — dial tcp 127.0.0.1:3306: connect: connection refused"},
+		{DriverMySQL, fmt.Errorf("dial tcp: i/o timeout"),
+			"MySQL did not respond — the server may be stopped or unreachable — dial tcp: i/o timeout"},
+		{DriverSQLite, fmt.Errorf("unable to open database file: no such file or directory"),
+			"SQLite database file or parent directory does not exist — unable to open database file: no such file or directory"},
+		{DriverSQLite, fmt.Errorf("database is locked"),
+			"SQLite database is locked — another process may have it open — database is locked"},
+		{DriverPostgres, fmt.Errorf("dial tcp 127.0.0.1:5432: connect: connection refused"),
+			"PostgreSQL is not running or not accepting connections on that host and port — dial tcp 127.0.0.1:5432: connect: connection refused"},
+		{DriverMySQL, fmt.Errorf("Error 1045 (28000): Access denied for user 'root'@'localhost'"),
+			"Error 1045 (28000): Access denied for user 'root'@'localhost'"},
+	}
+	for _, tc := range cases {
+		got := FormatConnectError(tc.driver, tc.err)
+		if got != tc.want {
+			t.Errorf("FormatConnectError(%q, %v)\n  got  %q\n  want %q", tc.driver, tc.err, got, tc.want)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rsiota/creel/internal/config"
@@ -67,11 +68,27 @@ func TestConnectWithConfig_MissingFileSetsError(t *testing.T) {
 	if m.connError == "" {
 		t.Fatal("expected connError for missing parent directory")
 	}
+	if !strings.Contains(m.connError, "does not exist") {
+		t.Fatalf("connError = %q, want a missing-file hint", m.connError)
+	}
 	if m.state != stateConnections {
 		t.Errorf("state = %v, want connections on failure", m.state)
 	}
 	if m.connection != nil {
 		m.connection.Close()
 		t.Error("connection should remain nil on failure")
+	}
+}
+
+func TestConnectFailureShowsInStatusBar(t *testing.T) {
+	m := NewModel(&config.Config{})
+	m.state = stateConnections
+	m.connError = "MySQL is not running or not accepting connections on that host and port — dial tcp: connection refused"
+	got := m.statusMessage()
+	if got == "" {
+		t.Fatal("expected status message for connError")
+	}
+	if !strings.Contains(got, "MySQL is not running") {
+		t.Fatalf("statusMessage = %q", got)
 	}
 }

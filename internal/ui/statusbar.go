@@ -125,6 +125,8 @@ func (m Model) statusMessage() string {
 	case m.reconnecting:
 		frame := spinnerFrames[m.querySpinner%len(spinnerFrames)]
 		return sbPrimary.Render(frame) + sbMuted.Render(" reconnecting…")
+	case m.state == stateConnections && m.connError != "":
+		return sbError.Render(m.connError)
 	case m.results.SaveError() != "":
 		return sbError.Render(m.results.SaveError())
 	case m.results.IsEditing():

@@ -68,12 +68,12 @@ func (m *Model) connectWithConfig(dbCfg db.ConnectionConfig) tea.Cmd {
 
 	conn, err := db.New(dbCfg)
 	if err != nil {
-		m.connError = err.Error()
+		m.connError = db.FormatConnectError(dbCfg.Driver, err)
 		return nil
 	}
 
 	if err := conn.Connect(); err != nil {
-		m.connError = err.Error()
+		m.connError = db.FormatConnectError(dbCfg.Driver, err)
 		return nil
 	}
 
