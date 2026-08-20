@@ -220,12 +220,18 @@ at a time so each can be checked before the next starts.
   `recent_test.go`, `embed_test.go`, `recent_demo_test.go`,
   `connection_list_test.go`.
 
+**Now (shipping) — slice 2** ✅ DONE (2026-08-20)
+- **Query parameters** — `:param name value` / `:param` / `:param!` [name];
+  `:name` placeholders expanded to SQL literals before execute (page query,
+  EXPLAIN, chart bang). Skips quotes, comments, and `::` casts. Status bar
+  `PARAM n`. Cleared on disconnect. Files: `query_params.go`, `query.go`,
+  `chart_query.go`, `excmd_registry.go`, `statusbar.go`. Tests:
+  `query_params_test.go`.
+
 **Next (one at a time)**
-1. **Query parameters** — `:param start 2026-01-01` then
-   `WHERE created_at > :start` (bookmarks become reusable workflows).
-2. **`:watch` + chart** — redraw the last chart on refresh; highlight deltas
+1. **`:watch` + chart** — redraw the last chart on refresh; highlight deltas
    on `:watch` / `:tail`.
-3. **CLI stdin + non-zero exit** — `cat q.sql | creel -c prod -e -`; fail the
+2. **CLI stdin + non-zero exit** — `cat q.sql | creel -c prod -e -`; fail the
    process on query error.
 
 **Then (daily-driver / identity)**

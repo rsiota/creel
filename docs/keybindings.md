@@ -23,7 +23,7 @@ test keeps the documentation in sync with what's actually wired.
 | `tab` / `shift+tab` | Cycle focus (skips tab bar) |
 | `ctrl+d` / `ctrl+u` | Next / previous page        |
 | `ctrl+p`        | Command palette                 |
-| `:`             | Ex command line (`:q`, `:sort`, `:goto`, …) |
+| `:`             | Ex command line (`:q`, `:param`, `:goto`, …) |
 | `g c`           | Theme picker (live preview)     |
 | `?`             | Toggle help                     |
 | `q` / `ctrl+q`  | Quit (not while editing)        |

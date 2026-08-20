@@ -49,6 +49,12 @@ func (m *Model) explainQuery() tea.Cmd {
 	if query == "" {
 		return nil
 	}
+	expanded, err := m.expandQueryParams(query)
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	query = expanded
 
 	driver := m.connection.Config().Driver
 	var explainStmt string
@@ -191,6 +197,13 @@ func (m *Model) runPageQuery() tea.Cmd {
 
 	offset := m.page * m.pageSize
 	query := strings.TrimRight(m.lastQuery, ";")
+	expanded, err := m.expandQueryParams(query)
+	if err != nil {
+		m.schemaMsg = err.Error()
+		m.queryRunning = false
+		return nil
+	}
+	query = expanded
 
 	conn := m.connection
 	tx := m.tx // nil unless a manual transaction (:begin) is active

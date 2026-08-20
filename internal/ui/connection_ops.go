@@ -168,6 +168,7 @@ func (m *Model) resetWorkspaceForNewConnection() {
 	m.lastQuery = ""
 	m.clearQueryFailure()
 	m.baseQuery = ""
+	m.queryParams = nil
 	m.filters = nil
 	m.sortCol = ""
 	m.sortDir = ""

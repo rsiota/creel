@@ -523,8 +523,9 @@ type Model struct {
 	flashGen uint64
 
 	// Quick filters (cell-based, server-side WHERE injection)
-	baseQuery string   // original query without filters
-	filters   []string // active filter expressions, AND-joined
+	baseQuery   string            // original query without filters
+	filters     []string          // active filter expressions, AND-joined
+	queryParams map[string]string // :name → value; expanded before execute
 
 	// Quick sort (single-column, server-side ORDER BY)
 	sortCol string // column name, "" = no sort

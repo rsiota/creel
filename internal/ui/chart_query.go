@@ -83,6 +83,12 @@ func (m *Model) runChart(spec chartSpec, all bool) tea.Cmd {
 		m.schemaMsg = "no query to re-run — :bar! / :line! / :hist! / :freq! / :pie! / :scatter! charts the last SELECT"
 		return nil
 	}
+	expanded, err := m.expandQueryParams(query)
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	query = expanded
 	execQuery := query
 	if isSelectQuery(query) && !hasJoinClause(query) {
 		execQuery = fmt.Sprintf("SELECT * FROM (%s) AS _creel_chart LIMIT %d", query, chartAllMaxRows+1)

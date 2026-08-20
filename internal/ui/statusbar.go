@@ -200,6 +200,10 @@ func (m Model) statusBar(connName string) string {
 		parts = append(parts, sbAccent.Render(txnStatusLabel(m.txIsolation)))
 	}
 
+	if label := m.paramStatusLabel(); label != "" {
+		parts = append(parts, sbAccent.Render(label))
+	}
+
 	if m.watchActive {
 		label := "WATCH"
 		if m.watchMode == "tail" {

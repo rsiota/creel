@@ -216,6 +216,10 @@ erDiagram
 - **Manual transactions** — `:begin` / `:commit` / `:rollback`, with optional
   isolation (`:begin serializable`, `:begin repeatable read`, `:begin read
   committed`, …). The status bar shows `TXN ●` (or `TXN S` / `TXN RR` / …).
+- **Query parameters** — `:param start 2026-01-01` then use `:start` in SQL
+  (`WHERE created_at > :start`). `:param` lists them; `:param!` / `:param! name`
+  clears. Literals, comments, and Postgres `::casts` are left alone. Status bar
+  shows `PARAM n` while any are set. Cleared on disconnect.
 - **Record inspector** — side panel with a vertical form view that tracks the
   results cursor.
 - **Schema editing** — add columns, rename tables, create/drop/truncate tables,

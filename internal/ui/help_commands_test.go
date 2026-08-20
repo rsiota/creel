@@ -22,10 +22,24 @@ func TestHelpListsExCommands(t *testing.T) {
 	if !strings.Contains(out, "Commands") {
 		t.Error("help overlay should include a Commands section")
 	}
-	for _, want := range []string{":goto <table>", ":export", ":refs", ":begin"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("help overlay should list %q", want)
+	// View only shows the scrolled viewport; assert against the full command
+	// row set so mid/late registry entries (e.g. :param) are covered too.
+	var all strings.Builder
+	for _, row := range renderCommandsRows(140) {
+		for _, seg := range row {
+			all.WriteString(seg.text)
 		}
+		all.WriteByte('\n')
+	}
+	body := all.String()
+	for _, want := range []string{":goto <table>", ":export", ":refs", ":begin", ":param[!] [name] [value…]"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("help Commands rows should list %q", want)
+		}
+	}
+	// Sanity: the visible page still renders at least one known early command.
+	if !strings.Contains(out, ":goto <table>") {
+		t.Error("help viewport should show early commands like :goto")
 	}
 }
 

@@ -64,6 +64,7 @@ Linux, macOS, and Windows binaries are on the [latest release](https://github.co
 **Workflow**
 
 - Vim-mode editor — normal/insert modes, motions, operators, undo/redo, buffer search, visual line, SQL autocompletion.
+- Query parameters — `:param start 2026-01-01` then `:start` in SQL; status bar shows `PARAM n`.
 - Query history & bookmarks — per-connection, persisted, searchable.
 - Session restore — reopen a connection to find your tabs and buffers as you left them.
 - Record inspector — side panel form view tracking the results cursor.

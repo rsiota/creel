@@ -12,6 +12,9 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- Query parameters: `:param name value` then `:name` in SQL; `:param` lists,
+  `:param!` / `:param! name` clears. Status bar shows `PARAM n`. Skips string
+  literals, comments, and Postgres `::` casts.
 - Connection picker MRU: remembers recently opened connections, selects the
   last-used entry on reopen, and shows a muted `recent` badge.
 - Empty connection list offers **Try the demo database** (Enter) — opens

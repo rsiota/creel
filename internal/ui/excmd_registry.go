@@ -566,6 +566,14 @@ func exCommands() []exCmdSpec {
 			complete: completeTable,
 		},
 		{
+			verbs:    []string{"param", "params"},
+			desc:     "set or list named query parameters (:name in SQL)",
+			usage:    ":param[!] [name] [value…]",
+			argKind:  exArgOptional,
+			complete: completeParam,
+			run:      func(m *Model, args []string, force bool) tea.Cmd { return m.exParam(args, force) },
+		},
+		{
 			verbs:   []string{"limit"},
 			desc:    "set the results page size",
 			usage:   ":limit <n>|off",
