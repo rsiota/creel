@@ -12,6 +12,8 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- CLI: `-e -` (or `-cli` without `-e`) reads the query from stdin; failures
+  exit status `1` (documented in `docs/cli.md`).
 - `:watch` / `:tail` redraw an open chart on each refresh (bang charts
   re-fetch); new or changed result rows are tinted between ticks.
 - Query parameters: `:param name value` then `:name` in SQL; `:param` lists,

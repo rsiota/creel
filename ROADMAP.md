@@ -234,11 +234,12 @@ at a time so each can be checked before the next starts.
   `chart_query.go`, `app.go`, `results_table.go`, `watch_delta.go`,
   `excmd.go`. Tests: `watch_chart_test.go`.
 
-**Next (one at a time)**
-1. **CLI stdin + non-zero exit** — `cat q.sql | creel -c prod -e -`; fail the
-   process on query error.
+**Now (shipping) — slice 4** ✅ DONE (2026-08-20)
+- **CLI stdin + non-zero exit** — `-e -` (or `-cli` with no `-e`) reads SQL
+  from stdin; connect/SQL/empty-stdin failures exit `1`. Files:
+  `cmd/creel/main.go`, `docs/cli.md`. Tests: `cmd/creel/main_test.go`.
 
-**Then (daily-driver / identity)**
+**Next (one at a time)** — see **Then** below.
 - Color PK / FK columns in the grid (the `→` follow cue already exists).
 - Jump-anywhere palette — broaden Ctrl+P to tables, bookmarks, history, themes.
 - Chart export (Unicode snapshot or SVG).

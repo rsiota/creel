@@ -26,6 +26,17 @@ creel -e "SHOW TABLES" -driver mysql -database myapp -host 10.0.0.5 -user admin 
 creel -e "SELECT id, name FROM users" -database /tmp/test.db -format csv > users.csv
 ```
 
+Pipe a query (or a `.sql` file) on stdin with `-e -`:
+
+```sh
+cat report.sql | creel -c prod -e - -format csv
+creel -c prod -e - < report.sql
+echo "SELECT 1" | creel -database /tmp/test.db -cli   # -cli alone also reads stdin
+```
+
+Connect / SQL / empty-stdin failures print to stderr and exit **1**, so
+`set -e` scripts and CI notice them.
+
 A saved connection by name (`-c`) — the recommended scripting form, since it
 resolves the password / SSH passphrase from the keychain exactly as the TUI
 does on connect, so connections saved interactively (including SSH-tunneled
@@ -41,7 +52,7 @@ creel -c localhost -database local_turniq -e "SELECT * FROM users"   # -database
 
 | Flag          | Description                                                          | Default     |
 | ------------- | -------------------------------------------------------------------- | ----------- |
-| `-e`          | SQL query to execute (enables CLI mode)                              |             |
+| `-e`          | SQL to execute (CLI mode); `-e -` reads the query from stdin         |             |
 | `-f`          | Load a `.sql` file into the editor at startup (TUI)                  |             |
 | `-c`          | Saved connection name; opens it in the TUI, or uses it with `-e`     |             |
 | `-format`     | CLI output format: `csv`, `json`, `jsonl`, `md`, or `tsv`            | `tsv`       |
@@ -53,7 +64,7 @@ creel -c localhost -database local_turniq -e "SELECT * FROM users"   # -database
 | `-password`   | Password (MySQL/Postgres)                                            |             |
 | `-sslmode`    | TLS policy: `disable`, `prefer`, `require`, `verify-ca`, `verify-full` | `prefer` (when empty) |
 | `-socket`     | Unix socket path (MySQL/Postgres); overrides `-host`                 |             |
-| `-cli`        | Force CLI mode                                                       | `false`     |
+| `-cli`        | Force CLI mode; with no `-e`, read SQL from stdin                    | `false`     |
 | `-readonly`   | Force read-only mode for all connections (reject writes)             | `false`     |
 | `-version`    | Print version information and exit                                   |             |
 
@@ -76,3 +87,10 @@ per-connection `readonly: true` alternative to `--readonly`.
 - **`md`** is a GitHub-flavoured Markdown table.
 - **`tsv`** (default) is tab-separated with a header row; SQL `NULL` renders as
   an empty field (CSV/TSV) or JSON `null` (json/jsonl).
+
+## Exit status
+
+| Code | When |
+| --- | --- |
+| `0` | Query ran and results were written |
+| `1` | Connect failure, SQL error, bad flags, or empty stdin with `-e -` / `-cli` |

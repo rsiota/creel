@@ -71,7 +71,7 @@ Linux, macOS, and Windows binaries are on the [latest release](https://github.co
 - Command palette (`Ctrl+P`) and help overlay (`?`).
 - AI assistant (`Ctrl+F`) — natural-language to SQL via any OpenAI-compatible endpoint.
 
-**Run anywhere** — large result sets are paged for speed and low memory, and a CLI mode (`-e`, `-format`) runs a query and prints results without the TUI.
+**Run anywhere** — large result sets are paged for speed and low memory, and a CLI mode (`-e`, `-e -` from stdin, `-format`) runs a query and prints results without the TUI (failures exit `1`).
 
 See [Features](docs/features.md) for charts, the relationship explorer, the ERD, and the rest.
 

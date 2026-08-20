@@ -3,8 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
+	"strings"
 
 	"github.com/rsiota/creel/internal/config"
 	"github.com/rsiota/creel/internal/db"
@@ -31,7 +33,7 @@ func main() {
 		versionFlag  bool
 	)
 
-	flag.StringVar(&queryFlag, "e", "", "Execute SQL query and exit (CLI mode)")
+	flag.StringVar(&queryFlag, "e", "", "Execute SQL and exit (CLI mode); use -e - to read the query from stdin")
 	flag.StringVar(&fileFlag, "f", "", "Load a .sql file into the editor at startup")
 	flag.StringVar(&formatFlag, "format", "tsv", "CLI output format: csv, json, jsonl, md, or tsv")
 	flag.StringVar(&connFlag, "c", "", "Saved connection name; opens it in the TUI, or uses it in CLI mode with -e")
@@ -43,7 +45,7 @@ func main() {
 	flag.StringVar(&passFlag, "password", "", "Database password (MySQL or Postgres)")
 	flag.StringVar(&sslModeFlag, "sslmode", "", "TLS policy for MySQL/Postgres: disable, prefer, require, verify-ca, verify-full (default prefer)")
 	flag.StringVar(&socketFlag, "socket", "", "Unix socket path (MySQL/Postgres); overrides -host")
-	flag.BoolVar(&cliMode, "cli", false, "Run in CLI mode (non-interactive)")
+	flag.BoolVar(&cliMode, "cli", false, "Run in CLI mode (non-interactive); with no -e, read SQL from stdin")
 	flag.BoolVar(&readOnlyFlag, "readonly", false, "Force read-only mode for all connections (reject writes)")
 	flag.BoolVar(&versionFlag, "version", false, "Print version information and exit")
 	flag.Parse()
@@ -55,7 +57,8 @@ func main() {
 		return
 	}
 
-	// CLI mode: execute query and print results.
+	// CLI mode: execute query and print results. Failures exit 1 so scripts
+	// and CI notice (connect errors, SQL errors, empty -e - stdin, …).
 	if queryFlag != "" || cliMode {
 		setFlags := make(map[string]bool)
 		flag.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
@@ -64,7 +67,12 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
-		if err := runCLI(connCfg, queryFlag, formatFlag); err != nil {
+		query, err := resolveCLIQuery(queryFlag, os.Stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := runCLI(connCfg, query, formatFlag); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
@@ -164,9 +172,30 @@ func applyOverrides(conn *db.ConnectionConfig, setFlags map[string]bool, driver,
 	}
 }
 
+// resolveCLIQuery returns the SQL to run in CLI mode.
+//   - a non-empty -e value other than "-" is used as-is
+//   - -e - (or bare -cli with no -e) reads the query from r (normally stdin)
+func resolveCLIQuery(flag string, r io.Reader) (string, error) {
+	if flag != "" && flag != "-" {
+		return flag, nil
+	}
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return "", fmt.Errorf("reading query from stdin: %w", err)
+	}
+	q := strings.TrimSpace(string(data))
+	if q == "" {
+		if flag == "-" {
+			return "", fmt.Errorf("query is required: -e - read empty stdin")
+		}
+		return "", fmt.Errorf("query is required (use -e \"SQL\", -e -, or pipe SQL with -cli)")
+	}
+	return q, nil
+}
+
 func runCLI(connCfg *db.ConnectionConfig, query, format string) error {
-	if query == "" {
-		return fmt.Errorf("query is required (use -e flag)")
+	if strings.TrimSpace(query) == "" {
+		return fmt.Errorf("query is required (use -e \"SQL\", -e -, or pipe SQL with -cli)")
 	}
 
 	conn, err := db.New(*connCfg)

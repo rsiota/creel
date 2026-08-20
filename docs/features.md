@@ -262,3 +262,16 @@ erDiagram
   not the first 100 tables. After a failed query, `:aifix` (alias `:fixsql`)
   asks the model to rewrite it; review then `ctrl+e` — never auto-run. See
   [Configuration → AI assistant](configuration.md#ai-assistant).
+
+## CLI (headless)
+
+Run a query without the TUI — useful for scripts and pipes. Results go to
+stdout; the row-count summary goes to stderr. Failures exit status `1`.
+
+```sh
+creel -c prod -e "SELECT count(*) FROM orders" -format json
+cat report.sql | creel -c prod -e - -format csv
+```
+
+`-e -` (or `-cli` with no `-e`) reads SQL from stdin. Full flag reference:
+[CLI mode](cli.md).

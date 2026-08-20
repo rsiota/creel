@@ -12,7 +12,8 @@ is a quickstart; the pages below are the reference.
 - [**Configuration**](configuration.md) — `config.yaml` reference: connections,
   secret/keychain storage, read-only mode, connection groups, the AI assistant,
   settings, and themes.
-- [**CLI mode**](cli.md) — running queries headlessly with flags.
+- [**CLI mode**](cli.md) — headless queries (`-e`, `-e -` from stdin, `-format`);
+  failures exit `1`.
 - [**Demo database**](../demo/README.md) — the bundled e-commerce schema used by
   the screenshots and the recorded demo.
 

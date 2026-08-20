@@ -1,6 +1,8 @@
 package main
 
 import (
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rsiota/creel/internal/db"
@@ -66,4 +68,66 @@ func TestApplyOverrides(t *testing.T) {
 			t.Errorf("ssl/socket not applied: %+v", c)
 		}
 	})
+}
+
+func TestResolveCLIQuery(t *testing.T) {
+	t.Run("literal -e value", func(t *testing.T) {
+		got, err := resolveCLIQuery("SELECT 1", strings.NewReader("ignored"))
+		if err != nil || got != "SELECT 1" {
+			t.Fatalf("got %q err=%v", got, err)
+		}
+	})
+
+	t.Run("-e - reads stdin", func(t *testing.T) {
+		got, err := resolveCLIQuery("-", strings.NewReader("  SELECT 2;\n"))
+		if err != nil || got != "SELECT 2;" {
+			t.Fatalf("got %q err=%v", got, err)
+		}
+	})
+
+	t.Run("empty -e - is an error", func(t *testing.T) {
+		_, err := resolveCLIQuery("-", strings.NewReader("  \n"))
+		if err == nil || !strings.Contains(err.Error(), "empty stdin") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("bare -cli reads stdin", func(t *testing.T) {
+		got, err := resolveCLIQuery("", strings.NewReader("SELECT 3"))
+		if err != nil || got != "SELECT 3" {
+			t.Fatalf("got %q err=%v", got, err)
+		}
+	})
+
+	t.Run("bare -cli with empty stdin errors", func(t *testing.T) {
+		_, err := resolveCLIQuery("", strings.NewReader(""))
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
+func TestRunCLISuccessAndQueryError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "t.db")
+	cfg := &db.ConnectionConfig{Driver: db.DriverSQLite, Database: path}
+
+	mustCLI(t, cfg, "CREATE TABLE t(id INTEGER)")
+	mustCLI(t, cfg, "INSERT INTO t VALUES (42)")
+
+	if err := runCLI(cfg, "SELECT id FROM t", "tsv"); err != nil {
+		t.Fatalf("success path: %v", err)
+	}
+
+	err := runCLI(cfg, "SELECT * FROM definitely_missing", "tsv")
+	if err == nil {
+		t.Fatal("expected query error to propagate (non-zero exit path)")
+	}
+}
+
+func mustCLI(t *testing.T, cfg *db.ConnectionConfig, q string) {
+	t.Helper()
+	if err := runCLI(cfg, q, "tsv"); err != nil {
+		t.Fatalf("runCLI(%q): %v", q, err)
+	}
 }
