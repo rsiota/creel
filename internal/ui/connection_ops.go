@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/rsiota/creel/demo"
 	"github.com/rsiota/creel/internal/config"
 	"github.com/rsiota/creel/internal/db"
 	"github.com/rsiota/creel/internal/secrets"
@@ -24,7 +25,26 @@ func (m *Model) rollbackTxn() {
 
 // connectToDB establishes a connection to the selected database.
 func (m *Model) connectToDB() tea.Cmd {
+	if m.connList.SelectedIsDemo() {
+		return m.openDemoDatabase()
+	}
 	return m.connectByName(m.connList.SelectedName())
+}
+
+// openDemoDatabase materializes (if needed) and opens the bundled sample
+// SQLite database. Used from the empty connection-list invitation.
+func (m *Model) openDemoDatabase() tea.Cmd {
+	path, err := demo.ResolvePath(historyDir())
+	if err != nil {
+		m.connError = err.Error()
+		return nil
+	}
+	return m.connectWithConfig(db.ConnectionConfig{
+		Driver:   db.DriverSQLite,
+		Database: path,
+		// Name left empty → connectWithConfig uses the file basename for
+		// session keying; omitted from the saved-connection MRU.
+	})
 }
 
 // connectByName opens the named connection from config. On success it replaces
@@ -91,6 +111,14 @@ func (m *Model) connectWithConfig(dbCfg db.ConnectionConfig) tea.Cmd {
 	m.state = stateWorkspace
 	m.focus = FocusConnections
 	m.columnCache = make(map[string][]db.Column)
+
+	// Remember saved connections in the picker MRU. Ad-hoc opens (-database,
+	// demo invitation) have no matching config entry and are skipped.
+	if m.recentStore != nil && dbCfg.Name != "" && m.config != nil {
+		if m.config.GetConnection(dbCfg.Name) != nil {
+			_ = m.recentStore.Touch(dbCfg.Name)
+		}
+	}
 
 	// MySQL/Postgres: always show the database picker (no history of last selection).
 	if dbCfg.Driver == db.DriverMySQL || dbCfg.Driver == db.DriverPostgres {
@@ -177,6 +205,7 @@ func (m *Model) showConnectionList() tea.Cmd {
 	m.loadConnections()
 	if len(m.config.Connections) > 0 {
 		m.connList.StartFilter()
+		m.selectRecentConnection() // StartFilter resets cursor; re-apply MRU
 	}
 	return nil
 }

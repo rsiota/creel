@@ -167,76 +167,30 @@ loop, then deepen the graph+charts identity rather than growing another REPL.
 The three **Now** items are the first slice; everything else stays demand-gated
 or sequenced behind them.
 
-**Now (shipping)**
-- **TLS / SSL + unix sockets** — Postgres no longer hardcodes `sslmode=disable`;
-  MySQL DSN carries `tls=`. `sslmode` + `socket` on the connection form, YAML,
-  and CLI (`-sslmode`, `-socket`). Empty `sslmode` means `prefer`. A host
-  starting with `/` is treated as a socket. Files: `db.go`, `postgres.go`,
-  `mysql.go`, `connection_form.go`, `connection_ops.go`, `cmd/creel/main.go`.
-  Tests: `connparams_test.go`, `connection_form_test.go`.
-- **Editor undo + `/` + visual line** — `u`/`U` undo/redo, `/`+`n`/`N`
-  in-buffer search, `V` visual-line yank/delete. Redo is `U` so global
-  `ctrl+r` (refresh) is untouched. Files: `query_editor.go`, `editor_render.go`,
-  `registry.go`. Tests: `editor_cursor_test.go`.
-- **ERD as launcher + cross-highlight** — Enter / double-click → `SELECT *`;
-  `f` and the ◎ header click keep neighbourhood drill. Grid FK cell highlights
-  the explorer edge; opening the ERD traces the FK path. Files: `erd.go`,
-  `mouse.go`, `rel_explorer.go`, `app.go`. Tests: `erd_test.go`,
-  `graph_nav_test.go`.
+**Now (shipping)** — all shipped; see History / later sections.
+- **TLS / SSL + unix sockets** — shipped.
+- **Editor undo + `/` + visual line** — shipped.
+- **ERD as launcher + cross-highlight** — shipped.
 
-**Next (connection / editing polish)**
-- **Reconnect / keep-alive** — shipped: pool idle/lifetime caps, Postgres TCP
-  keepalives, SSH tunnel keepalive, 30s Ping for MySQL/Postgres, and in-place
-  reconnect (status-bar “reconnecting…”, `:reconnect`) that keeps the workspace.
-- **Transaction isolation** — shipped: `:begin [serializable|…]` with status-bar
-  `TXN S` / `TXN RR` / ….
-- **Jump to syntax error** — shipped: on query failure, parse MySQL/Postgres/
-  SQLite position hints and move the editor cursor to the token (unwraps the
-  pagination `SELECT * FROM (…)` wrapper). Status: “jumped to error near …”.
-- **`:copyrow` keybinding** — shipped: `y r` copies marked/cursor rows as TSV
-  (same helper as `:copyrow`); `Y` stays INSERT, `y y` stays cell copy.
+**Next (connection / editing polish)** — all shipped.
+- **Reconnect / keep-alive**, **transaction isolation**, **jump to syntax
+  error**, **`y r` / `:copyrow` keybinding**.
 
-**Graph / charts (after the Now slice)**
-- **ERD mini-map** — shipped: bottom-right overlay when the diagram overflows;
-  click/drag to pan. See Open work.
-- **Persist ERD drag positions** — shipped: card `x/y` (mouse drag and
-  `H`/`J`/`K`/`L`) live in the per-connection session snapshot, keyed by
-  layout scope so whole-schema and neighbourhood layouts stay independent.
-  Restored on `:erd` / `g R`; cleared by `:session clear`.
-- **Keyboard move for ERD cards** — shipped: `H`/`J`/`K`/`L` nudges the focused
-  card (same helper path as a mouse drag: re-route arrows, grow the canvas,
-  keep the card in view). Lowercase `h`/`j`/`k`/`l` still hop focus.
+**Graph / charts**
+- **ERD mini-map**, **persist ERD drag positions**, **keyboard nudge**,
+  **`:pie`**, **JOIN from ERD path** — shipped.
 - **ERD tooltip nullability/defaults** — needs `TableColumnInfo` on hover
   (deferred from the 2026-07-30 tooltip work).
-- **`:pie`** — shipped: same data as `:freq`, Braille pie + legend; `:pie!` for all rows.
-- **JOIN from ERD path** — shipped: trace with `p`, press `i` to insert JOIN SQL.
 - **Export a chart** as a Unicode snapshot or SVG.
 - **`:watch` + chart** — redraw the last chart on refresh; highlight changed
   rows on `:watch` / `:tail`.
 
 **AI**
 - “Explain this query” / “why is this slow” with the last `EXPLAIN` attached.
-- **“Fix this error”** — shipped: `:aifix` / `:fixsql` remembers the last failed
-  statement + driver error, asks the model for a corrected statement, and
-  drops it in the editor for review (`ctrl+e`). No auto-run.
-- Restrict schema context to the focused table + FK neighbourhood — shipped:
-  `:ai` / `:aifix` / the assistant dump the current grid (or sidebar) table
-  plus one FK hop, and any other tables named in the question or failed SQL.
-  No focus still caps at the first 100 tables; omitted names stay in a comment.
+- **“Fix this error”** — shipped (`:aifix` / `:fixsql`).
+- Restrict schema context to the focused table + FK neighbourhood — shipped.
 - Optional: run generated SQL in a scratch tab (read-only) and iterate on the
   error. Keep `ctrl+e` as the default — do not auto-run DDL.
-
-**Fits the product (later)**
-- Last-connection / recent list on the picker; first-run hint to open the
-  demo database.
-- Query parameters (`:param start 2026-01-01` then `WHERE created_at > :start`).
-- DuckDB as a fourth driver (charts + CSV/Parquet; stays in the static-binary
-  lane better than SQL Server).
-- JSON/JSONB foldable tree in the inspector (`E` already pretty-prints).
-- Color FK / PK columns in the grid (the `→` follow cue already exists).
-- Result-set diff of two tabs (not schema-diff — that stays rejected).
-- CLI: `-e` from stdin (`cat q.sql | creel -c prod -e -`) and non-zero exit
-  on query failure.
 
 **Demand-gated / skip**
 - `:who` / `:locks` / `:kill` — already demand-gated.
@@ -248,6 +202,51 @@ or sequenced behind them.
 - Fuzzy verb matching for `:` (`:g<tab>` → `goto`) — last wave-2 leftover.
 - `cursor_style` is reserved but unused; ship block/underline or drop the
   field.
+
+### Product review — 2026-08-20
+
+Prioritized next slices after another pass: strengthen “open → browse →
+analyze → reuse” without diluting the vim + graph identity. Ship one slice
+at a time so each can be checked before the next starts.
+
+**Now (shipping) — slice 1** ✅ DONE (2026-08-20)
+- **Recent connections + first-run demo** — persist an MRU of connection names
+  (`internal/recent`, `~/.config/creel/recent.json`); reopen the picker with
+  the last-used connection selected and a muted `recent` badge; when the list
+  is empty, offer a selectable **Try the demo database** row (`demo.ResolvePath`
+  — cwd `demo/creel-demo.db` if present, else materialize the embedded schema
+  under the config dir). Files: `demo/embed.go`, `internal/recent/`,
+  `connection_list.go`, `connection_ops.go`, `app.go`. Tests:
+  `recent_test.go`, `embed_test.go`, `recent_demo_test.go`,
+  `connection_list_test.go`.
+
+**Next (one at a time)**
+1. **Query parameters** — `:param start 2026-01-01` then
+   `WHERE created_at > :start` (bookmarks become reusable workflows).
+2. **`:watch` + chart** — redraw the last chart on refresh; highlight deltas
+   on `:watch` / `:tail`.
+3. **CLI stdin + non-zero exit** — `cat q.sql | creel -c prod -e -`; fail the
+   process on query error.
+
+**Then (daily-driver / identity)**
+- Color PK / FK columns in the grid (the `→` follow cue already exists).
+- Jump-anywhere palette — broaden Ctrl+P to tables, bookmarks, history, themes.
+- Chart export (Unicode snapshot or SVG).
+- AI “explain this query / why slow” with the last `EXPLAIN` attached.
+- Optional AI scratch-tab dry-run (still no auto-run DDL).
+
+**Fits the product (later)**
+- DuckDB as a fourth driver (charts + CSV/Parquet; static-binary friendly).
+- JSON/JSONB foldable tree in the inspector (`E` already pretty-prints).
+- Result-set diff of two tabs (not schema-diff — that stays rejected).
+- ERD tooltip nullability/defaults (`TableColumnInfo`).
+- Unify the two ERD routing systems onto the dynamic polyline router.
+- Discoverability content (short asciinema of `g r` → insert-related → ERD
+  path → `i` JOIN) and broader packaging (scoop / nix / AUR).
+
+**Still skip**
+- Macros, `:shell`, second favorites, more themes, SQL Server/Turso for the
+  comparison table, editing *through* ERD arrows as a general UPDATE engine.
 
 ---
 

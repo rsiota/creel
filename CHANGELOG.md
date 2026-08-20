@@ -12,6 +12,11 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- Connection picker MRU: remembers recently opened connections, selects the
+  last-used entry on reopen, and shows a muted `recent` badge.
+- Empty connection list offers **Try the demo database** (Enter) — opens
+  `./demo/creel-demo.db` when present, otherwise materializes the embedded
+  sample schema under the config dir.
 - Editor SQL completion is contextual: after `FROM`/`JOIN` it offers tables, after `WHERE`/`ON`/`SET` only columns of those tables (and `alias.`).
 - TLS (`sslmode`) and unix sockets on MySQL/Postgres connections (form, YAML, `-sslmode`/`-socket`). Empty `sslmode` means `prefer`.
 - Query editor: `u`/`U` undo/redo, `/` buffer search with `n`/`N`, `V` visual-line yank/delete.

@@ -16,6 +16,7 @@ import (
 	"github.com/rsiota/creel/internal/config"
 	"github.com/rsiota/creel/internal/db"
 	"github.com/rsiota/creel/internal/history"
+	"github.com/rsiota/creel/internal/recent"
 	"github.com/rsiota/creel/internal/secrets"
 	"github.com/rsiota/creel/internal/session"
 )
@@ -468,6 +469,7 @@ type Model struct {
 	txIsolation       db.IsolationLevel // isolation requested for tx (status bar)
 	forceReadOnly     bool              // --readonly CLI flag: forces every connection read-only
 	sessionStore      *session.Store
+	recentStore       *recent.Store
 	startupFileLoaded bool    // creel -f: suppress the first session restore so the file wins
 	startupCmd        tea.Cmd // creel -database/-c: follow-up cmds after auto-connect (focus, prefetch)
 	// reconnect / keep-alive (MySQL + Postgres): background Ping + in-place
@@ -651,6 +653,7 @@ func NewModel(cfg *config.Config) Model {
 		cellEdit:        NewCellEditPopup(),
 		chartPanel:      NewChartPanel(),
 		sessionStore:    session.NewStore(historyDir()),
+		recentStore:     recent.NewStore(historyDir()),
 		historyStore:    history.NewStore(historyDir()),
 		bookmarkStore:   bookmarks.NewStore(historyDir()),
 		expanded:        make(map[string][]db.Column),
@@ -667,11 +670,20 @@ func NewModel(cfg *config.Config) Model {
 	m.loadConnections()
 	if len(m.config.Connections) > 0 {
 		m.connList.StartFilter()
+		m.selectRecentConnection() // StartFilter resets cursor; re-apply MRU
 	}
 	return m
 }
 
 func (m *Model) loadConnections() {
+	recentNames := map[string]bool{}
+	if m.recentStore != nil {
+		if names, err := m.recentStore.Names(); err == nil {
+			for _, n := range names {
+				recentNames[n] = true
+			}
+		}
+	}
 	var entries []ConnectionEntry
 	for _, conn := range m.config.Connections {
 		detail := conn.Database
@@ -693,9 +705,24 @@ func (m *Model) loadConnections() {
 			Driver: conn.Driver,
 			Detail: detail,
 			Group:  conn.Group,
+			Recent: recentNames[conn.Name],
 		})
 	}
 	m.connList.SetItems(entries)
+	m.selectRecentConnection()
+}
+
+// selectRecentConnection moves the picker cursor onto the most recent saved
+// connection that still exists. No-op when the MRU is empty or stale.
+func (m *Model) selectRecentConnection() {
+	if m.recentStore == nil {
+		return
+	}
+	last, err := m.recentStore.Last()
+	if err != nil || last == "" {
+		return
+	}
+	m.connList.SelectByName(last)
 }
 
 // Tab management helper methods
@@ -1914,6 +1941,9 @@ func (m Model) execDeleteConnection(name string) (tea.Model, tea.Cmd) {
 	// Best-effort purge of any keychain secrets for this connection. A missing
 	// key (the connection never used the keychain) is not an error.
 	_ = secrets.DeleteAll(name)
+	if m.recentStore != nil {
+		_ = m.recentStore.Remove(name)
+	}
 	m.config.RemoveConnection(name)
 	if err := m.config.Save(); err != nil {
 		m.connError = err.Error()

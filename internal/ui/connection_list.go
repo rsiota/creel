@@ -15,6 +15,7 @@ type ConnectionEntry struct {
 	Driver string
 	Detail string
 	Group  string
+	Recent bool // true when this name is in the MRU list
 }
 
 // connectionItem is a single connection in the list.
@@ -23,6 +24,8 @@ type connectionItem struct {
 	driver   string
 	detail   string
 	group    string
+	recent   bool
+	demo     bool  // synthetic first-run "try the demo" row (not a saved connection)
 	matchIdx []int // fuzzy match indices for highlighting
 }
 
@@ -68,7 +71,8 @@ func NewConnectionList() ConnectionList {
 }
 
 // SetItems populates the list from connection entries. Collapse state is
-// preserved across reloads.
+// preserved across reloads. An empty slice enables the synthetic demo row
+// (see rows).
 func (c *ConnectionList) SetItems(conns []ConnectionEntry) {
 	c.items = make([]connectionItem, len(conns))
 	for i, conn := range conns {
@@ -77,6 +81,7 @@ func (c *ConnectionList) SetItems(conns []ConnectionEntry) {
 			driver: conn.Driver,
 			detail: conn.Detail,
 			group:  conn.Group,
+			recent: conn.Recent,
 		}
 	}
 	if c.cursor >= len(c.items) {
@@ -85,6 +90,30 @@ func (c *ConnectionList) SetItems(conns []ConnectionEntry) {
 	if c.cursor < 0 {
 		c.cursor = 0
 	}
+}
+
+// SelectByName moves the cursor onto the named connection row (expanding its
+// group if needed). Returns false when the name is not in the list.
+func (c *ConnectionList) SelectByName(name string) bool {
+	if name == "" {
+		return false
+	}
+	// Expand every group so the target is visible even if folded.
+	if c.collapsed != nil {
+		for g, collapsed := range c.collapsed {
+			if collapsed {
+				c.collapsed[g] = false
+			}
+		}
+	}
+	rows := c.rows()
+	for i, r := range rows {
+		if r.kind == rowConn && r.conn.name == name && !r.conn.demo {
+			c.SetCursor(i)
+			return true
+		}
+	}
+	return false
 }
 
 // hasGroups reports whether any connection belongs to a named group. When
@@ -117,13 +146,31 @@ func (c ConnectionList) groupSections() (ungrouped []connectionItem, order []str
 	return ungrouped, order, buckets
 }
 
+// demoInvitation is the synthetic row shown when there are no saved
+// connections, so first-run users can open the sample database with Enter.
+func demoInvitation() connectionItem {
+	return connectionItem{
+		name:   "Try the demo database",
+		driver: "sqlite",
+		detail: "sample e-commerce schema — press enter",
+		demo:   true,
+	}
+}
+
 // rows returns the renderable row sequence for the current state:
+//   - empty list: a single synthetic demo invitation (first-run);
 //   - filtering: a flat, fuzzy-ranked list of matching connections (no headers);
 //   - no groups: a flat list of all connections (backward-compatible);
 //   - otherwise: group headers + their connections, with collapsed groups
 //     showing only their header. Ungrouped connections lead under an
 //     "Ungrouped" header, then named groups alphabetically.
 func (c ConnectionList) rows() []connRow {
+	if len(c.items) == 0 {
+		if c.filtering && c.filter != "" {
+			return nil // typed filter with nothing to match
+		}
+		return []connRow{{kind: rowConn, conn: demoInvitation()}}
+	}
 	if c.filtering && c.filter != "" {
 		return c.filteredRows()
 	}
@@ -228,6 +275,9 @@ func rowHeight(r connRow) int {
 // to size the popup so its height stays stable regardless of filtering or
 // folding (collapsed/filtered states simply leave breathing room).
 func (c ConnectionList) ExpandedHeight() int {
+	if len(c.items) == 0 {
+		return linesPerField // synthetic demo invitation
+	}
 	h := len(c.items) * linesPerField
 	if !c.hasGroups() {
 		return h
@@ -240,10 +290,15 @@ func (c ConnectionList) ExpandedHeight() int {
 	return h + headers
 }
 
-// TotalCount returns the total number of connections, ignoring any active
-// filter or grouping. Kept for callers that want the raw count.
+// TotalCount returns the total number of saved connections, ignoring any
+// active filter, grouping, or the synthetic demo invitation.
 func (c ConnectionList) TotalCount() int {
 	return len(c.items)
+}
+
+// HasSavedConnections reports whether any real (non-demo) connections exist.
+func (c ConnectionList) HasSavedConnections() bool {
+	return len(c.items) > 0
 }
 
 // visibleItems returns the connection items (flattened) in the current row
@@ -276,17 +331,28 @@ func prefixTops(rows []connRow) []int {
 }
 
 // SelectedName returns the name of the connection under the cursor, or "" if
-// the cursor rests on a group header (which is not connectable).
+// the cursor rests on a group header (which is not connectable) or on the
+// synthetic demo invitation (use SelectedIsDemo instead).
 func (c ConnectionList) SelectedName() string {
 	rows := c.rows()
 	if c.cursor < 0 || c.cursor >= len(rows) {
 		return ""
 	}
 	r := rows[c.cursor]
-	if r.kind != rowConn {
+	if r.kind != rowConn || r.conn.demo {
 		return ""
 	}
 	return r.conn.name
+}
+
+// SelectedIsDemo reports whether the cursor is on the first-run demo invitation.
+func (c ConnectionList) SelectedIsDemo() bool {
+	rows := c.rows()
+	if c.cursor < 0 || c.cursor >= len(rows) {
+		return false
+	}
+	r := rows[c.cursor]
+	return r.kind == rowConn && r.conn.demo
 }
 
 // SelectedDriver returns the driver of the connection under the cursor.
@@ -629,8 +695,14 @@ func (c ConnectionList) renderRow(r connRow, idx, contentW int) string {
 		labelStr = namePlain.Render(item.name)
 	}
 
-	// Marker: the driver badge.
+	// Marker: the driver badge, plus a muted "recent" tag for MRU entries.
 	markerStr := badgeSty.Render("[" + strings.ToUpper(item.driver) + "]")
+	if item.recent && !item.demo {
+		markerStr += " " + mutedStyle.Render("recent")
+	}
+	if item.demo {
+		markerStr = badgeSty.Render("[DEMO]")
+	}
 
 	// Value: host/db detail, brightened for the cursor entry.
 	dSty := detailSty

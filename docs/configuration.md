@@ -1,8 +1,13 @@
 # Configuration
 
 creel is configured through a single YAML file at
-`~/.config/creel/config.yaml`. On first launch with no config, use the
-connection list (`n` to add) and creel writes it for you.
+`~/.config/creel/config.yaml`. On first launch with no config, the connection
+list offers **Try the demo database** (Enter) so you can explore immediately;
+press `n` to add a saved connection and creel writes the config for you.
+
+The connection picker also keeps an MRU list in `~/.config/creel/recent.json`
+(most recently opened connection names) so reopening creel lands on the last
+used entry.
 
 > **Upgrading from gsql?** On first launch creel automatically moves
 > `~/.config/gsql/` to `~/.config/creel/` (connections, history, bookmarks,

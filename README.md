@@ -22,7 +22,7 @@ Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `creel
 
 ```sh
 brew install rsiota/creel/creel        # or: go install github.com/rsiota/creel/cmd/creel@latest
-creel                                  # press n to add a connection, or creel -database file.db
+creel                                  # press Enter on "Try the demo database", or n to add a connection
 ```
 
 To explore the bundled sample database (shown in the demo and screenshots):
@@ -30,6 +30,7 @@ To explore the bundled sample database (shown in the demo and screenshots):
 ```sh
 git clone https://github.com/rsiota/creel.git && cd creel
 creel -database demo/creel-demo.db     # then press g R for the ERD, g r on a row for its relationships
+# or just: creel   # empty picker → Enter on the demo invitation
 ```
 
 Linux, macOS, and Windows binaries are on the [latest release](https://github.com/rsiota/creel/releases/latest).

@@ -38,6 +38,12 @@ test keeps the documentation in sync with what's actually wired.
 | `d`        | Delete connection               |
 | `/`        | Filter connections              |
 
+The picker remembers the last connections you opened (MRU), selects the most
+recent on reopen, and marks them with a muted `recent` badge. With no saved
+connections, a **Try the demo database** row opens the bundled sample schema
+(Enter) — using `./demo/creel-demo.db` when present, otherwise materializing
+one under the config dir.
+
 In the add/edit form:
 
 | Key        | Action                          |

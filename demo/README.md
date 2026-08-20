@@ -15,10 +15,15 @@ sqlite3 demo/creel-demo.db < demo/schema.sql
 ## Explore
 
 ```sh
-./creel
+creel                                  # empty list → Enter on "Try the demo database"
+# or, from a clone with a built demo file:
+creel -database demo/creel-demo.db
 ```
 
-Add a connection from the connection list (`n`), then:
+From the connection list with no saved connections, select **Try the demo
+database** and press Enter — creel uses `./demo/creel-demo.db` when present,
+otherwise writes the sample under `~/.config/creel/demo/`. Or add a connection
+(`n`):
 
 | Field    | Value                                  |
 | -------- | -------------------------------------- |

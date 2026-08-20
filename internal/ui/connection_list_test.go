@@ -57,12 +57,23 @@ func TestConnectionListRendersFieldBoxes(t *testing.T) {
 	}
 }
 
-// The empty state shows a helpful message instead of an empty box.
+// The empty state shows a selectable demo invitation instead of a blank list.
 func TestConnectionListEmptyState(t *testing.T) {
 	m := newConnListModel(t, nil, 30)
-	if view := m.connList.View(); !strings.Contains(view, "No saved connections") {
-		t.Errorf("empty state message missing: %q", view)
+	view := stripAnsiConn(m.connList.View())
+	if !strings.Contains(view, "Try the demo database") {
+		t.Errorf("demo invitation missing: %q", view)
 	}
+	if !m.connList.SelectedIsDemo() {
+		t.Error("cursor should rest on the demo invitation")
+	}
+	if m.connList.SelectedName() != "" {
+		t.Errorf("SelectedName should be empty for demo row, got %q", m.connList.SelectedName())
+	}
+}
+
+func stripAnsiConn(s string) string {
+	return regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(s, "")
 }
 
 // The footer shows a connection count when everything fits (no scroll range).
