@@ -12,6 +12,8 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- `:watch` / `:tail` redraw an open chart on each refresh (bang charts
+  re-fetch); new or changed result rows are tinted between ticks.
 - Query parameters: `:param name value` then `:name` in SQL; `:param` lists,
   `:param!` / `:param! name` clears. Status bar shows `PARAM n`. Skips string
   literals, comments, and Postgres `::` casts.

@@ -187,6 +187,9 @@ func (m *Model) resetWorkspaceForNewConnection() {
 	m.editor.CancelCompletion()
 	m.colWidthMem = nil
 	m.erdPosMem = nil
+	m.watchPrevRows = nil
+	m.lastChartOK = false
+	m.chartPanel.Hide()
 }
 
 // showConnectionList disconnects (if needed) and returns to the connection

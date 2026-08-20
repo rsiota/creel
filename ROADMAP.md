@@ -182,8 +182,7 @@ or sequenced behind them.
 - **ERD tooltip nullability/defaults** — needs `TableColumnInfo` on hover
   (deferred from the 2026-07-30 tooltip work).
 - **Export a chart** as a Unicode snapshot or SVG.
-- **`:watch` + chart** — redraw the last chart on refresh; highlight changed
-  rows on `:watch` / `:tail`.
+- **`:watch` + chart** — ✅ DONE (2026-08-20); see Product review slice 3.
 
 **AI**
 - “Explain this query” / “why is this slow” with the last `EXPLAIN` attached.
@@ -228,10 +227,15 @@ at a time so each can be checked before the next starts.
   `chart_query.go`, `excmd_registry.go`, `statusbar.go`. Tests:
   `query_params_test.go`.
 
+**Now (shipping) — slice 3** ✅ DONE (2026-08-20)
+- **`:watch` + chart** — an open chart redraws on each results refresh
+  (page charts from the new grid; bang charts re-fetch). `:watch` / `:tail`
+  tint rows whose content is new since the previous tick. Files:
+  `chart_query.go`, `app.go`, `results_table.go`, `watch_delta.go`,
+  `excmd.go`. Tests: `watch_chart_test.go`.
+
 **Next (one at a time)**
-1. **`:watch` + chart** — redraw the last chart on refresh; highlight deltas
-   on `:watch` / `:tail`.
-2. **CLI stdin + non-zero exit** — `cat q.sql | creel -c prod -e -`; fail the
+1. **CLI stdin + non-zero exit** — `cat q.sql | creel -c prod -e -`; fail the
    process on query error.
 
 **Then (daily-driver / identity)**

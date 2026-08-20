@@ -3104,6 +3104,7 @@ func (m *Model) stopBackgroundRefresh() {
 		kind = "tail"
 	}
 	m.watchActive = false
+	m.watchPrevRows = nil
 	m.schemaMsg = kind + " stopped"
 }
 

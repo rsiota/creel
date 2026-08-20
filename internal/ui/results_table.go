@@ -89,6 +89,10 @@ type ResultsTable struct {
 	// View() can tint matching cells. nil when no search is active.
 	searchMatcher func(string) bool
 
+	// watchDelta marks rows whose content is new since the previous :watch /
+	// :tail refresh (fingerprinted). Cleared on the next SetResult / Clear.
+	watchDelta map[int]bool
+
 	// Visual mode (line-wise selection). When visualActive is true, the range
 	// [min(visualAnchor, cursorRow), max(visualAnchor, cursorRow)] is
 	// highlighted and can be committed to marks with enter.
@@ -1147,6 +1151,7 @@ func (r *ResultsTable) SetResult(cols []string, rows [][]string, message string)
 	r.saveError = ""
 	r.copied = false
 	r.copyFlashActive = false
+	r.watchDelta = nil
 	r.ClearColumnMarks()
 	r.ClearForeignKeys()
 	r.computeColWidths()
@@ -1179,11 +1184,21 @@ func (r *ResultsTable) Clear() {
 	r.editing = false
 	r.copied = false
 	r.copyFlashActive = false
+	r.watchDelta = nil
 	r.ClearColumnMarks()
 	r.ClearForeignKeys()
 }
 
-// Message returns the current status message.
+// SetWatchDelta marks rows that changed since the previous :watch / :tail
+// refresh so View can tint them. Pass nil to clear.
+func (r *ResultsTable) SetWatchDelta(delta map[int]bool) {
+	r.watchDelta = delta
+}
+
+// IsWatchDeltaRow reports whether rowIdx is highlighted as a watch change.
+func (r ResultsTable) IsWatchDeltaRow(rowIdx int) bool {
+	return r.watchDelta[rowIdx]
+}
 func (r ResultsTable) Message() string {
 	return r.message
 }
@@ -1971,6 +1986,8 @@ func (r ResultsTable) View() string {
 			bg = colorVisual
 		case isCursorRow:
 			bg = colorCursorRow
+		case r.IsWatchDeltaRow(rowIdx):
+			bg = colorSearch
 		case rowIdx%2 == 1:
 			bg = colorStripe
 		}
@@ -2020,6 +2037,7 @@ func (r ResultsTable) View() string {
 				isVisualRow := r.isVisualRow(rowIdx)
 				isColMarked := r.IsMarkedColumn(i)
 				isSearchMatch := r.searchMatcher != nil && r.searchMatcher(val)
+				isWatchDelta := r.IsWatchDeltaRow(rowIdx)
 				var style lipgloss.Style
 				switch {
 				case isCopyFlash && r.copyFlashOn:
@@ -2038,6 +2056,8 @@ func (r ResultsTable) View() string {
 				case isColMarked:
 					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorVisual)
 				case isSearchMatch:
+					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorSearch)
+				case isWatchDelta:
 					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorSearch)
 				case isCursorRow:
 					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorCursorRow)

@@ -598,6 +598,15 @@ type Model struct {
 	watchInterval time.Duration
 	watchGen      uint64
 	watchMode     string // "tail" for :tail, otherwise "watch" — only affects the indicator/stop message
+	// watchPrevRows is the previous result page so a refresh can tint
+	// new/changed rows. Nil until the first watch snapshot.
+	watchPrevRows [][]string
+
+	// lastChart* remembers the most recent successful chart so a results
+	// refresh (:watch, ctrl+r, re-run) can redraw it instead of closing it.
+	lastChartSpec chartSpec
+	lastChartAll  bool
+	lastChartOK   bool
 }
 
 // defaultPageSize / defaultQueryTimeout mirror the config-package defaults so
@@ -1169,7 +1178,27 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.results.SetResult(cols, rows, msg.result.Message)
 			m.results.SetBlobs(blobs)
-			m.chartPanel.Hide()
+
+			// Watch/tail: tint rows whose content wasn't on the previous page.
+			if m.watchActive {
+				if m.watchPrevRows != nil {
+					m.results.SetWatchDelta(computeWatchDelta(m.watchPrevRows, rows))
+				}
+				m.watchPrevRows = cloneResultRows(rows)
+			} else {
+				m.watchPrevRows = nil
+			}
+
+			// Keep an open chart in sync with the new page (or re-fetch bang
+			// charts). Manual queries that weren't charting still close it.
+			redrawChart := m.chartPanel.IsVisible() && m.lastChartOK
+			var chartCmd tea.Cmd
+			if redrawChart {
+				chartCmd = m.redrawLastChart(false)
+			} else {
+				m.chartPanel.Hide()
+			}
+
 			colTypes := make(map[string]string)
 			for _, c := range msg.result.Columns {
 				colTypes[c.Name] = c.Type
@@ -1183,6 +1212,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Fire a background COUNT(*) on the first page of a table browse.
 			if msg.page == 0 {
 				cmd = m.fetchTotalRows()
+			}
+			if chartCmd != nil {
+				cmd = tea.Batch(cmd, chartCmd)
 			}
 
 			// Enable inline editing and foreign-key navigation for simple table SELECTs.
@@ -2816,8 +2848,28 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Chart panel replaces the results grid — j/k scroll, esc/q close.
+	// Keep : / ? / ctrl+p available so :watch (and help/palette) work without
+	// closing the chart first; once the ex line or palette is open they own keys.
 	if m.chartPanel.IsVisible() {
+		if m.ex.visible {
+			return m.handleExKey(msg)
+		}
+		if m.palette.visible {
+			var cmd tea.Cmd
+			m.palette, cmd = m.palette.Update(msg)
+			return m, cmd
+		}
 		switch msg.String() {
+		case ":":
+			m.ex.Open()
+			m.layoutWorkspace()
+			return m, nil
+		case "?":
+			m.help.Show()
+			return m, nil
+		case "ctrl+p":
+			m.palette.Open()
+			return m, nil
 		case "esc", "q", "ctrl+c":
 			m.chartPanel.Hide()
 			return m, nil

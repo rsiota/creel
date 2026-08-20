@@ -44,9 +44,12 @@ column is a frequency count: `:bar status`, a single `M` mark, or
 two columns); `:bar count` on two marked columns counts rows per label. The
 top 20 bars are kept and the rest fold into `(other)`; press `o` to unfold
 (and `o` again to fold). `Enter` on a bar keeps rows with that label and
-restores the grid. `Esc`/`q` closes the chart. Non-numeric and NULL
+restores the grid. `Esc`/`q` closes the chart. While the chart is open you can
+still type `:` (e.g. `:watch 2`) — the chart stays up and redraws on each
+refresh. Non-numeric and NULL
 value cells are skipped for `sum`/`avg`. `:bar!` charts every row of the
-last SELECT (not just the current page).
+last SELECT (not just the current page). Bang charts re-fetch the full SELECT
+on refresh.
 
 ### Frequency (`:freq`)
 
@@ -243,6 +246,9 @@ erDiagram
   `WHERE`/`ON`/`SET`. On a
   syntax error, the cursor jumps to the reported token/line.
 - **Query history & bookmarks** — per-connection, persisted, searchable.
+- **`:watch` / `:tail`** — periodic refresh of the last query (status bar
+  `WATCH` / `TAIL`). New or changed rows are tinted on each tick. An open
+  chart redraws with the refresh (bang charts re-query).
 - **Session restore** — reopening a connection brings back your open tabs and
   editor buffers from the last visit (keyed per connection + database). Buffers
   are restored but not re-executed; a `creel -f` startup file still takes

@@ -27,6 +27,9 @@ type chartReadyMsg struct {
 	truncated bool
 	filterCol string
 	err       string
+	spec      chartSpec // remembered for redraw on :watch / refresh
+	all       bool      // true when built from a bang (full-query) fetch
+	quiet     bool      // true = don't steal focus (background redraw)
 }
 
 type chartSpec struct {
@@ -39,6 +42,12 @@ type chartSpec struct {
 }
 
 func (m *Model) applyChartReady(msg chartReadyMsg) {
+	m.applyChartReadyOpt(msg, !msg.quiet)
+}
+
+// applyChartReadyOpt applies a finished chart. When focusResults is false
+// (watch/refresh redraw) the current focus is left alone.
+func (m *Model) applyChartReadyOpt(msg chartReadyMsg, focusResults bool) {
 	if msg.err != "" {
 		m.schemaMsg = msg.err
 		return
@@ -56,7 +65,12 @@ func (m *Model) applyChartReady(msg chartReadyMsg) {
 		m.chartPanel.ShowBar(msg.title, msg.bars, msg.skipped, msg.agg)
 	}
 	m.chartPanel.filterCol = msg.filterCol
-	m.focus = FocusResults
+	m.lastChartSpec = msg.spec
+	m.lastChartAll = msg.all || msg.truncated
+	m.lastChartOK = msg.spec.title != "" || len(msg.spec.colNames) > 0
+	if focusResults {
+		m.focus = FocusResults
+	}
 	if msg.truncated {
 		m.schemaMsg = fmt.Sprintf("charted first %s rows", formatCount(chartAllMaxRows))
 	} else {
@@ -71,7 +85,10 @@ func (m *Model) runChart(spec chartSpec, all bool) tea.Cmd {
 		return nil
 	}
 	if !all {
-		m.applyChartReady(buildChartReady(m.results, spec, false))
+		msg := buildChartReady(m.results, spec, false)
+		msg.spec = spec
+		msg.all = false
+		m.applyChartReady(msg)
 		return nil
 	}
 	if m.connection == nil {
@@ -96,8 +113,9 @@ func (m *Model) runChart(spec chartSpec, all bool) tea.Cmd {
 	conn := m.connection
 	tx := m.tx
 	ctx, cancel := m.queryContext()
-	if !strings.Contains(spec.title, " · all") {
-		spec.title += " · all"
+	displaySpec := spec
+	if !strings.Contains(displaySpec.title, " · all") {
+		displaySpec.title += " · all"
 	}
 	m.schemaMsg = "charting all rows…"
 	return func() tea.Msg {
@@ -132,7 +150,45 @@ func (m *Model) runChart(spec chartSpec, all bool) tea.Cmd {
 		}
 		tbl := NewResultsTable()
 		tbl.SetResult(cols, rows, "")
-		return buildChartReady(tbl, spec, truncated)
+		msg := buildChartReady(tbl, displaySpec, truncated)
+		msg.spec = spec // keep base title (no · all) for later redraw
+		msg.all = true
+		return msg
+	}
+}
+
+// redrawLastChart rebuilds the remembered chart after a results refresh.
+// Page charts use the new grid; bang charts re-fetch. focusResults is false
+// for background :watch ticks so the editor keeps focus.
+func (m *Model) redrawLastChart(focusResults bool) tea.Cmd {
+	if !m.lastChartOK {
+		return nil
+	}
+	if m.lastChartAll {
+		return m.runChartQuiet(m.lastChartSpec, true, !focusResults)
+	}
+	msg := buildChartReady(m.results, m.lastChartSpec, false)
+	msg.spec = m.lastChartSpec
+	msg.all = false
+	msg.quiet = !focusResults
+	m.applyChartReadyOpt(msg, focusResults)
+	return nil
+}
+
+// runChartQuiet is runChart with an optional quiet flag (no focus steal).
+func (m *Model) runChartQuiet(spec chartSpec, all, quiet bool) tea.Cmd {
+	cmd := m.runChart(spec, all)
+	if !quiet || cmd == nil {
+		return cmd
+	}
+	// Wrap the async bang path so the resulting chartReadyMsg is quiet.
+	return func() tea.Msg {
+		msg := cmd()
+		if c, ok := msg.(chartReadyMsg); ok {
+			c.quiet = true
+			return c
+		}
+		return msg
 	}
 }
 
