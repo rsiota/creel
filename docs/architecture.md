@@ -18,7 +18,7 @@ subsystem map and the design decisions behind them.
 ## Top-level layout
 
 ```
-cmd/creel/        entry point (TUI + CLI modes)
+cmd/creel/        entry point (TUI + CLI modes; `-e -` / `-cli` read SQL from stdin)
 cmd/genthemes/    codegen for the bundled theme palettes
 internal/db/      database abstraction + drivers
 internal/config/  YAML config load/save
@@ -26,6 +26,7 @@ internal/secrets/ OS keychain secret store
 internal/history/ per-connection query history (JSON)
 internal/bookmarks/ saved queries
 internal/session/ per-connection workspace state (open tabs, restored on reconnect)
+internal/recent/  connection-picker MRU list
 internal/ai/      OpenAI-compatible client for the assistant
 internal/version/ version reporting (ldflags-injected)
 internal/ui/      all Bubble Tea components
