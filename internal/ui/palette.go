@@ -2,23 +2,48 @@ package ui
 
 import (
 	"strings"
+	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
+// paletteJumpKind identifies a non-keybinding palette action.
+type paletteJumpKind int
+
+const (
+	paletteJumpNone paletteJumpKind = iota
+	paletteJumpTable
+	paletteJumpBookmark
+	paletteJumpTheme
+)
+
 // paletteItem is a single searchable entry in the command palette.
 type paletteItem struct {
-	display string   // key display (e.g. "X", "ctrl+r")
-	desc    string   // human description
-	section string   // section title for context
-	replay  []string // key sequence to replay through dispatch (nil = not executable)
+	display string         // key display (e.g. "X", "ctrl+r") or jump label
+	desc    string         // human description
+	section string         // section title for context
+	replay  []string       // key sequence to replay through dispatch (nil = not a binding)
+	jump    paletteJumpKind
+	payload string         // table/theme name or full SQL for jump items
+}
+
+// paletteJumpSrc supplies connection-scoped targets when opening the palette.
+// Themes are always loaded from themeNames(); nil/empty slices omit a category.
+type paletteJumpSrc struct {
+	Tables    []string
+	Bookmarks []string // queries, most-recent first
+}
+
+// paletteJumpMsg is emitted when the user confirms a jump-anywhere item.
+type paletteJumpMsg struct {
+	kind    paletteJumpKind
+	payload string
 }
 
 // palette is the fuzzy-searchable command palette overlay (Ctrl+P).
-// It lists every keybinding from the registry, lets the user fuzzy-filter
-// by description/key/section, and on Enter replays the selected binding's
-// key through the normal dispatch.
+// It lists keybindings plus jump targets (tables, bookmarks, themes),
+// lets the user fuzzy-filter, and on Enter either replays a binding or jumps.
 type palette struct {
 	visible  bool
 	input    string
@@ -30,12 +55,18 @@ type palette struct {
 // maxPaletteItems is the maximum number of results shown at once.
 const maxPaletteItems = 16
 
-// Open shows the palette, building the item list from the keybinding registry.
-func (p *palette) Open() {
+const (
+	maxPaletteBookmarks = 40
+	maxPaletteQueryLen  = 72
+)
+
+// Open shows the palette, building items from the keybinding registry plus
+// optional jump targets in src.
+func (p *palette) Open(src paletteJumpSrc) {
 	p.visible = true
 	p.input = ""
 	p.cursor = 0
-	p.items = buildPaletteItems()
+	p.items = buildPaletteItems(src)
 	p.filtered = p.items
 }
 
@@ -45,8 +76,10 @@ func (p *palette) Hide() { p.visible = false }
 // IsVisible reports whether the palette is shown.
 func (p palette) IsVisible() bool { return p.visible }
 
-// buildPaletteItems flattens the keybinding registry into palette entries.
-func buildPaletteItems() []paletteItem {
+// buildPaletteItems flattens the keybinding registry and jump targets into
+// palette entries. Bindings come first so an empty filter still feels like the
+// command palette; jump rows follow and are easy to reach by typing.
+func buildPaletteItems(src paletteJumpSrc) []paletteItem {
 	var items []paletteItem
 	for _, sec := range registry() {
 		for _, b := range sec.Items {
@@ -58,7 +91,66 @@ func buildPaletteItems() []paletteItem {
 			})
 		}
 	}
+	for _, t := range src.Tables {
+		if t == "" {
+			continue
+		}
+		items = append(items, paletteItem{
+			display: "table",
+			desc:    t,
+			section: "Tables",
+			jump:    paletteJumpTable,
+			payload: t,
+		})
+	}
+	for i, q := range src.Bookmarks {
+		if i >= maxPaletteBookmarks {
+			break
+		}
+		if strings.TrimSpace(q) == "" {
+			continue
+		}
+		items = append(items, paletteItem{
+			display: "bookmark",
+			desc:    flattenPaletteQuery(q),
+			section: "Bookmarks",
+			jump:    paletteJumpBookmark,
+			payload: q,
+		})
+	}
+	for _, name := range themeNames() {
+		items = append(items, paletteItem{
+			display: "theme",
+			desc:    themeDisplay(name),
+			section: "Themes",
+			jump:    paletteJumpTheme,
+			payload: name,
+		})
+	}
 	return items
+}
+
+// flattenPaletteQuery collapses whitespace to a single line and truncates for
+// the palette description column. The full query stays in payload.
+func flattenPaletteQuery(q string) string {
+	var b strings.Builder
+	space := false
+	for _, r := range q {
+		if unicode.IsSpace(r) {
+			space = true
+			continue
+		}
+		if space && b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		space = false
+		b.WriteRune(r)
+	}
+	s := b.String()
+	if runeLen(s) <= maxPaletteQueryLen {
+		return s
+	}
+	return truncateCell(s, maxPaletteQueryLen)
 }
 
 // chordReplays maps a binding's Display to the explicit key sequence the
@@ -120,7 +212,11 @@ func (p *palette) refilter() {
 		return
 	}
 	ranked := fuzzyRank(p.input, p.items,
-		func(it paletteItem) string { return it.desc + " " + it.display + " " + it.section },
+		func(it paletteItem) string {
+			// Include payload so theme slugs / full SQL stay searchable even
+			// when the visible desc is shortened.
+			return it.desc + " " + it.display + " " + it.section + " " + it.payload
+		},
 		nil)
 	p.filtered = make([]paletteItem, len(ranked))
 	for i, r := range ranked {
@@ -140,38 +236,44 @@ func (p *palette) moveCursor(delta int) {
 	p.cursor = (p.cursor + delta + n) % n
 }
 
+// selectedItem returns the highlighted palette row, or a zero item.
+func (p palette) selectedItem() paletteItem {
+	if p.cursor < 0 || p.cursor >= len(p.filtered) {
+		return paletteItem{}
+	}
+	return p.filtered[p.cursor]
+}
+
 // selectedReplay returns the replay key sequence for the highlighted item, or
 // nil if it isn't directly executable.
 func (p palette) selectedReplay() []string {
-	if p.cursor < 0 || p.cursor >= len(p.filtered) {
-		return nil
-	}
-	return p.filtered[p.cursor].replay
+	return p.selectedItem().replay
 }
 
 // selectedDisplay returns the display string of the highlighted item.
 func (p palette) selectedDisplay() string {
-	if p.cursor < 0 || p.cursor >= len(p.filtered) {
-		return ""
-	}
-	return p.filtered[p.cursor].display
+	return p.selectedItem().display
 }
 
 // Update processes a keypress while the palette is open. It returns the
-// updated palette state and an optional tea.Cmd (non-nil when replaying a
-// key on Enter).
+// updated palette state and an optional tea.Cmd (non-nil when confirming a
+// binding replay or jump-anywhere action).
 func (p palette) Update(msg tea.KeyMsg) (palette, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+c":
 		p.visible = false
 		return p, nil
 	case "enter":
-		seq := p.selectedReplay()
+		it := p.selectedItem()
 		p.visible = false
-		if len(seq) == 0 {
+		if it.jump != paletteJumpNone && it.payload != "" {
+			kind, payload := it.jump, it.payload
+			return p, func() tea.Msg { return paletteJumpMsg{kind: kind, payload: payload} }
+		}
+		if len(it.replay) == 0 {
 			return p, nil
 		}
-		return p, replayKeySequence(seq)
+		return p, replayKeySequence(it.replay)
 	case "up", "ctrl+p":
 		p.moveCursor(-1)
 		return p, nil
@@ -199,6 +301,12 @@ func (p palette) View(width, height int) string {
 		return ""
 	}
 
+	// Inner content width: panel Width(width-2) with Padding(0, 1).
+	innerW := width - 4
+	if innerW < 24 {
+		innerW = 24
+	}
+
 	keyW := 0
 	for _, it := range p.filtered {
 		if w := runeLen(it.display); w > keyW {
@@ -221,18 +329,22 @@ func (p palette) View(width, height int) string {
 	var lines []string
 	for i := start; i < end; i++ {
 		it := p.filtered[i]
+		desc, section := fitPaletteRow(it.desc, it.section, keyW, innerW)
 		key := it.display + strings.Repeat(" ", keyW-runeLen(it.display))
 		var line string
 		if i == p.cursor {
 			line = lipgloss.NewStyle().
 				Background(colorPrimary).
 				Foreground(colorBg).
-				Render("❯ " + key + "  " + it.desc + "  " + it.section)
+				Render("❯ " + key + "  " + desc + sectionSuffix(section))
 		} else {
 			keyStr := lipgloss.NewStyle().Foreground(colorPrimary).Render(key)
-			desc := lipgloss.NewStyle().Foreground(colorLabel).Render(it.desc)
-			secStr := lipgloss.NewStyle().Foreground(colorMuted).Render(it.section)
-			line = "  " + keyStr + "  " + desc + "  " + secStr
+			descStr := lipgloss.NewStyle().Foreground(colorLabel).Render(desc)
+			secStr := ""
+			if section != "" {
+				secStr = "  " + lipgloss.NewStyle().Foreground(colorMuted).Render(section)
+			}
+			line = "  " + keyStr + "  " + descStr + secStr
 		}
 		lines = append(lines, line)
 	}
@@ -257,6 +369,46 @@ func (p palette) View(width, height int) string {
 		Render(body)
 
 	return panel
+}
+
+// fitPaletteRow clamps desc (and drops/truncates section if needed) so
+// "❯ " + key + "  " + desc + "  " + section fits in innerW columns.
+func fitPaletteRow(desc, section string, keyW, innerW int) (string, string) {
+	const prefix = 2 // "❯ " / "  "
+	const gap = 2    // between key and desc
+	fixed := prefix + keyW + gap
+	budget := innerW - fixed
+	if budget < 4 {
+		budget = 4
+	}
+	if section == "" {
+		return clampPaletteText(desc, budget), ""
+	}
+	secNeed := 2 + runeLen(section) // "  " + section
+	if budget > secNeed+4 {
+		return clampPaletteText(desc, budget-secNeed), section
+	}
+	// Not enough room for the section label — keep the description.
+	return clampPaletteText(desc, budget), ""
+}
+
+func sectionSuffix(section string) string {
+	if section == "" {
+		return ""
+	}
+	return "  " + section
+}
+
+// clampPaletteText truncates with an ellipsis when s exceeds width; short
+// strings are returned unchanged (no padding).
+func clampPaletteText(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if runeLen(s) <= width {
+		return s
+	}
+	return truncateCell(s, width)
 }
 
 // renderPalettePrompt renders the chevron-style fuzzy-search prompt used by

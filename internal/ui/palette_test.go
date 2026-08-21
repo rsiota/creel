@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/rsiota/creel/internal/config"
 )
 
 func TestPaletteOpenClose(t *testing.T) {
@@ -13,7 +14,7 @@ func TestPaletteOpenClose(t *testing.T) {
 	if p.IsVisible() {
 		t.Fatal("palette should start hidden")
 	}
-	p.Open()
+	p.Open(paletteJumpSrc{})
 	if !p.IsVisible() {
 		t.Fatal("palette should be visible after Open")
 	}
@@ -34,7 +35,7 @@ func TestPaletteOpenClose(t *testing.T) {
 
 func TestPaletteFuzzyFilter(t *testing.T) {
 	var p palette
-	p.Open()
+	p.Open(paletteJumpSrc{})
 
 	// Type "export" — should match export-related bindings.
 	simulateTyping(&p, "export")
@@ -63,7 +64,7 @@ func TestPaletteFuzzyFilter(t *testing.T) {
 
 func TestPaletteNavigation(t *testing.T) {
 	var p palette
-	p.Open()
+	p.Open(paletteJumpSrc{})
 	initial := p.cursor
 
 	p = updatePalette(t, p, tea.KeyMsg{Type: tea.KeyDown})
@@ -86,7 +87,7 @@ func TestPaletteNavigation(t *testing.T) {
 
 func TestPaletteEscape(t *testing.T) {
 	var p palette
-	p.Open()
+	p.Open(paletteJumpSrc{})
 	simulateTyping(&p, "hello")
 	p, cmd := p.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if p.IsVisible() {
@@ -99,7 +100,7 @@ func TestPaletteEscape(t *testing.T) {
 
 func TestPaletteEnterExecutableSingleKey(t *testing.T) {
 	var p palette
-	p.Open()
+	p.Open(paletteJumpSrc{})
 
 	// Find a single-token binding (e.g. "ctrl+r" — refresh).
 	target := -1
@@ -131,7 +132,7 @@ func TestPaletteEnterExecutableSingleKey(t *testing.T) {
 
 func TestPaletteEnterNonExecutable(t *testing.T) {
 	var p palette
-	p.Open()
+	p.Open(paletteJumpSrc{})
 
 	// Find a multi-token "alternative" binding (not executable): e.g. "g t / g T"
 	// or "ctrl+e / \".
@@ -158,7 +159,7 @@ func TestPaletteEnterNonExecutable(t *testing.T) {
 
 func TestPaletteView(t *testing.T) {
 	var p palette
-	p.Open()
+	p.Open(paletteJumpSrc{})
 	out := p.View(71, 19)
 	if out == "" {
 		t.Fatal("palette view should not be empty when visible")
@@ -178,7 +179,7 @@ func TestPaletteView(t *testing.T) {
 // rows drifted left of ASCII rows.
 func TestPaletteDescriptionAlignmentWithArrowKeys(t *testing.T) {
 	var p palette
-	p.Open()
+	p.Open(paletteJumpSrc{})
 	// "move" matches several bindings spanning ASCII ("j/k", "h/j/k/l") and
 	// arrow ("↑/↓", "j/k, ↑/↓") keys. "remove row" also fuzzy-matches, so we
 	// key off the fixed 2-space gap that precedes each description ("  move")
@@ -217,7 +218,7 @@ func TestPaletteDescriptionAlignmentWithArrowKeys(t *testing.T) {
 // behaviour change Step 3 introduces: these used to be non-executable.
 func TestPaletteChordsExecutableViaSequence(t *testing.T) {
 	var p palette
-	p.Open()
+	p.Open(paletteJumpSrc{})
 	want := map[string][]string{
 		"g d": {"g", "d"},
 		"g e": {"g", "e"},
@@ -323,4 +324,181 @@ func updatePalette(t *testing.T, p palette, msg tea.KeyMsg) palette {
 	t.Helper()
 	next, _ := p.Update(msg)
 	return next
+}
+
+func TestPaletteJumpAnywhereItems(t *testing.T) {
+	var p palette
+	p.Open(paletteJumpSrc{
+		Tables:    []string{"users", "orders"},
+		Bookmarks: []string{"SELECT * FROM users;"},
+	})
+
+	counts := map[string]int{}
+	for _, it := range p.items {
+		counts[it.section]++
+	}
+	if counts["Tables"] != 2 {
+		t.Errorf("Tables = %d, want 2", counts["Tables"])
+	}
+	if counts["History"] != 0 {
+		t.Errorf("History = %d, want 0 (history stays on Ctrl+Y)", counts["History"])
+	}
+	if counts["Bookmarks"] != 1 {
+		t.Errorf("Bookmarks = %d, want 1", counts["Bookmarks"])
+	}
+	if counts["Themes"] < 1 {
+		t.Error("expected at least one theme item")
+	}
+
+	simulateTyping(&p, "users")
+	foundTable := false
+	for _, it := range p.filtered {
+		if it.jump == paletteJumpTable && it.payload == "users" {
+			foundTable = true
+			break
+		}
+	}
+	if !foundTable {
+		t.Fatal("fuzzy 'users' should match the users table jump")
+	}
+}
+
+func TestPaletteEnterJumpEmitsMsg(t *testing.T) {
+	var p palette
+	p.Open(paletteJumpSrc{Tables: []string{"orders"}})
+
+	target := -1
+	for i, it := range p.items {
+		if it.jump == paletteJumpTable && it.payload == "orders" {
+			target = i
+			break
+		}
+	}
+	if target < 0 {
+		t.Fatal("orders table item missing")
+	}
+	p.cursor = target
+	p, cmd := p.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if p.IsVisible() {
+		t.Fatal("palette should hide after enter")
+	}
+	if cmd == nil {
+		t.Fatal("expected a jump cmd")
+	}
+	msg := cmd()
+	jump, ok := msg.(paletteJumpMsg)
+	if !ok {
+		t.Fatalf("got %T, want paletteJumpMsg", msg)
+	}
+	if jump.kind != paletteJumpTable || jump.payload != "orders" {
+		t.Errorf("jump = %+v, want table/orders", jump)
+	}
+}
+
+func TestPaletteEnterThemeJump(t *testing.T) {
+	var p palette
+	p.Open(paletteJumpSrc{})
+	simulateTyping(&p, "gruvbox")
+	found := false
+	for i, it := range p.filtered {
+		if it.jump == paletteJumpTheme && it.payload == "gruvbox" {
+			p.cursor = i
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected gruvbox theme in filtered list")
+	}
+	_, cmd := p.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	msg := cmd()
+	jump, ok := msg.(paletteJumpMsg)
+	if !ok || jump.kind != paletteJumpTheme || jump.payload != "gruvbox" {
+		t.Fatalf("got %#v, want theme/gruvbox", msg)
+	}
+}
+
+func TestFlattenPaletteQuery(t *testing.T) {
+	got := flattenPaletteQuery("SELECT  *\nFROM   users")
+	if got != "SELECT * FROM users" {
+		t.Errorf("flatten = %q", got)
+	}
+	long := strings.Repeat("a", maxPaletteQueryLen+10)
+	if got := flattenPaletteQuery(long); runeLen(got) > maxPaletteQueryLen {
+		t.Errorf("truncated length %d > %d", runeLen(got), maxPaletteQueryLen)
+	}
+}
+
+func TestFitPaletteRowTruncatesLongDesc(t *testing.T) {
+	long := "This Is An Extremely Long Theme Display Name That Would Wrap"
+	desc, sec := fitPaletteRow(long, "Themes", 6, 40)
+	row := "❯ " + "theme " + "  " + desc
+	if sec != "" {
+		row += "  " + sec
+	}
+	if w := runeLen(row); w > 40 {
+		t.Errorf("fitted row width %d > 40: %q", w, row)
+	}
+	if !strings.Contains(desc, "…") {
+		t.Errorf("expected ellipsis truncation, desc=%q", desc)
+	}
+}
+
+func TestPaletteViewNoWrapOnLongTheme(t *testing.T) {
+	var p palette
+	p.Open(paletteJumpSrc{})
+	// Force a long visible desc onto the first page.
+	p.items = append([]paletteItem{{
+		display: "theme",
+		desc:    strings.Repeat("LongThemeName", 8),
+		section: "Themes",
+		jump:    paletteJumpTheme,
+		payload: "long-theme",
+	}}, p.items...)
+	p.filtered = p.items
+	p.cursor = 0
+
+	const width, height = 71, 19
+	out := p.View(width, height)
+	inner := width - 4
+	for i, line := range strings.Split(stripAnsi(out), "\n") {
+		if line == "" {
+			continue
+		}
+		if w := runeLen(line); w > inner+2 { // allow border noise from panel chrome in strip?
+			// stripAnsi removes styles but panel border lines are full width-2
+			if strings.HasPrefix(line, "│") || strings.HasPrefix(line, "┌") || strings.HasPrefix(line, "└") {
+				continue
+			}
+			if w > inner {
+				t.Errorf("line %d width %d > inner %d: %q", i, w, inner, line)
+			}
+		}
+	}
+}
+
+func TestApplyPaletteJump(t *testing.T) {
+	m := NewModel(&config.Config{})
+	m.state = stateWorkspace
+	m.tables = []string{"users"}
+	m.editor.SetValue("old")
+	// Don't persist theme changes from this unit test.
+	m.config = nil
+
+	m.applyPaletteJump(paletteJumpMsg{kind: paletteJumpBookmark, payload: "SELECT 42;"})
+	if m.editor.Value() != "SELECT 42;" {
+		t.Errorf("editor = %q, want SELECT 42;", m.editor.Value())
+	}
+	if m.focus != FocusEditor {
+		t.Errorf("focus = %v, want editor", m.focus)
+	}
+
+	defer applyPalette(defaultPalette)
+	m.applyPaletteJump(paletteJumpMsg{kind: paletteJumpTheme, payload: "nord"})
+	if m.settings.Theme != "nord" {
+		t.Errorf("theme = %q, want nord", m.settings.Theme)
+	}
+	if colorPrimary != nordPalette.primary {
+		t.Error("nord palette was not applied")
+	}
 }

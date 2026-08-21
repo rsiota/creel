@@ -242,7 +242,8 @@ at a time so each can be checked before the next starts.
 **Next (one at a time)** — see **Then** below.
 - Color PK / FK columns in the grid — ✅ DONE (soft primary→bg FK cell tint
   only; PK stays as before with `*`; headers untinted).
-- Jump-anywhere palette — broaden Ctrl+P to tables, bookmarks, history, themes.
+- Jump-anywhere palette — ✅ DONE (Ctrl+P lists tables, bookmarks, and themes
+  alongside keybindings; history stays on Ctrl+Y; Enter jumps or replays).
 - Chart export (Unicode snapshot or SVG).
 - AI “explain this query / why slow” with the last `EXPLAIN` attached.
 - Optional AI scratch-tab dry-run (still no auto-run DDL).

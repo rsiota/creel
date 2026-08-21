@@ -48,6 +48,10 @@ commits, so it can come up empty).
 - Results grid: soft FK cell tint (primary blue darkened toward the theme
   background); PK columns unchanged aside from the existing `*` marker;
   headers stay primary. Cursor / mark / search / dirty styles still win.
+- Jump-anywhere palette (`Ctrl+P`): fuzzy-search tables, bookmarks, and
+  themes in addition to keybindings. Enter opens a table (`SELECT *`), loads
+  a bookmark into the editor, or applies a theme. Query history stays on
+  `Ctrl+Y`.
 
 ### Fixed
 - ERD mini-map stayed visible for expanded (tall) diagrams instead of hiding when aspect-fitting made the overlay narrower than a minimum, and kept enough width that rank columns aren't cropped off the sides.

@@ -1,7 +1,7 @@
 # Keybindings
 
 creel is keyboard-first and vim-driven. Press `?` inside the TUI for the full
-overlay, or `Ctrl+P` for the fuzzy command palette — both are generated from a
+overlay, or `Ctrl+P` for the fuzzy jump-anywhere palette — both are generated from a
 single keybinding registry (`internal/ui/registry.go`), and a drift-detection
 test keeps the documentation in sync with what's actually wired.
 
@@ -22,7 +22,7 @@ test keeps the documentation in sync with what's actually wired.
 | `ctrl+h/j/k/l`  | Move focus between panels       |
 | `tab` / `shift+tab` | Cycle focus (skips tab bar) |
 | `ctrl+d` / `ctrl+u` | Next / previous page        |
-| `ctrl+p`        | Command palette                 |
+| `ctrl+p`        | Jump-anywhere palette           |
 | `:`             | Ex command line (`:q`, `:param`, `:goto`, …) |
 | `g c`           | Theme picker (live preview)     |
 | `?`             | Toggle help                     |

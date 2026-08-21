@@ -128,7 +128,7 @@ subsystem:
 **Command system** (the unified action layer)
 - `registry.go` — single source of truth for keybindings (`Binding` / `Section` types)
 - `help.go` — help overlay (`?`), renders from the registry
-- `palette.go` — fuzzy command palette (`Ctrl+P`)
+- `palette.go` — fuzzy jump-anywhere palette (`Ctrl+P`: bindings, tables, bookmarks, themes)
 - `keymsg.go` — maps dispatch token strings → `tea.KeyMsg` for replay
 - `excmd.go` / `excmd_registry.go` — `:` Ex command line
 
@@ -148,7 +148,12 @@ subsystem:
 - **Elm-style state machine** — the UI is an immutable state machine in `app.go` (`stateConnections` → `stateWorkspace`), with `Focus` cycling between panels. Model methods use value receivers (the model is immutable; updates return a new copy).
 - **Pure-Go SQLite** — `modernc.org/sqlite`, no CGO, which simplifies cross-compilation. Please don't introduce a CGO dependency.
 - **Keybinding registry** — `registry.go` is the single source of truth for both the `?` help overlay and the `Ctrl+P` palette. Each `Binding` carries a `Display` string, dispatch `Tokens`, and a `Desc`; `help.go` only renders it. The `TestKeybindingsMatchDispatch` test parses dispatch (`case` literals + `key.WithKeys` args) via `go/parser` and asserts every documented token is actually implemented, preventing help/dispatch drift.
-- **Command palette replay** — `palette.go` fuzzy-searches the registry and replays single-key bindings via synthetic `tea.KeyMsg` (`keymsg.go`), avoiding action closures or a dispatch refactor. Multi-action bundles and double-press chords are discoverable but not auto-executable.
+- **Command palette replay** — `palette.go` fuzzy-searches the registry plus
+  jump targets (tables, bookmarks, themes). Bindings replay via synthetic
+  `tea.KeyMsg` (`keymsg.go`); jump rows emit `paletteJumpMsg` and share
+  helpers with `:goto` / bookmark enter / `:theme`. History stays on its own
+  panel (`Ctrl+Y`). Multi-action bundles and double-press chords that lack a
+  single replay sequence stay discoverable but not auto-executable.
 - **Read-only mode (defense in depth)** — a per-connection `readonly: true` flag or global `--readonly`. Writes are blocked twice: (1) a shared guard in `db.go` classifies the statement and rejects INSERT/UPDATE/DELETE/DDL in every driver's `Exec`; `Begin`/`Session` (imports) are refused outright. (2) the engine itself is opened read-only where supported — SQLite `PRAGMA query_only = ON`, Postgres `default_transaction_read_only=on` startup param; MySQL relies on the guard.
 - **Secret storage** — `internal/secrets` wraps `go-keyring`. `Store` returns a `secret://<conn>/<field>` ref stored in config; `Resolve` turns a ref (or plaintext) back into the value at connect time. Plaintext fallback when no keychain is available; backward compatible (plaintext values pass through unchanged).
 - **Fuzzy ranking** — `fuzzyRank[T]` in `fuzzy.go` is the generic filter+sort used by every fuzzy list (sidebar, history, bookmarks, palette, pickers, completion). Callers handle the empty-query case; the helper requires a non-empty query.

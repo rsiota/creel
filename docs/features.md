@@ -259,7 +259,10 @@ erDiagram
   precedence on first connect. Column widths and ERD card positions restore
   even when the tabs themselves are blank. `:session clear` wipes the saved
   snapshot, `:session save` snapshots now.
-- **Command palette** (`Ctrl+P`) and a full **help overlay** (`?`).
+- **Command palette** (`Ctrl+P`) — fuzzy jump-anywhere: keybindings, tables,
+  bookmarks, and themes. Enter opens a table, loads a bookmark, applies a
+  theme, or replays a binding. History stays on `Ctrl+Y`. Full **help
+  overlay** (`?`).
 - **AI assistant** — turn a natural-language question into SQL using any
   OpenAI-compatible endpoint (`:ai`, assistant panel). Schema context is the
   current table plus its FK neighbours (and tables named in the question),

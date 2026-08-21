@@ -909,6 +909,41 @@ func (m *Model) toggleBookmarks() {
 	m.bookmarks.Toggle()
 }
 
+// paletteJumpSrc collects tables and bookmarks for the jump-anywhere palette.
+// Themes are appended inside buildPaletteItems. History stays on Ctrl+Y so the
+// palette doesn't drown in recent queries.
+func (m Model) paletteJumpSrc() paletteJumpSrc {
+	src := paletteJumpSrc{
+		Tables: append([]string(nil), m.tables...),
+	}
+	if m.connection == nil || m.bookmarkStore == nil {
+		return src
+	}
+	name := m.connection.Config().Name
+	if entries, err := m.bookmarkStore.Get(name); err == nil {
+		for i := len(entries) - 1; i >= 0 && len(src.Bookmarks) < maxPaletteBookmarks; i-- {
+			src.Bookmarks = append(src.Bookmarks, entries[i].Query)
+		}
+	}
+	return src
+}
+
+// applyPaletteJump runs the action for a confirmed jump-anywhere palette row.
+func (m *Model) applyPaletteJump(msg paletteJumpMsg) tea.Cmd {
+	switch msg.kind {
+	case paletteJumpTable:
+		return m.openTable(msg.payload)
+	case paletteJumpBookmark:
+		m.editor.SetValue(msg.payload)
+		m.focus = FocusEditor
+		m.applyFocus()
+		return m.editor.Focus()
+	case paletteJumpTheme:
+		return m.exTheme(msg.payload)
+	}
+	return nil
+}
+
 // handleTabKey processes workspace-global g-chord keybindings that work
 // from any focused panel (except the editor in insert mode). Returns true if
 // the key was consumed.
@@ -1113,6 +1148,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleWorkspaceMouse(msg)
 		}
 		return m, nil
+
+	case paletteJumpMsg:
+		return m, m.applyPaletteJump(msg)
 
 	case queryExecutedMsg:
 		m.queryRunning = false
@@ -2868,7 +2906,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.help.Show()
 			return m, nil
 		case "ctrl+p":
-			m.palette.Open()
+			m.palette.Open(m.paletteJumpSrc())
 			return m, nil
 		case "esc", "q", "ctrl+c":
 			m.chartPanel.Hide()
@@ -2979,12 +3017,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.ex.Open()
 		return m, nil
 	case "ctrl+p":
-		// Command palette — but not while the editor is in insert mode,
+		// Jump-anywhere palette — but not while the editor is in insert mode,
 		// where ctrl+p navigates the completion popup.
 		if m.focus == FocusEditor && m.editor.CapturingKeys() {
 			break
 		}
-		m.palette.Open()
+		m.palette.Open(m.paletteJumpSrc())
 		return m, nil
 	case "q":
 		// Quit — but only when no text-input / editing context is active,
