@@ -48,6 +48,10 @@ commits, so it can come up empty).
 - Results grid: soft FK cell tint (primary blue darkened toward the theme
   background); PK columns unchanged aside from the existing `*` marker;
   headers stay primary. Cursor / mark / search / dirty styles still win.
+- Results grid: status/state columns (`status`, `*_status`, …) get a soft
+  colored `● value` tint (theme success/warn/accent/error blended toward
+  the background, same weight as FK cells). Display only; copy and edit stay
+  raw.
 - Jump-anywhere palette (`Ctrl+P`): fuzzy-search tables, bookmarks, and
   themes in addition to keybindings. Enter opens a table (`SELECT *`), loads
   a bookmark into the editor, or applies a theme. Query history stays on

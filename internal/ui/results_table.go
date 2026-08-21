@@ -1858,6 +1858,29 @@ func (r ResultsTable) fkColumnFg(col int) (lipgloss.Color, bool) {
 	return "", false
 }
 
+// statusColumnFg returns a semantic foreground for status/state enum cells.
+func (r ResultsTable) statusColumnFg(col int, val string) (lipgloss.Color, bool) {
+	if !isStatusColumnName(r.ColumnName(col)) {
+		return "", false
+	}
+	return statusValueFg(val)
+}
+
+// cellContentFg picks the default (non-highlight) foreground for a cell:
+// NULL/blob muted, then status enum, then FK tint, else normal fg.
+func (r ResultsTable) cellContentFg(col int, val string) lipgloss.Color {
+	if val == "NULL" || db.IsBlobPlaceholder(val) {
+		return colorMuted
+	}
+	if fg, ok := r.statusColumnFg(col, val); ok {
+		return fg
+	}
+	if keyFg, ok := r.fkColumnFg(col); ok {
+		return keyFg
+	}
+	return colorFg
+}
+
 // View renders the results table.
 func (r ResultsTable) View() string {
 	if !r.hasResult {
@@ -2037,6 +2060,10 @@ func (r ResultsTable) View() string {
 				cell := truncateCell(val, r.colWidths[i])
 				if isNumericType(r.columnType(i)) {
 					cell = truncateCellRight(val, r.colWidths[i])
+				} else if isStatusColumnName(r.ColumnName(i)) {
+					if disp, _, ok := statusCellDisplay(val, r.colWidths[i]); ok {
+						cell = disp
+					}
 				}
 				if isCursorCell && r.IsNavigableForeignKey(rowIdx, i) {
 					arrow := " →"
@@ -2072,19 +2099,9 @@ func (r ResultsTable) View() string {
 				case isWatchDelta:
 					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorSearch)
 				case isCursorRow:
-					fg := colorFg
-					if keyFg, ok := r.fkColumnFg(i); ok {
-						fg = keyFg
-					}
-					style = lipgloss.NewStyle().Foreground(fg).Background(colorCursorRow)
+					style = lipgloss.NewStyle().Foreground(r.cellContentFg(i, val)).Background(colorCursorRow)
 				default:
-					fg := colorFg
-					if val == "NULL" || db.IsBlobPlaceholder(val) {
-						fg = colorMuted
-					} else if keyFg, ok := r.fkColumnFg(i); ok {
-						fg = keyFg
-					}
-					style = lipgloss.NewStyle().Foreground(fg)
+					style = lipgloss.NewStyle().Foreground(r.cellContentFg(i, val))
 					if rowIdx%2 == 1 {
 						style = style.Background(colorStripe)
 					}

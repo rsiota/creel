@@ -99,6 +99,12 @@ var (
 	colorHighlight       lipgloss.Color
 	colorStatusBarBg     lipgloss.Color
 	colorFK              lipgloss.Color // foreign-key cell cue (headers stay primary)
+	// Soft status-cell hues (semantic colors blended toward bg, like colorFK).
+	colorStatusOK     lipgloss.Color
+	colorStatusWarn   lipgloss.Color
+	colorStatusInfo   lipgloss.Color
+	colorStatusBad    lipgloss.Color
+	colorStatusQuiet  lipgloss.Color
 )
 
 // sbStyles are status-bar-specific styles that carry the status bar background
@@ -169,6 +175,13 @@ func applyPalette(p colorPalette) {
 	if colorFK == "" {
 		colorFK = mixColors(p.primary, p.bg, 0.30)
 	}
+	// Status enum cells use the same soft blend so they match FK weight.
+	const statusBlend = 0.30
+	colorStatusOK = mixColors(p.success, p.bg, statusBlend)
+	colorStatusWarn = mixColors(p.warn, p.bg, statusBlend)
+	colorStatusInfo = mixColors(p.accent, p.bg, statusBlend)
+	colorStatusBad = mixColors(p.err, p.bg, statusBlend)
+	colorStatusQuiet = mixColors(p.muted, p.bg, statusBlend)
 
 	// Status-bar styles (carry the status-bar bg so ANSI resets within
 	// multi-segment rendered strings don't lose it).

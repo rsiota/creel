@@ -32,7 +32,10 @@ An overview of everything creel can do. For keys, see
   columns with `:bar` / `:line` / `:scatter` / `:hist` / `:freq` / `:pie`.
   Primary-key columns keep the existing `*` marker only. Foreign-key cells
   use a soft blue tint (primary darkened toward the theme background); headers
-  stay primary, and the `→` follow cue is unchanged. Large result sets are paged
+  stay primary, and the `→` follow cue is unchanged. Columns named `status` /
+  `state` / `*_status` / `*_state` tint known values with a soft colored `●`
+  (theme hues blended toward the background, like FK cells) — display only.
+  Large result sets are paged
   (LIMIT/OFFSET) for speed and low
   memory. Bang forms (`:bar!`, `:line!`, `:scatter!`, `:hist!`, `:freq!`,
   `:pie!`) re-run the last SELECT without the page LIMIT (capped at 50,000
