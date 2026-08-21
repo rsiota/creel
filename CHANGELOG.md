@@ -45,9 +45,9 @@ commits, so it can come up empty).
 - ERD mini-map in the bottom-right when the diagram is larger than the viewport; click or drag it to pan.
 - ERD `i` inserts JOIN SQL for a traced FK path (`p`) into the editor.
 - AI schema context is the focused table plus its FK neighbours (and any tables named in the question or failed SQL), instead of the first 100 tables.
-- Results grid: soft FK cell tint (accent blended toward the theme foreground);
-  PK columns unchanged aside from the existing `*` marker; headers stay
-  primary. Cursor / mark / search / dirty styles still win.
+- Results grid: soft FK cell tint (primary blue darkened toward the theme
+  background); PK columns unchanged aside from the existing `*` marker;
+  headers stay primary. Cursor / mark / search / dirty styles still win.
 
 ### Fixed
 - ERD mini-map stayed visible for expanded (tall) diagrams instead of hiding when aspect-fitting made the overlay narrower than a minimum, and kept enough width that rank columns aren't cropped off the sides.

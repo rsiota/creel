@@ -43,7 +43,7 @@ type colorPalette struct {
 	fg              lipgloss.Color
 	highlight       lipgloss.Color
 	statusBarBg     lipgloss.Color
-	// fk is optional: when empty, applyPalette derives a soft accent→fg tint
+	// fk is optional: when empty, applyPalette derives a soft primary→bg tint
 	// for FK result cells (headers stay the normal primary style).
 	fk lipgloss.Color
 }
@@ -162,11 +162,12 @@ func applyPalette(p colorPalette) {
 	colorFg = p.fg
 	colorHighlight = p.highlight
 	colorStatusBarBg = p.statusBarBg
-	// FK cells only: soft mauve (accent blended toward fg). Headers stay
-	// primary; PK columns stay unstyled aside from the existing * marker.
+	// FK cells only: primary blue darkened toward bg so it sits clearly
+	// below ordinary fg text. Headers stay primary; PK columns stay
+	// unstyled aside from the existing * marker.
 	colorFK = p.fk
 	if colorFK == "" {
-		colorFK = mixColors(p.accent, p.fg, 0.62)
+		colorFK = mixColors(p.primary, p.bg, 0.30)
 	}
 
 	// Status-bar styles (carry the status-bar bg so ANSI resets within

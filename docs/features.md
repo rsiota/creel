@@ -31,7 +31,7 @@ An overview of everything creel can do. For keys, see
   keys (`g d`), mark rows and columns, bulk-delete rows, and chart marked
   columns with `:bar` / `:line` / `:scatter` / `:hist` / `:freq` / `:pie`.
   Primary-key columns keep the existing `*` marker only. Foreign-key cells
-  use a soft mauve tint (accent blended toward the theme foreground); headers
+  use a soft blue tint (primary darkened toward the theme background); headers
   stay primary, and the `→` follow cue is unchanged. Large result sets are paged
   (LIMIT/OFFSET) for speed and low
   memory. Bang forms (`:bar!`, `:line!`, `:scatter!`, `:hist!`, `:freq!`,
