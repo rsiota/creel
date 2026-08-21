@@ -35,7 +35,8 @@ An overview of everything creel can do. For keys, see
   stay primary, and the `→` follow cue is unchanged. Columns named `status` /
   `state` / `*_status` / `*_state` tint known values with a soft colored `●`
   (theme hues blended toward the background, like FK cells) — display only.
-  Large result sets are paged
+  Datetime columns (by type or names like `created_at`) show a compact
+  absolute form (`2026-08-21 14:32`). Large result sets are paged
   (LIMIT/OFFSET) for speed and low
   memory. Bang forms (`:bar!`, `:line!`, `:scatter!`, `:hist!`, `:freq!`,
   `:pie!`) re-run the last SELECT without the page LIMIT (capped at 50,000

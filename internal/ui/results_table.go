@@ -212,7 +212,13 @@ func (r ResultsTable) IsCellTruncated(row, col int) bool {
 	if w < 1 {
 		w = 1
 	}
-	return runeLen(sanitizeCellValue(r.RowValue(row, col))) > w
+	val := sanitizeCellValue(r.RowValue(row, col))
+	if r.isDatetimeDisplayCol(col) {
+		if c, ok := compactTimestamp(val); ok {
+			val = c
+		}
+	}
+	return runeLen(val) > w
 }
 
 // ResultTable returns the source table for the current results, if known.
@@ -1333,6 +1339,9 @@ func (r *ResultsTable) computeColWidths() {
 	for _, row := range r.rows {
 		for i := 0; i < len(r.columns) && i < len(row); i++ {
 			l := runeLen(row[i])
+			if r.isDatetimeDisplayCol(i) {
+				l = datetimeDisplayWidth(row[i])
+			}
 			if l > r.colWidths[i] {
 				r.colWidths[i] = l
 			}
@@ -2060,6 +2069,10 @@ func (r ResultsTable) View() string {
 				cell := truncateCell(val, r.colWidths[i])
 				if isNumericType(r.columnType(i)) {
 					cell = truncateCellRight(val, r.colWidths[i])
+				} else if r.isDatetimeDisplayCol(i) {
+					if disp, ok := datetimeCellDisplay(val, r.colWidths[i]); ok {
+						cell = disp
+					}
 				} else if isStatusColumnName(r.ColumnName(i)) {
 					if disp, _, ok := statusCellDisplay(val, r.colWidths[i]); ok {
 						cell = disp
