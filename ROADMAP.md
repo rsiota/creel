@@ -185,7 +185,8 @@ or sequenced behind them.
 - **`:watch` + chart** — ✅ DONE (2026-08-20); see Product review slice 3.
 
 **AI**
-- “Explain this query” / “why is this slow” with the last `EXPLAIN` attached.
+- “Explain this query” / “why is this slow” with the last `EXPLAIN` attached —
+  ✅ DONE (`:aiexplain` / `:why`).
 - **“Fix this error”** — shipped (`:aifix` / `:fixsql`).
 - Restrict schema context to the focused table + FK neighbourhood — shipped.
 - Optional: run generated SQL in a scratch tab (read-only) and iterate on the
@@ -245,7 +246,9 @@ at a time so each can be checked before the next starts.
 - Jump-anywhere palette — ✅ DONE (Ctrl+P lists tables, bookmarks, and themes
   alongside keybindings; history stays on Ctrl+Y; Enter jumps or replays).
 - Chart export (Unicode snapshot or SVG).
-- AI “explain this query / why slow” with the last `EXPLAIN` attached.
+- AI “explain this query / why slow” with the last `EXPLAIN` attached —
+  ✅ DONE (`:aiexplain` / `:why`; caches plan from `g e` / `:explain`, else
+  runs EXPLAIN then streams prose to the assistant panel).
 - Optional AI scratch-tab dry-run (still no auto-run DDL).
 
 **Fits the product (later)**

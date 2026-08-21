@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/rsiota/creel/internal/db"
 )
 
@@ -162,6 +163,28 @@ func (e ExplainPanel) renderedLines() []string {
 	}
 	// MySQL (and default): render as a table.
 	return renderMySQLPlan(e.result)
+}
+
+// formatExplainPlan returns a plain-text rendering of an EXPLAIN result for
+// AI prompts (ANSI styling stripped). Caps very large plans so the request
+// stays within a reasonable context budget.
+func formatExplainPlan(result db.Result, driver db.Driver) string {
+	const maxPlanRunes = 6000
+	e := ExplainPanel{result: result, driver: driver}
+	lines := e.renderedLines()
+	var b strings.Builder
+	for i, line := range lines {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(ansi.Strip(line))
+	}
+	s := b.String()
+	if len([]rune(s)) <= maxPlanRunes {
+		return s
+	}
+	runes := []rune(s)
+	return string(runes[:maxPlanRunes]) + "\n…(plan truncated)"
 }
 
 // renderSQLitePlan builds an indented tree from SQLite's EXPLAIN QUERY PLAN

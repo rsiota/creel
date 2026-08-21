@@ -324,6 +324,52 @@ func FixUserPrompt(failedSQL, errMsg string) string {
 	return b.String()
 }
 
+// ExplainSystemPrompt instructs the model to explain a SQL statement and its
+// EXPLAIN plan in plain prose — no rewritten SQL unless the user asks for it.
+func ExplainSystemPrompt(schema string) string {
+	var b strings.Builder
+	b.WriteString("You are a SQL performance assistant inside a database browser. ")
+	b.WriteString("Explain what the given SQL does and how the database is likely to execute it, ")
+	b.WriteString("using the attached EXPLAIN / EXPLAIN QUERY PLAN output. ")
+	b.WriteString("Be concise (a short paragraph plus a few bullets is ideal). ")
+	b.WriteString("Call out sequential scans, missing indexes, expensive joins/sorts, and other ")
+	b.WriteString("likely bottlenecks when the plan suggests them. ")
+	b.WriteString("Do not invent indexes or statistics that are not implied by the plan or schema. ")
+	b.WriteString("Do not reply with only SQL — this is an explanation, not a rewrite.\n\n")
+	b.WriteString("Database schema:\n")
+	if schema == "" {
+		b.WriteString("(schema unavailable)")
+	} else {
+		b.WriteString(schema)
+	}
+	return b.String()
+}
+
+// ExplainUserPrompt builds the user turn for an explain-this-query request.
+// focus is an optional emphasis (e.g. "why is the join slow"); empty uses a
+// default framing. plan may be empty when EXPLAIN was unavailable.
+func ExplainUserPrompt(sql, plan, focus string) string {
+	var b strings.Builder
+	focus = strings.TrimSpace(focus)
+	if focus == "" {
+		b.WriteString("Explain this query and whether it looks slow or expensive.\n\n")
+	} else {
+		b.WriteString(focus)
+		b.WriteString("\n\n")
+	}
+	b.WriteString("SQL:\n")
+	b.WriteString(strings.TrimSpace(sql))
+	b.WriteString("\n\n")
+	if strings.TrimSpace(plan) == "" {
+		b.WriteString("(No EXPLAIN plan was available — reason from the SQL and schema alone.)\n")
+	} else {
+		b.WriteString("EXPLAIN plan:\n")
+		b.WriteString(strings.TrimSpace(plan))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
 // systemPrompt instructs the model to return a single read-only SQL statement
 // for the given schema. It forbids prose and asks for a SELECT so a
 // misunderstood request cannot mutate data — a safety default we can relax

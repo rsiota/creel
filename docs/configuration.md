@@ -138,7 +138,11 @@ Ollama, LM Studio, …). The schema sent to the model is the current results
 named in the question — not the first 100 tables of the database. After a
 query fails, `:aifix` (alias `:fixsql`) sends the failed statement and driver
 error to the same provider and drops a corrected candidate into the editor
-for review — it never auto-runs.
+for review — it never auto-runs. `:aiexplain` (alias `:why`) explains the
+statement under the cursor (or the last explained SQL), attaching the
+EXPLAIN / EXPLAIN QUERY PLAN output, and streams a prose reply into the
+assistant panel — also never auto-run. Optional focus text narrows the
+question (`:aiexplain why is the join slow`).
 
 Configure it **in-app** from the assistant panel:
 

@@ -36,6 +36,12 @@ func (m *Model) executeQuery() tea.Cmd {
 // explainQuery wraps the statement under the cursor in EXPLAIN and executes it
 // asynchronously. The result is displayed in a scrollable overlay panel.
 func (m *Model) explainQuery() tea.Cmd {
+	return m.explainQueryOpts(false, "")
+}
+
+// explainQueryOpts runs EXPLAIN for the statement under the cursor.
+// When forAI is true the plan is handed to :aiexplain instead of the overlay.
+func (m *Model) explainQueryOpts(forAI bool, focus string) tea.Cmd {
 	if m.connection == nil {
 		return nil
 	}
@@ -72,7 +78,7 @@ func (m *Model) explainQuery() tea.Cmd {
 	return func() tea.Msg {
 		defer cancel()
 		result, err := conn.DB().ExecuteContext(ctx, explainStmt)
-		return explainResultMsg{result: result, err: err}
+		return explainResultMsg{result: result, err: err, query: query, forAI: forAI, focus: focus}
 	}
 }
 

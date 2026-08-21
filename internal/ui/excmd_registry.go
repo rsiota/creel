@@ -927,6 +927,15 @@ func exCommands() []exCmdSpec {
 				return m.exAIFix()
 			},
 		},
+		{
+			verbs:   []string{"aiexplain", "why"},
+			desc:    "ask the AI to explain the query (attaches EXPLAIN plan)",
+			usage:   ":aiexplain [focus]",
+			argKind: exArgText,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				return m.exAIExplain(strings.Join(args, " "))
+			},
+		},
 	}
 }
 

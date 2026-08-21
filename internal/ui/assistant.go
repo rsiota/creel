@@ -24,11 +24,12 @@ const (
 
 // assistantMessage is one entry in the chat transcript. For assistant turns,
 // sql holds the extracted statement (what gets applied to the editor / sent
-// back as context) while text holds a short, display-friendly summary.
+// back as context) when the reply was SQL; text holds the user question, a
+// short summary, or the full prose reply (e.g. :aiexplain).
 type assistantMessage struct {
 	role assistantRole
-	text string // user question, or a one-line summary of the AI reply
-	sql  string // extracted SQL (assistant turns only)
+	text string // user question, prose reply, or one-line summary of SQL
+	sql  string // extracted SQL (assistant turns only; empty for prose)
 }
 
 // Assistant is a right-hand chat panel, sized and placed like the inspector,
@@ -206,9 +207,9 @@ func (a *Assistant) Clear() {
 }
 
 // ConversationMessages renders the transcript as provider messages for
-// multi-turn context: user turns as "user", assistant turns (using their
-// extracted SQL) as "assistant". Errors are skipped so a failed turn doesn't
-// pollute the model's view of the conversation.
+// multi-turn context: user turns as "user", assistant turns as "assistant"
+// (extracted SQL when present, otherwise the prose text — e.g. :aiexplain).
+// Errors are skipped so a failed turn doesn't pollute the model's view.
 func (a Assistant) ConversationMessages() []aiMessageOut {
 	out := make([]aiMessageOut, 0, len(a.messages))
 	for _, m := range a.messages {
@@ -218,6 +219,10 @@ func (a Assistant) ConversationMessages() []aiMessageOut {
 		case assistantAI:
 			if m.sql != "" {
 				out = append(out, aiMessageOut{role: "assistant", content: m.sql})
+			} else if t := strings.TrimSpace(m.text); t != "" && t != "(no SQL returned)" {
+				// Prose turns (:aiexplain). Skip the empty-SQL placeholder so
+				// a failed extract doesn't poison follow-up context.
+				out = append(out, aiMessageOut{role: "assistant", content: m.text})
 			}
 		}
 	}
@@ -453,10 +458,14 @@ func (a Assistant) renderTranscriptLines() []string {
 			body = m.text
 		case assistantAI:
 			label = "AI:"
-			if m.sql == "" {
-				body = "(no SQL returned)"
-			} else {
+			switch {
+			case m.sql != "":
 				body = m.sql
+			case strings.TrimSpace(m.text) != "":
+				// Prose replies (:aiexplain) and failed SQL extracts land in text.
+				body = m.text
+			default:
+				body = "(no SQL returned)"
 			}
 		case assistantErr:
 			label = "ERR:"
@@ -510,15 +519,18 @@ func (a Assistant) renderTranscriptLines() []string {
 			}
 		}
 		if strings.TrimSpace(a.streamText) != "" {
-			// Live preview of the streamed reply: render it like a finished AI
-			// turn (SQL highlighted) with a trailing animated spinner to signal
-			// it is still forming.
+			// Live preview of the streamed reply. Highlight like the editor only
+			// when the reply looks like SQL; prose (:aiexplain) stays plain.
 			marker := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("AI:")
 			frame := spinnerFrames[a.spinner%len(spinnerFrames)]
 			tail := " " + lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(frame)
 			wrapped := wrapRunes(a.streamText, wrapW)
+			asSQL := streamLooksLikeSQL(a.streamText)
 			for i, wl := range wrapped {
-				s := highlightSegment(wl)
+				s := wl
+				if asSQL {
+					s = highlightSegment(wl)
+				}
 				if i == len(wrapped)-1 {
 					s += tail
 				}
@@ -536,6 +548,34 @@ func (a Assistant) renderTranscriptLines() []string {
 		}
 	}
 	return lines
+}
+
+// streamLooksLikeSQL reports whether a live reply should be SQL-highlighted.
+// Prose explanations (:aiexplain) usually start with ordinary English; SQL
+// turns start with a keyword or a ``` fence.
+func streamLooksLikeSQL(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	if strings.HasPrefix(s, "```") {
+		return true
+	}
+	first := s
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		first = strings.TrimSpace(s[:i])
+	}
+	low := strings.ToLower(first)
+	for _, p := range []string{
+		"select", "with", "insert", "update", "delete", "create", "alter",
+		"drop", "truncate", "show", "describe", "explain", "begin", "commit",
+		"rollback",
+	} {
+		if strings.HasPrefix(low, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // renderModelSeparator draws the divider above the compose box, embedding the

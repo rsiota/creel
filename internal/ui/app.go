@@ -175,9 +175,14 @@ type statsMsg struct {
 }
 
 // explainResultMsg carries the EXPLAIN query plan result.
+// query is the statement that was explained (for :aiexplain caching).
+// forAI, when set, skips the overlay and hands the plan to the AI explainer.
 type explainResultMsg struct {
 	result db.Result
 	err    error
+	query  string
+	forAI  bool
+	focus  string // optional user focus for :aiexplain (e.g. "why is the join slow")
 }
 
 // lookupResultMsg carries a lookup panel's title and result table, produced
@@ -586,6 +591,10 @@ type Model struct {
 	// pagination wrap); err is the driver message.
 	lastQueryFailSQL string
 	lastQueryFailErr string
+
+	// Last successful EXPLAIN plan, for :aiexplain. Cleared on disconnect.
+	lastExplainSQL  string
+	lastExplainText string
 
 	// :timing — when on, the status bar shows the last query's elapsed time.
 	showTiming       bool
@@ -1593,12 +1602,24 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case explainResultMsg:
 		if msg.err != nil {
-			m.statsMsg = fmt.Sprintf("EXPLAIN error: %v", msg.err)
+			if msg.forAI {
+				m.aiMsg = fmt.Sprintf("EXPLAIN error: %v", msg.err)
+			} else {
+				m.statsMsg = fmt.Sprintf("EXPLAIN error: %v", msg.err)
+			}
 			return m, nil
 		}
 		driver := db.DriverSQLite
 		if m.connection != nil {
 			driver = m.connection.Config().Driver
+		}
+		planText := formatExplainPlan(msg.result, driver)
+		if msg.query != "" && planText != "" {
+			m.lastExplainSQL = msg.query
+			m.lastExplainText = planText
+		}
+		if msg.forAI {
+			return m, m.dispatchAIExplain(msg.query, planText, msg.focus)
 		}
 		m.explainPanel.Show(msg.result, driver)
 		return m, nil
@@ -1671,7 +1692,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case msg.toPanel:
 			m.assistant.SetPending(false)
-			m.assistant.AppendAssistant(summaryFor(msg), msg.sql)
+			if q == aiExplainQuestion {
+				// Prose explanation — keep the full reply; don't offer Apply SQL.
+				m.assistant.AppendAssistant(strings.TrimSpace(msg.reply), "")
+			} else {
+				m.assistant.AppendAssistant(summaryFor(msg), msg.sql)
+			}
 			return m, nil
 		default:
 			// Drop the generated SQL into the editor for review. The user runs

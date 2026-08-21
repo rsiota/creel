@@ -349,6 +349,105 @@ func (m *Model) exAIFix() tea.Cmd {
 	return m.dispatchAI(messages, false, aiFixQuestion)
 }
 
+// aiExplainQuestion is the internal label for :aiexplain (not sent as the
+// user turn). Matching this in the result handler keeps the reply as prose.
+const aiExplainQuestion = "explain query"
+
+// clearLastExplain drops the cached EXPLAIN plan (disconnect).
+func (m *Model) clearLastExplain() {
+	m.lastExplainSQL = ""
+	m.lastExplainText = ""
+}
+
+// exAIExplain asks the model to explain the statement under the cursor (or the
+// last explained SQL), attaching the matching EXPLAIN plan when available.
+// Optional focus text narrows the question (e.g. ":aiexplain why is the join slow").
+// The reply streams into the assistant panel — never auto-run.
+func (m *Model) exAIExplain(focus string) tea.Cmd {
+	if m.connection == nil {
+		m.aiMsg = ":aiexplain needs an open connection"
+		return nil
+	}
+	if m.aiRunning {
+		m.aiMsg = "ai request already in progress"
+		return nil
+	}
+	query := strings.TrimRight(strings.TrimSpace(m.editor.StatementAtCursor()), ";")
+	if query == "" {
+		query = m.lastExplainSQL
+	}
+	if query == "" {
+		m.aiMsg = "no query to explain — put a statement under the cursor"
+		return nil
+	}
+	expanded, err := m.expandQueryParams(query)
+	if err != nil {
+		m.aiMsg = err.Error()
+		return nil
+	}
+	query = expanded
+
+	if m.lastExplainSQL == query && m.lastExplainText != "" {
+		return m.dispatchAIExplain(query, m.lastExplainText, focus)
+	}
+	// No matching cached plan — run EXPLAIN first, then the AI turn.
+	return m.explainForAI(query, focus)
+}
+
+// explainForAI runs EXPLAIN for an explicit query string and routes the plan
+// into :aiexplain (no overlay).
+func (m *Model) explainForAI(query, focus string) tea.Cmd {
+	if m.connection == nil || query == "" {
+		return nil
+	}
+	driver := m.connection.Config().Driver
+	var explainStmt string
+	switch driver {
+	case db.DriverSQLite:
+		explainStmt = "EXPLAIN QUERY PLAN " + query
+	case db.DriverPostgres:
+		explainStmt = "EXPLAIN " + query
+	default:
+		explainStmt = "EXPLAIN " + query
+	}
+	conn := m.connection
+	ctx, cancel := m.queryContext()
+	return func() tea.Msg {
+		defer cancel()
+		result, err := conn.DB().ExecuteContext(ctx, explainStmt)
+		return explainResultMsg{result: result, err: err, query: query, forAI: true, focus: focus}
+	}
+}
+
+// dispatchAIExplain opens the assistant panel and asks the model to explain
+// sql with the attached plan text.
+func (m *Model) dispatchAIExplain(sql, plan, focus string) tea.Cmd {
+	schema, _ := ai.SchemaContext(m.aiIntrospector(), m.aiSchemaFocus(sql)...)
+	messages := []ai.Message{
+		{Role: "system", Content: ai.ExplainSystemPrompt(schema)},
+		{Role: "user", Content: ai.ExplainUserPrompt(sql, plan, focus)},
+	}
+	m.assistant.Show()
+	m.assistant.AppendUser(aiExplainUserLabel(sql, focus))
+	m.assistant.SetPending(true)
+	m.assistant.CancelCompose()
+	m.focus = FocusAssistant
+	m.applyFocus()
+	return m.dispatchAI(messages, true, aiExplainQuestion)
+}
+
+func aiExplainUserLabel(sql, focus string) string {
+	focus = strings.TrimSpace(focus)
+	preview := flattenPaletteQuery(sql)
+	if runeLen(preview) > 48 {
+		preview = clampPaletteText(preview, 48)
+	}
+	if focus == "" {
+		return "Explain: " + preview
+	}
+	return focus + " — " + preview
+}
+
 // sendAssistant dispatches a request from the assistant panel. The full
 // transcript is sent as conversation context so follow-up turns ("now filter
 // to active users") work; the result is appended to the panel's transcript.
@@ -665,6 +764,9 @@ func (m *Model) dispatchAI(messages []ai.Message, toPanel bool, question string)
 			m.aiMsg = "active AI provider has no api key — press M then e to set it"
 		} else {
 			m.aiMsg = "no AI provider configured — press M then n to add one (or set $CREEL_AI_API_KEY)"
+		}
+		if toPanel {
+			m.assistant.SetPending(false)
 		}
 		return nil
 	}

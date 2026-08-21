@@ -52,6 +52,10 @@ commits, so it can come up empty).
   themes in addition to keybindings. Enter opens a table (`SELECT *`), loads
   a bookmark into the editor, or applies a theme. Query history stays on
   `Ctrl+Y`.
+- `:aiexplain` (alias `:why`): ask the AI to explain the statement under the
+  cursor (or the last explained SQL), attaching the EXPLAIN / EXPLAIN QUERY
+  PLAN output. Streams the prose reply into the assistant panel — never
+  auto-runs. Optional focus text, e.g. `:aiexplain why is the join slow`.
 
 ### Fixed
 - ERD mini-map stayed visible for expanded (tall) diagrams instead of hiding when aspect-fitting made the overlay narrower than a minimum, and kept enough width that rank columns aren't cropped off the sides.

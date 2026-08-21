@@ -81,6 +81,35 @@ func TestFixUserPrompt(t *testing.T) {
 	}
 }
 
+func TestExplainSystemPrompt(t *testing.T) {
+	p := ExplainSystemPrompt("CREATE TABLE users (id INT);")
+	for _, want := range []string{
+		"EXPLAIN",
+		"CREATE TABLE users",
+		"Do not reply with only SQL",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("ExplainSystemPrompt missing %q\n%s", want, p)
+		}
+	}
+}
+
+func TestExplainUserPrompt(t *testing.T) {
+	got := ExplainUserPrompt("SELECT * FROM users;", "SCAN TABLE users", "why slow")
+	for _, want := range []string{
+		"SELECT * FROM users;",
+		"SCAN TABLE users",
+		"why slow",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("ExplainUserPrompt missing %q\n%s", want, got)
+		}
+	}
+	if !strings.Contains(ExplainUserPrompt("SELECT 1;", "", ""), "No EXPLAIN plan") {
+		t.Error("empty plan should note unavailability")
+	}
+}
+
 func TestSchemaContext(t *testing.T) {
 	conn := &fakeConn{
 		tables: []string{"users", "orders"},

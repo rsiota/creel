@@ -267,8 +267,10 @@ erDiagram
   OpenAI-compatible endpoint (`:ai`, assistant panel). Schema context is the
   current table plus its FK neighbours (and tables named in the question),
   not the first 100 tables. After a failed query, `:aifix` (alias `:fixsql`)
-  asks the model to rewrite it; review then `ctrl+e` — never auto-run. See
-  [Configuration → AI assistant](configuration.md#ai-assistant).
+  asks the model to rewrite it; review then `ctrl+e` — never auto-run.
+  `:aiexplain` (alias `:why`) explains the statement under the cursor with the
+  EXPLAIN plan attached; the prose reply streams into the assistant panel.
+  See [Configuration → AI assistant](configuration.md#ai-assistant).
 
 ## CLI (headless)
 

@@ -167,6 +167,7 @@ func (m *Model) resetWorkspaceForNewConnection() {
 	m.schemaMsg = ""
 	m.lastQuery = ""
 	m.clearQueryFailure()
+	m.clearLastExplain()
 	m.baseQuery = ""
 	m.queryParams = nil
 	m.filters = nil
@@ -237,6 +238,7 @@ func (m *Model) selectSchema(name string) tea.Cmd {
 	m.tables = nil
 	m.lastQuery = ""
 	m.clearQueryFailure()
+	m.clearLastExplain()
 	m.page = 0
 	m.pageMsg = ""
 	m.statsMsg = ""
@@ -346,6 +348,7 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	m.tables = nil
 	m.lastQuery = ""
 	m.clearQueryFailure()
+	m.clearLastExplain()
 	m.page = 0
 	m.pageMsg = ""
 	m.statsMsg = ""

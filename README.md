@@ -69,7 +69,7 @@ Linux, macOS, and Windows binaries are on the [latest release](https://github.co
 - Session restore — reopen a connection to find your tabs and buffers as you left them.
 - Record inspector — side panel form view tracking the results cursor.
 - Command palette (`Ctrl+P`) — jump to tables, bookmarks, themes, or replay keybindings; help overlay (`?`).
-- AI assistant (`Ctrl+F`) — natural-language to SQL via any OpenAI-compatible endpoint.
+- AI assistant (`Ctrl+F`) — natural-language to SQL via any OpenAI-compatible endpoint; `:aifix` rewrites the last failed query; `:aiexplain` / `:why` explains a query with its EXPLAIN plan.
 
 **Run anywhere** — large result sets are paged for speed and low memory, and a CLI mode (`-e`, `-e -` from stdin, `-format`) runs a query and prints results without the TUI (failures exit `1`).
 
