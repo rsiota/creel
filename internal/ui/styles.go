@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"fmt"
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -40,6 +43,9 @@ type colorPalette struct {
 	fg              lipgloss.Color
 	highlight       lipgloss.Color
 	statusBarBg     lipgloss.Color
+	// fk is optional: when empty, applyPalette derives a soft accent→fg tint
+	// for FK result cells (headers stay the normal primary style).
+	fk lipgloss.Color
 }
 
 // defaultPalette is the Tokyo Night–inspired palette shipped as the default
@@ -92,6 +98,7 @@ var (
 	colorFg              lipgloss.Color
 	colorHighlight       lipgloss.Color
 	colorStatusBarBg     lipgloss.Color
+	colorFK              lipgloss.Color // foreign-key cell cue (headers stay primary)
 )
 
 // sbStyles are status-bar-specific styles that carry the status bar background
@@ -155,6 +162,12 @@ func applyPalette(p colorPalette) {
 	colorFg = p.fg
 	colorHighlight = p.highlight
 	colorStatusBarBg = p.statusBarBg
+	// FK cells only: soft mauve (accent blended toward fg). Headers stay
+	// primary; PK columns stay unstyled aside from the existing * marker.
+	colorFK = p.fk
+	if colorFK == "" {
+		colorFK = mixColors(p.accent, p.fg, 0.62)
+	}
 
 	// Status-bar styles (carry the status-bar bg so ANSI resets within
 	// multi-segment rendered strings don't lose it).
@@ -233,6 +246,37 @@ func applyPalette(p colorPalette) {
 	// SQL highlight styles (declared in sql_highlight.go) also capture colors
 	// at construction, so rebuild them from the now-updated palette.
 	rebuildSQLHighlightStyles()
+}
+
+// mixColors linearly interpolates between a and b by t (0 = a, 1 = b).
+// Non-hex inputs return a unchanged.
+func mixColors(a, b lipgloss.Color, t float64) lipgloss.Color {
+	ar, ag, ab, okA := parseHexRGB(string(a))
+	br, bg, bb, okB := parseHexRGB(string(b))
+	if !okA || !okB {
+		return a
+	}
+	if t < 0 {
+		t = 0
+	} else if t > 1 {
+		t = 1
+	}
+	lerp := func(x, y int) int {
+		return int(math.Round(float64(x)*(1-t) + float64(y)*t))
+	}
+	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", lerp(ar, br), lerp(ag, bg), lerp(ab, bb)))
+}
+
+func parseHexRGB(s string) (r, g, b int, ok bool) {
+	s = strings.TrimPrefix(strings.TrimSpace(s), "#")
+	if len(s) != 6 {
+		return 0, 0, 0, false
+	}
+	n, err := strconv.ParseUint(s, 16, 32)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	return int(n>>16) & 0xff, int(n>>8) & 0xff, int(n) & 0xff, true
 }
 
 // Tab bar styles — declared here, assigned by applyPalette.

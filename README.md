@@ -46,7 +46,7 @@ Linux, macOS, and Windows binaries are on the [latest release](https://github.co
 **Browse**
 
 - Table browser — expand columns, inspect schemas, fuzzy-filter.
-- Results grid — sort, filter, search, hide columns, follow foreign keys (`g d`), chart columns (`M` + `:bar` / `:line` / `:scatter` / `:hist` / `:freq`).
+- Results grid — sort, filter, search, hide columns, follow foreign keys (`g d`), soft FK cell tint, chart columns (`M` + `:bar` / `:line` / `:scatter` / `:hist` / `:freq`).
 - Relationship explorer (`g r`) — browse a row's inbound/outbound FK graph like a folder.
 - Static ERD (`g R`) — graphical entity-relationship diagram; exportable as Mermaid.
 - EXPLAIN plans (`g e`), cross-table search (`S`), column statistics (`g s`).

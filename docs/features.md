@@ -29,10 +29,14 @@ An overview of everything creel can do. For keys, see
   tables.
 - **Results grid** — sort, filter, search, hide/show columns, follow foreign
   keys (`g d`), mark rows and columns, bulk-delete rows, and chart marked
-  columns with `:bar` / `:line` / `:scatter` / `:hist` / `:freq` / `:pie`. Large result sets are paged
-  (LIMIT/OFFSET) for speed and low memory. Bang forms (`:bar!`, `:line!`,
-  `:scatter!`, `:hist!`, `:freq!`, `:pie!`) re-run the last SELECT without the page
-  LIMIT (capped at 50,000 rows).
+  columns with `:bar` / `:line` / `:scatter` / `:hist` / `:freq` / `:pie`.
+  Primary-key columns keep the existing `*` marker only. Foreign-key cells
+  use a soft mauve tint (accent blended toward the theme foreground); headers
+  stay primary, and the `→` follow cue is unchanged. Large result sets are paged
+  (LIMIT/OFFSET) for speed and low
+  memory. Bang forms (`:bar!`, `:line!`, `:scatter!`, `:hist!`, `:freq!`,
+  `:pie!`) re-run the last SELECT without the page LIMIT (capped at 50,000
+  rows).
 
 ### Bar chart (`M` + `:bar`)
 

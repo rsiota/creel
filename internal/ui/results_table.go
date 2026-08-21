@@ -1846,6 +1846,18 @@ func (r ResultsTable) isPKColumn(colName string) bool {
 	return false
 }
 
+// fkColumnFg returns the foreground for a foreign-key results cell.
+// PK columns (including PK+FK) stay unstyled. Headers are never tinted.
+func (r ResultsTable) fkColumnFg(col int) (lipgloss.Color, bool) {
+	if name := r.ColumnName(col); name != "" && r.isPKColumn(name) {
+		return "", false
+	}
+	if _, ok := r.ForeignKeyAt(col); ok {
+		return colorFK, true
+	}
+	return "", false
+}
+
 // View renders the results table.
 func (r ResultsTable) View() string {
 	if !r.hasResult {
@@ -2060,11 +2072,17 @@ func (r ResultsTable) View() string {
 				case isWatchDelta:
 					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorSearch)
 				case isCursorRow:
-					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorCursorRow)
+					fg := colorFg
+					if keyFg, ok := r.fkColumnFg(i); ok {
+						fg = keyFg
+					}
+					style = lipgloss.NewStyle().Foreground(fg).Background(colorCursorRow)
 				default:
 					fg := colorFg
 					if val == "NULL" || db.IsBlobPlaceholder(val) {
 						fg = colorMuted
+					} else if keyFg, ok := r.fkColumnFg(i); ok {
+						fg = keyFg
 					}
 					style = lipgloss.NewStyle().Foreground(fg)
 					if rowIdx%2 == 1 {

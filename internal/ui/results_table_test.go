@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+	"github.com/rsiota/creel/internal/db"
 )
 
 func TestResultsTableCursorNavigation(t *testing.T) {
@@ -659,5 +661,97 @@ func TestTruncateCell(t *testing.T) {
 	got = truncateCell("hello world", 5)
 	if w := len([]rune(got)); w > 6 {
 		t.Errorf("truncateCell(\"hello world\", 5) result too long: %q (%d runes)", got, w)
+	}
+}
+
+func TestFkColumnFg(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult([]string{"id", "user_id", "name"}, [][]string{{"1", "2", "a"}}, "1 row")
+	r.SetEditable("orders", []string{"id"})
+	r.SetForeignKeys("orders", []db.ForeignKey{
+		{Column: "user_id", RefTable: "users", RefColumn: "id"},
+	})
+
+	if _, ok := r.fkColumnFg(0); ok {
+		t.Error("PK id col should stay unstyled")
+	}
+	if fg, ok := r.fkColumnFg(1); !ok || fg != colorFK {
+		t.Errorf("user_id col: got (%q, %v), want colorFK", fg, ok)
+	}
+	if _, ok := r.fkColumnFg(2); ok {
+		t.Error("name col should not be tinted")
+	}
+
+	// PK+FK: still unstyled (PK takes precedence — no tint).
+	r.SetEditable("link", []string{"user_id"})
+	r.SetForeignKeys("link", []db.ForeignKey{
+		{Column: "user_id", RefTable: "users", RefColumn: "id"},
+	})
+	if _, ok := r.fkColumnFg(1); ok {
+		t.Error("PK+FK col should stay unstyled like a PK")
+	}
+}
+
+func TestResultsTableFKCellColorNotHeader(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	applyPalette(defaultPalette)
+
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(prev)
+
+	r := NewResultsTable()
+	r.SetSize(80, 12)
+	r.SetResult(
+		[]string{"id", "user_id", "name"},
+		[][]string{{"1", "9", "alice"}},
+		"1 row",
+	)
+	r.SetEditable("orders", []string{"id"})
+	r.SetForeignKeys("orders", []db.ForeignKey{
+		{Column: "user_id", RefTable: "users", RefColumn: "id"},
+	})
+	// Move cursor off the FK column so the cell uses the default (tinted) style,
+	// not the inverted cursor style.
+	r.SetCursor(0, 0)
+
+	view := r.View()
+	lines := strings.Split(view, "\n")
+	if len(lines) < 4 {
+		t.Fatalf("view too short: %d lines", len(lines))
+	}
+	header, data := lines[1], lines[3]
+
+	// Cursor row paints FK cells with fg+bg together, so match the combined style.
+	fkCell := sgrPrefix(lipgloss.NewStyle().Foreground(colorFK).Background(colorCursorRow))
+	fkAlone := sgrPrefix(lipgloss.NewStyle().Foreground(colorFK).Bold(true))
+	primaryHeader := sgrPrefix(lipgloss.NewStyle().Foreground(colorPrimary).Bold(true))
+
+	if !strings.Contains(data, fkCell) {
+		t.Errorf("data row missing FK cell tint %q\nin: %q", fkCell, data)
+	}
+	if strings.Contains(header, fkAlone) || strings.Contains(header, string(colorFK)) {
+		t.Error("FK header should stay primary, not use the FK tint")
+	}
+	if !strings.Contains(header, primaryHeader) {
+		t.Errorf("headers should still use primary %q", primaryHeader)
+	}
+	if !strings.Contains(stripAnsi(view), "id *") {
+		t.Error("PK header should still show the * marker")
+	}
+}
+
+func TestMixColors(t *testing.T) {
+	a := lipgloss.Color("#000000")
+	b := lipgloss.Color("#ffffff")
+	mid := mixColors(a, b, 0.5)
+	if mid != lipgloss.Color("#808080") {
+		t.Errorf("mix mid = %q, want #808080", mid)
+	}
+	if mixColors(a, b, 0) != a {
+		t.Errorf("t=0 should return a")
+	}
+	if mixColors(a, b, 1) != b {
+		t.Errorf("t=1 should return b")
 	}
 }
