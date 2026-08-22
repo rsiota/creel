@@ -342,7 +342,7 @@ func (ex exCmd) completionView(maxW int) string {
 	}
 	return lipgloss.NewStyle().
 		Border(panelBorder()).
-		BorderForeground(colorPrimary).
+		BorderForeground(colorBorder).
 		Render(strings.Join(lines, "\n"))
 }
 
@@ -398,7 +398,7 @@ func (ex exCmd) argCompletionView(maxW int) string {
 	}
 	return lipgloss.NewStyle().
 		Border(panelBorder()).
-		BorderForeground(colorPrimary).
+		BorderForeground(colorBorder).
 		Render(strings.Join(lines, "\n"))
 }
 
