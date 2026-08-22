@@ -215,3 +215,16 @@ theme picker (a scrollable, filterable overlay — type to filter by name,
 `enter` saves the choice to config, and `esc` reverts. The theme's background
 is painted too, so light themes preview correctly. See [`THIRDPARTY.md`](../THIRDPARTY.md)
 for theme attribution.
+
+You can also change most settings from inside the app with `:set`:
+
+```
+:set transparent_background on
+:set page_size 500
+:set query_timeout 2m
+:set confirm_destructive off
+```
+
+Bare `:set` lists current values; `:set <option>` shows one. Changes apply
+immediately and are written back to `config.yaml` (same persistence as `:theme`
+and `:icons`).

@@ -600,6 +600,16 @@ func exCommands() []exCmdSpec {
 			},
 		},
 		{
+			verbs:    []string{"set"},
+			desc:     "view or change a config setting",
+			usage:    ":set [option] [value]",
+			argKind:  exArgOptional,
+			complete: completeSet,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				return m.exSet(args)
+			},
+		},
+		{
 			verbs:    []string{"peek"},
 			desc:     "one-glance summary of a table",
 			usage:    ":peek [table]",
