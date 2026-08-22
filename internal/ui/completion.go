@@ -137,7 +137,9 @@ func (c *completion) move(delta int) {
 // maxCompletionItems is the maximum visible rows in the popup.
 const maxCompletionItems = 8
 
-// renderCompletion renders the popup box styled like the sidebar fuzzy picker.
+// renderCompletion renders the popup box. Candidates only — no echo of the
+// typed prefix (the editor already shows what the user is typing). Border
+// matches the muted import-path completion dropdown (colorBorder).
 func (c completion) renderCompletion() string {
 	if !c.visible || len(c.candidates) == 0 {
 		return ""
@@ -169,11 +171,10 @@ func (c completion) renderCompletion() string {
 	}
 
 	content := strings.Join(lines, "\n")
-	content = lipgloss.JoinVertical(lipgloss.Left, content, renderPalettePrompt(c.partial, true))
 
 	box := lipgloss.NewStyle().
 		Border(panelBorder()).
-		BorderForeground(colorPrimary).
+		BorderForeground(colorBorder).
 		Padding(0, 0).
 		Render(content)
 

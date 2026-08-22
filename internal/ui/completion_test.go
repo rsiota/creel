@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/rsiota/creel/internal/config"
 	"github.com/rsiota/creel/internal/db"
 )
@@ -317,5 +319,24 @@ func TestAutoTriggerFromApp(t *testing.T) {
 		if c.text == "total" {
 			t.Fatal("orders.total should not appear after FROM users WHERE")
 		}
+	}
+}
+
+func TestRenderCompletionOmitsTypedPrefix(t *testing.T) {
+	applyPalette(defaultPalette)
+	c := completion{
+		visible: true,
+		partial: "us",
+		candidates: []completionItem{
+			{text: "users", kind: kindTable},
+			{text: "user_id", kind: kindColumn},
+		},
+	}
+	out := ansi.Strip(c.renderCompletion())
+	if strings.Contains(out, "❯") || strings.Contains(out, "> us") {
+		t.Errorf("popup should not echo typed prefix, got:\n%s", out)
+	}
+	if !strings.Contains(out, "users") {
+		t.Errorf("popup missing candidates:\n%s", out)
 	}
 }
