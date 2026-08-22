@@ -105,17 +105,16 @@ func TestHelpSearchAdvanceAndWrap(t *testing.T) {
 	}
 }
 
-// n/N with no active search fall through to "unmapped → dismiss" (return false),
-// preserving the old behaviour.
+// n/N with no active search are no-ops but still consumed (keep help open).
 func TestHelpSearchNoOpWithoutQuery(t *testing.T) {
 	h := NewHelpPanel()
 	h.Show()
 	h.SetSize(120, 40)
-	if h.HandleKey(keyMsg("n")) {
-		t.Error("n with no query should not be consumed")
+	if !h.HandleKey(keyMsg("n")) {
+		t.Error("n with no query should be consumed")
 	}
-	if h.HandleKey(keyMsg("N")) {
-		t.Error("N with no query should not be consumed")
+	if !h.HandleKey(keyMsg("N")) {
+		t.Error("N with no query should be consumed")
 	}
 }
 

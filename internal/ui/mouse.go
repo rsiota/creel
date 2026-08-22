@@ -584,10 +584,11 @@ func (m *Model) dismissOverlayOnOutsideClick(msg tea.MouseMsg) bool {
 		return msg.X < x || msg.X >= x+w || msg.Y < y || msg.Y >= y+h
 	}
 
-	// Help panel is fullscreen — any click dismisses.
+	// Help is modal and owns mouse input via handleHelpMouse — never dismiss
+	// it from the workspace click-outside path (that path must not run while
+	// help is open; if it did, a stray click would wipe a fullscreen overlay).
 	if m.help.IsVisible() {
-		m.help.Hide()
-		return true
+		return false
 	}
 
 	// 65% centered overlays.
@@ -662,14 +663,30 @@ const helpWheelLines = 3
 
 // handleHelpMouse routes mouse events to the modal help overlay: the wheel
 // scrolls the active page; other events (clicks, motion) are ignored so they
-// neither dismiss nor navigate it.
+// neither dismiss nor navigate it — except left-clicks on the tab bar.
 func (m Model) handleHelpMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// Prefer Button over deprecated Type so wheel events still scroll when a
+	// terminal reports them without a matching Type (or with a release action).
+	ev := tea.MouseEvent(msg)
+	if ev.IsWheel() {
+		switch ev.Button {
+		case tea.MouseButtonWheelUp:
+			m.help.ScrollBy(-helpWheelLines)
+		case tea.MouseButtonWheelDown:
+			m.help.ScrollBy(helpWheelLines)
+		}
+		return m, nil
+	}
 	switch msg.Type {
 	case tea.MouseWheelUp:
 		m.help.ScrollBy(-helpWheelLines)
 	case tea.MouseWheelDown:
 		m.help.ScrollBy(helpWheelLines)
 	case tea.MouseLeft:
+		// Ignore drag motion; only presses switch tabs.
+		if msg.Action == tea.MouseActionMotion {
+			return m, nil
+		}
 		// Click a tab label to switch pages. The panel is centred (panelLeft
 		// from the width) and starts at the top row, so the tab bar sits at a
 		// fixed screen row.

@@ -118,9 +118,10 @@ func TestHelpCloseKeysDismisses(t *testing.T) {
 			t.Errorf("close key %q should not be consumed (caller hides)", k)
 		}
 	}
-	// An unmapped key is also not consumed → dismisses (old "any key" feel).
-	if h.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")}) {
-		t.Error("unmapped key should not be consumed")
+	// An unmapped key is consumed so the overlay stays open (stray keys from
+	// rapid mouse-wheel overscroll must not dismiss help).
+	if !h.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")}) {
+		t.Error("unmapped key should be consumed (keep help open)")
 	}
 	// Nav keys are consumed.
 	if !h.HandleKey(tea.KeyMsg{Type: tea.KeyTab}) {
@@ -310,5 +311,60 @@ func TestHelpViewFillsScreen(t *testing.T) {
 	}
 	if hh := lipgloss.Height(out); hh != 23 {
 		t.Errorf("overlay height = %d, want 23", hh)
+	}
+}
+
+// TestHelpStaysOpenOnWheelAndStrayKeys is a regression for help vanishing when
+// flinging the mouse wheel to the top/bottom: wheel events must scroll (not
+// dismiss), and any stray KeyMsg injected by overscroll must not close help.
+func TestHelpStaysOpenOnWheelAndStrayKeys(t *testing.T) {
+	m := NewModel(&config.Config{})
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = mm.(Model)
+
+	mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	m = mm.(Model)
+	if !m.help.IsVisible() {
+		t.Fatal("help not visible after ?")
+	}
+
+	// Fling toward the bottom, then the top.
+	for i := 0; i < 80; i++ {
+		mm, _ = m.Update(tea.MouseMsg{
+			Type:   tea.MouseWheelDown,
+			Button: tea.MouseButtonWheelDown,
+			Action: tea.MouseActionPress,
+			X:      40, Y: 20,
+		})
+		m = mm.(Model)
+	}
+	if !m.help.IsVisible() {
+		t.Fatal("help closed while scrolling down")
+	}
+	for i := 0; i < 80; i++ {
+		mm, _ = m.Update(tea.MouseMsg{
+			Type:   tea.MouseWheelUp,
+			Button: tea.MouseButtonWheelUp,
+			Action: tea.MouseActionPress,
+			X:      40, Y: 20,
+		})
+		m = mm.(Model)
+	}
+	if !m.help.IsVisible() {
+		t.Fatal("help closed while scrolling up")
+	}
+
+	// Stray key that used to mean "any key dismisses".
+	mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m = mm.(Model)
+	if !m.help.IsVisible() {
+		t.Fatal("help closed on unmapped key (overscroll noise)")
+	}
+
+	// Explicit close still works.
+	mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = mm.(Model)
+	if m.help.IsVisible() {
+		t.Fatal("esc should still close help")
 	}
 }

@@ -17,7 +17,8 @@ import (
 //     with descriptions wrapped, so nothing is truncated.
 //
 // Both pages scroll vertically (↑/↓ or j/k, PgUp/PgDn, g/G). Tab / shift+tab
-// switch pages; ? or esc (or any unmapped key) closes it.
+// switch pages; ? / q / esc close it (unmapped keys leave it open so mouse
+// overscroll noise cannot dismiss it).
 //
 // Search (/): typing `/query` live-highlights matches on the current page and
 // scrolls the first match into view; n / N cycle matches; esc clears. Scrolling
@@ -88,11 +89,14 @@ func (h *HelpPanel) SetSize(width, height int) {
 // the help overlay open even on keys it would otherwise dismiss).
 func (h HelpPanel) Typing() bool { return h.typing }
 
-// HandleKey routes a keypress to the open help overlay. It returns true for
-// navigation keys (scroll / page-switch / search), which the caller treats as
-// consumed (the overlay stays open). It returns false for close keys (esc, ?,
-// q) AND for any unmapped key — the caller then hides the overlay, preserving
-// the old "any key dismisses" feel while adding navigation.
+// HandleKey routes a keypress to the open help overlay. It returns true when
+// the key is consumed and the overlay should stay open (scroll / page-switch /
+// search, and any other non-close key). It returns false only for explicit
+// close keys (esc with no search, ?, q, ctrl+c) so the caller hides the overlay.
+//
+// Unmapped keys are consumed rather than dismissed: rapid mouse-wheel scrolling
+// can inject stray key events (partial CSI / overscroll), and treating those as
+// "any key closes" made the panel vanish at the top/bottom of a fling.
 func (h *HelpPanel) HandleKey(msg tea.KeyMsg) bool {
 	// While the / prompt is focused, every key is consumed by the search.
 	if h.typing {
@@ -149,17 +153,15 @@ func (h *HelpPanel) HandleKey(msg tea.KeyMsg) bool {
 		h.afterPageChange()
 		return true
 	case "n":
-		// Only consumed when a search is active; otherwise falls through to
-		// "unmapped → dismiss" (the old behaviour).
 		if h.matchRe != nil {
 			h.advanceMatch(1)
-			return true
 		}
+		return true
 	case "N":
 		if h.matchRe != nil {
 			h.advanceMatch(-1)
-			return true
 		}
+		return true
 	case "j", "down":
 		h.setCurOff(h.curOff() + 1)
 		return true
@@ -179,7 +181,8 @@ func (h *HelpPanel) HandleKey(msg tea.KeyMsg) bool {
 		h.setCurOff(h.maxOff()) // jump to the bottom
 		return true
 	}
-	return false
+	// Unknown key: keep help open (do not dismiss).
+	return true
 }
 
 // curOff / setCurOff read/write the offset for the active page. The lower bound
