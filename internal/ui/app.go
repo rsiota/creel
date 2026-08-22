@@ -3126,6 +3126,20 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m = m.moveFocus(msg.String())
 		return m, nil
+	case "alt+h", "alt+j", "alt+k", "alt+l",
+		"alt+ctrl+h", "alt+ctrl+j", "alt+ctrl+k", "alt+ctrl+l":
+		// Nudge the adjacent seam in that direction. alt+ctrl+… is the
+		// Bubble Tea encoding of ctrl+alt+letter (useful when plain alt is
+		// claimed by the window manager). Same guards as focus movement so
+		// typing in insert mode is unaffected.
+		if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() {
+			return m, nil
+		}
+		if m.focus == FocusEditor && m.editor.CapturingKeys() {
+			break
+		}
+		m = m.resizePane(msg.String())
+		return m, nil
 	case "ctrl+o":
 		m.inspector.Toggle()
 		if m.inspector.IsVisible() {

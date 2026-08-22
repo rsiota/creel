@@ -20,6 +20,7 @@ test keeps the documentation in sync with what's actually wired.
 | `B`             | Bookmark current query          |
 | `ctrl+o`        | Toggle record inspector         |
 | `ctrl+h/j/k/l`  | Move focus between panels       |
+| `alt+h/j/k/l`   | Resize focused pane (also `ctrl+alt+…`) |
 | `tab` / `shift+tab` | Cycle focus (skips tab bar) |
 | `ctrl+d` / `ctrl+u` | Next / previous page        |
 | `ctrl+p`        | Jump-anywhere palette           |

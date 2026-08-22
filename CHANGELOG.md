@@ -72,7 +72,7 @@ commits, so it can come up empty).
 
 ## [0.2.0] - 2026-08-14
 
-Charts, a richer FK explorer, mouse-resizeable panels, and CLI output — plus a quicker path from the sidebar into results.
+Charts, a richer FK explorer, mouse- and keyboard-resizeable panels, and CLI output — plus a quicker path from the sidebar into results.
 
 ### Added
 - Bar charts from marked result columns (`M` + `:bar`), with sum/count/avg grouping and a cursor.
@@ -80,6 +80,8 @@ Charts, a richer FK explorer, mouse-resizeable panels, and CLI output — plus a
 - Browse and insert related rows from the FK explorer.
 - Remembered results-column widths per table.
 - Mouse-resize for the sidebar↔centre, editor↔results, and centre↔right seams.
+- Keyboard pane resize: `alt+h/j/k/l` (or `ctrl+alt+…`) nudges the adjacent
+  seam in that direction (same seams as mouse drag).
 - `-format` query output and `-c` connection reuse with flag overrides.
 - Read-only cell viewer (`E`) on non-editable results.
 - `:copyrow` to copy the current result row.

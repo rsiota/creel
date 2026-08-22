@@ -327,6 +327,104 @@ func (m Model) moveFocus(direction string) Model {
 	return m
 }
 
+// paneResizeStep is how many cells alt+h/j/k/l nudges a split per keypress.
+const paneResizeStep = 3
+
+// normalizePaneResizeKey maps resize key strings to a canonical alt+letter
+// form. Bubble Tea reports ctrl+alt+letter as "alt+ctrl+letter".
+func normalizePaneResizeKey(key string) (string, bool) {
+	switch key {
+	case "alt+h", "alt+j", "alt+k", "alt+l":
+		return key, true
+	case "alt+ctrl+h":
+		return "alt+h", true
+	case "alt+ctrl+j":
+		return "alt+j", true
+	case "alt+ctrl+k":
+		return "alt+k", true
+	case "alt+ctrl+l":
+		return "alt+l", true
+	default:
+		return "", false
+	}
+}
+
+// resizePane moves the seam adjacent to the focused panel in the given
+// direction (alt+h/j/k/l, or alt+ctrl+… for ctrl+alt). Direction matches
+// the key string from tea.KeyMsg. Vertical moves exit editor maximize first
+// (same as mouse-dragging the seam).
+func (m Model) resizePane(direction string) Model {
+	direction, ok := normalizePaneResizeKey(direction)
+	if !ok {
+		return m
+	}
+
+	g := m.workspaceGeom()
+	// Seed stored splits from the live layout so the first nudge starts from
+	// what the user sees (0 means "use default" until then).
+	if m.editorSplitH <= 0 {
+		m.editorSplitH = g.EditorHeight
+	}
+	if m.sidebarSplitW <= 0 {
+		m.sidebarSplitW = g.SidebarWidth
+	}
+	if g.RightSlotW > 0 && m.rightSlotSplitW <= 0 {
+		m.rightSlotSplitW = g.RightSlotW
+	}
+
+	if m.editorMaximized && (direction == "alt+j" || direction == "alt+k") {
+		m.editorMaximized = false
+		m.editorSplitH = g.EditorHeight
+	}
+
+	switch m.focus {
+	case FocusConnections:
+		// Sidebar: nudge the sidebar↔centre seam.
+		switch direction {
+		case "alt+l":
+			m.sidebarSplitW += paneResizeStep
+		case "alt+h":
+			m.sidebarSplitW -= paneResizeStep
+		}
+	case FocusTabBar, FocusEditor, FocusResults:
+		// Centre column: j/k move the editor↔results seam both ways (same as
+		// sidebar h/l), regardless of which centre pane is focused.
+		switch direction {
+		case "alt+j":
+			m.editorSplitH += paneResizeStep
+		case "alt+k":
+			m.editorSplitH -= paneResizeStep
+		case "alt+h":
+			m.sidebarSplitW -= paneResizeStep
+		case "alt+l":
+			if g.RightSlotW > 0 {
+				m.rightSlotSplitW -= paneResizeStep
+			}
+		}
+	case FocusInspector, FocusAssistant, FocusExplorer:
+		if g.RightSlotW == 0 {
+			return m
+		}
+		switch direction {
+		case "alt+h":
+			m.rightSlotSplitW += paneResizeStep
+		case "alt+l":
+			m.rightSlotSplitW -= paneResizeStep
+		}
+	}
+
+	m.layoutWorkspace()
+	// Re-sync stored values to the clamped layout so repeated nudges don't
+	// accumulate past the min/max and feel sticky.
+	g = m.workspaceGeom()
+	m.editorSplitH = g.EditorHeight
+	m.sidebarSplitW = g.SidebarWidth
+	if g.RightSlotW > 0 {
+		m.rightSlotSplitW = g.RightSlotW
+	}
+	return m
+}
+
 func (m Model) updateLayout() Model {
 	if m.width == 0 || m.height == 0 {
 		return m
