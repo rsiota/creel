@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rsiota/creel/internal/config"
 	"github.com/rsiota/creel/internal/db"
@@ -338,5 +339,26 @@ func TestRenderCompletionOmitsTypedPrefix(t *testing.T) {
 	}
 	if !strings.Contains(out, "users") {
 		t.Errorf("popup missing candidates:\n%s", out)
+	}
+}
+
+func TestDimBackgroundUsesOverlayDim(t *testing.T) {
+	applyPalette(themes["git-hub-light-default"])
+	want := lipgloss.NewStyle().Foreground(colorOverlayDim).Render("SELECT * FROM users")
+	got := dimBackground("SELECT * FROM users")
+	if got != want {
+		t.Fatalf("dimBackground = %q want %q", got, want)
+	}
+	// Soft enough to recede, still a step above collapsing into the bg.
+	vsBg := contrastRatio(string(colorOverlayDim), string(colorBg))
+	if vsBg < 1.4 || vsBg > 2.0 {
+		t.Fatalf("overlay dim/bg contrast %.2f outside 1.4–2.0 (dim=%s bg=%s)",
+			vsBg, colorOverlayDim, colorBg)
+	}
+	if contrastRatio(string(colorOverlayDim), string(colorBg)) >=
+		contrastRatio(string(colorERDDim), string(colorBg))-0.05 {
+		t.Fatalf("overlay dim should be softer than ERD dim (overlay/bg=%.2f erd/bg=%.2f)",
+			contrastRatio(string(colorOverlayDim), string(colorBg)),
+			contrastRatio(string(colorERDDim), string(colorBg)))
 	}
 }

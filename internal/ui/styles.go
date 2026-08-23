@@ -109,6 +109,9 @@ var (
 	// and dim (faded cards / idle arrows) keep a contrast gap on every theme.
 	colorERDVivid lipgloss.Color
 	colorERDDim   lipgloss.Color
+	// Overlay backdrop: a touch more faded than ERD dim — content behind
+	// popups need not be readable, only recognisable as “there”.
+	colorOverlayDim lipgloss.Color
 )
 
 // sbStyles are status-bar-specific styles that carry the status bar background
@@ -191,6 +194,8 @@ func applyPalette(p colorPalette) {
 	// for everything else. Reusing muted/primary collapses on light themes
 	// (similar luminance); derive a pair with an explicit contrast gap.
 	colorERDVivid, colorERDDim = deriveERDColors(p)
+	// Popup backdrop: same wash helper, softer than ERD dim (legibility not needed).
+	colorOverlayDim = erdDimWash(p.bg, p.fg, overlayDimMinBgContrast)
 
 	// Status-bar styles (carry the status-bar bg so ANSI resets within
 	// multi-segment rendered strings don't lose it).
@@ -337,6 +342,11 @@ const erdVividDimMinGap = 1.5
 // chrome (3.0 felt too strong; ~2.5 was almost there).
 const erdDimMinBgContrast = 2.2
 
+// overlayDimMinBgContrast is the target for content behind long-lived popups.
+// Softer than ERD dim (~2.2): the backdrop only needs to read as recessed, not
+// stay readable. 1.7 is a mild step down without collapsing into the bg.
+const overlayDimMinBgContrast = 1.7
+
 // deriveERDColors builds the ERD selection pair from a palette. Dim is chosen
 // for readability on bg first; vivid (from primary) is then strengthened toward
 // fg if needed so the vivid/dim gap clears. That way faded cards stay legible
@@ -363,10 +373,11 @@ func deriveERDColors(p colorPalette) (vivid, dim lipgloss.Color) {
 }
 
 // erdDimWash mixes bg toward fg to land near targetContrast against bg.
+// Range covers both readable ERD dim (~2.2) and softer overlay dim (~1.7).
 func erdDimWash(bg, fg lipgloss.Color, targetContrast float64) lipgloss.Color {
-	best := mixColors(bg, fg, 0.48)
+	best := mixColors(bg, fg, 0.40)
 	bestDiff := absFloat(contrastRatio(string(best), string(bg)) - targetContrast)
-	for t := 0.35; t <= 0.65; t += 0.02 {
+	for t := 0.18; t <= 0.65; t += 0.02 {
 		cand := mixColors(bg, fg, t)
 		diff := absFloat(contrastRatio(string(cand), string(bg)) - targetContrast)
 		if diff < bestDiff {

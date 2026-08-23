@@ -49,8 +49,13 @@ func (p *CellEditPopup) Show(val string, row, col int, colName string, readOnly 
 	}
 
 	ta.SetValue(val)
-	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
-	ta.FocusedStyle.Text = lipgloss.NewStyle().Foreground(colorFg)
+	// CursorLine must carry an explicit fg: bubbles paints the cursor line
+	// with CursorLine alone (not Text), and an empty style leaves runes at
+	// the terminal default FG — illegible once paintBg lays the theme bg
+	// under a light palette on a dark terminal (or vice versa).
+	editText := lipgloss.NewStyle().Foreground(colorFg)
+	ta.FocusedStyle.CursorLine = editText
+	ta.FocusedStyle.Text = editText
 	ta.FocusedStyle.Placeholder = lipgloss.NewStyle().Foreground(colorMuted)
 	ta.BlurredStyle = ta.FocusedStyle
 	p.ta = ta
@@ -262,7 +267,7 @@ func (p CellEditPopup) readOnlyLines(bs lipgloss.Style) []string {
 		if p.jsonMode {
 			content = highlightJSON(raw)
 		} else {
-			content = raw
+			content = lipgloss.NewStyle().Foreground(colorFg).Render(raw)
 		}
 		out = append(out, bs.Render("│ ")+content+bs.Render(" │"))
 	}

@@ -96,3 +96,26 @@ func TestCellEditPopupReadOnlyView(t *testing.T) {
 		t.Errorf("after scrolling home, the first line should be visible again")
 	}
 }
+
+// TestCellEditPopupCursorLineHasForeground verifies the bubbles cursor line
+// carries an explicit theme fg. Clearing CursorLine (the old default) left the
+// active edit line unstyled, so paintBg's theme bg made it illegible.
+func TestCellEditPopupCursorLineHasForeground(t *testing.T) {
+	applyPalette(themes["git-hub-light-default"])
+	p := NewCellEditPopup()
+	p.Show("hello world", 0, 0, "name", false)
+	p.SetMaxSize(60, 5)
+	p.ta.Focus()
+	p.ta.Cursor.Blink = false
+
+	view := p.View()
+	fgStyled := lipgloss.NewStyle().Foreground(colorFg).Render("hello")
+	if !strings.Contains(view, fgStyled) && !strings.Contains(view, "hello") {
+		t.Fatalf("popup missing value text")
+	}
+	// The opening SGR for colorFg must appear before the cursor-line content.
+	prefix := sgrPrefix(lipgloss.NewStyle().Foreground(colorFg))
+	if prefix == "" || !strings.Contains(view, prefix) {
+		t.Fatalf("cursor-line text missing theme fg SGR %q in:\n%s", prefix, view)
+	}
+}

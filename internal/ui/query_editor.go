@@ -73,7 +73,7 @@ func NewQueryEditor() QueryEditor {
 	ta.CharLimit = 0
 	ta.SetHeight(5)
 
-	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle().Foreground(colorFg)
 	ta.FocusedStyle.Text = lipgloss.NewStyle().Foreground(colorFg)
 	ta.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(colorPrimary)
 	ta.BlurredStyle = ta.FocusedStyle

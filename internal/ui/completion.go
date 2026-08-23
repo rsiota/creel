@@ -95,9 +95,10 @@ func overlayLine(bgLine, fgLine string, x int) string {
 }
 
 // dimBackground strips all ANSI styling from the view and re-renders it in the
-// muted colour. Used behind long-lived editing overlays to focus attention.
+// overlay-dim colour — a touch softer than ERD card dim, since content behind
+// popups need not stay readable. Used behind long-lived editing overlays.
 func dimBackground(view string) string {
-	return lipgloss.NewStyle().Foreground(colorMuted).Render(ansi.Strip(view))
+	return lipgloss.NewStyle().Foreground(colorOverlayDim).Render(ansi.Strip(view))
 }
 
 // filterCandidates returns candidates whose text fuzzy-matches partial
