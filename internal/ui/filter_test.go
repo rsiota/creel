@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/rsiota/creel/internal/config"
 	"github.com/rsiota/creel/internal/db"
 )
@@ -268,6 +269,28 @@ func TestFilterPicker_ToggleSelected(t *testing.T) {
 	p.ToggleSelected() // toggle off
 	if vals := p.SelectedValues(); len(vals) != 0 {
 		t.Errorf("expected no selections, got %v", vals)
+	}
+}
+
+// TestFilterPicker_UnselectedRowsHaveForeground verifies value rows carry an
+// explicit theme fg. Unstyled text was illegible under paintBg on light themes.
+func TestFilterPicker_UnselectedRowsHaveForeground(t *testing.T) {
+	applyPalette(themes["git-hub-light-default"])
+	p := NewFilterPicker()
+	p.Show("country")
+	p.SetValues([]string{"UK", "US", "FR"}, nil)
+	p.SetSize(40, 12)
+
+	view := p.View()
+	// Cursor is on UK (selected row); US is an unselected row that must be
+	// painted with theme fg, not left at the terminal default.
+	prefix := sgrPrefix(lipgloss.NewStyle().Foreground(colorFg))
+	if prefix == "" {
+		t.Fatal("empty fg SGR prefix")
+	}
+	needle := prefix + "  US"
+	if !strings.Contains(view, needle) {
+		t.Fatalf("unselected filter value missing theme fg styling (want %q); view:\n%s", needle, view)
 	}
 }
 

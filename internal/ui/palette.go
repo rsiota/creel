@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // paletteJumpKind identifies a non-keybinding palette action.
@@ -434,9 +435,12 @@ func renderPaletteRow(content string, selected bool) string {
 		return lipgloss.NewStyle().
 			Background(colorPrimary).
 			Foreground(colorBg).
-			Render("❯ " + content)
+			Render("❯ " + ansi.Strip(content))
 	}
-	return "  " + content
+	// Explicit theme fg: paintBg fills the theme background under every cell,
+	// so unstyled text inherits the terminal default FG and can be illegible
+	// on light themes (same class of bug as highlightMatches / CursorLine).
+	return lipgloss.NewStyle().Foreground(colorFg).Render("  " + ansi.Strip(content))
 }
 
 // renderPaletteRowWithTick renders a row like renderPaletteRow, but places
@@ -451,12 +455,19 @@ func renderPaletteRowWithTick(content string, tick string, selected bool, width 
 	if gap < 1 {
 		gap = 1
 	}
-	line := content + strings.Repeat(" ", gap) + tick
+	pad := strings.Repeat(" ", gap)
 	if selected {
+		line := ansi.Strip(content) + pad + ansi.Strip(tick)
 		return lipgloss.NewStyle().
 			Background(colorPrimary).
 			Foreground(colorBg).
 			Render("❯ " + line)
 	}
-	return "  " + line
+	fg := lipgloss.NewStyle().Foreground(colorFg)
+	// Match highlighting may already style content; leave those SGR spans
+	// alone and only paint plain (unstyled) values with theme fg.
+	if ansi.Strip(content) == content {
+		return fg.Render("  "+content+pad) + tick
+	}
+	return fg.Render("  ") + content + fg.Render(pad) + tick
 }
