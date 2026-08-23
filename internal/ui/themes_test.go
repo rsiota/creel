@@ -1,9 +1,6 @@
 package ui
 
 import (
-	"math"
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
@@ -180,30 +177,4 @@ func TestThemeVisualForegroundContrast(t *testing.T) {
 				name, ratio, p.visual, p.fg)
 		}
 	}
-}
-
-// relLuminance returns the WCAG relative luminance of a hex color like "#7aa2f7".
-func relLuminance(hex string) float64 {
-	hex = strings.TrimPrefix(hex, "#")
-	r, _ := strconv.ParseUint(hex[0:2], 16, 8)
-	g, _ := strconv.ParseUint(hex[2:4], 16, 8)
-	b, _ := strconv.ParseUint(hex[4:6], 16, 8)
-	channel := func(c uint64) float64 {
-		v := float64(c) / 255
-		if v <= 0.03928 {
-			return v / 12.92
-		}
-		return math.Pow((v+0.055)/1.055, 2.4)
-	}
-	return 0.2126*channel(r) + 0.7152*channel(g) + 0.0722*channel(b)
-}
-
-// contrastRatio returns the WCAG contrast ratio between two hex colors.
-func contrastRatio(a, b string) float64 {
-	la := relLuminance(a)
-	lb := relLuminance(b)
-	if la < lb {
-		la, lb = lb, la
-	}
-	return (la + 0.05) / (lb + 0.05)
 }

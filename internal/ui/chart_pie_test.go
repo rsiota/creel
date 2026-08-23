@@ -159,6 +159,46 @@ func TestPieSelectedSliceFilled(t *testing.T) {
 	}
 }
 
+// pieSliceColor must read the live palette. A package-level colour slice would
+// capture zero values at init (chart_pie.go sorts before styles.go) and leave
+// the pie on the terminal default FG — invisible under paintBg on light themes.
+func TestPieSliceColorTracksPalette(t *testing.T) {
+	defer applyPalette(defaultPalette)
+
+	applyPalette(lightPalette)
+	pal := pieSlicePalette()
+	if len(pal) != 6 {
+		t.Fatalf("pieSlicePalette len=%d, want 6", len(pal))
+	}
+	// Light theme: every outline colour clears the stronger outline floor.
+	for i, c := range pal {
+		if ratio := contrastRatio(string(c), string(colorBg)); ratio < pieOutlineMinContrast {
+			t.Errorf("pieSlicePalette[%d]=%s contrast %.2f < %.1f", i, c, ratio, pieOutlineMinContrast)
+		}
+	}
+	// Still hue-distinct from primary (not collapsed to plain fg for slot 0
+	// unless primary itself can't be rescued — light primary usually darkens).
+	if got := pieSliceColor(0); string(got) == "" {
+		t.Fatal("pieSliceColor(0) empty")
+	}
+
+	applyPalette(gruvboxPalette)
+	if got := pieSliceColor(0); string(got) == "" {
+		t.Fatal("after gruvbox: pieSliceColor(0) empty")
+	}
+
+	applyPalette(lightPalette)
+	c := ChartPanel{cursor: 0}
+	lines := c.renderPieGrid(10, 10, []chartBar{{value: 1}, {value: 1}}, 10)
+	joined := strings.Join(lines, "")
+	if !strings.Contains(joined, "\x1b[") {
+		t.Fatal("pie grid rendered without ANSI colour (slices would be invisible on light bg)")
+	}
+	if ansi.Strip(joined) == joined {
+		t.Fatal("pie grid has no styled cells")
+	}
+}
+
 func TestPieLegendAlignment(t *testing.T) {
 	c := NewChartPanel()
 	c.kind = chartKindPie

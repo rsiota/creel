@@ -8,14 +8,52 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// pieSliceColors cycles through theme accents for distinct slices.
-var pieSliceColors = []lipgloss.Color{
-	colorPrimary,
-	colorAccent,
-	colorSuccess,
-	colorLabel,
-	colorFg,
-	colorWarn,
+// pieSliceColor returns the i-th slice accent from the live palette. Colours
+// are read at call time (not package-init): a package-level []lipgloss.Color
+// would snapshot the zero values of colorPrimary/… because chart_pie.go's
+// init runs before styles.go's applyPalette.
+func pieSliceColor(i int) lipgloss.Color {
+	colors := pieSlicePalette()
+	return colors[i%len(colors)]
+}
+
+// pieOutlineMinContrast is stronger than WCAG AA: unselected wedges are
+// sparse Braille borders, so they need more ink weight than solid text.
+const pieOutlineMinContrast = 7.0
+
+// pieSlicePalette returns saturated accents, each darkened toward fg when
+// needed so outline-only wedges clear pieOutlineMinContrast against bg.
+// Hue order stays fixed (blue, purple, green, red, amber, teal) for
+// distinct slices; we only lift contrast, never swap in greys.
+func pieSlicePalette() []lipgloss.Color {
+	candidates := []lipgloss.Color{
+		colorPrimary,
+		colorAccent,
+		colorSuccess,
+		colorError,
+		colorWarn,
+		colorMark,
+	}
+	out := make([]lipgloss.Color, len(candidates))
+	for i, c := range candidates {
+		out[i] = ensureOutlineContrast(c, colorBg, colorFg, pieOutlineMinContrast)
+	}
+	return out
+}
+
+// ensureOutlineContrast returns c when it already clears minRatio against bg;
+// otherwise mixes c toward fg until it does (or returns fg).
+func ensureOutlineContrast(c, bg, fg lipgloss.Color, minRatio float64) lipgloss.Color {
+	if contrastRatio(string(c), string(bg)) >= minRatio {
+		return c
+	}
+	for t := 0.1; t <= 1.0; t += 0.1 {
+		cand := mixColors(c, fg, t)
+		if contrastRatio(string(cand), string(bg)) >= minRatio {
+			return cand
+		}
+	}
+	return fg
 }
 
 const pieLegendMinW = 22
@@ -149,7 +187,7 @@ func pieComposeLayout(inner, availH int, legend []string, legendW, legendH int, 
 
 func (c ChartPanel) pieLegendLines(vis []chartBar, total float64) []string {
 	markerSt := func(i int) lipgloss.Style {
-		return lipgloss.NewStyle().Foreground(pieSliceColor(i))
+		return lipgloss.NewStyle().Foreground(pieSliceColor(i)).Bold(true)
 	}
 	labelSt := lipgloss.NewStyle().Foreground(colorFg)
 	valSt := lipgloss.NewStyle().Foreground(colorLabel)
@@ -183,10 +221,6 @@ func (c ChartPanel) pieLegendLines(vis []chartBar, total float64) []string {
 	return out
 }
 
-func pieSliceColor(i int) lipgloss.Color {
-	return pieSliceColors[i%len(pieSliceColors)]
-}
-
 // pieBrailleFill is the Braille dot mask used for the selected slice.
 const pieBrailleFill = 0xFF
 
@@ -216,7 +250,7 @@ func (c ChartPanel) renderPieGrid(plotW, plotH int, vis []chartBar, lineW int) [
 			}
 
 			ch := brailleBase + rune(cellBits)
-			st := lipgloss.NewStyle().Foreground(pieSliceColor(idx))
+			st := lipgloss.NewStyle().Foreground(pieSliceColor(idx)).Bold(true)
 			b.WriteString(st.Render(string(ch)))
 		}
 		line := b.String()

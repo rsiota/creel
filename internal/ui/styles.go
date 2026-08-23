@@ -293,6 +293,32 @@ func parseHexRGB(s string) (r, g, b int, ok bool) {
 	return int(n>>16) & 0xff, int(n>>8) & 0xff, int(n) & 0xff, true
 }
 
+// relLuminance returns the WCAG relative luminance of a hex color like "#7aa2f7".
+func relLuminance(hex string) float64 {
+	r, g, b, ok := parseHexRGB(hex)
+	if !ok {
+		return 0
+	}
+	channel := func(c int) float64 {
+		v := float64(c) / 255
+		if v <= 0.03928 {
+			return v / 12.92
+		}
+		return math.Pow((v+0.055)/1.055, 2.4)
+	}
+	return 0.2126*channel(r) + 0.7152*channel(g) + 0.0722*channel(b)
+}
+
+// contrastRatio returns the WCAG contrast ratio between two hex colors.
+func contrastRatio(a, b string) float64 {
+	la := relLuminance(a)
+	lb := relLuminance(b)
+	if la < lb {
+		la, lb = lb, la
+	}
+	return (la + 0.05) / (lb + 0.05)
+}
+
 // Tab bar styles — declared here, assigned by applyPalette.
 var (
 	activeTabStyle          lipgloss.Style
