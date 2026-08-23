@@ -149,6 +149,39 @@ func TestThemeForegroundBackgroundContrast(t *testing.T) {
 	}
 }
 
+// muted and label are secondary text colours (connection details, ERD column
+// types, dimmed cards, form/field labels). On light backgrounds, a brightBlack-
+// derived muted is often itself a light grey and collapses to illegible
+// contrast; those themes must clear WCAG AA. Dark themes keep softer curated
+// greys (readable in practice, below AA) so this check is light-bg only.
+func TestThemeMutedLabelBackgroundContrast(t *testing.T) {
+	for name, p := range themes {
+		if relLuminance(string(p.bg)) <= 0.4 {
+			continue
+		}
+		for slot, c := range map[string]lipgloss.Color{"muted": p.muted, "label": p.label} {
+			ratio := contrastRatio(string(c), string(p.bg))
+			if ratio < 4.5 {
+				t.Errorf("theme %q: %s/bg contrast %.2f < 4.5 (%s=%s bg=%s)",
+					name, slot, ratio, slot, c, p.bg)
+			}
+		}
+	}
+}
+
+// visual is the highlight BACKGROUND behind fg text (marked columns, visual
+// row selection). Terminal selectionBackground is often inverted on light
+// schemes; every theme must keep visual/fg above WCAG AA.
+func TestThemeVisualForegroundContrast(t *testing.T) {
+	for name, p := range themes {
+		ratio := contrastRatio(string(p.visual), string(p.fg))
+		if ratio < 4.5 {
+			t.Errorf("theme %q: visual/fg contrast %.2f < 4.5 (visual=%s fg=%s)",
+				name, ratio, p.visual, p.fg)
+		}
+	}
+}
+
 // relLuminance returns the WCAG relative luminance of a hex color like "#7aa2f7".
 func relLuminance(hex string) float64 {
 	hex = strings.TrimPrefix(hex, "#")

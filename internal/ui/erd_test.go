@@ -682,9 +682,9 @@ func TestHandleERDMouse(t *testing.T) {
 func TestERDHighlightRender(t *testing.T) {
 	// The palette vars are empty until applyPalette runs, so set distinct
 	// non-empty colours or the fg assertions below are vacuous ("" == "").
-	sp, sa, sg, sf := colorPrimary, colorAccent, colorBorderUnfocused, colorFg
-	colorPrimary, colorAccent, colorBorderUnfocused, colorFg = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3"), lipgloss.Color("7")
-	defer func() { colorPrimary, colorAccent, colorBorderUnfocused, colorFg = sp, sa, sg, sf }()
+	sp, sa, sm, sf := colorPrimary, colorAccent, colorMuted, colorFg
+	colorPrimary, colorAccent, colorMuted, colorFg = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3"), lipgloss.Color("7")
+	defer func() { colorPrimary, colorAccent, colorMuted, colorFg = sp, sa, sm, sf }()
 
 	tables, schemas, pks, fks := erdFixture() // orders.user_id → users.id
 	layout := computeERDLayout(tables, schemas, pks, fks)
@@ -717,18 +717,22 @@ func TestERDHighlightRender(t *testing.T) {
 	none := layout.render("", "", erdPath{})
 	sel := layout.render("orders", "", erdPath{})
 
-	// No selection: every card vivid (primary border).
+	// No selection: every card vivid (primary border); column names use the
+	// theme foreground (not the terminal default).
 	if fg := borderFg(none, orders); fg != string(colorPrimary) {
 		t.Errorf("no-selection orders border=%q want primary", fg)
 	}
 	if fg := borderFg(none, users); fg != string(colorPrimary) {
 		t.Errorf("no-selection users border=%q want primary", fg)
 	}
+	if fg := nameFg(none, orders, "user_id"); fg != string(colorFg) {
+		t.Errorf("no-selection column name fg=%q want foreground", fg)
+	}
 	// Selected: orders stays vivid (primary), the others dim to grey.
 	if fg := borderFg(sel, orders); fg != string(colorPrimary) {
 		t.Errorf("selected orders border=%q want primary (stays vivid)", fg)
 	}
-	if fg := borderFg(sel, users); fg != string(colorBorderUnfocused) {
+	if fg := borderFg(sel, users); fg != string(colorMuted) {
 		t.Errorf("non-selected users border=%q want grey (dimmed)", fg)
 	}
 	// Connected column on the dimmed card: users.id (the PK orders.user_id
@@ -740,7 +744,7 @@ func TestERDHighlightRender(t *testing.T) {
 		t.Errorf("connected users.id type fg=%q want primary (blue)", fg)
 	}
 	// A non-connected column on the dimmed card stays grey.
-	if fg := nameFg(sel, users, "name"); fg != string(colorBorderUnfocused) {
+	if fg := nameFg(sel, users, "name"); fg != string(colorMuted) {
 		t.Errorf("non-connected users.name name fg=%q want grey", fg)
 	}
 
@@ -756,7 +760,7 @@ func TestERDHighlightRender(t *testing.T) {
 		}
 		return ""
 	}
-	if fg := findHeadFg(none); fg != string(colorBorderUnfocused) {
+	if fg := findHeadFg(none); fg != string(colorMuted) {
 		t.Errorf("no-selection arrowhead fg=%q want grey", fg)
 	}
 	if fg := findHeadFg(sel); fg != string(colorPrimary) {
@@ -771,9 +775,9 @@ func TestERDHighlightRender(t *testing.T) {
 // leave those shared cells blue (the selected relationship) rather than grey
 // (the unselected one), regardless of arrow draw order.
 func TestERDHighlightArrowOnTop(t *testing.T) {
-	sp, sa, sg, sf := colorPrimary, colorAccent, colorBorderUnfocused, colorFg
-	colorPrimary, colorAccent, colorBorderUnfocused, colorFg = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3"), lipgloss.Color("7")
-	defer func() { colorPrimary, colorAccent, colorBorderUnfocused, colorFg = sp, sa, sg, sf }()
+	sp, sa, sm, sf := colorPrimary, colorAccent, colorMuted, colorFg
+	colorPrimary, colorAccent, colorMuted, colorFg = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3"), lipgloss.Color("7")
+	defer func() { colorPrimary, colorAccent, colorMuted, colorFg = sp, sa, sm, sf }()
 
 	// orders and posts both reference users → their FK arrows share the
 	// arrowhead cell at users' right edge and the vertical riser beside it.
@@ -992,9 +996,9 @@ func TestERDDrillInClick(t *testing.T) {
 // and a focused card on a dimmed diagram is still accent so the cursor stays
 // visible.
 func TestERDFocusAccent(t *testing.T) {
-	sp, sa, sg, sf := colorPrimary, colorAccent, colorBorderUnfocused, colorFg
-	colorPrimary, colorAccent, colorBorderUnfocused, colorFg = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3"), lipgloss.Color("7")
-	defer func() { colorPrimary, colorAccent, colorBorderUnfocused, colorFg = sp, sa, sg, sf }()
+	sp, sa, sm, sf := colorPrimary, colorAccent, colorMuted, colorFg
+	colorPrimary, colorAccent, colorMuted, colorFg = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3"), lipgloss.Color("7")
+	defer func() { colorPrimary, colorAccent, colorMuted, colorFg = sp, sa, sm, sf }()
 
 	tables, schemas, pks, fks := erdFixture() // users, orders
 	layout := computeERDLayout(tables, schemas, pks, fks)
@@ -1164,9 +1168,9 @@ func TestERDKeyboardNudgeGrowsCanvas(t *testing.T) {
 // TestERDKeyboardHighlight checks Space toggles highlight on the focused card
 // (and that a selected+focused card renders primary, not accent).
 func TestERDKeyboardHighlight(t *testing.T) {
-	sp, sa, sg := colorPrimary, colorAccent, colorBorderUnfocused
-	colorPrimary, colorAccent, colorBorderUnfocused = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
-	defer func() { colorPrimary, colorAccent, colorBorderUnfocused = sp, sa, sg }()
+	sp, sa, sm := colorPrimary, colorAccent, colorMuted
+	colorPrimary, colorAccent, colorMuted = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
+	defer func() { colorPrimary, colorAccent, colorMuted = sp, sa, sm }()
 
 	tables, schemas, pks, fks := erdFixture()
 	layout := computeERDLayout(tables, schemas, pks, fks)
@@ -1190,7 +1194,7 @@ func TestERDKeyboardHighlight(t *testing.T) {
 	if fg := borderFg(ep.graph, orders); fg != string(colorPrimary) {
 		t.Errorf("selected+focused orders border=%q want primary", fg)
 	}
-	if fg := borderFg(ep.graph, users); fg != string(colorBorderUnfocused) {
+	if fg := borderFg(ep.graph, users); fg != string(colorMuted) {
 		t.Errorf("dimmed users border=%q want grey", fg)
 	}
 	// Space again clears the selection.
@@ -1286,9 +1290,9 @@ func TestERDDrillIn(t *testing.T) {
 // each toggle re-renders the canvas: the selected card stays vivid (primary)
 // while the others dim to grey.
 func TestERDToggleHighlight(t *testing.T) {
-	sp, sa, sg := colorPrimary, colorAccent, colorBorderUnfocused
-	colorPrimary, colorAccent, colorBorderUnfocused = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
-	defer func() { colorPrimary, colorAccent, colorBorderUnfocused = sp, sa, sg }()
+	sp, sa, sm := colorPrimary, colorAccent, colorMuted
+	colorPrimary, colorAccent, colorMuted = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
+	defer func() { colorPrimary, colorAccent, colorMuted = sp, sa, sm }()
 
 	tables, schemas, pks, fks := erdFixture()
 	layout := computeERDLayout(tables, schemas, pks, fks)
@@ -1313,7 +1317,7 @@ func TestERDToggleHighlight(t *testing.T) {
 	if fg := borderFg(e, "orders"); fg != string(colorPrimary) {
 		t.Errorf("after select, orders border fg=%q want primary (vivid)", fg)
 	}
-	if fg := borderFg(e, "users"); fg != string(colorBorderUnfocused) {
+	if fg := borderFg(e, "users"); fg != string(colorMuted) {
 		t.Errorf("after select, users border fg=%q want grey (dimmed)", fg)
 	}
 
@@ -1325,7 +1329,7 @@ func TestERDToggleHighlight(t *testing.T) {
 	if fg := borderFg(e, "users"); fg != string(colorPrimary) {
 		t.Errorf("after switch, users border fg=%q want primary (vivid)", fg)
 	}
-	if fg := borderFg(e, "orders"); fg != string(colorBorderUnfocused) {
+	if fg := borderFg(e, "orders"); fg != string(colorMuted) {
 		t.Errorf("after switch, orders border fg=%q want grey (dimmed)", fg)
 	}
 
@@ -1354,9 +1358,9 @@ func TestERDToggleHighlight(t *testing.T) {
 // handleERDMouse call) with the panel intentionally left unsized, and checks
 // the click both lands and sizes the panel.
 func TestERDClickViaUpdateSizesPanel(t *testing.T) {
-	sp, sa, sg := colorPrimary, colorAccent, colorBorderUnfocused
-	colorPrimary, colorAccent, colorBorderUnfocused = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
-	defer func() { colorPrimary, colorAccent, colorBorderUnfocused = sp, sa, sg }()
+	sp, sa, sm := colorPrimary, colorAccent, colorMuted
+	colorPrimary, colorAccent, colorMuted = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
+	defer func() { colorPrimary, colorAccent, colorMuted = sp, sa, sm }()
 
 	tables, schemas, pks, fks := erdFixture()
 	layout := computeERDLayout(tables, schemas, pks, fks)
@@ -1728,9 +1732,9 @@ func TestERDPathNoPath(t *testing.T) {
 // TestERDPathRender checks a traced path keeps path cards vivid (primary) and
 // dims the rest (grey).
 func TestERDPathRender(t *testing.T) {
-	sp, sa, sg := colorPrimary, colorAccent, colorBorderUnfocused
-	colorPrimary, colorAccent, colorBorderUnfocused = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
-	defer func() { colorPrimary, colorAccent, colorBorderUnfocused = sp, sa, sg }()
+	sp, sa, sm := colorPrimary, colorAccent, colorMuted
+	colorPrimary, colorAccent, colorMuted = lipgloss.Color("1"), lipgloss.Color("2"), lipgloss.Color("3")
+	defer func() { colorPrimary, colorAccent, colorMuted = sp, sa, sm }()
 
 	layout := erdPathFixture()
 	p := pathHighlight([]string{"users", "orders", "order_items"})
@@ -1744,7 +1748,7 @@ func TestERDPathRender(t *testing.T) {
 	if fg := borderFg(users); fg != string(colorPrimary) {
 		t.Errorf("path card users border=%q want primary", fg)
 	}
-	if fg := borderFg(logs); fg != string(colorBorderUnfocused) {
+	if fg := borderFg(logs); fg != string(colorMuted) {
 		t.Errorf("off-path card logs border=%q want grey", fg)
 	}
 }

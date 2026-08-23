@@ -123,6 +123,12 @@ func derive(s scheme) palette {
 	if s.SelectionBackground == "" {
 		sel = mix(bg, fg, 0.16)
 	}
+	// visual is a highlight BACKGROUND behind fg text (marked columns, visual
+	// selection). Terminal selectionBackground is often inverted — dark on
+	// light schemes (e.g. GitHub Light uses the same near-black as foreground)
+	// — so floor it to a wash that keeps fg readable.
+	primary := parseHex(s.Blue)
+	sel = ensureBgContrast(sel, fg, bg, primary, 4.5)
 
 	brightBlack := parseHex(s.BrightBlack)
 	border := mix(bg, fg, 0.22)
@@ -136,8 +142,15 @@ func derive(s scheme) palette {
 		edit = parseHex(s.Yellow)
 	}
 
+	// muted/label are used as secondary text (connection details, ERD column
+	// types, dimmed cards). brightBlack is the usual ANSI "dim" slot, but on
+	// many light schemes it is itself a light grey — fine as a border tint,
+	// illegible as text on a white bg. Floor both to WCAG AA against bg.
+	muted := ensureContrast(brightBlack, bg, fg, 4.5)
+	label := ensureContrast(mix(muted, fg, 0.5), bg, fg, 4.5)
+
 	return palette{
-		primary:         parseHex(s.Blue).hex(),
+		primary:         primary.hex(),
 		accent:          parseHex(s.Purple).hex(),
 		success:         parseHex(s.Green).hex(),
 		mark:            parseHex(s.Cyan).hex(),
@@ -147,8 +160,8 @@ func derive(s scheme) palette {
 		edit:            edit.hex(),
 		warn:            parseHex(s.Yellow).hex(),
 		err:             parseHex(s.Red).hex(),
-		muted:           brightBlack.hex(),
-		label:           mix(brightBlack, fg, 0.5).hex(),
+		muted:           muted.hex(),
+		label:           label.hex(),
 		border:          border.hex(),
 		borderUnfocused: borderUnfocused.hex(),
 		bg:              bg.hex(),
@@ -157,6 +170,52 @@ func derive(s scheme) palette {
 		highlight:       mix(bg, fg, 0.12).hex(),
 		statusBarBg:     mix(bg, fg, 0.10).hex(),
 	}
+}
+
+// ensureContrast returns c when it already clears minRatio against bg; otherwise
+// it walks from a muted mix toward fg and returns the most muted candidate that
+// still clears the floor. Falling back to fg guarantees a result (fg itself is
+// screened at generation time for >= 4.5 against bg).
+func ensureContrast(c, bg, fg rgb, minRatio float64) rgb {
+	if contrast(c, bg) >= minRatio {
+		return c
+	}
+	// t is the mix toward bg (higher = more muted). Prefer the faintest
+	// secondary that still reads, so we don't collapse muted into fg.
+	for t := 0.60; t >= 0; t -= 0.05 {
+		cand := mix(fg, bg, t)
+		if contrast(cand, bg) >= minRatio {
+			return cand
+		}
+	}
+	return fg
+}
+
+// ensureBgContrast returns c when it already clears minRatio as a background
+// behind fg; otherwise it synthesizes a soft wash from bg. Soft accent/fg
+// tints are tried first; if those can't clear (e.g. a mid-chroma fg on a light
+// bg), fall back to bg itself — which already clears AA against fg for every
+// shipped theme.
+func ensureBgContrast(c, fg, bg, accent rgb, minRatio float64) rgb {
+	if contrast(c, fg) >= minRatio {
+		return c
+	}
+	var candidates []rgb
+	if accent != (rgb{}) {
+		for t := 0.06; t <= 0.22; t += 0.02 {
+			candidates = append(candidates, mix(bg, accent, t))
+		}
+	}
+	for t := 0.06; t <= 0.18; t += 0.02 {
+		candidates = append(candidates, mix(bg, fg, t))
+	}
+	candidates = append(candidates, bg)
+	for _, cand := range candidates {
+		if contrast(cand, fg) >= minRatio {
+			return cand
+		}
+	}
+	return bg
 }
 
 // normalize turns a theme name into a config key: lowercased, with spaces
@@ -256,10 +315,13 @@ func emit(entries []genEntry) string {
 	b.WriteString("// iTerm2-Color-Schemes (Windows Terminal JSON format) by cmd/genthemes.\n")
 	b.WriteString("// Each palette maps the scheme's 16 ANSI colors onto creel's semantic slots\n")
 	b.WriteString("// (blue->primary, magenta->accent, green->success, red->err, yellow->warn,\n")
-	b.WriteString("// cyan->mark, bright-black->muted); tint slots (borders, cursor row, status\n")
-	b.WriteString("// bar, search/visual) are synthesized by interpolating between bg and fg,\n")
-	b.WriteString("// with a light/dark branch for the unfocused border. Schemes whose fg/bg\n")
-	b.WriteString("// contrast fails WCAG AA (< 4.5) are skipped at generation time. Curated\n")
+	b.WriteString("// cyan->mark, bright-black->muted with a WCAG AA floor against bg); tint slots\n")
+	b.WriteString("// (borders, cursor row, status bar, search/visual) are synthesized by\n")
+	b.WriteString("// interpolating between bg and fg, with a light/dark branch for the\n")
+	b.WriteString("// unfocused border. selectionBackground is used for visual only when it\n")
+	b.WriteString("// keeps fg readable as a highlight bg (else a primary/fg wash). Schemes\n")
+	b.WriteString("// whose fg/bg contrast fails WCAG AA (< 4.5) are skipped at generation\n")
+	b.WriteString("// time. Curated\n")
 	b.WriteString("// (hand-tuned) themes in themes.go take precedence over a generated entry\n")
 	b.WriteString("// with the same normalized name.\n")
 	b.WriteString("//\n")

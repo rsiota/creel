@@ -464,28 +464,32 @@ func placeCards(cards map[string]*gcard, order []string, rank map[string]int, ma
 }
 
 // --- drawing ----------------------------------------------------------------
-// Card borders/title use the primary colour, arrows the unfocused-border grey,
-// and column types the muted colour. When a card is selected the other cards
-// are dimmed to the arrow grey (border, title, names, markers, types) so the
-// selection and its blue FK arrows stand out; the connected columns on those
-// dimmed cards (the arrow endpoints) stay readable — name in the foreground,
-// type in primary. These reference the palette vars (set by applyPalette) at
-// draw time, so they pick up theme changes.
+// Card borders/title use the primary colour, arrows the muted grey, and column
+// types the muted colour. When a card is selected the other cards are dimmed to
+// muted (border, title, names, markers, types) so the selection and its blue FK
+// arrows stand out; the connected columns on those dimmed cards (the arrow
+// endpoints) stay readable — name in the foreground, type in primary. Dimmed
+// text uses muted rather than borderUnfocused: the latter is a near-bg border
+// tint that collapses to illegible contrast on light themes. These reference
+// the palette vars (set by applyPalette) at draw time, so they pick up theme
+// changes.
 
 // drawCard paints a card's border, title, separator, and columns. fg is the
 // border/title colour (primary). When dim is set the whole card — border,
-// title, separator, names, markers, and types — is drawn in the arrow grey so
-// a non-selected card fades out behind the focused one; columns listed in
+// title, separator, names, markers, and types — is drawn in muted so a
+// non-selected card fades out behind the focused one; columns listed in
 // hlCols (the arrow endpoints touching the selection) override the dim, with
 // marker/name in the foreground and type in primary. The border colour itself
-// is the caller's fg (render picks accent for the keyboard focus, grey for a
+// is the caller's fg (render picks accent for the keyboard focus, muted for a
 // dimmed card, primary otherwise) — dim only fades the interior (title text,
 // separator, columns), so a focused card keeps its accent border even while
 // dimmed.
 func (c *gcanvas) drawCard(g *gcard, fg string, dim bool, hlCols map[string]bool, showIcon, reserveIcon bool) {
-	grey := string(colorBorderUnfocused)
+	grey := string(colorMuted)
 	border := fg
-	text, sep, typeC := "", string(colorMuted), string(colorMuted)
+	// Column names always take an explicit fg (not "") so paintBg's theme
+	// background can't leave them on the terminal's default foreground.
+	text, sep, typeC := string(colorFg), string(colorMuted), string(colorMuted)
 	if dim {
 		text, sep, typeC = grey, grey, grey
 	}
@@ -1316,20 +1320,20 @@ func erdPathJoinSQL(driver db.Driver, l *erdLayout, fks map[string][]db.ForeignK
 }
 
 // render paints the layout into a fresh canvas. With no selection every card is
-// vivid (primary border) and every arrow is grey. When selected names a card it
-// stays vivid while every other card is dimmed to the arrow grey, the arrows
-// touching the selection turn primary (blue), and the columns at the far ends
-// of those arrows (on the dimmed cards) stay readable — marker/name in the
-// foreground, type in primary — so each relationship is legible against the
-// fade. The layout is colour-agnostic, so this re-paints cheaply on every
-// selection change. focusName is the keyboard-focused card ("" = none); its
-// border is drawn in the accent colour so the cursor stays visible — even on a
-// dimmed card — without dimming or recolouring anything else.
+// vivid (primary border) and every arrow is muted. When selected names a card it
+// stays vivid while every other card is dimmed to muted, the arrows touching
+// the selection turn primary (blue), and the columns at the far ends of those
+// arrows (on the dimmed cards) stay readable — marker/name in the foreground,
+// type in primary — so each relationship is legible against the fade. The
+// layout is colour-agnostic, so this re-paints cheaply on every selection
+// change. focusName is the keyboard-focused card ("" = none); its border is
+// drawn in the accent colour so the cursor stays visible — even on a dimmed
+// card — without dimming or recolouring anything else.
 func (l *erdLayout) render(selected, focusName string, p erdPath) *gcanvas {
 	canv := newGcanvas(l.canvasW, l.canvasH)
 	canv.ox = l.originX
 	canv.oy = l.originY
-	conn := string(colorBorderUnfocused)
+	conn := string(colorMuted)
 	cardFg := string(colorPrimary)
 	accent := string(colorAccent)
 	pathActive := len(p.cards) > 0

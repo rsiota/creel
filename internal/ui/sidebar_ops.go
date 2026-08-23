@@ -204,10 +204,15 @@ func (m *Model) applySearch(pattern string) {
 	}
 }
 
-// highlightMatches renders text with matched characters in the accent color.
+// highlightMatches renders text with matched characters in the accent color
+// and the rest in the theme foreground. Unmatched (and empty-query) runs must
+// not fall through to the terminal's default FG: paintBg fills the theme
+// background under every cell, so a light theme on a dark terminal would leave
+// light-on-white text if we left those runes unstyled.
 func highlightMatches(text string, matchIdx []int) string {
+	base := lipgloss.NewStyle().Foreground(colorFg)
 	if len(matchIdx) == 0 {
-		return text
+		return base.Render(text)
 	}
 	matchSet := make(map[int]bool, len(matchIdx))
 	for _, i := range matchIdx {
@@ -219,7 +224,7 @@ func highlightMatches(text string, matchIdx []int) string {
 		if matchSet[i] {
 			b.WriteString(accent.Render(string(r)))
 		} else {
-			b.WriteRune(r)
+			b.WriteString(base.Render(string(r)))
 		}
 	}
 	return b.String()
