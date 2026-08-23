@@ -11,6 +11,11 @@ commits, so it can come up empty).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-23
+
+More chart types, AI explain/fix, a jump-anywhere palette, ERD polish, named
+query params, and light-theme contrast fixes across the TUI.
+
 ### Added
 - CLI: `-e -` (or `-cli` without `-e`) reads the query from stdin; failures
   exit status `1` (documented in `docs/cli.md`).
@@ -64,15 +69,26 @@ commits, so it can come up empty).
   cursor (or the last explained SQL), attaching the EXPLAIN / EXPLAIN QUERY
   PLAN output. Streams the prose reply into the assistant panel — never
   auto-runs. Optional focus text, e.g. `:aiexplain why is the join slow`.
+- Keyboard pane resize: `alt+h/j/k/l` (or `ctrl+alt+…`) nudges the adjacent
+  seam in that direction (same seams as mouse drag).
+- `:set` / `:set option=value` changes runtime config settings from the TUI
+  (with completion); values persist to the config file.
 
 ### Fixed
 - ERD mini-map stayed visible for expanded (tall) diagrams instead of hiding when aspect-fitting made the overlay narrower than a minimum, and kept enough width that rank columns aren't cropped off the sides.
 - SQL export (`X`) emits native CREATE TABLE DDL (MySQL `SHOW CREATE TABLE`, SQLite `sqlite_master`) so indexes, named foreign keys, ON DELETE/UPDATE, CHECK constraints, and ENGINE/CHARSET survive a dump round-trip. Unsigned integer values are no longer quoted as strings. MySQL string literals backslash-escape `\`, quotes, and control characters (mysqldump / Sequel Ace style) so PHP namespaces like `App\Models\User` round-trip.
 - SQL import (`I`) honours MySQL backslash escapes (`\'`), backtick identifiers, and `#` comments, so Sequel Ace / mysqldump files no longer swallow `CREATE TABLE` statements after a quoted apostrophe. Failed statements are named in the status bar.
+- Light-theme contrast: connection-picker labels, ERD column names, marked
+  columns, `:pie` outlines, ERD selection vivid/dim, popup backdrops, cell-edit
+  and SQL-editor cursor lines, and filter-picker rows stay readable under
+  `paintBg` (notably GitHub Light Default).
+- Help overlay stays open during fast mouse-wheel scrolls.
+- Results grid stays aligned after multiline cell saves; filter/search prompts
+  accept space; connect failures show friendly errors.
 
 ## [0.2.0] - 2026-08-14
 
-Charts, a richer FK explorer, mouse- and keyboard-resizeable panels, and CLI output — plus a quicker path from the sidebar into results.
+Charts, a richer FK explorer, mouse-resizeable panels, and CLI output — plus a quicker path from the sidebar into results.
 
 ### Added
 - Bar charts from marked result columns (`M` + `:bar`), with sum/count/avg grouping and a cursor.
@@ -80,8 +96,6 @@ Charts, a richer FK explorer, mouse- and keyboard-resizeable panels, and CLI out
 - Browse and insert related rows from the FK explorer.
 - Remembered results-column widths per table.
 - Mouse-resize for the sidebar↔centre, editor↔results, and centre↔right seams.
-- Keyboard pane resize: `alt+h/j/k/l` (or `ctrl+alt+…`) nudges the adjacent
-  seam in that direction (same seams as mouse drag).
 - `-format` query output and `-c` connection reuse with flag overrides.
 - Read-only cell viewer (`E`) on non-editable results.
 - `:copyrow` to copy the current result row.
@@ -126,7 +140,8 @@ First public release. creel succeeds `gsql` (the project was renamed) and migrat
 - **Read-only mode** for safely pointing at production.
 - **Session restore**, per-connection query history & bookmarks, EXPLAIN plans, and ~570 themes.
 
-[Unreleased]: https://github.com/rsiota/creel/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/rsiota/creel/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/rsiota/creel/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rsiota/creel/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/rsiota/creel/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/rsiota/creel/releases/tag/v0.1.0
