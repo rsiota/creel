@@ -178,3 +178,39 @@ func TestThemeVisualForegroundContrast(t *testing.T) {
 		}
 	}
 }
+
+// ERD vivid/dim prioritize readable faded cards. Soft floors: dim should not
+// collapse into the background, and vivid should still separate from dim on
+// typical themes (exact dual floors are not always possible on every scheme).
+func TestThemeERDVividDimGap(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	for name, p := range themes {
+		vivid, dim := deriveERDColors(p)
+		vsBg := contrastRatio(string(dim), string(p.bg))
+		if vsBg < 2.0 {
+			t.Errorf("theme %q: ERD dim too faint vs bg (%.2f; dim=%s bg=%s)",
+				name, vsBg, dim, p.bg)
+		}
+		gap := contrastRatio(string(vivid), string(dim))
+		if gap < 1.05 {
+			t.Errorf("theme %q: ERD vivid/dim collapsed (gap %.2f; vivid=%s dim=%s)",
+				name, gap, vivid, dim)
+		}
+	}
+}
+
+// GitHub Light is the regression case: muted≈primary hid selection when reused
+// for dim/vivid; the ultra-faint wash made dimmed cards unreadable. Expect a
+// readable dim and a clear vivid/dim gap.
+func TestDeriveERDColorsGitHubLight(t *testing.T) {
+	p := themes["git-hub-light-default"]
+	vivid, dim := deriveERDColors(p)
+	if vsBg := contrastRatio(string(dim), string(p.bg)); vsBg < 2.0 {
+		t.Fatalf("git-hub-light-default dim/bg %.2f < 2.0 (dim=%s) — faded cards unreadable",
+			vsBg, dim)
+	}
+	if gap := contrastRatio(string(vivid), string(dim)); gap < erdVividDimMinGap {
+		t.Fatalf("git-hub-light-default vivid/dim gap %.2f < %.1f (vivid=%s dim=%s)",
+			gap, erdVividDimMinGap, vivid, dim)
+	}
+}

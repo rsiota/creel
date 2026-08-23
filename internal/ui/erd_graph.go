@@ -464,28 +464,27 @@ func placeCards(cards map[string]*gcard, order []string, rank map[string]int, ma
 }
 
 // --- drawing ----------------------------------------------------------------
-// Card borders/title use the primary colour, arrows the muted grey, and column
-// types the muted colour. When a card is selected the other cards are dimmed to
-// muted (border, title, names, markers, types) so the selection and its blue FK
+// Card borders/title use ERD vivid (derived from primary), idle arrows and
+// dimmed cards use ERD dim, and column types the muted colour. When a card is
+// selected the other cards are dimmed so the selection and its highlighted FK
 // arrows stand out; the connected columns on those dimmed cards (the arrow
-// endpoints) stay readable — name in the foreground, type in primary. Dimmed
-// text uses muted rather than borderUnfocused: the latter is a near-bg border
-// tint that collapses to illegible contrast on light themes. These reference
-// the palette vars (set by applyPalette) at draw time, so they pick up theme
-// changes.
+// endpoints) stay readable — name in the foreground, type in vivid. Vivid/dim
+// are synthesized per theme with an explicit contrast gap (see deriveERDColors),
+// so selection stays visible on light themes where primary ≈ muted. These
+// reference the palette vars (set by applyPalette) at draw time.
 
 // drawCard paints a card's border, title, separator, and columns. fg is the
-// border/title colour (primary). When dim is set the whole card — border,
-// title, separator, names, markers, and types — is drawn in muted so a
+// border/title colour (vivid). When dim is set the whole card — border,
+// title, separator, names, markers, and types — is drawn in ERD dim so a
 // non-selected card fades out behind the focused one; columns listed in
 // hlCols (the arrow endpoints touching the selection) override the dim, with
-// marker/name in the foreground and type in primary. The border colour itself
-// is the caller's fg (render picks accent for the keyboard focus, muted for a
-// dimmed card, primary otherwise) — dim only fades the interior (title text,
+// marker/name in the foreground and type in vivid. The border colour itself
+// is the caller's fg (render picks accent for the keyboard focus, dim for a
+// dimmed card, vivid otherwise) — dim only fades the interior (title text,
 // separator, columns), so a focused card keeps its accent border even while
 // dimmed.
 func (c *gcanvas) drawCard(g *gcard, fg string, dim bool, hlCols map[string]bool, showIcon, reserveIcon bool) {
-	grey := string(colorMuted)
+	grey := string(colorERDDim)
 	border := fg
 	// Column names always take an explicit fg (not "") so paintBg's theme
 	// background can't leave them on the terminal's default foreground.
@@ -564,7 +563,7 @@ func (c *gcanvas) drawCard(g *gcard, fg string, dim bool, hlCols map[string]bool
 		// primary (blue), so each relationship stays readable on a faded card.
 		nameC, markC, tC := text, text, typeC
 		if dim && hlCols[col.Name] {
-			nameC, markC, tC = string(colorFg), string(colorFg), string(colorPrimary)
+			nameC, markC, tC = string(colorFg), string(colorFg), string(colorERDVivid)
 		}
 		c.putText(g.x+1, y, marker+" ", markC, isPK)
 		c.putText(g.x+3, y, col.Name, nameC, isPK)
@@ -1320,21 +1319,20 @@ func erdPathJoinSQL(driver db.Driver, l *erdLayout, fks map[string][]db.ForeignK
 }
 
 // render paints the layout into a fresh canvas. With no selection every card is
-// vivid (primary border) and every arrow is muted. When selected names a card it
-// stays vivid while every other card is dimmed to muted, the arrows touching
-// the selection turn primary (blue), and the columns at the far ends of those
-// arrows (on the dimmed cards) stay readable — marker/name in the foreground,
-// type in primary — so each relationship is legible against the fade. The
-// layout is colour-agnostic, so this re-paints cheaply on every selection
-// change. focusName is the keyboard-focused card ("" = none); its border is
-// drawn in the accent colour so the cursor stays visible — even on a dimmed
-// card — without dimming or recolouring anything else.
+// vivid and every arrow is dim. When selected names a card it stays vivid while
+// every other card is dimmed, the arrows touching the selection turn vivid, and
+// the columns at the far ends of those arrows (on the dimmed cards) stay
+// readable — marker/name in the foreground, type in vivid — so each relationship
+// is legible against the fade. The layout is colour-agnostic, so this re-paints
+// cheaply on every selection change. focusName is the keyboard-focused card
+// ("" = none); its border is drawn in the accent colour so the cursor stays
+// visible — even on a dimmed card — without dimming or recolouring anything else.
 func (l *erdLayout) render(selected, focusName string, p erdPath) *gcanvas {
 	canv := newGcanvas(l.canvasW, l.canvasH)
 	canv.ox = l.originX
 	canv.oy = l.originY
-	conn := string(colorMuted)
-	cardFg := string(colorPrimary)
+	conn := string(colorERDDim)
+	cardFg := string(colorERDVivid)
 	accent := string(colorAccent)
 	pathActive := len(p.cards) > 0
 	// Columns on dimmed cards that connect to the selection: the far endpoints
@@ -1373,8 +1371,8 @@ func (l *erdLayout) render(selected, focusName string, p erdPath) *gcanvas {
 	}
 	hasRoot := l.focus != ""
 	for _, c := range l.cards {
-		// Border colour: path cards and the selection are vivid (primary); every
-		// other card is grey when a path/selection is active. The keyboard focus
+		// Border colour: path cards and the selection are vivid; every other
+		// card is dim when a path/selection is active. The keyboard focus
 		// always wins the border in accent so the cursor stays visible, even on
 		// a dimmed card — selection still outranks focus.
 		border := cardFg

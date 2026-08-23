@@ -105,6 +105,10 @@ var (
 	colorStatusInfo   lipgloss.Color
 	colorStatusBad    lipgloss.Color
 	colorStatusQuiet  lipgloss.Color
+	// ERD selection chrome: synthesized so vivid (selected card / hot arrows)
+	// and dim (faded cards / idle arrows) keep a contrast gap on every theme.
+	colorERDVivid lipgloss.Color
+	colorERDDim   lipgloss.Color
 )
 
 // sbStyles are status-bar-specific styles that carry the status bar background
@@ -182,6 +186,11 @@ func applyPalette(p colorPalette) {
 	colorStatusInfo = mixColors(p.accent, p.bg, statusBlend)
 	colorStatusBad = mixColors(p.err, p.bg, statusBlend)
 	colorStatusQuiet = mixColors(p.muted, p.bg, statusBlend)
+
+	// ERD selection: vivid for the selected card + arrows that touch it; dim
+	// for everything else. Reusing muted/primary collapses on light themes
+	// (similar luminance); derive a pair with an explicit contrast gap.
+	colorERDVivid, colorERDDim = deriveERDColors(p)
 
 	// Status-bar styles (carry the status-bar bg so ANSI resets within
 	// multi-segment rendered strings don't lose it).
@@ -317,6 +326,90 @@ func contrastRatio(a, b string) float64 {
 		la, lb = lb, la
 	}
 	return (la + 0.05) / (lb + 0.05)
+}
+
+// erdVividDimMinGap is the minimum contrast between ERD vivid and dim chrome
+// so selection still reads. Kept modest so dimmed cards can stay legible.
+const erdVividDimMinGap = 1.5
+
+// erdDimMinBgContrast is the target for dimmed card text against the theme bg.
+// ~2.2 keeps faded cards lightly readable while clearly softer than selected
+// chrome (3.0 felt too strong; ~2.5 was almost there).
+const erdDimMinBgContrast = 2.2
+
+// deriveERDColors builds the ERD selection pair from a palette. Dim is chosen
+// for readability on bg first; vivid (from primary) is then strengthened toward
+// fg if needed so the vivid/dim gap clears. That way faded cards stay legible
+// and selection still pops — the reverse of fading dim into invisibility.
+func deriveERDColors(p colorPalette) (vivid, dim lipgloss.Color) {
+	if relLuminance(string(p.bg)) > 0.4 {
+		dim = erdDimWash(p.bg, p.fg, erdDimMinBgContrast)
+	} else if contrastRatio(string(p.muted), string(p.bg)) >= erdDimMinBgContrast*0.85 {
+		dim = p.muted
+	} else {
+		dim = erdDimWash(p.bg, p.fg, erdDimMinBgContrast)
+	}
+	vivid = erdVividAgainst(p.primary, p.fg, p.bg, dim)
+	if string(vivid) == string(dim) || contrastRatio(string(vivid), string(dim)) < 1.05 {
+		// Pathological schemes where primary≈muted: fall back to accent, then fg.
+		for _, cand := range []lipgloss.Color{p.accent, p.fg, mixColors(p.primary, p.fg, 0.5)} {
+			if contrastRatio(string(cand), string(dim)) >= 1.05 {
+				vivid = cand
+				break
+			}
+		}
+	}
+	return vivid, dim
+}
+
+// erdDimWash mixes bg toward fg to land near targetContrast against bg.
+func erdDimWash(bg, fg lipgloss.Color, targetContrast float64) lipgloss.Color {
+	best := mixColors(bg, fg, 0.48)
+	bestDiff := absFloat(contrastRatio(string(best), string(bg)) - targetContrast)
+	for t := 0.35; t <= 0.65; t += 0.02 {
+		cand := mixColors(bg, fg, t)
+		diff := absFloat(contrastRatio(string(cand), string(bg)) - targetContrast)
+		if diff < bestDiff {
+			best, bestDiff = cand, diff
+		}
+	}
+	return best
+}
+
+// erdVividAgainst starts from primary and mixes toward fg until it gaps from
+// dim and reads on bg. Returns the best effort if both floors can't be met.
+func erdVividAgainst(primary, fg, bg, dim lipgloss.Color) lipgloss.Color {
+	best := primary
+	bestScore := -1.0
+	for t := 0.0; t <= 1.0; t += 0.1 {
+		cand := primary
+		if t > 0 {
+			cand = mixColors(primary, fg, t)
+		}
+		gap := contrastRatio(string(cand), string(dim))
+		vsBg := contrastRatio(string(cand), string(bg))
+		score := gap + vsBg*0.25
+		if gap >= erdVividDimMinGap {
+			score += 50
+		}
+		if vsBg >= 3.0 {
+			score += 20
+		}
+		if score > bestScore {
+			best, bestScore = cand, score
+		}
+		if gap >= erdVividDimMinGap && vsBg >= 3.0 {
+			return cand
+		}
+	}
+	return best
+}
+
+func absFloat(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
 
 // Tab bar styles — declared here, assigned by applyPalette.

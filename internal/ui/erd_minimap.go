@@ -269,8 +269,8 @@ func (e ERDPanel) renderMinimap() string {
 	iw, ih := w-2, h-2
 	c := newGcanvas(w, h)
 	border := string(colorBorder)
-	muted := string(colorMuted)
-	primary := string(colorPrimary)
+	muted := string(colorERDDim)
+	primary := string(colorERDVivid)
 	accent := string(colorAccent)
 	stripe := string(colorStripe)
 
