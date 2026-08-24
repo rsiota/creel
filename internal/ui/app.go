@@ -4400,8 +4400,7 @@ func (m Model) buildView() string {
 		view := lipgloss.Place(m.width, m.height-1,
 			lipgloss.Center, lipgloss.Center,
 			pickerPanel,
-			lipgloss.WithWhitespaceChars(" "),
-			lipgloss.WithWhitespaceBackground(colorBg))
+			canvasPlaceOptions(m.canvasBackground())...)
 
 		// Overlay create-database dialog on top of the picker if active.
 		if m.createDBActive {
@@ -4510,30 +4509,32 @@ func (m Model) viewConnections() string {
 	prompt := m.connList.Prompt()
 	contentW, listH := m.connListContentDims()
 	m.connList.SetSize(contentW, listH)
+	m.connList.SetPadBackground(m.canvasBackground())
 
 	listStyled := m.connList.View()
 
-	connPanel := lipgloss.NewStyle().
+	panelStyle := lipgloss.NewStyle().
 		Width(panelW).
 		Height(panelH).
-		Background(colorBg).
 		Border(panelBorder()).
 		BorderForeground(colorPrimary).
-		Padding(0, 1).
-		Render(
-			lipgloss.JoinVertical(lipgloss.Left,
-				prompt,
-				listStyled,
-				m.connList.ScrollInfo(),
-			),
-		)
+		Padding(0, 1)
+	if bg := m.canvasBackground(); string(bg) != "" {
+		panelStyle = panelStyle.Background(bg)
+	}
+	connPanel := panelStyle.Render(
+		lipgloss.JoinVertical(lipgloss.Left,
+			prompt,
+			listStyled,
+			m.connList.ScrollInfo(),
+		),
+	)
 
 	// Space-filled canvas so paintBg covers the whole screen behind the popup.
 	view := lipgloss.Place(m.width, m.height-1,
 		lipgloss.Center, lipgloss.Center,
 		connPanel,
-		lipgloss.WithWhitespaceChars(" "),
-		lipgloss.WithWhitespaceBackground(colorBg))
+		canvasPlaceOptions(m.canvasBackground())...)
 
 	// Overlay help panel if visible (sized to leave the status bar showing).
 	if m.help.IsVisible() {

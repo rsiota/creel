@@ -177,19 +177,46 @@ func (m Model) paintBg(view string) string {
 	return paintBackground(view, colorBg)
 }
 
+// canvasBackground returns the colour used to pre-fill popup canvases and list
+// padding. Empty when transparent_background is on so lipgloss does not embed
+// explicit bg sequences that bypass paintBg's no-op.
+func (m Model) canvasBackground() lipgloss.Color {
+	if m.settings.TransparentBackground {
+		return lipgloss.Color("")
+	}
+	return colorBg
+}
+
+// canvasPlaceOptions returns lipgloss.Place options for a space-filled popup
+// canvas. When bg is non-empty the whitespace is pre-filled (opaque themes);
+// when empty the canvas stays unpainted for transparent_background.
+func canvasPlaceOptions(bg lipgloss.Color) []lipgloss.WhitespaceOption {
+	opts := []lipgloss.WhitespaceOption{lipgloss.WithWhitespaceChars(" ")}
+	if string(bg) != "" {
+		opts = append(opts, lipgloss.WithWhitespaceBackground(bg))
+	}
+	return opts
+}
+
 // padViewHeight extends view to exactly height lines. Any shortfall is filled
 // with space-padded rows of width columns. lipgloss Style.Height and bare-
 // newline canvases pad with empty lines, which paintBg skips (newlines are not
 // printable), leaving the terminal's default background visible — especially
-// noticeable on light themes over a dark terminal profile.
-func padViewHeight(view string, width, height int) string {
+// noticeable on light themes over a dark terminal profile. When padBg is empty
+// (transparent_background), padding rows are plain spaces with no explicit bg.
+func padViewHeight(view string, width, height int, padBg lipgloss.Color) string {
 	if height <= 0 {
 		return view
 	}
 	if width < 1 {
 		width = 1
 	}
-	blank := lipgloss.NewStyle().Background(colorBg).Render(strings.Repeat(" ", width))
+	var blank string
+	if string(padBg) != "" {
+		blank = lipgloss.NewStyle().Background(padBg).Render(strings.Repeat(" ", width))
+	} else {
+		blank = strings.Repeat(" ", width)
+	}
 	var lines []string
 	if view != "" {
 		lines = strings.Split(view, "\n")

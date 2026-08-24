@@ -63,11 +63,20 @@ type ConnectionList struct {
 	// Fuzzy filter
 	filter    string
 	filtering bool
+
+	// padBg fills short viewport rows in View(); empty under transparent_background.
+	padBg lipgloss.Color
 }
 
 // NewConnectionList creates a new connection list component.
 func NewConnectionList() ConnectionList {
 	return ConnectionList{}
+}
+
+// SetPadBackground sets the background colour for viewport padding rows. Pass
+// an empty colour when transparent_background is enabled.
+func (c *ConnectionList) SetPadBackground(bg lipgloss.Color) {
+	c.padBg = bg
 }
 
 // SetItems populates the list from connection entries. Collapse state is
@@ -626,7 +635,7 @@ func (c ConnectionList) View() string {
 		} else {
 			msg = mutedStyle.Render("  No saved connections. Press 'n' to add one.")
 		}
-		return padViewHeight(msg, contentW, c.height)
+		return padViewHeight(msg, contentW, c.height, c.padBg)
 	}
 
 	tops := prefixTops(rows)
@@ -659,7 +668,7 @@ func (c ConnectionList) View() string {
 		b.WriteString(c.renderRow(r, i, contentW))
 		b.WriteString("\n")
 	}
-	return padViewHeight(strings.TrimRight(b.String(), "\n"), contentW, c.height)
+	return padViewHeight(strings.TrimRight(b.String(), "\n"), contentW, c.height, c.padBg)
 }
 
 // renderRow renders a single row (group header or connection field box).

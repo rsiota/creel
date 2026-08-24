@@ -133,7 +133,7 @@ func TestPaintBackgroundSpacesPadded(t *testing.T) {
 
 func TestPadViewHeightFillsWithSpaces(t *testing.T) {
 	applyPalette(themes["git-hub-light-default"])
-	got := padViewHeight("line", 5, 3)
+	got := padViewHeight("line", 5, 3, colorBg)
 	lines := strings.Split(got, "\n")
 	if len(lines) != 3 {
 		t.Fatalf("got %d lines, want 3", len(lines))

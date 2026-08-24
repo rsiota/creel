@@ -51,3 +51,25 @@ func TestViewConnectionsPaintsEveryLine(t *testing.T) {
 	m.connList.MoveCursor(1)
 	assertFullWidthPainted(t, m.paintBg(m.buildView()), 120)
 }
+
+func TestViewConnectionsTransparentSkipsExplicitBg(t *testing.T) {
+	applyPalette(themes["git-hub-light-default"])
+	cfg := &config.Config{Connections: []config.ConnectionConfig{
+		{Name: "local", Driver: "sqlite", Database: "/tmp/a.db"},
+	}}
+	m := NewModel(cfg)
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = mm.(Model)
+	m.state = stateConnections
+	m.settings.TransparentBackground = true
+	m.loadConnections()
+
+	bg := ansiBgSeq(colorBg)
+	if bg == "" {
+		t.Fatal("theme bg seq empty")
+	}
+	raw := m.buildView()
+	if strings.Contains(raw, bg) {
+		t.Errorf("transparent connection picker should not embed theme bg %q", colorBg)
+	}
+}
