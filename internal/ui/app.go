@@ -4562,12 +4562,23 @@ func (m Model) viewAddConnection() string {
 		Padding(0, 1).
 		Render(m.connForm.View())
 
+	panelW := lipgloss.Width(formPanel)
+	panelH := lipgloss.Height(formPanel)
+	panelX := (m.width - panelW) / 2
+	panelY := (m.height - 1 - panelH) / 2
+
 	// Center the popup in the area above the status bar, then append the
 	// status bar so the keybinding hints (enter / ctrl+t / esc) are visible.
 	placed := lipgloss.Place(m.width, m.height-1,
 		lipgloss.Center, lipgloss.Center,
 		formPanel,
 		lipgloss.WithWhitespaceChars(" "))
+
+	if comp := m.connForm.CompletionView(); comp != "" {
+		if row := m.connForm.completionLineOffset(); row >= 0 {
+			placed = placeOverlay(placed, comp, panelX+4, panelY+1+row)
+		}
+	}
 	statusBar := lipgloss.NewStyle().
 		Width(m.width).
 		Height(1).

@@ -93,6 +93,9 @@ type ConnectionForm struct {
 	testMsg    string
 	testOK     bool
 	testStates map[int]testState
+
+	// Live filesystem completion for sqlite database and SSH key path fields.
+	pathComp pathCompletion
 }
 
 // NewConnectionForm creates a new form for adding connections.
@@ -273,6 +276,60 @@ func (f ConnectionForm) activeField() int {
 	return v[f.active]
 }
 
+// isPathField reports whether fi accepts filesystem path autocompletion.
+func (f ConnectionForm) isPathField(fi int) bool {
+	switch fi {
+	case fieldSSHKeyPath:
+		return true
+	case fieldDatabase:
+		return f.driver() == "sqlite"
+	}
+	return false
+}
+
+// ActiveIsPathField reports whether the focused field is a path field with
+// live filesystem completion (sqlite database file or SSH private key).
+func (f ConnectionForm) ActiveIsPathField() bool {
+	return f.isPathField(f.activeField())
+}
+
+// CompletionView returns the path-completion dropdown while editing a path
+// field, or "" otherwise.
+func (f ConnectionForm) CompletionView() string {
+	if !f.editing || !f.isPathField(f.activeField()) {
+		return ""
+	}
+	return f.pathComp.View()
+}
+
+// completionLineOffset returns the row (within the form body, below the top
+// border) where the completion popup should anchor, or -1 when hidden.
+func (f ConnectionForm) completionLineOffset() int {
+	if f.CompletionView() == "" {
+		return -1
+	}
+	vis := f.visibleFields()
+	n := len(vis)
+	fieldsHeight := f.effectiveHeight() - 1
+	if fieldsHeight < linesPerField {
+		fieldsHeight = linesPerField
+	}
+	maxFields := fieldsHeight / linesPerField
+	start := f.scrollRow
+	if start > n-maxFields && n > maxFields {
+		start = n - maxFields
+	}
+	if start < 0 {
+		start = 0
+	}
+	rel := f.active - start
+	if rel < 0 || rel >= maxFields {
+		return -1
+	}
+	// Value row is the third line of the field box; popup sits on the next row.
+	return rel*linesPerField + 3
+}
+
 // --- update -----------------------------------------------------------------
 
 // Update handles messages for the form using a vim-like modal model that
@@ -296,17 +353,38 @@ func (f ConnectionForm) Update(msg tea.Msg) (ConnectionForm, tea.Cmd) {
 	key := kmsg.String()
 
 	if f.editing {
-		// Insert mode: Esc/Enter commit the field and return to normal mode;
-		// any other key edits the active field.
+		fi := f.activeField()
 		if key == "esc" || key == "enter" {
 			f.editing = false
-			f.fields[f.activeField()].Blur()
+			f.pathComp.clear()
+			f.fields[fi].Blur()
 			return f, nil
+		}
+		if f.isPathField(fi) {
+			switch key {
+			case "tab":
+				if f.pathComp.compVisible && len(f.pathComp.completions) > 0 {
+					f.pathComp.accept(&f.fields[fi])
+					return f, nil
+				}
+			case "down":
+				if f.pathComp.compVisible {
+					f.pathComp.move(1)
+					return f, nil
+				}
+			case "up":
+				if f.pathComp.compVisible {
+					f.pathComp.move(-1)
+					return f, nil
+				}
+			}
 		}
 		f.clearTransient()
 		var cmd tea.Cmd
-		fi := f.activeField()
 		f.fields[fi], cmd = f.fields[fi].Update(msg)
+		if f.isPathField(fi) {
+			f.pathComp.refresh(f.fields[fi].Value())
+		}
 		return f, cmd
 	}
 
@@ -340,6 +418,11 @@ func (f ConnectionForm) Update(msg tea.Msg) (ConnectionForm, tea.Cmd) {
 		if !isChoiceField(fi) {
 			f.editing = true
 			f.clearTransient()
+			if f.isPathField(fi) {
+				f.pathComp.refresh(f.fields[fi].Value())
+			} else {
+				f.pathComp.clear()
+			}
 			cmd := f.fields[fi].Focus()
 			return f, cmd
 		}

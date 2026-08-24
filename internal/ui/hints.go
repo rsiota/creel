@@ -140,6 +140,9 @@ func (m Model) resolveHints() (section string, hints []string) {
 		switch {
 		case m.state == stateAddConnection:
 			if m.connForm.editing {
+				if m.connForm.ActiveIsPathField() {
+					return "", []string{"tab", "↑/↓", "enter", "esc"}
+				}
 				return "", []string{"enter", "esc"}
 			}
 			if m.connForm.ActiveIsChoice() {
