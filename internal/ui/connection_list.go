@@ -620,10 +620,13 @@ func (c ConnectionList) View() string {
 	}
 
 	if len(rows) == 0 {
+		var msg string
 		if c.filtering {
-			return mutedStyle.Render("  (no matches)")
+			msg = mutedStyle.Render("  (no matches)")
+		} else {
+			msg = mutedStyle.Render("  No saved connections. Press 'n' to add one.")
 		}
-		return mutedStyle.Render("  No saved connections. Press 'n' to add one.")
+		return padViewHeight(msg, contentW, c.height)
 	}
 
 	tops := prefixTops(rows)
@@ -656,7 +659,7 @@ func (c ConnectionList) View() string {
 		b.WriteString(c.renderRow(r, i, contentW))
 		b.WriteString("\n")
 	}
-	return strings.TrimRight(b.String(), "\n")
+	return padViewHeight(strings.TrimRight(b.String(), "\n"), contentW, c.height)
 }
 
 // renderRow renders a single row (group header or connection field box).

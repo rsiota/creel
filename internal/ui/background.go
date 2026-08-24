@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -63,9 +64,17 @@ func paintBackground(view string, bg lipgloss.Color) string {
 // theme bg before the first printable cell whenever the background is default.
 // Printable here means rune >= 0x20, so spaces (padding) are painted while
 // control characters (newline, ESC, …) are passed through without triggering
-// an inject.
+// an inject. injected is cleared on each newline so every row gets an explicit
+// bg set — SGR state persists across lines in the terminal, and a prior line
+// ending in \x1b[0m would otherwise leave the next row on the terminal default
+// (often dark) if we thought bg was still active.
 func writeLiteral(out *strings.Builder, s, seq string, explicit, injected *bool) {
 	for _, r := range s {
+		if r == '\n' {
+			*injected = false
+			out.WriteRune(r)
+			continue
+		}
 		if r >= 0x20 && !*explicit && !*injected {
 			out.WriteString(seq)
 			*injected = true
@@ -134,11 +143,17 @@ func consumeColorSpec(rest []int) int {
 // sgrRE matches an SGR sequence (CSI … m), capturing the parameter list.
 var sgrRE = regexp.MustCompile(`\x1b\[([0-9;]*)m`)
 
-// ansiBgSeq returns the SGR "set background" sequence for a lipgloss colour,
-// using lipgloss's own colour-profile conversion so the emitted sequence
-// matches whatever the terminal supports (truecolour / 256 / 16-colour). A
-// colour lipgloss can't resolve yields "" so the caller skips painting.
+// ansiBgSeq returns the SGR "set background" sequence for a lipgloss colour.
+// Hex palette colours use an explicit 24-bit sequence so light themes (e.g.
+// #ffffff) are not mapped to ANSI 107/49, which many terminals treat as the
+// profile default — often a dark bg that reads as stray lines on light themes.
+// Non-hex colours fall back to lipgloss's profile-aware conversion.
 func ansiBgSeq(c lipgloss.Color) string {
+	if s := string(c); strings.HasPrefix(s, "#") {
+		if r, g, b, ok := parseHexRGB(s); ok {
+			return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", r, g, b)
+		}
+	}
 	if string(c) == "" {
 		return ""
 	}
@@ -160,4 +175,32 @@ func (m Model) paintBg(view string) string {
 		return view
 	}
 	return paintBackground(view, colorBg)
+}
+
+// padViewHeight extends view to exactly height lines. Any shortfall is filled
+// with space-padded rows of width columns. lipgloss Style.Height and bare-
+// newline canvases pad with empty lines, which paintBg skips (newlines are not
+// printable), leaving the terminal's default background visible — especially
+// noticeable on light themes over a dark terminal profile.
+func padViewHeight(view string, width, height int) string {
+	if height <= 0 {
+		return view
+	}
+	if width < 1 {
+		width = 1
+	}
+	blank := lipgloss.NewStyle().Background(colorBg).Render(strings.Repeat(" ", width))
+	var lines []string
+	if view != "" {
+		lines = strings.Split(view, "\n")
+	} else {
+		lines = nil
+	}
+	for len(lines) < height {
+		lines = append(lines, blank)
+	}
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	return strings.Join(lines, "\n")
 }

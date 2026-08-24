@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/rsiota/creel/internal/config"
 )
 
@@ -18,6 +19,26 @@ func themeBg(t *testing.T, hex string) string {
 		t.Skipf("colour profile renders no background sequence for %s", hex)
 	}
 	return seq
+}
+
+func TestAnsiBgSeqLightTheme(t *testing.T) {
+	seq := ansiBgSeq(lipgloss.Color("#ffffff"))
+	if seq != "\x1b[48;2;255;255;255m" {
+		t.Fatalf("#ffffff seq=%q want truecolor white", seq)
+	}
+	seq = ansiBgSeq(lipgloss.Color("#1a1b26"))
+	if seq != "\x1b[48;2;26;27;38m" {
+		t.Fatalf("#1a1b26 seq=%q want truecolor", seq)
+	}
+}
+
+func TestPaintBackgroundReinjectsAfterNewline(t *testing.T) {
+	bg := themeBg(t, "#ffffff")
+	got := paintBackground("a\nb", "#ffffff")
+	want := bg + "a\n" + bg + "b"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
 }
 
 func TestPaintBackgroundFillsPlainCells(t *testing.T) {
@@ -107,6 +128,40 @@ func TestPaintBackgroundSpacesPadded(t *testing.T) {
 	}
 	if !strings.HasSuffix(got, "a b") {
 		t.Errorf("content altered: %q", got)
+	}
+}
+
+func TestPadViewHeightFillsWithSpaces(t *testing.T) {
+	applyPalette(themes["git-hub-light-default"])
+	got := padViewHeight("line", 5, 3)
+	lines := strings.Split(got, "\n")
+	if len(lines) != 3 {
+		t.Fatalf("got %d lines, want 3", len(lines))
+	}
+	if lines[0] != "line" {
+		t.Errorf("line 0 = %q, want line", lines[0])
+	}
+	if strings.TrimSpace(ansi.Strip(lines[1])) != "" || strings.TrimSpace(ansi.Strip(lines[2])) != "" {
+		t.Errorf("padding lines should be blank spaces with bg: %q, %q", lines[1], lines[2])
+	}
+}
+
+func TestPaintBackgroundFillsSpaceCanvas(t *testing.T) {
+	bg := themeBg(t, "#ffffff")
+	canvas := lipgloss.Place(8, 2, lipgloss.Left, lipgloss.Top, "",
+		lipgloss.WithWhitespaceChars(" "))
+	got := paintBackground(canvas, "#ffffff")
+	if !strings.Contains(got, bg) {
+		t.Fatalf("space canvas not painted with theme bg")
+	}
+}
+
+func TestPaintBackgroundSkipsBareNewlineCanvas(t *testing.T) {
+	bg := themeBg(t, "#ffffff")
+	canvas := "\n\n"
+	got := paintBackground(canvas, "#ffffff")
+	if strings.Contains(got, bg) {
+		t.Fatalf("bare newline canvas should stay unpainted, got %q", got)
 	}
 }
 

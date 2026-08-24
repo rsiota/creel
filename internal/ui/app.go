@@ -4387,17 +4387,16 @@ func (m Model) buildView() string {
 		return m.paintBg(m.viewConnections())
 	}
 
-	// Database picker: render on a blank background (like the connection picker).
+	// Database picker: space-filled canvas so paintBg covers the whole screen.
 	if m.dbPicker.IsVisible() {
 		pw, ph := popupDim()
 		m.dbPicker.SetSize(pw, ph)
 		pickerPanel := m.dbPicker.View()
-		panelW := lipgloss.Width(pickerPanel)
-		panelH := lipgloss.Height(pickerPanel)
-		panelX := (m.width - panelW) / 2
-		panelY := (m.height - 1 - panelH) / 2
-		bg := strings.Repeat("\n", m.height-2)
-		view := placeOverlay(bg, pickerPanel, panelX, panelY)
+		view := lipgloss.Place(m.width, m.height-1,
+			lipgloss.Center, lipgloss.Center,
+			pickerPanel,
+			lipgloss.WithWhitespaceChars(" "),
+			lipgloss.WithWhitespaceBackground(colorBg))
 
 		// Overlay create-database dialog on top of the picker if active.
 		if m.createDBActive {
@@ -4491,14 +4490,12 @@ func (m Model) viewConnections() string {
 	contentW, listH := m.connListContentDims()
 	m.connList.SetSize(contentW, listH)
 
-	// Pin the list to a fixed height so ScrollInfo sits at the bottom.
-	listStyled := lipgloss.NewStyle().
-		Height(listH).
-		Render(m.connList.View())
+	listStyled := m.connList.View()
 
 	connPanel := lipgloss.NewStyle().
 		Width(panelW).
 		Height(panelH).
+		Background(colorBg).
 		Border(panelBorder()).
 		BorderForeground(colorPrimary).
 		Padding(0, 1).
@@ -4510,13 +4507,12 @@ func (m Model) viewConnections() string {
 			),
 		)
 
-	// Render as an overlay on a blank background.
-	panelW2 := lipgloss.Width(connPanel)
-	panelH2 := lipgloss.Height(connPanel)
-	panelX := (m.width - panelW2) / 2
-	panelY := (m.height - 1 - panelH2) / 2
-	bg := strings.Repeat("\n", m.height-2)
-	view := placeOverlay(bg, connPanel, panelX, panelY)
+	// Space-filled canvas so paintBg covers the whole screen behind the popup.
+	view := lipgloss.Place(m.width, m.height-1,
+		lipgloss.Center, lipgloss.Center,
+		connPanel,
+		lipgloss.WithWhitespaceChars(" "),
+		lipgloss.WithWhitespaceBackground(colorBg))
 
 	// Overlay help panel if visible (sized to leave the status bar showing).
 	if m.help.IsVisible() {
