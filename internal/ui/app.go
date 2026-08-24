@@ -3816,29 +3816,20 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					return m, m.fetchColumnStats()
 				}
 			case "e", "i":
-				if !m.results.IsEditable() || !m.results.HasPrimaryKey() {
-					break
-				}
 				m.resultsPendingG = false
 				m.resultsPendingY = false
-				if m.inspector.IsVisible() {
-					return m, nil
-				}
-				if m.results.IsCellTruncated(m.results.CursorRow(), m.results.CursorCol()) {
-					return m, m.openCellEditPopup(m.results.CursorRow(), m.results.CursorCol())
-				}
-				m.results.StartEdit()
-				return m, nil
+				return m, m.startResultsCellEdit()
 			case "E":
 				// Expand opens a multi-line peek of the cell under the cursor.
 				// It doubles as a read-only viewer when the results can't be
 				// written back (read-only mode, custom queries, PK-less views),
 				// so it is intentionally not gated on editability like e/i.
-				if m.inspector.IsVisible() {
-					break
-				}
+				// Close the inspector first when safe (same as e/i / double-click).
 				m.resultsPendingG = false
 				m.resultsPendingY = false
+				if !m.prepareResultsEdit() {
+					return m, nil
+				}
 				return m, m.openCellEditPopup(m.results.CursorRow(), m.results.CursorCol())
 			case "n":
 				if m.lastSearch != "" {

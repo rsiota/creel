@@ -356,16 +356,35 @@ func replaceSimpleSelectTable(query, oldName, newName string) string {
 	return query[:afterFromStart] + newName + restTrim[tableEnd:]
 }
 
+// prepareResultsEdit dismisses the inspector when it is safe so the results
+// panel can own a cell edit (keyboard e/i/E or mouse double-click). Returns
+// false when the inspector is mid-edit or mid-insert and must not be closed.
+func (m *Model) prepareResultsEdit() bool {
+	if !m.inspector.IsVisible() {
+		return true
+	}
+	if m.inspector.IsEditing() || m.inspector.IsInserting() {
+		return false
+	}
+	m.inspector.Hide()
+	if m.focus == FocusInspector {
+		m.focus = FocusResults
+	}
+	m.layoutWorkspace()
+	m.applyFocus()
+	return true
+}
+
 // startResultsCellEdit enters inline edit mode on the cell under the results
 // cursor, opening the expanded cell-edit popup instead when the value is
-// wider than its column. It mirrors the "e"/"i" keyboard binding and is a
-// no-op when the results are not editable, have no primary key, or when the
-// inspector panel is open (where edits happen in the inspector instead).
+// wider than its column. It mirrors the "e"/"i" keyboard binding. When the
+// inspector is open (and not mid-edit/insert), it is closed first so the grid
+// can own the edit — matching mouse double-click behaviour.
 func (m *Model) startResultsCellEdit() tea.Cmd {
 	if !m.results.IsEditable() || !m.results.HasPrimaryKey() {
 		return nil
 	}
-	if m.inspector.IsVisible() {
+	if !m.prepareResultsEdit() {
 		return nil
 	}
 	row, col := m.results.CursorRow(), m.results.CursorCol()

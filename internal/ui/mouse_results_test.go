@@ -233,6 +233,75 @@ func TestResultsDoubleClickClosesInspectorAndEdits(t *testing.T) {
 	}
 }
 
+// TestResultsKeyEditClosesInspectorAndEdits verifies that pressing e/i on the
+// results panel while the inspector is open closes it and edits the cell,
+// matching mouse double-click behaviour.
+func TestResultsKeyEditClosesInspectorAndEdits(t *testing.T) {
+	for _, key := range []string{"e", "i"} {
+		t.Run(key, func(t *testing.T) {
+			m := newResultsMouseModel()
+			m.results.SetEditable("users", []string{"id"})
+			m.results.SetCursor(0, 1)
+			m.inspector.Toggle()
+			m.layoutWorkspace()
+			m.focus = FocusResults
+			if !m.inspector.IsVisible() {
+				t.Fatal("inspector should be visible")
+			}
+
+			out, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+			m = out.(Model)
+			if m.inspector.IsVisible() {
+				t.Errorf("%q should close the inspector", key)
+			}
+			if !m.results.IsEditing() {
+				t.Errorf("%q should enter inline edit mode", key)
+			}
+		})
+	}
+}
+
+// TestResultsKeyExpandClosesInspector verifies that E opens the cell popup
+// after dismissing the inspector when focus is on results.
+func TestResultsKeyExpandClosesInspector(t *testing.T) {
+	m := newResultsMouseModel()
+	m.results.SetEditable("users", []string{"id"})
+	m.results.SetCursor(0, 1)
+	m.inspector.Toggle()
+	m.layoutWorkspace()
+	m.focus = FocusResults
+
+	out, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'E'}})
+	m = out.(Model)
+	if m.inspector.IsVisible() {
+		t.Error("E should close the inspector")
+	}
+	if !m.cellEdit.IsVisible() {
+		t.Error("E should open the cell-edit popup")
+	}
+}
+
+// TestResultsKeyEditKeepsInspectorWhenInserting verifies e does not discard
+// an in-progress inspector insert.
+func TestResultsKeyEditKeepsInspectorWhenInserting(t *testing.T) {
+	m := newResultsMouseModel()
+	m.results.SetEditable("users", []string{"id"})
+	m.results.SetCursor(0, 1)
+	m.inspector.Toggle()
+	m.inspector.StartInsert()
+	m.layoutWorkspace()
+	m.focus = FocusResults
+
+	out, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	m = out.(Model)
+	if !m.inspector.IsVisible() || !m.inspector.IsInserting() {
+		t.Error("inspector insert should be preserved")
+	}
+	if m.results.IsEditing() {
+		t.Error("should not enter grid edit while inspector is inserting")
+	}
+}
+
 // TestResultsDoubleClickKeepsInspectorWhenInserting verifies that a double-click
 // on the grid does not close the inspector (or start a grid edit) while the
 // inspector is mid-insert, so in-progress insert data isn't discarded.

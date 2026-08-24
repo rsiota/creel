@@ -411,18 +411,6 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				time.Since(m.lastResultsClickTime) <= doubleClickInterval &&
 				m.lastResultsClickCell == cell {
 				m.lastResultsClickTime = time.Time{}
-				// If the inspector is open, a double-click on a grid cell
-				// signals intent to edit the cell directly: close the
-				// inspector first. Leave it alone when it's mid-edit or
-				// mid-insert so in-progress work isn't discarded.
-				if m.inspector.IsVisible() && !m.inspector.IsEditing() && !m.inspector.IsInserting() {
-					m.inspector.Hide()
-					if m.focus == FocusInspector {
-						m.focus = FocusResults
-					}
-					m.layoutWorkspace()
-					m.applyFocus()
-				}
 				return m, m.startResultsCellEdit()
 			}
 			m.lastResultsClickTime = time.Now()
