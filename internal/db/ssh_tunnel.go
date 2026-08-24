@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -126,7 +127,11 @@ func sshAuthMethods(cfg ConnectionConfig) ([]ssh.AuthMethod, error) {
 }
 
 func loadKeySigner(keyPath, passphrase string) (ssh.Signer, error) {
-	keyBytes, err := os.ReadFile(keyPath)
+	expanded, err := expandHomePath(keyPath)
+	if err != nil {
+		return nil, err
+	}
+	keyBytes, err := os.ReadFile(expanded)
 	if err != nil {
 		return nil, err
 	}
@@ -143,4 +148,26 @@ func loadKeySigner(keyPath, passphrase string) (ssh.Signer, error) {
 		return nil, err
 	}
 	return signer, nil
+}
+
+// expandHomePath resolves a leading ~ (~ or ~/rest) to the user's home
+// directory before opening the SSH private key. Other paths are cleaned and
+// returned unchanged.
+func expandHomePath(raw string) (string, error) {
+	raw = filepath.Clean(raw)
+	if raw == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return home, nil
+	}
+	if len(raw) >= 2 && raw[:2] == "~/" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, raw[2:]), nil
+	}
+	return raw, nil
 }
