@@ -10,6 +10,53 @@ import (
 // results cell that is interpreted as a double-click (entering inline edit).
 const doubleClickInterval = 500 * time.Millisecond
 
+// handleConnectionFormMouse routes mouse events on the add/edit connection form.
+func (m Model) handleConnectionFormMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	panelW, panelH, panelX, panelY := m.connFormPopupDims()
+
+	if msg.X < panelX || msg.X >= panelX+panelW || msg.Y < panelY || msg.Y >= panelY+panelH {
+		return m, nil
+	}
+
+	switch msg.Type {
+	case tea.MouseWheelUp:
+		if m.connForm.editing {
+			m.connForm.fields[m.connForm.activeField()].Blur()
+			m.connForm.editing = false
+			m.connForm.pathComp.clear()
+		}
+		m.connForm.moveActive(-1)
+		return m, nil
+	case tea.MouseWheelDown:
+		if m.connForm.editing {
+			m.connForm.fields[m.connForm.activeField()].Blur()
+			m.connForm.editing = false
+			m.connForm.pathComp.clear()
+		}
+		m.connForm.moveActive(1)
+		return m, nil
+	case tea.MouseLeft:
+		// Content starts below the panel's top border.
+		fi := m.connForm.ClickField(msg.Y - panelY - 1)
+		if fi < 0 {
+			return m, nil
+		}
+
+		if !m.connForm.editing &&
+			!m.lastConnFormClickTime.IsZero() &&
+			time.Since(m.lastConnFormClickTime) <= doubleClickInterval &&
+			m.lastConnFormClickField == fi {
+			m.lastConnFormClickTime = time.Time{}
+			cmd := m.connForm.StartFieldEdit()
+			return m, cmd
+		}
+		m.lastConnFormClickTime = time.Now()
+		m.lastConnFormClickField = fi
+		return m, nil
+	}
+	return m, nil
+}
+
 // handleConnectionsMouse routes mouse events on the connection list screen.
 func (m Model) handleConnectionsMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Type != tea.MouseLeft {

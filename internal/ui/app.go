@@ -397,6 +397,8 @@ type Model struct {
 	lastResultsClickCell   cellRef
 	lastInspectorClickTime time.Time
 	lastInspectorClickCol  int // result column index of last inspector click (-1 = none)
+	lastConnFormClickTime  time.Time
+	lastConnFormClickField int // field index of last connection-form click (-1 = none)
 	lastERDClickTime       time.Time
 	lastERDClickCard       string // table name of last ERD card click ("" = none)
 
@@ -1152,6 +1154,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.state == stateConnections {
 			return m.handleConnectionsMouse(msg)
+		}
+		if m.state == stateAddConnection {
+			return m.handleConnectionFormMouse(msg)
 		}
 		if m.state == stateWorkspace {
 			return m.handleWorkspaceMouse(msg)
@@ -4431,6 +4436,22 @@ func (m Model) buildView() string {
 	}
 
 	return m.paintBg(m.viewWorkspace())
+}
+
+// connFormPopupDims returns the screen bounds of the add/edit connection form
+// popup, matching viewAddConnection's centering and dynamic height.
+func (m Model) connFormPopupDims() (panelW, panelH, panelX, panelY int) {
+	popupW, _ := popupDim()
+	const borderOverhead = 2
+	innerW, capH := popupContentSize(m.height)
+	m.connForm.SetSize(innerW, capH)
+	contentH := m.connForm.effectiveHeight()
+	popupH := contentH + borderOverhead
+	panelW = popupW
+	panelH = popupH
+	panelX = (m.width - panelW) / 2
+	panelY = (m.height - 1 - panelH) / 2
+	return panelW, panelH, panelX, panelY
 }
 
 // connListPopupDims returns the (width, height) of the connection-list popup.

@@ -302,6 +302,67 @@ func (f ConnectionForm) CompletionView() string {
 	return f.pathComp.View()
 }
 
+// ClickField moves the field cursor to the field at the given content-relative
+// Y coordinate (0 = first line below the form panel's top border) and returns
+// the field index constant for that field. Returns -1 when the click does not
+// land on a field (e.g. on the message line or empty padding).
+func (f *ConnectionForm) ClickField(contentY int) int {
+	vis := f.visibleFields()
+	n := len(vis)
+	if n == 0 || contentY < 0 {
+		return -1
+	}
+
+	fieldsHeight := f.effectiveHeight() - 1
+	if fieldsHeight < linesPerField {
+		fieldsHeight = linesPerField
+	}
+	if contentY >= fieldsHeight {
+		return -1
+	}
+
+	maxFields := fieldsHeight / linesPerField
+	start := f.scrollRow
+	if start > n-maxFields && n > maxFields {
+		start = n - maxFields
+	}
+	if start < 0 {
+		start = 0
+	}
+
+	relField := contentY / linesPerField
+	fieldIdx := start + relField
+	if fieldIdx < 0 || fieldIdx >= n {
+		return -1
+	}
+
+	if f.editing && fieldIdx != f.active {
+		f.fields[f.activeField()].Blur()
+		f.editing = false
+		f.pathComp.clear()
+	}
+	f.active = fieldIdx
+	f.ensureFieldVisible()
+	return vis[fieldIdx]
+}
+
+// StartFieldEdit enters insert mode on the currently focused free-text field,
+// mirroring the e/i/a key binding. Choice fields are changed with h/l instead.
+func (f *ConnectionForm) StartFieldEdit() tea.Cmd {
+	fi := f.activeField()
+	if isChoiceField(fi) {
+		return nil
+	}
+	f.editing = true
+	f.clearTransient()
+	if f.isPathField(fi) {
+		f.pathComp.refresh(f.fields[fi].Value())
+	} else {
+		f.pathComp.clear()
+	}
+	return f.fields[fi].Focus()
+}
+
 // completionLineOffset returns the row (within the form body, below the top
 // border) where the completion popup should anchor, or -1 when hidden.
 func (f ConnectionForm) completionLineOffset() int {
