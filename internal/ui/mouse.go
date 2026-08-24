@@ -10,6 +10,11 @@ import (
 // results cell that is interpreted as a double-click (entering inline edit).
 const doubleClickInterval = 500 * time.Millisecond
 
+// connFormWheelInterval collapses a macOS / trackpad wheel notch (often 3
+// rapid MouseWheel events) into a single field step so the form cursor moves
+// one field at a time rather than jumping three.
+const connFormWheelInterval = 80 * time.Millisecond
+
 // handleConnectionFormMouse routes mouse events on the add/edit connection form.
 func (m Model) handleConnectionFormMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	panelW, panelH, panelX, panelY := m.connFormPopupDims()
@@ -19,21 +24,23 @@ func (m Model) handleConnectionFormMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 	}
 
 	switch msg.Type {
-	case tea.MouseWheelUp:
+	case tea.MouseWheelUp, tea.MouseWheelDown:
+		// Debounce: one field step per notch, not per raw event.
+		if !m.lastConnFormWheelTime.IsZero() &&
+			time.Since(m.lastConnFormWheelTime) < connFormWheelInterval {
+			return m, nil
+		}
+		m.lastConnFormWheelTime = time.Now()
 		if m.connForm.editing {
 			m.connForm.fields[m.connForm.activeField()].Blur()
 			m.connForm.editing = false
 			m.connForm.pathComp.clear()
 		}
-		m.connForm.moveActive(-1)
-		return m, nil
-	case tea.MouseWheelDown:
-		if m.connForm.editing {
-			m.connForm.fields[m.connForm.activeField()].Blur()
-			m.connForm.editing = false
-			m.connForm.pathComp.clear()
+		if msg.Type == tea.MouseWheelUp {
+			m.connForm.moveActive(-1)
+		} else {
+			m.connForm.moveActive(1)
 		}
-		m.connForm.moveActive(1)
 		return m, nil
 	case tea.MouseLeft:
 		// Content starts below the panel's top border.

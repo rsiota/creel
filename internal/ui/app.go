@@ -399,6 +399,7 @@ type Model struct {
 	lastInspectorClickCol  int // result column index of last inspector click (-1 = none)
 	lastConnFormClickTime  time.Time
 	lastConnFormClickField int // field index of last connection-form click (-1 = none)
+	lastConnFormWheelTime  time.Time // debounce wheel → one field step per notch
 	lastERDClickTime       time.Time
 	lastERDClickCard       string // table name of last ERD card click ("" = none)
 

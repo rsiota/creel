@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/rsiota/creel/internal/config"
@@ -119,3 +120,30 @@ func TestConnFormClickExitsEditOnDifferentField(t *testing.T) {
 		t.Errorf("active=%d, want 0 (name field)", m.connForm.active)
 	}
 }
+
+func TestConnFormWheelDebouncesNotch(t *testing.T) {
+	m := newConnFormMouseModel(t)
+	x := m.width / 2
+	y := connFormFieldScreenY(t, m, "Name")
+	if m.connForm.active != 0 {
+		t.Fatalf("start active=%d, want 0", m.connForm.active)
+	}
+
+	// Three rapid wheel-downs (typical macOS notch) should advance one field.
+	for i := 0; i < 3; i++ {
+		out, _ := m.handleConnectionFormMouse(tea.MouseMsg{Type: tea.MouseWheelDown, X: x, Y: y})
+		m = out.(Model)
+	}
+	if m.connForm.active != 1 {
+		t.Errorf("after 3-event notch: active=%d, want 1", m.connForm.active)
+	}
+
+	// After the debounce window, another notch may advance again.
+	m.lastConnFormWheelTime = time.Now().Add(-connFormWheelInterval - time.Millisecond)
+	out, _ := m.handleConnectionFormMouse(tea.MouseMsg{Type: tea.MouseWheelDown, X: x, Y: y})
+	m = out.(Model)
+	if m.connForm.active != 2 {
+		t.Errorf("after debounce window: active=%d, want 2", m.connForm.active)
+	}
+}
+
