@@ -11,6 +11,28 @@ commits, so it can come up empty).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-25
+
+Patch release: Postgres connect fix, connection-form polish, and a few light-theme
+/ UI fixes that landed after 0.3.0.
+
+### Added
+- Connection form: filesystem path completion and mouse field selection.
+
+### Fixed
+- Postgres: stop sending libpq `keepalives=*` as startup params (pgx was
+  forwarding them and the server rejected connect with
+  `unrecognized configuration parameter "keepalives"`). TCP keepalives stay
+  enabled on the dialer. Fixes [#1](https://github.com/rsiota/creel/issues/1).
+- Expand `~` in SSH private key paths.
+- Light-theme popups: eliminate dark stray lines when
+  `transparent_background` is on; respect that setting on the connection picker.
+- Status-bar hint flash: dim idle keys and flash the pressed key as bold cell
+  fg so active bindings stay readable on light themes.
+- Connection form: debounce mouse-wheel to one field per notch.
+- Close the inspector when starting a cell edit from the results grid (`e` /
+  `i` / `E`).
+
 ## [0.3.0] - 2026-08-23
 
 More chart types, AI explain/fix, a jump-anywhere palette, ERD polish, named
@@ -140,7 +162,8 @@ First public release. creel succeeds `gsql` (the project was renamed) and migrat
 - **Read-only mode** for safely pointing at production.
 - **Session restore**, per-connection query history & bookmarks, EXPLAIN plans, and ~570 themes.
 
-[Unreleased]: https://github.com/rsiota/creel/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/rsiota/creel/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/rsiota/creel/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/rsiota/creel/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rsiota/creel/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/rsiota/creel/compare/v0.1.0...v0.1.1
