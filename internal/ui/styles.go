@@ -126,6 +126,7 @@ var (
 	sbAccent  lipgloss.Style
 	sbMark    lipgloss.Style
 	sbFg      lipgloss.Style
+	sbHintFlash lipgloss.Style // pressed key: cell fg + bold
 )
 
 // Shared styles used across components. Declared here, assigned by applyPalette.
@@ -207,6 +208,9 @@ func applyPalette(p colorPalette) {
 	sbAccent = lipgloss.NewStyle().Foreground(colorAccent).Background(colorStatusBarBg)
 	sbMark = lipgloss.NewStyle().Foreground(colorMark).Background(colorStatusBarBg)
 	sbFg = lipgloss.NewStyle().Foreground(colorFg).Background(colorStatusBarBg)
+	// Idle hints use muted; flash jumps to cell fg + bold so the pressed key
+	// matches result-cell text and stands out against the dimmer idle set.
+	sbHintFlash = lipgloss.NewStyle().Foreground(colorFg).Background(colorStatusBarBg).Bold(true)
 
 	// Shared styles.
 	appStyle = lipgloss.NewStyle().Padding(0, 1)

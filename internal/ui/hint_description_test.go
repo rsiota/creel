@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/rsiota/creel/internal/config"
@@ -107,5 +108,33 @@ func TestHintDescriptionLookup(t *testing.T) {
 		if got := m.hintDescription(key); got != want {
 			t.Errorf("hintDescription(%q) = %q, want %q", key, got, want)
 		}
+	}
+}
+
+// Pressed hint keys flash cell fg+bold against muted idle keys, so the flash
+// stays visible on light themes where label and fg are both dark.
+func TestHintFlashFgBoldOnLight(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	applyPalette(lightPalette)
+
+	m := NewModel(&config.Config{})
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 44})
+	m = mm.(Model)
+	m.state = stateWorkspace
+	m.focus = FocusResults
+	m.hintFlash = "j"
+	m.hintFlashAt = time.Now()
+
+	bar := m.statusBar("")
+	flashPrefix := sgrPrefix(sbHintFlash)
+	if !strings.Contains(bar, flashPrefix) {
+		t.Fatalf("status bar missing fg+bold hint flash SGR %q:\n%s", flashPrefix, bar)
+	}
+	idlePrefix := sgrPrefix(sbMuted)
+	if flashPrefix == idlePrefix {
+		t.Fatal("sbHintFlash collapsed to sbMuted; flash would be invisible")
+	}
+	if !strings.Contains(bar, idlePrefix) {
+		t.Fatalf("status bar missing muted idle hint SGR %q:\n%s", idlePrefix, bar)
 	}
 }

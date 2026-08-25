@@ -290,7 +290,7 @@ type wheelTickMsg struct{}
 // auto-clearing.
 const flashExpiry = 5 * time.Second
 
-// hintFlashDuration is how long a hint group stays highlighted white.
+// hintFlashDuration is how long a pressed hint key stays cell-fg+bold.
 const hintFlashDuration = 300 * time.Millisecond
 
 // hintDescDuration is how long a pressed key's description is shown inline on
@@ -555,7 +555,7 @@ type Model struct {
 	backendSearchInput string
 	backendSearchTimer *time.Timer
 
-	// hintFlash is the individual key currently highlighted white on the status bar.
+	// hintFlash is the individual key currently flashed cell-fg+bold on the status bar.
 	hintFlash   string
 	hintFlashAt time.Time
 

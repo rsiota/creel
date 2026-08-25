@@ -269,8 +269,8 @@ func (m Model) statusBar(connName string) string {
 	hints := m.hintList()
 	if len(hints) > 0 {
 		flashActive := m.hintFlash != "" && time.Since(m.hintFlashAt) < hintFlashDuration
-		keyStyle := sbLabel
-		flashStyle := sbFg
+		keyStyle := sbMuted
+		flashStyle := sbHintFlash
 		sepStyle := sbMuted
 		var hintsStyled string
 		for i, group := range hints {
