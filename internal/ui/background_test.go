@@ -169,15 +169,49 @@ func TestPaintBgRespectsTransparentSetting(t *testing.T) {
 	defer applyPalette(defaultPalette)
 	applyPalette(defaultPalette)
 
-	// With TransparentBackground set, paintBg is a no-op.
+	// With TransparentBackground set, default-bg cells get a bg reset so stale
+	// theme colour from a prior opaque frame does not linger in the terminal.
 	m := Model{settings: config.Settings{TransparentBackground: true}}
 	in := "hello"
-	if got := m.paintBg(in); got != in {
-		t.Errorf("transparent background should be a no-op, got %q", got)
+	if got := m.paintBg(in); got != defaultBgResetSeq+in {
+		t.Errorf("transparent background should reset default bg, got %q", got)
 	}
 	// With it off, the view is painted.
 	m2 := Model{settings: config.Settings{TransparentBackground: false}}
 	if got := m2.paintBg(in); !strings.HasPrefix(got, "\x1b[") {
 		t.Errorf("non-transparent background should paint, got %q", got)
 	}
+}
+
+func TestPaintBgTransparentClearsStaleSidebarBorderBg(t *testing.T) {
+	applyPalette(themes["git-hub-light-default"])
+	m := newGeomModel(120, 40)
+	m.tables = []string{"users"}
+	m.layoutWorkspace()
+
+	raw := m.viewWorkspace()
+	whiteBg := ansiBgSeq(colorBg)
+	if whiteBg == "" {
+		t.Fatal("theme bg seq empty")
+	}
+
+	opaque := Model{settings: config.Settings{TransparentBackground: false}}.paintBg(raw)
+	if !strings.Contains(opaque, whiteBg) {
+		t.Fatalf("opaque view should embed theme bg %q", colorBg)
+	}
+
+	transparent := Model{settings: config.Settings{TransparentBackground: true}}.paintBg(raw)
+	for _, line := range strings.Split(transparent, "\n") {
+		if !strings.Contains(ansi.Strip(line), "┌") {
+			continue
+		}
+		if strings.Contains(line, whiteBg) {
+			t.Errorf("sidebar top border still has stale theme bg after transparent toggle: %q", line)
+		}
+		if !strings.Contains(line, defaultBgResetSeq) {
+			t.Errorf("sidebar top border should reset default bg: %q", line)
+		}
+		return
+	}
+	t.Fatal("sidebar top border line not found")
 }

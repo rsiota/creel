@@ -16,6 +16,11 @@ commits, so it can come up empty).
   inspector by default when entering a workspace (also opens/closes immediately
   from `:set`).
 
+### Fixed
+- Transparent background: reset default-bg cells when transparency is on so
+  stale theme colour from a prior opaque frame does not linger (e.g. sidebar
+  borders on light themes after `:set transparent_background on`).
+
 ## [0.3.1] - 2026-08-25
 
 Patch release: Postgres connect fix, connection-form polish, and a few light-theme

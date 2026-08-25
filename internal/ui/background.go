@@ -9,6 +9,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// defaultBgResetSeq is the SGR "default background" code. Injected in
+// transparent_background mode so cells that previously held the theme bg
+// (from an opaque frame or paintBg) fall back to the terminal default —
+// which respects the profile's transparency — instead of keeping stale colour.
+const defaultBgResetSeq = "\x1b[49m"
+
 // paintBackground fills every cell in view that has no explicit background
 // colour with bg. Cells whose styles set their own background (the status
 // bar, selection highlights, table stripes, marked rows, …) keep that
@@ -26,7 +32,10 @@ import (
 // cell, the theme bg is emitted first. Explicit backgrounds override it until
 // the next reset returns to default.
 func paintBackground(view string, bg lipgloss.Color) string {
-	seq := ansiBgSeq(bg)
+	return paintBackgroundSeq(view, ansiBgSeq(bg))
+}
+
+func paintBackgroundSeq(view string, seq string) string {
 	if seq == "" {
 		return view
 	}
@@ -168,11 +177,11 @@ func ansiBgSeq(c lipgloss.Color) string {
 	return styled[:idx]
 }
 
-// paintBg applies the theme background to a view unless the user has opted into
-// a transparent background via config.
+// paintBg applies the theme background to a view, or resets default-bg cells
+// to the terminal default when transparent_background is on.
 func (m Model) paintBg(view string) string {
 	if m.settings.TransparentBackground {
-		return view
+		return paintBackgroundSeq(view, defaultBgResetSeq)
 	}
 	return paintBackground(view, colorBg)
 }
