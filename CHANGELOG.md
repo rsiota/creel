@@ -11,6 +11,11 @@ commits, so it can come up empty).
 
 ## [Unreleased]
 
+### Added
+- `inspector_open` setting / `:set inspector_open on|off` — open the row
+  inspector by default when entering a workspace (also opens/closes immediately
+  from `:set`).
+
 ## [0.3.1] - 2026-08-25
 
 Patch release: Postgres connect fix, connection-form polish, and a few light-theme

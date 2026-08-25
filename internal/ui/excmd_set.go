@@ -176,6 +176,26 @@ var allSettingSpecs = []settingSpec{
 			return []string{"unicode", "nerdfont"}
 		},
 	},
+	{
+		key:     "inspector_open",
+		aliases: []string{"inspector", "inspector-open", "inspectoropen", "show_inspector"},
+		describe: func(m Model) string {
+			return formatSettingBool("inspector_open", m.settings.InspectorOpen)
+		},
+		apply: func(m *Model, value string) tea.Cmd {
+			on, ok := parseSettingBool(value)
+			if !ok {
+				m.schemaMsg = ":set inspector_open needs on or off"
+				return nil
+			}
+			m.settings.InspectorOpen = on
+			m.saveSettings()
+			m.applyInspectorOpen(on, true)
+			m.schemaMsg = formatSettingBool("inspector_open", on)
+			return nil
+		},
+		complete: completeBoolValues,
+	},
 }
 
 func lookupSetting(name string) *settingSpec {

@@ -100,6 +100,22 @@ func (i Inspector) InsertValues() map[int]string {
 	return out
 }
 
+// Show opens the inspector (no-op if already visible). Resets edit/filter
+// state the same way Toggle does when opening.
+func (i *Inspector) Show() {
+	if i.visible {
+		return
+	}
+	i.visible = true
+	i.editing = false
+	i.cursorField = 0
+	i.scrollRow = 0
+	i.filtering = false
+	i.filter = ""
+	i.inserting = false
+	i.insertValues = nil
+}
+
 // Hide forcibly closes the inspector.
 func (i *Inspector) Hide() {
 	i.visible = false

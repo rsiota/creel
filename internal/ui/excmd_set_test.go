@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/db"
 )
 
 func TestExSetTransparentBackground(t *testing.T) {
@@ -110,4 +112,71 @@ func TestLookupSettingAliases(t *testing.T) {
 	if lookupSetting("timeout") == nil {
 		t.Fatal("timeout alias not resolved")
 	}
+	if lookupSetting("inspector") == nil {
+		t.Fatal("inspector alias not resolved")
+	}
 }
+
+func TestExSetInspectorOpen(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	cfg := &config.Config{}
+	m := NewModel(cfg)
+	m.state = stateWorkspace
+
+	m.runExCommand("set inspector_open on")
+	if !m.settings.InspectorOpen || !cfg.Settings.InspectorOpen {
+		t.Errorf("inspector_open not on: settings=%v config=%v",
+			m.settings.InspectorOpen, cfg.Settings.InspectorOpen)
+	}
+	if !m.inspector.IsVisible() {
+		t.Error("inspector should open immediately on :set on")
+	}
+	if m.focus != FocusInspector {
+		t.Errorf("focus = %v, want inspector after :set on", m.focus)
+	}
+
+	m.runExCommand("set inspector off")
+	if m.settings.InspectorOpen || cfg.Settings.InspectorOpen {
+		t.Error("inspector alias should turn preference off")
+	}
+	if m.inspector.IsVisible() {
+		t.Error("inspector should close on :set off")
+	}
+}
+
+func TestConnectOpensInspectorWhenPreferred(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "startup.db")
+	s := db.NewSQLite(db.ConnectionConfig{Driver: db.DriverSQLite, Database: dbPath})
+	if err := s.Connect(); err != nil {
+		t.Fatalf("setup connect: %v", err)
+	}
+	if _, err := s.Exec(`CREATE TABLE t (id INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	s.Close()
+
+	cfg := &config.Config{Settings: config.Settings{InspectorOpen: true}}
+	m := NewModel(cfg)
+	m.connectWithConfig(db.ConnectionConfig{
+		Driver:   db.DriverSQLite,
+		Database: dbPath,
+	})
+	t.Cleanup(func() {
+		if m.connection != nil {
+			m.connection.Close()
+		}
+	})
+	if m.connError != "" {
+		t.Fatalf("connError = %q", m.connError)
+	}
+	if !m.inspector.IsVisible() {
+		t.Fatal("inspector should open on connect when inspector_open is on")
+	}
+	// Startup opens the panel without stealing editor focus.
+	if m.focus == FocusInspector {
+		t.Error("connect should not steal focus to inspector")
+	}
+}
+

@@ -22,7 +22,7 @@ const (
 // config file. Zero values fall back to the defaults above (see Effective).
 //
 // Currently wired: page_size, query_timeout, default_driver, theme,
-// transparent_background, confirm_destructive.
+// transparent_background, confirm_destructive, inspector_open.
 // Reserved for follow-ups (not yet applied): cursor_style — the struct is
 // designed so adding fields is the only change needed here.
 type Settings struct {
@@ -62,6 +62,12 @@ type Settings struct {
 	// false runs each action immediately with no prompt. It is a pointer so the
 	// safe default (confirm) differs from the zero value of bool.
 	ConfirmDestructive *bool `yaml:"confirm_destructive,omitempty"`
+
+	// InspectorOpen shows the row inspector when entering a workspace (after
+	// connect / database select). false (the zero value) keeps today's
+	// behaviour — closed until ctrl+o. Left unsanitized like
+	// TransparentBackground so the default stays off without writing the key.
+	InspectorOpen bool `yaml:"inspector_open,omitempty"`
 }
 
 // Effective returns a copy of s with zero-values replaced by the defaults, so

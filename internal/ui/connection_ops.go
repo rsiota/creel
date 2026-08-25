@@ -134,11 +134,45 @@ func (m *Model) connectWithConfig(dbCfg db.ConnectionConfig) tea.Cmd {
 
 	m.loadTables()
 	m.restoreSession() // reopen tabs/editor buffers from the last visit
+	m.openInspectorIfPreferred()
 	cmd := m.editor.Focus()
 	m.layoutWorkspace()
 	m.applyFocus()
 
 	return tea.Batch(cmd, m.prefetchSchemas(), m.fetchTableRowCounts(), m.scheduleKeepAlive())
+}
+
+// openInspectorIfPreferred shows the inspector when settings.InspectorOpen is
+// on, without stealing focus (the editor still receives keys after connect).
+// Assistant / docked explorer yield the right slot, matching ctrl+o.
+func (m *Model) openInspectorIfPreferred() {
+	if !m.settings.InspectorOpen {
+		return
+	}
+	m.applyInspectorOpen(true, false)
+}
+
+// applyInspectorOpen shows or hides the inspector to match the preference.
+// When stealFocus is true (e.g. :set), focus moves to the inspector on open
+// and back to results on close — same as ctrl+o.
+func (m *Model) applyInspectorOpen(open, stealFocus bool) {
+	if open {
+		m.inspector.Show()
+		m.assistant.Hide()
+		m.explorer.Hide()
+		if stealFocus {
+			m.focus = FocusInspector
+		}
+	} else {
+		m.inspector.Hide()
+		if m.focus == FocusInspector {
+			m.focus = FocusResults
+		}
+	}
+	if m.state == stateWorkspace {
+		m.layoutWorkspace()
+		m.applyFocus()
+	}
 }
 
 // resetWorkspaceForNewConnection clears query/results/tab state after a
@@ -250,6 +284,7 @@ func (m *Model) selectSchema(name string) tea.Cmd {
 
 	cmd := m.editor.Focus()
 	m.loadTables()
+	m.openInspectorIfPreferred()
 	m.layoutWorkspace()
 	m.applyFocus()
 	return tea.Batch(cmd, m.prefetchSchemas(), m.fetchTableRowCounts())
@@ -360,6 +395,7 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 
 	m.loadTables()
 	m.restoreSession() // reopen tabs/editor buffers from the last visit
+	m.openInspectorIfPreferred()
 	cmd := m.editor.Focus()
 	m.layoutWorkspace()
 	m.applyFocus()
