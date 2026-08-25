@@ -105,6 +105,9 @@ var (
 	colorStatusInfo   lipgloss.Color
 	colorStatusBad    lipgloss.Color
 	colorStatusQuiet  lipgloss.Color
+	// Soft primary wash behind unsaved (dirty) result cells — lighter than the
+	// cursor's solid primary so edits read as touched without competing.
+	colorDirty lipgloss.Color
 	// ERD selection chrome: synthesized so vivid (selected card / hot arrows)
 	// and dim (faded cards / idle arrows) keep a contrast gap on every theme.
 	colorERDVivid lipgloss.Color
@@ -190,6 +193,7 @@ func applyPalette(p colorPalette) {
 	colorStatusInfo = mixColors(p.accent, p.bg, statusBlend)
 	colorStatusBad = mixColors(p.err, p.bg, statusBlend)
 	colorStatusQuiet = mixColors(p.muted, p.bg, statusBlend)
+	colorDirty = deriveDirtyBg(p)
 
 	// ERD selection: vivid for the selected card + arrows that touch it; dim
 	// for everything else. Reusing muted/primary collapses on light themes
@@ -350,6 +354,24 @@ const erdDimMinBgContrast = 2.2
 // Softer than ERD dim (~2.2): the backdrop only needs to read as recessed, not
 // stay readable. 1.7 is a mild step down without collapsing into the bg.
 const overlayDimMinBgContrast = 1.7
+
+// dirtyBgBlend is how far to wash primary toward bg for unsaved-cell
+// backgrounds. Mostly bg so colorFg stays readable; enough primary that the
+// cell still reads as touched (and lighter than the cursor's solid primary).
+const dirtyBgBlend = 0.85
+
+// dirtyBgMinContrast is the minimum wash-vs-bg contrast so dirty cells don't
+// collapse into the panel on near-white / near-black schemes.
+const dirtyBgMinContrast = 1.08
+
+// deriveDirtyBg builds the soft primary wash used behind dirty result cells.
+func deriveDirtyBg(p colorPalette) lipgloss.Color {
+	wash := mixColors(p.primary, p.bg, dirtyBgBlend)
+	if contrastRatio(string(wash), string(p.bg)) < dirtyBgMinContrast {
+		wash = mixColors(p.primary, p.bg, 0.70)
+	}
+	return wash
+}
 
 // deriveERDColors builds the ERD selection pair from a palette. Dim is chosen
 // for readability on bg first; vivid (from primary) is then strengthened toward

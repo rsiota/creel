@@ -2097,7 +2097,7 @@ func (r ResultsTable) View() string {
 				case isCursorCell:
 					style = lipgloss.NewStyle().Foreground(colorBg).Background(colorPrimary)
 				case isDirty:
-					style = lipgloss.NewStyle().Foreground(colorBg).Background(colorWarn)
+					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorDirty)
 				case isVisualRow:
 					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorVisual)
 				case isMarked:

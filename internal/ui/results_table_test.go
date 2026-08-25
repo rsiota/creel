@@ -741,6 +741,42 @@ func TestResultsTableFKCellColorNotHeader(t *testing.T) {
 	}
 }
 
+// Dirty cells use a soft primary wash + fg text — not the old reverse-video
+// warn brown, which reads as a heavy dark block on GitHub Light.
+func TestDirtyCellPrimaryWash(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(prev)
+
+	applyPalette(themes["git-hub-light-default"])
+	r := NewResultsTable()
+	r.SetSize(80, 12)
+	r.SetResult(
+		[]string{"id", "name"},
+		[][]string{{"1", "alice"}, {"2", "bob"}},
+		"2 rows",
+	)
+	r.SetEditable("users", []string{"id"})
+	r.SetDirtyCell(1, 1, "bobby")
+	// Cursor on a different cell so the dirty style is not overridden.
+	r.SetCursor(0, 0)
+
+	view := r.View()
+	dirtyStyle := sgrPrefix(lipgloss.NewStyle().Foreground(colorFg).Background(colorDirty))
+	if !strings.Contains(view, dirtyStyle) {
+		t.Fatalf("dirty cell missing primary wash style %q\nview:\n%s", dirtyStyle, view)
+	}
+	oldWarn := sgrPrefix(lipgloss.NewStyle().Foreground(colorBg).Background(colorWarn))
+	if strings.Contains(view, oldWarn) {
+		t.Error("dirty cell still uses reverse-video warn (brown on light themes)")
+	}
+	if contrastRatio(string(colorDirty), string(colorFg)) < 4.5 {
+		t.Errorf("dirty bg/fg contrast %.2f < 4.5 (dirty=%s fg=%s)",
+			contrastRatio(string(colorDirty), string(colorFg)), colorDirty, colorFg)
+	}
+}
+
 func TestMixColors(t *testing.T) {
 	a := lipgloss.Color("#000000")
 	b := lipgloss.Color("#ffffff")
