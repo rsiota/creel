@@ -117,4 +117,21 @@ func TestPostgresConnConfig(t *testing.T) {
 			t.Errorf("Host=%q, want socket dir", cfg.Host)
 		}
 	})
+	t.Run("keepalive keywords not sent as RuntimeParams", func(t *testing.T) {
+		// Regression for #1: libpq-style keepalives=* in the DSN were forwarded
+		// by pgx as startup params and rejected by the server.
+		p := NewPostgres(ConnectionConfig{Host: "localhost", Database: "app", SSLMode: "disable"})
+		cfg, err := p.connConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, k := range []string{"keepalives", "keepalives_idle", "keepalives_interval"} {
+			if _, ok := cfg.RuntimeParams[k]; ok {
+				t.Errorf("%q leaked into RuntimeParams (would FATAL on connect)", k)
+			}
+		}
+		if cfg.DialFunc == nil {
+			t.Error("DialFunc should enable TCP keepalives")
+		}
+	})
 }

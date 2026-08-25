@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -88,9 +89,6 @@ func (p *Postgres) connConfig() (*pgx.ConnConfig, error) {
 		parts = append(parts, "dbname="+quoteDSNValue(p.config.Database))
 	}
 	parts = append(parts, "sslmode="+p.config.sslMode())
-	// TCP keepalives so idle sessions through NAT / cloud LBs stay up between
-	// UI pings. Harmless when connecting via unix socket.
-	parts = append(parts, "keepalives=1", "keepalives_idle=30", "keepalives_interval=10")
 	if p.config.ReadOnly {
 		// Sent in the startup packet so every pooled connection is read-only.
 		parts = append(parts, "default_transaction_read_only=on")
@@ -101,6 +99,11 @@ func (p *Postgres) connConfig() (*pgx.ConnConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse postgres config: %w", err)
 	}
+	// TCP keepalives so idle sessions through NAT / cloud LBs stay up between
+	// UI pings. Do NOT put libpq keepalive keywords in the DSN: pgx forwards
+	// unknown keys as RuntimeParams, and the server rejects them with
+	// FATAL unrecognized configuration parameter "keepalives".
+	config.DialFunc = (&net.Dialer{KeepAlive: 30 * time.Second}).DialContext
 	// search_path must be set in RuntimeParams so every pooled connection
 	// inherits it (a one-shot SET would only affect one connection).
 	if p.config.Schema != "" {
