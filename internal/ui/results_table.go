@@ -1271,13 +1271,26 @@ func (r ResultsTable) IsSaved() bool { return r.saved }
 // SaveError returns the last save error message, if any.
 func (r ResultsTable) SaveError() string { return r.saveError }
 
+// normalizeEditValue maps empty edits on datetime columns to the "NULL"
+// sentinel. MySQL rejects '' for DATETIME/TIMESTAMP; TEXT columns keep genuine
+// empty strings.
+func (r ResultsTable) normalizeEditValue(col int, val string) string {
+	if val != "" {
+		return val
+	}
+	if db.IsDateTimeType(r.columnType(col)) {
+		return "NULL"
+	}
+	return val
+}
+
 // SetDirtyCell records a pending cell edit (e.g. from the inspector).
 func (r *ResultsTable) SetDirtyCell(row, col int, val string) {
 	ref := cellRef{row: row, col: col}
 	if r.dirtyCells == nil {
 		r.dirtyCells = make(map[cellRef]string)
 	}
-	r.dirtyCells[ref] = val
+	r.dirtyCells[ref] = r.normalizeEditValue(col, val)
 }
 
 // SetColumnTypes stores column type metadata from the query result.
@@ -1674,7 +1687,7 @@ func (r *ResultsTable) CommitEdit() {
 	if !r.editing {
 		return
 	}
-	newVal := r.editInput.Value()
+	newVal := r.normalizeEditValue(r.cursorCol, r.editInput.Value())
 	ref := cellRef{row: r.cursorRow, col: r.cursorCol}
 	r.dirtyCells[ref] = newVal
 	r.editing = false

@@ -420,6 +420,83 @@ func (m *Model) startInspectorFieldEdit() tea.Cmd {
 	return nil
 }
 
+// editValueSQLArg maps a staged cell value to the driver argument for UPDATE.
+// The "NULL" sentinel and empty strings on datetime columns become SQL NULL;
+// other empty strings remain empty strings.
+func editValueSQLArg(val, colType string) interface{} {
+	if val == "NULL" || (val == "" && db.IsDateTimeType(colType)) {
+		return nil
+	}
+	return val
+}
+
+// exSetNull stages SQL NULL for the cursor cell, or for a named column on the
+// cursor row (:setnull [column]). Does not flush to the database — use :w.
+func (m *Model) exSetNull(args []string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if m.isReadOnly() {
+		m.schemaMsg = "read-only — cannot edit"
+		return nil
+	}
+	if m.txnBlocksWrite() {
+		return nil
+	}
+	if !m.results.IsEditable() || !m.results.HasPrimaryKey() {
+		m.schemaMsg = "results not editable"
+		return nil
+	}
+	if m.results.NumRows() == 0 {
+		m.schemaMsg = "no rows to edit"
+		return nil
+	}
+	if len(args) > 1 {
+		m.schemaMsg = "usage: :setnull [column]"
+		return nil
+	}
+
+	row := m.results.CursorRow()
+	col := m.results.CursorCol()
+	if len(args) == 1 {
+		col = m.resultColumnIndex(args[0])
+		if col < 0 {
+			m.schemaMsg = fmt.Sprintf("no such column: %s", args[0])
+			return nil
+		}
+	}
+
+	colName := m.results.ColumnName(col)
+	if colName == "" {
+		m.schemaMsg = "invalid column"
+		return nil
+	}
+	if m.results.isPKColumn(colName) {
+		m.schemaMsg = "cannot set primary key to NULL"
+		return nil
+	}
+	if m.results.IsBlobCell(row, col) {
+		m.schemaMsg = "binary cell — use :saveblob to export"
+		return nil
+	}
+	if m.results.RowValue(row, col) == "NULL" {
+		m.schemaMsg = fmt.Sprintf("%s already NULL", colName)
+		return nil
+	}
+
+	if m.results.IsEditing() {
+		m.results.CancelEdit()
+	}
+	if m.inspector.IsEditing() {
+		m.inspector.CancelEdit()
+	}
+
+	m.results.SetDirtyCell(row, col, "NULL")
+	m.schemaMsg = fmt.Sprintf("staged NULL on %s — :w to save", colName)
+	return nil
+}
+
 // saveEdits writes all pending dirty cells to the database using parameterized
 // UPDATE queries, wrapped in a single transaction so the batch is atomic.
 func (m *Model) saveEdits() tea.Cmd {
@@ -442,6 +519,7 @@ func (m *Model) saveEdits() tea.Cmd {
 		edit    CellEdit
 		pkVals  []string
 		colName string
+		colType string
 	}
 	var pending []rowData
 
@@ -471,6 +549,7 @@ func (m *Model) saveEdits() tea.Cmd {
 			edit:    edit,
 			pkVals:  pkVals,
 			colName: colName,
+			colType: m.results.columnType(edit.Col),
 		})
 	}
 
@@ -502,10 +581,7 @@ func (m *Model) saveEdits() tea.Cmd {
 				fmt.Fprintf(&b, "%s = %s", pk, ph())
 			}
 
-			var setArg interface{} = p.edit.NewValue
-			if p.edit.NewValue == "NULL" {
-				setArg = nil
-			}
+			setArg := editValueSQLArg(p.edit.NewValue, p.colType)
 			args := []interface{}{setArg}
 			for _, v := range p.pkVals {
 				args = append(args, v)

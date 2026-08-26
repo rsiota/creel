@@ -191,6 +191,16 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exCopy() },
 		},
 		{
+			verbs:    []string{"setnull"},
+			desc:     "stage SQL NULL on the cursor cell (or named column on the row)",
+			usage:    ":setnull [column]",
+			argKind:  exArgOptional,
+			complete: completeColumn,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				return m.exSetNull(args)
+			},
+		},
+		{
 			verbs:   []string{"discard"},
 			desc:    "discard staged cell edits",
 			usage:   ":discard[!]",

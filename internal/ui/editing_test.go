@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"path/filepath"
 	"testing"
 
+	"github.com/rsiota/creel/internal/config"
 	"github.com/rsiota/creel/internal/db"
 )
 
@@ -188,6 +190,55 @@ func TestResultsTableNullEdit(t *testing.T) {
 	}
 }
 
+func TestNormalizeEditValueDatetime(t *testing.T) {
+	r := NewResultsTable()
+	r.SetSize(80, 20)
+	r.SetResult(
+		[]string{"id", "created_at", "note"},
+		[][]string{{"1", "2026-01-01 12:00:00", "hello"}},
+		"1 row",
+	)
+	r.SetColumnTypes(map[string]string{
+		"id":         "INTEGER",
+		"created_at": "DATETIME",
+		"note":       "TEXT",
+	})
+	r.SetEditable("events", []string{"id"})
+
+	r.SetDirtyCell(0, 1, "")
+	if got := r.RowValue(0, 1); got != "NULL" {
+		t.Errorf("empty datetime edit = %q, want NULL", got)
+	}
+
+	r.SetDirtyCell(0, 2, "")
+	if got := r.RowValue(0, 2); got != "" {
+		t.Errorf("empty text edit = %q, want empty string", got)
+	}
+
+	r.SetCursor(0, 1)
+	r.StartEdit()
+	r.editInput.SetValue("")
+	r.CommitEdit()
+	if got := r.RowValue(0, 1); got != "NULL" {
+		t.Errorf("CommitEdit empty datetime = %q, want NULL", got)
+	}
+}
+
+func TestEditValueSQLArg(t *testing.T) {
+	if got := editValueSQLArg("NULL", "TEXT"); got != nil {
+		t.Errorf("NULL sentinel = %v, want nil", got)
+	}
+	if got := editValueSQLArg("", "DATETIME"); got != nil {
+		t.Errorf("empty datetime = %v, want nil", got)
+	}
+	if got := editValueSQLArg("", "TEXT"); got != "" {
+		t.Errorf("empty text = %v, want empty string", got)
+	}
+	if got := editValueSQLArg("2026-01-01", "DATETIME"); got != "2026-01-01" {
+		t.Errorf("datetime literal = %v, want unchanged", got)
+	}
+}
+
 func TestCursorCellValue(t *testing.T) {
 	r := NewResultsTable()
 	r.SetResult(
@@ -277,5 +328,72 @@ func TestResultsForeignKeys(t *testing.T) {
 	fk, ok := r.ForeignKeyAtCursor()
 	if !ok || fk.RefTable != "departments" {
 		t.Fatalf("unexpected FK at cursor: %+v", fk)
+	}
+}
+
+func TestSaveEditsClearsDatetimeToNull(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	cfg := db.ConnectionConfig{Driver: db.DriverSQLite, Database: dbPath}
+	sqlite, err := db.New(cfg)
+	if err != nil {
+		t.Fatalf("new sqlite: %v", err)
+	}
+	if err := sqlite.Connect(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() {
+		sqlite.Close()
+	})
+
+	if _, err := sqlite.DB().Exec(`CREATE TABLE events (
+		id INTEGER PRIMARY KEY,
+		created_at DATETIME
+	)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	if _, err := sqlite.DB().Exec(`INSERT INTO events (id, created_at) VALUES (1, '2026-01-01 12:00:00')`); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	m := NewModel(&config.Config{})
+	m.connection = sqlite
+	m.results = NewResultsTable()
+	m.results.SetResult(
+		[]string{"id", "created_at"},
+		[][]string{{"1", "2026-01-01 12:00:00"}},
+		"1 row",
+	)
+	m.results.SetColumnTypes(map[string]string{
+		"id":         "INTEGER",
+		"created_at": "DATETIME",
+	})
+	m.results.SetEditable("events", []string{"id"})
+	m.results.SetCursor(0, 1)
+	m.results.StartEdit()
+	m.results.editInput.SetValue("")
+	m.results.CommitEdit()
+
+	cmd := m.saveEdits()
+	if cmd == nil {
+		t.Fatal("saveEdits returned nil")
+	}
+	msg := cmd().(saveResultMsg)
+	if msg.err != nil {
+		t.Fatalf("save failed: %v", msg.err)
+	}
+	if msg.saved != 1 {
+		t.Fatalf("saved %d rows, want 1", msg.saved)
+	}
+
+	res, err := sqlite.DB().Execute(`SELECT created_at FROM events WHERE id = 1`)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if len(res.Rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(res.Rows))
+	}
+	if res.Rows[0][0] != "NULL" {
+		t.Fatalf("created_at = %q, want SQL NULL", res.Rows[0][0])
 	}
 }
