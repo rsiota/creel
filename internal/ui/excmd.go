@@ -44,8 +44,9 @@ type exCompItem struct {
 }
 
 // handleExKey routes keys to the open ":" command line. It is modal: every
-// key is consumed while the ex line is visible. enter parses and runs the
-// input (recording it to history); esc cancels; ↑/↓ recalls history.
+// key is consumed while the ex line is visible. enter runs the input (or
+// completes the highlighted popup row when the typed token is still partial);
+// esc cancels; ↑/↓ recalls history.
 func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+c":
@@ -53,6 +54,10 @@ func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.layoutWorkspace()
 		return *m, nil
 	case "enter":
+		if m.exEnterShouldComplete() {
+			m.applyExSelection()
+			return *m, nil
+		}
 		input := strings.TrimSpace(m.ex.input)
 		m.ex.input = ""
 		m.ex.visible = false
@@ -91,22 +96,7 @@ func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.recomputeExCompletion()
 		return *m, nil
 	case "tab":
-		// Complete the selected match: the verb in verb mode (its canonical
-		// name) or the last argument token in argument mode. recompute then
-		// hides the popup once the match is exact.
-		if len(m.ex.comp) > 0 {
-			sel := m.ex.selIdx
-			if sel < 0 || sel >= len(m.ex.comp) {
-				sel = 0
-			}
-			if m.ex.argMode {
-				m.ex.input = applyArgCompletion(m.ex.input, m.ex.comp[sel].candidate)
-			} else {
-				m.ex.input = m.ex.comp[sel].verb
-			}
-			m.ex.recalling = false
-			m.recomputeExCompletion()
-		}
+		m.applyExSelection()
 		return *m, nil
 	case "backspace":
 		if len(m.ex.input) > 0 {
@@ -123,6 +113,53 @@ func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.recomputeExCompletion()
 	}
 	return *m, nil
+}
+
+// applyExSelection fills the input from the highlighted popup row (Tab/Enter).
+func (m *Model) applyExSelection() {
+	if len(m.ex.comp) == 0 {
+		return
+	}
+	item := m.ex.selectedCompItem()
+	if m.ex.argMode {
+		m.ex.input = applyArgCompletion(m.ex.input, item.candidate)
+	} else {
+		m.ex.input = item.verb
+	}
+	m.ex.recalling = false
+	m.recomputeExCompletion()
+}
+
+// exEnterShouldComplete reports whether Enter should accept the highlighted
+// popup row instead of running the current input. Valid command aliases (e.g.
+// ":w") still run immediately; partial verbs and partial argument tokens
+// complete first so a second Enter executes the finished line.
+func (m *Model) exEnterShouldComplete() bool {
+	if len(m.ex.comp) == 0 || strings.TrimSpace(m.ex.input) == "" {
+		return false
+	}
+	if m.ex.argMode {
+		verb, _ := verbPrefix(m.ex.input)
+		rest := strings.TrimLeft(m.ex.input[len(verb):], " \t")
+		_, partial := splitArgsPartial(rest)
+		if partial == "" {
+			return false
+		}
+		return !strings.EqualFold(partial, m.ex.selectedCompItem().candidate)
+	}
+	verb, hasSpace := verbPrefix(m.ex.input)
+	if hasSpace {
+		return false
+	}
+	return exLookup(strings.ToLower(strings.TrimSuffix(verb, "!"))) == nil
+}
+
+func (ex exCmd) selectedCompItem() exCompItem {
+	sel := ex.selIdx
+	if sel < 0 || sel >= len(ex.comp) {
+		sel = 0
+	}
+	return ex.comp[sel]
 }
 
 // Open shows the ex command line with an empty buffer and seeds the

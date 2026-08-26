@@ -785,3 +785,97 @@ func TestExPopupWindow(t *testing.T) {
 		t.Errorf("empty: items=%v sel=%d, want nil/0", items, sel)
 	}
 }
+
+// --- Enter completes partial popup selections --------------------------------
+
+func TestExCompletionEnterCompletesPartialVerb(t *testing.T) {
+	m := &Model{}
+	m.ex.Open()
+	for _, r := range "got" {
+		m.handleExKey(runeKey(r))
+	}
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.ex.IsVisible() {
+		t.Fatal("Enter should complete in-place, not close the ex line")
+	}
+	if m.ex.input != "goto" {
+		t.Errorf("Enter -> input=%q, want goto", m.ex.input)
+	}
+}
+
+func TestExCompletionEnterRunsValidAlias(t *testing.T) {
+	m := &Model{results: NewResultsTable()}
+	m.results.SetEditable("users", []string{"id"})
+	m.ex.Open()
+	m.ex.input = "w"
+	m.recomputeExCompletion()
+	if len(m.ex.comp) == 0 {
+		t.Fatal("expected popup for ambiguous 'w' prefix")
+	}
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.ex.IsVisible() {
+		t.Error("Enter on :w should run save and close the ex line")
+	}
+}
+
+func TestExCompletionEnterCompletesPartialArg(t *testing.T) {
+	m := &Model{tables: []string{"users", "orders"}}
+	m.ex.Open()
+	m.ex.input = "goto use"
+	m.recomputeExCompletion()
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.ex.IsVisible() {
+		t.Fatal("Enter should complete the table name in-place")
+	}
+	if m.ex.input != "goto users" {
+		t.Errorf("Enter -> input=%q, want goto users", m.ex.input)
+	}
+}
+
+func TestExCompletionEnterRunsExactArg(t *testing.T) {
+	m := &Model{tables: []string{"users", "orders"}}
+	m.ex.input = "goto users"
+	m.recomputeExCompletion()
+	if m.exEnterShouldComplete() {
+		t.Error("exact table arg should run on Enter, not complete")
+	}
+}
+
+func TestExCompletionEnterRunsExactVerb(t *testing.T) {
+	m := &Model{}
+	m.ex.Open()
+	for _, r := range "help" {
+		m.handleExKey(runeKey(r))
+	}
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.ex.IsVisible() {
+		t.Error("Enter on :help should run and close")
+	}
+	if !m.help.IsVisible() {
+		t.Error(":help should open the help overlay")
+	}
+}
+
+func TestExCompletionEnterEmptyInput(t *testing.T) {
+	m := &Model{}
+	m.ex.Open()
+	if len(m.ex.comp) == 0 {
+		t.Fatal("expected full command list on open")
+	}
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.ex.IsVisible() {
+		t.Error("Enter on empty : prompt should close without completing")
+	}
+}
+
+func TestExCompletionEnterSelectsHighlightedRow(t *testing.T) {
+	m := &Model{tables: []string{"events", "users"}}
+	m.ex.Open()
+	m.ex.input = "goto u"
+	m.recomputeExCompletion()
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyDown}) // events -> users
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.ex.input != "goto users" {
+		t.Errorf("Enter -> input=%q, want goto users", m.ex.input)
+	}
+}
