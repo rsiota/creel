@@ -776,6 +776,13 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exTables() },
 		},
 		{
+			verbs:   []string{"sizes"},
+			desc:    "list tables with row and on-disk size estimates",
+			usage:   ":sizes",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exSizes() },
+		},
+		{
 			verbs:   []string{"views", "dv"},
 			desc:    "list views in the lookup overlay",
 			usage:   ":views",

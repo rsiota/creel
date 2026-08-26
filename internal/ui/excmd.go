@@ -2441,6 +2441,81 @@ func (m *Model) exTables() tea.Cmd {
 	return m.exListNames("Tables", names)
 }
 
+// exSizes lists base tables with row and on-disk size estimates in the lookup
+// overlay (:sizes). Sorted largest-first by disk, then rows. Row counts are
+// prefixed with ~ when the driver reports a catalog estimate.
+func (m *Model) exSizes() tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	conn := m.connection
+	return func() tea.Msg {
+		sizes, err := conn.DB().TableSizes()
+		if err != nil {
+			return lookupResultMsg{err: err}
+		}
+		if len(sizes) == 0 {
+			return lookupResultMsg{
+				title:  "Table sizes",
+				result: db.Result{Columns: []db.Column{{Name: "Table"}, {Name: "Rows"}, {Name: "Disk"}}},
+			}
+		}
+		sortTableSizes(sizes)
+		rows := make([][]string, len(sizes))
+		for i, ts := range sizes {
+			rows[i] = []string{ts.Name, formatTableSizeRows(ts), db.FormatTableDiskSize(ts.DiskBytes)}
+		}
+		return lookupResultMsg{
+			title: "Table sizes",
+			result: db.Result{
+				Columns: []db.Column{{Name: "Table"}, {Name: "Rows"}, {Name: "Disk"}},
+				Rows:    rows,
+			},
+		}
+	}
+}
+
+// sortTableSizes orders sizes by disk (desc), then rows (desc), then name.
+func sortTableSizes(sizes []db.TableSize) {
+	sort.Slice(sizes, func(i, j int) bool {
+		di, dj := diskSortKey(sizes[i].DiskBytes), diskSortKey(sizes[j].DiskBytes)
+		if di != dj {
+			return di > dj
+		}
+		ri, rj := rowSortKey(sizes[i].Rows), rowSortKey(sizes[j].Rows)
+		if ri != rj {
+			return ri > rj
+		}
+		return sizes[i].Name < sizes[j].Name
+	})
+}
+
+func diskSortKey(n int64) int64 {
+	if n < 0 {
+		return -1
+	}
+	return n
+}
+
+func rowSortKey(n int64) int64 {
+	if n < 0 {
+		return -1
+	}
+	return n
+}
+
+func formatTableSizeRows(ts db.TableSize) string {
+	if ts.Rows < 0 {
+		return "—"
+	}
+	s := formatCount(int(ts.Rows))
+	if ts.RowsApprox {
+		return "~" + s
+	}
+	return s
+}
+
 // exViews lists views in the lookup overlay (:views / :dv).
 func (m *Model) exViews() tea.Cmd {
 	if m.connection == nil {

@@ -293,6 +293,34 @@ func (p *Postgres) TableRowCounts() (map[string]int64, error) {
 	return counts, rows.Err()
 }
 
+func (p *Postgres) TableSizes() ([]TableSize, error) {
+	rows, err := p.db.Query(
+		`SELECT c.relname,
+		        GREATEST(c.reltuples::bigint, 0),
+		        pg_total_relation_size(c.oid)
+		 FROM pg_class c
+		 JOIN pg_namespace n ON n.oid = c.relnamespace
+		 WHERE c.relkind = 'r'
+		   AND n.nspname = current_schema()
+		 ORDER BY c.relname`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TableSize
+	for rows.Next() {
+		var ts TableSize
+		if err := rows.Scan(&ts.Name, &ts.Rows, &ts.DiskBytes); err != nil {
+			return nil, err
+		}
+		ts.RowsApprox = true
+		out = append(out, ts)
+	}
+	return out, rows.Err()
+}
+
 func (p *Postgres) TableSchema(table string) ([]Column, error) {
 	rows, err := p.db.Query(
 		`SELECT column_name, data_type FROM information_schema.columns

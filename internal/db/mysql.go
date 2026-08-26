@@ -226,6 +226,38 @@ func (m *MySQL) TableRowCounts() (map[string]int64, error) {
 	return counts, rows.Err()
 }
 
+func (m *MySQL) TableSizes() ([]TableSize, error) {
+	rows, err := m.db.Query(
+		`SELECT table_name, table_rows,
+		        COALESCE(data_length, 0) + COALESCE(index_length, 0)
+		 FROM information_schema.tables
+		 WHERE table_schema = ? AND table_type = 'BASE TABLE'
+		 ORDER BY table_name`,
+		m.config.Database,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TableSize
+	for rows.Next() {
+		var ts TableSize
+		var tableRows sql.NullInt64
+		if err := rows.Scan(&ts.Name, &tableRows, &ts.DiskBytes); err != nil {
+			return nil, err
+		}
+		ts.RowsApprox = true
+		if tableRows.Valid {
+			ts.Rows = tableRows.Int64
+		} else {
+			ts.Rows = -1
+		}
+		out = append(out, ts)
+	}
+	return out, rows.Err()
+}
+
 func (m *MySQL) TableSchema(table string) ([]Column, error) {
 	rows, err := m.db.Query(
 		`SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position`,

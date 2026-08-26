@@ -128,6 +128,73 @@ func (s *SQLite) TableRowCounts() (map[string]int64, error) {
 	return counts, nil
 }
 
+func (s *SQLite) TableSizes() ([]TableSize, error) {
+	rows, err := s.db.Query(
+		`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	disk := sqliteTableDiskBytes(s.db)
+
+	out := make([]TableSize, 0, len(names))
+	for _, name := range names {
+		ts := TableSize{Name: name, DiskBytes: -1}
+		if b, ok := disk[name]; ok {
+			ts.DiskBytes = b
+		}
+		q := fmt.Sprintf(`SELECT COUNT(*) FROM "%s"`, strings.ReplaceAll(name, `"`, `""`))
+		if err := s.db.QueryRow(q).Scan(&ts.Rows); err != nil {
+			ts.Rows = -1
+		}
+		out = append(out, ts)
+	}
+	return out, nil
+}
+
+// sqliteTableDiskBytes maps table name to on-disk bytes via dbstat when available.
+func sqliteTableDiskBytes(db *sql.DB) map[string]int64 {
+	rows, err := db.Query(
+		`SELECT m.name, SUM(s.pgsize)
+		 FROM sqlite_master m
+		 JOIN dbstat s ON s.name = m.name
+		 WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'
+		 GROUP BY m.name`,
+	)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	out := make(map[string]int64)
+	for rows.Next() {
+		var name string
+		var bytes int64
+		if err := rows.Scan(&name, &bytes); err != nil {
+			return nil
+		}
+		out[name] = bytes
+	}
+	if err := rows.Err(); err != nil {
+		return nil
+	}
+	return out
+}
+
 func (s *SQLite) TableSchema(table string) ([]Column, error) {
 	rows, err := s.db.Query(fmt.Sprintf(`PRAGMA table_info("%s")`, table))
 	if err != nil {

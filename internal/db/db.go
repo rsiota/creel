@@ -159,6 +159,10 @@ type DB interface {
 	// MySQL uses information_schema (fast, approximate); SQLite runs COUNT(*)
 	// per table. Tables with inaccessible rows are omitted from the map.
 	TableRowCounts() (map[string]int64, error)
+	// TableSizes returns row and on-disk size estimates for base tables in the
+	// current schema/database. Row counts may be approximate (RowsApprox).
+	// DiskBytes is -1 when the driver cannot determine per-table size.
+	TableSizes() ([]TableSize, error)
 	// TableSchema returns the column names and types for a given table.
 	TableSchema(table string) ([]Column, error)
 	// PrimaryKeys returns the primary key column names for a table.
