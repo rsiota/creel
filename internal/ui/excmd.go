@@ -906,7 +906,7 @@ func (m *Model) exRecent(args []string) tea.Cmd {
 		return nil
 	}
 	if len(args) == 0 {
-		return m.exListNames("Recent", names)
+		return m.exListNames("Recent", names, true)
 	}
 	arg := args[0]
 	if n, err := strconv.Atoi(arg); err == nil {
@@ -1829,9 +1829,14 @@ func (m *Model) exRefs(name string) tea.Cmd {
 			}
 		}
 
+		jumps := make([]string, len(refs))
+		for i, r := range refs {
+			jumps[i] = r.Table
+		}
 		return lookupResultMsg{
 			title:  "References to " + table + label,
 			result: db.Result{Columns: cols, Rows: rows},
+			jumps:  jumps,
 		}
 	}
 }
@@ -2400,17 +2405,22 @@ func (m *Model) exOpenStructureTab(name string, tab int) tea.Cmd {
 }
 
 // exListNames shows a single-column lookup overlay of names (tables, views,
-// schemas). Shared by :tables / :views / :schemas.
-func (m *Model) exListNames(title string, names []string) tea.Cmd {
+// schemas). When jumpable is true, Enter on a row opens that name as a table.
+func (m *Model) exListNames(title string, names []string, jumpable bool) tea.Cmd {
 	cols := []db.Column{{Name: "Name"}}
 	rows := make([][]string, 0, len(names))
 	for _, n := range names {
 		rows = append(rows, []string{n})
 	}
+	var jumps []string
+	if jumpable {
+		jumps = append([]string(nil), names...)
+	}
 	return func() tea.Msg {
 		return lookupResultMsg{
 			title:  title,
 			result: db.Result{Columns: cols, Rows: rows},
+			jumps:  jumps,
 		}
 	}
 }
@@ -2438,7 +2448,7 @@ func (m *Model) exTables() tea.Cmd {
 		m.schemaMsg = "no tables"
 		return nil
 	}
-	return m.exListNames("Tables", names)
+	return m.exListNames("Tables", names, true)
 }
 
 // exSizes lists base tables with row and on-disk size estimates in the lookup
@@ -2463,8 +2473,10 @@ func (m *Model) exSizes() tea.Cmd {
 		}
 		sortTableSizes(sizes)
 		rows := make([][]string, len(sizes))
+		jumps := make([]string, len(sizes))
 		for i, ts := range sizes {
 			rows[i] = []string{ts.Name, formatTableSizeRows(ts), db.FormatTableDiskSize(ts.DiskBytes)}
+			jumps[i] = ts.Name
 		}
 		return lookupResultMsg{
 			title: "Table sizes",
@@ -2472,6 +2484,7 @@ func (m *Model) exSizes() tea.Cmd {
 				Columns: []db.Column{{Name: "Table"}, {Name: "Rows"}, {Name: "Disk"}},
 				Rows:    rows,
 			},
+			jumps: jumps,
 		}
 	}
 }
@@ -2531,7 +2544,7 @@ func (m *Model) exViews() tea.Cmd {
 		m.schemaMsg = "no views"
 		return nil
 	}
-	return m.exListNames("Views", views)
+	return m.exListNames("Views", views, true)
 }
 
 // exSchemasList lists schemas/namespaces in the lookup overlay (:schemas).
@@ -2551,7 +2564,7 @@ func (m *Model) exSchemasList() tea.Cmd {
 		m.schemaMsg = "no schemas"
 		return nil
 	}
-	return m.exListNames("Schemas", schemas)
+	return m.exListNames("Schemas", schemas, false)
 }
 
 // searchHit is one row in the :search / :find lookup overlay.
@@ -2608,14 +2621,24 @@ func (m *Model) exSearch(needle string) tea.Cmd {
 
 	cols := []db.Column{{Name: "Kind"}, {Name: "Name"}, {Name: "Parent"}}
 	rows := make([][]string, 0, len(ranked))
+	jumps := make([]string, 0, len(ranked))
 	for _, r := range ranked {
 		rows = append(rows, []string{r.Item.kind, r.Item.name, r.Item.parent})
+		switch r.Item.kind {
+		case "table", "view":
+			jumps = append(jumps, r.Item.name)
+		case "column":
+			jumps = append(jumps, r.Item.parent)
+		default:
+			jumps = append(jumps, "")
+		}
 	}
 	title := fmt.Sprintf("Search: %s", needle)
 	return func() tea.Msg {
 		return lookupResultMsg{
 			title:  title,
 			result: db.Result{Columns: cols, Rows: rows},
+			jumps:  jumps,
 		}
 	}
 }

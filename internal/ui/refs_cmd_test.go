@@ -80,7 +80,7 @@ func TestExRefsLive(t *testing.T) {
 	}
 
 	// Handler path: opening the panel makes it visible with the rows.
-	m.lookupPanel.Show(msg.title, msg.result)
+	m.lookupPanel.Show(msg.title, msg.result, msg.jumps)
 	if !m.lookupPanel.IsVisible() {
 		t.Fatal("lookup panel should be visible after Show")
 	}
@@ -197,12 +197,14 @@ func TestExRefsUnscopedNoCountColumn(t *testing.T) {
 
 func TestLookupPanelEmpty(t *testing.T) {
 	var p LookupPanel
-	p.Show("References to users", db.Result{})
+	p.Show("References to users", db.Result{}, nil)
 	if !p.IsVisible() {
 		t.Fatal("panel should be visible")
 	}
-	// An empty result yields just the header line (title + count 0).
-	if got := len(p.lines()); got != 1 {
-		t.Fatalf("empty lookup panel lines = %d, want 1", got)
+	if p.cursor != -1 {
+		t.Fatalf("empty lookup cursor = %d, want -1", p.cursor)
+	}
+	if p.SelectedJump() != "" {
+		t.Fatal("empty panel should have no jump")
 	}
 }

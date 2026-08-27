@@ -64,7 +64,7 @@ func TestExUsesLive(t *testing.T) {
 	}
 
 	// Handler path: opening the panel makes it visible.
-	m.lookupPanel.Show(msg.title, msg.result)
+	m.lookupPanel.Show(msg.title, msg.result, msg.jumps)
 	if !m.lookupPanel.IsVisible() {
 		t.Fatal("lookup panel should be visible after Show")
 	}

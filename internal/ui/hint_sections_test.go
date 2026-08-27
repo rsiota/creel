@@ -47,7 +47,7 @@ func TestNewHintSections(t *testing.T) {
 
 	m.lookupPanel.visible = true
 	check("Lookup Panel", map[string]string{
-		"j": "scroll", "G": "top / bottom", "ctrl+u": "page down / up", "esc": "close",
+		"j": "move", "G": "top / bottom", "ctrl+u": "page down / up", "esc": "close",
 	})
 	m.lookupPanel.visible = false
 

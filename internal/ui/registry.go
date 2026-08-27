@@ -349,9 +349,10 @@ func registry() []Section {
 			Title:  "Lookup Panel",
 			Source: "lookup_panel.go app.go",
 			Items: []Binding{
-				{"j/k", []string{"j", "k", "up", "down"}, "scroll", "j/k"},
+				{"j/k", []string{"j", "k", "up", "down"}, "move", "j/k"},
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
 				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/ctrl+u"},
+				{"enter", []string{"enter"}, "open table", "enter"},
 				{"esc", []string{"esc"}, "close", "esc"},
 			},
 		},

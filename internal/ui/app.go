@@ -186,10 +186,12 @@ type explainResultMsg struct {
 }
 
 // lookupResultMsg carries a lookup panel's title and result table, produced
-// by async ex commands like ":refs" and ":uses".
+// by async ex commands like ":refs" and ":uses". jumps is optional and
+// parallel to result.Rows: a non-empty entry makes that row Enter-jumpable.
 type lookupResultMsg struct {
 	title  string
 	result db.Result
+	jumps  []string
 	err    error
 }
 
@@ -1634,7 +1636,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.schemaMsg = fmt.Sprintf("lookup failed: %v", msg.err)
 			return m, nil
 		}
-		m.lookupPanel.Show(msg.title, msg.result)
+		m.lookupPanel.Show(msg.title, msg.result, msg.jumps)
 		return m, nil
 	case explorerLoadedMsg:
 		// Only apply if the panel is still open (the user may have closed it
@@ -2950,11 +2952,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Lookup panel is modal — j/k scroll, esc/q close.
+	// Lookup panel is modal — j/k scroll, enter jumps, esc/q close.
 	if m.lookupPanel.IsVisible() {
 		switch msg.String() {
 		case "esc", "q", "ctrl+c":
 			m.lookupPanel.Hide()
+			return m, nil
+		case "enter":
+			if jump := m.lookupPanel.SelectedJump(); jump != "" {
+				m.lookupPanel.Hide()
+				return m, m.openTable(jump)
+			}
 			return m, nil
 		}
 		m.lookupPanel = m.lookupPanel.Update(msg)
