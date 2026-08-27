@@ -18,10 +18,11 @@ func (m *Model) sessionKey() (conn, database string, ok bool) {
 }
 
 // saveSession persists the current workspace (open tabs, their editor buffers,
-// the active tab, remembered column widths, and ERD card positions) for the
-// active connection+database. It is best-effort: write errors are ignored,
-// matching the other persistence sites. Called at connection/database teardown
-// and on quit so reopening a connection restores where the user left off.
+// the active tab, remembered column widths, ERD card positions, panel layout
+// sizes, and which right-slot panel was open) for the active
+// connection+database. It is best-effort: write errors are ignored, matching
+// the other persistence sites. Called at connection/database teardown and on
+// quit so reopening a connection restores where the user left off.
 func (m *Model) saveSession() {
 	conn, database, ok := m.sessionKey()
 	if !ok || m.sessionStore == nil {
@@ -32,7 +33,12 @@ func (m *Model) saveSession() {
 	m.saveTabState()
 	m.snapshotERDPositions()
 
-	st := session.State{ColWidths: m.colWidthMem, ERDPositions: m.erdPosMem}
+	st := session.State{
+		ColWidths:    m.colWidthMem,
+		ERDPositions: m.erdPosMem,
+		Layout:       m.snapshotSessionLayout(),
+		Panels:       &session.Panels{Right: m.sessionRightPanel()},
+	}
 	for i, t := range m.resultsTabs {
 		st.Tabs = append(st.Tabs, session.Tab{
 			Title:     t.Title,
@@ -46,37 +52,74 @@ func (m *Model) saveSession() {
 	_ = m.sessionStore.Save(conn, database, st)
 }
 
-// restoreSession rebuilds the workspace tabs from the persisted session for
-// the active connection+database. With no session (or a blank one) the default
+// snapshotSessionLayout captures the current split sizes. Zeros are omitted
+// via omitempty so defaults stay unset until the user actually resizes.
+func (m *Model) snapshotSessionLayout() *session.Layout {
+	l := &session.Layout{
+		SidebarWidth:    m.sidebarSplitW,
+		EditorHeight:    m.editorSplitH,
+		RightSlotWidth:  m.rightSlotSplitW,
+		EditorMaximized: m.editorMaximized,
+	}
+	if l.SidebarWidth == 0 && l.EditorHeight == 0 && l.RightSlotWidth == 0 && !l.EditorMaximized {
+		return nil
+	}
+	return l
+}
+
+// sessionRightPanel returns which right-slot panel is currently open.
+func (m *Model) sessionRightPanel() string {
+	switch {
+	case m.inspector.IsVisible():
+		return session.RightInspector
+	case m.assistant.IsVisible():
+		return session.RightAssistant
+	case m.explorer.IsVisible() && m.explorer.docked:
+		return session.RightExplorer
+	default:
+		return session.RightNone
+	}
+}
+
+// restoreSession rebuilds the workspace from the persisted session for the
+// active connection+database. With no session (or blank tabs) the default
 // single "New Query" tab is left in place. It does not re-run any query — the
 // editor buffers are restored verbatim and the user runs them with ctrl+e,
 // mirroring the creel -f startup flag (avoids stale data and side-effecting
 // writes on reconnect).
 //
-// Column-width memory and ERD card positions are always reloaded when a
+// Column widths, ERD positions, layout, and panels are always reloaded when a
 // session file exists, even if the tabs themselves are blank (HasContent is
-// false).
-func (m *Model) restoreSession() {
+// false). The returned flag is true when Panels was present in the session so
+// callers can skip the settings.InspectorOpen fallback.
+func (m *Model) restoreSession() (panelsRestored bool) {
 	conn, database, ok := m.sessionKey()
 	if !ok || m.sessionStore == nil {
-		return
+		return false
 	}
 	// An explicit startup file (-f) takes precedence over the saved session
 	// for the first connect only; later connects (e.g. switching connections)
 	// restore normally.
 	if m.startupFileLoaded {
 		m.startupFileLoaded = false
-		return
+		return false
 	}
 	st, err := m.sessionStore.Load(conn, database)
 	if err != nil {
-		return
+		return false
 	}
 	m.colWidthMem = cloneColWidthMem(st.ColWidths)
 	m.erdPosMem = cloneERDPosMem(st.ERDPositions)
+	if st.Layout != nil {
+		m.applySessionLayout(*st.Layout)
+	}
+	if st.Panels != nil {
+		m.applySessionPanels(*st.Panels)
+		panelsRestored = true
+	}
 
 	if !st.HasContent() {
-		return
+		return panelsRestored
 	}
 
 	tabs := make([]*ResultsTab, 0, len(st.Tabs))
@@ -99,6 +142,38 @@ func (m *Model) restoreSession() {
 	// shows it.
 	m.restoreTabState()
 	m.editor.CancelCompletion()
+	return panelsRestored
+}
+
+// applySessionLayout restores split sizes from a saved session. Values are
+// stored raw; workspaceGeom clamps them against the current terminal size.
+func (m *Model) applySessionLayout(l session.Layout) {
+	if l.SidebarWidth > 0 {
+		m.sidebarSplitW = l.SidebarWidth
+	}
+	if l.EditorHeight > 0 {
+		m.editorSplitH = l.EditorHeight
+	}
+	if l.RightSlotWidth > 0 {
+		m.rightSlotSplitW = l.RightSlotWidth
+	}
+	m.editorMaximized = l.EditorMaximized
+}
+
+// applySessionPanels opens or closes the right-slot panel to match a saved
+// session. Does not steal focus — the connect path still focuses the editor.
+func (m *Model) applySessionPanels(p session.Panels) {
+	m.inspector.Hide()
+	m.assistant.Hide()
+	m.explorer.Hide()
+	switch p.Right {
+	case session.RightInspector:
+		m.inspector.Show()
+	case session.RightAssistant:
+		m.assistant.Show()
+	case session.RightExplorer:
+		m.explorer.ShowDocked()
+	}
 }
 
 // beginQuit persists the current session and marks the app as quitting. Every

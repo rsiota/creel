@@ -22,6 +22,8 @@ func TestStoreSaveLoadRoundTrip(t *testing.T) {
 		ERDPositions: map[string]map[string]ERDPos{
 			"*": {"users": {X: 2, Y: 1}, "orders": {X: 40, Y: 8}},
 		},
+		Layout: &Layout{SidebarWidth: 36, EditorHeight: 16, RightSlotWidth: 40, EditorMaximized: true},
+		Panels: &Panels{Right: RightInspector},
 	}
 	if err := s.Save("Work DB", "appdb", st); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -41,6 +43,13 @@ func TestStoreSaveLoadRoundTrip(t *testing.T) {
 	}
 	if got.ERDPositions["*"]["users"] != (ERDPos{X: 2, Y: 1}) || got.ERDPositions["*"]["orders"] != (ERDPos{X: 40, Y: 8}) {
 		t.Errorf("erd positions round-trip mismatch: %+v", got.ERDPositions)
+	}
+	if got.Layout == nil || got.Layout.SidebarWidth != 36 || got.Layout.EditorHeight != 16 ||
+		got.Layout.RightSlotWidth != 40 || !got.Layout.EditorMaximized {
+		t.Errorf("layout round-trip mismatch: %+v", got.Layout)
+	}
+	if got.Panels == nil || got.Panels.Right != RightInspector {
+		t.Errorf("panels round-trip mismatch: %+v", got.Panels)
 	}
 }
 
@@ -112,5 +121,8 @@ func TestHasContent(t *testing.T) {
 	}
 	if (State{ERDPositions: map[string]map[string]ERDPos{"*": {"t": {X: 1, Y: 2}}}}).HasContent() {
 		t.Error("erd positions alone should not count as content")
+	}
+	if (State{Layout: &Layout{SidebarWidth: 40}, Panels: &Panels{Right: RightInspector}}).HasContent() {
+		t.Error("layout/panels alone should not count as content")
 	}
 }

@@ -253,3 +253,86 @@ func TestExSessionClearDoesNotTouchLiveWorkspace(t *testing.T) {
 		t.Errorf("clear disturbed live tabs: %d", len(m.resultsTabs))
 	}
 }
+
+// TestSessionLayoutAndPanelsRoundTrip verifies sidebar/editor/right-slot sizes
+// and the open right-slot panel survive save → restore.
+func TestSessionLayoutAndPanelsRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	conn := newNamedSQLiteConn(t, "layout")
+
+	m := NewModel(&config.Config{})
+	m.connection = conn
+	m.sidebarSplitW = 42
+	m.editorSplitH = 18
+	m.rightSlotSplitW = 48
+	m.editorMaximized = true
+	m.inspector.Show()
+	m.saveSession()
+
+	m2 := NewModel(&config.Config{})
+	m2.connection = conn
+	if !m2.restoreSession() {
+		t.Fatal("expected panelsRestored=true")
+	}
+	if m2.sidebarSplitW != 42 || m2.editorSplitH != 18 || m2.rightSlotSplitW != 48 || !m2.editorMaximized {
+		t.Errorf("layout = sidebar=%d editor=%d right=%d max=%v",
+			m2.sidebarSplitW, m2.editorSplitH, m2.rightSlotSplitW, m2.editorMaximized)
+	}
+	if !m2.inspector.IsVisible() {
+		t.Error("inspector should be restored open")
+	}
+	if m2.assistant.IsVisible() || m2.explorer.IsVisible() {
+		t.Error("only inspector should be open")
+	}
+}
+
+// TestSessionPanelsNoneSkipsInspectorOpenPreference confirms an explicit
+// closed right slot wins over settings.InspectorOpen.
+func TestSessionPanelsNoneSkipsInspectorOpenPreference(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	conn := newNamedSQLiteConn(t, "nopanel")
+
+	m := NewModel(&config.Config{})
+	m.connection = conn
+	// No right panel open — still persists Panels{Right: none}.
+	m.saveSession()
+
+	cfg := &config.Config{Settings: config.Settings{InspectorOpen: true}}
+	m2 := NewModel(cfg)
+	m2.connection = conn
+	if !m2.restoreSession() {
+		t.Fatal("expected panelsRestored=true so InspectorOpen is skipped")
+	}
+	if m2.inspector.IsVisible() {
+		t.Error("session Right=none must keep inspector closed despite InspectorOpen")
+	}
+}
+
+// TestSessionLayoutRestoredWithoutTabContent ensures layout/panels apply even
+// when the session has blank tabs (HasContent false).
+func TestSessionLayoutRestoredWithoutTabContent(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	conn := newNamedSQLiteConn(t, "chromeonly")
+
+	m := NewModel(&config.Config{})
+	m.connection = conn
+	m.sidebarSplitW = 33
+	m.assistant.Show()
+	m.saveSession()
+
+	m2 := NewModel(&config.Config{})
+	m2.connection = conn
+	panels := m2.restoreSession()
+	if !panels {
+		t.Fatal("panels should restore from chrome-only session")
+	}
+	if m2.sidebarSplitW != 33 {
+		t.Errorf("sidebar = %d, want 33", m2.sidebarSplitW)
+	}
+	if !m2.assistant.IsVisible() {
+		t.Error("assistant should be restored")
+	}
+	if len(m2.resultsTabs) != 1 || m2.resultsTabs[0].Title != "New Query" {
+		t.Errorf("blank-tab session should keep default tab, got %+v", m2.resultsTabs)
+	}
+}

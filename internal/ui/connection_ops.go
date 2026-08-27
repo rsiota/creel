@@ -133,8 +133,9 @@ func (m *Model) connectWithConfig(dbCfg db.ConnectionConfig) tea.Cmd {
 	}
 
 	m.loadTables()
-	m.restoreSession() // reopen tabs/editor buffers from the last visit
-	m.openInspectorIfPreferred()
+	if !m.restoreSession() {
+		m.openInspectorIfPreferred()
+	}
 	cmd := m.editor.Focus()
 	m.layoutWorkspace()
 	m.applyFocus()
@@ -187,6 +188,8 @@ func (m *Model) resetWorkspaceForNewConnection() {
 	m.nextTabID = 1
 	m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
 	m.inspector.Hide()
+	m.assistant.Hide()
+	m.explorer.Hide()
 	m.dbPicker.Hide()
 	m.columnPicker.Hide()
 	m.discardConfirm = false
@@ -225,6 +228,12 @@ func (m *Model) resetWorkspaceForNewConnection() {
 	m.watchPrevRows = nil
 	m.lastChartOK = false
 	m.chartPanel.Hide()
+	// Layout splits are per session; clear so the next restore (or defaults)
+	// wins rather than leaking the previous connection's chrome.
+	m.sidebarSplitW = 0
+	m.editorSplitH = 0
+	m.rightSlotSplitW = 0
+	m.editorMaximized = false
 }
 
 // showConnectionList disconnects (if needed) and returns to the connection
@@ -380,6 +389,8 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	m.results.Clear()
 	m.results.ClearEditable()
 	m.inspector.Hide()
+	m.assistant.Hide()
+	m.explorer.Hide()
 	m.tables = nil
 	m.lastQuery = ""
 	m.clearQueryFailure()
@@ -392,10 +403,17 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	m.results.SetSearchMatcher(nil)
 	m.queryStack = nil
 	m.sidebarCursor = 0
+	m.colWidthMem = nil
+	m.erdPosMem = nil
+	m.sidebarSplitW = 0
+	m.editorSplitH = 0
+	m.rightSlotSplitW = 0
+	m.editorMaximized = false
 
 	m.loadTables()
-	m.restoreSession() // reopen tabs/editor buffers from the last visit
-	m.openInspectorIfPreferred()
+	if !m.restoreSession() {
+		m.openInspectorIfPreferred()
+	}
 	cmd := m.editor.Focus()
 	m.layoutWorkspace()
 	m.applyFocus()
