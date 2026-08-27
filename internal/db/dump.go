@@ -322,6 +322,30 @@ func IsDateTimeType(dbType string) bool {
 	return false
 }
 
+// IsBooleanType reports whether a column type is an explicit boolean, including
+// MySQL's BOOLEAN alias tinyint(1) / tinyint(1) unsigned. Plain TINYINT /
+// INTEGER without a (1) width are not treated as boolean — those often store
+// counts or enums; callers can still combine this with a column-name heuristic.
+func IsBooleanType(dbType string) bool {
+	t := strings.ToLower(strings.TrimSpace(dbType))
+	if t == "" {
+		return false
+	}
+	// MySQL information_schema.column_type: "tinyint(1)", "tinyint(1) unsigned".
+	// Match before stripping parens so tinyint(4) stays non-boolean.
+	if strings.HasPrefix(t, "tinyint") && strings.Contains(t, "(1)") {
+		return true
+	}
+	if i := strings.IndexByte(t, '('); i > 0 {
+		t = t[:i]
+	}
+	switch t {
+	case "bool", "boolean":
+		return true
+	}
+	return false
+}
+
 // FormatDateTimeLiteral converts an ISO-8601 timestamp (e.g.
 // "2026-05-08T18:38:00Z") into a 'YYYY-MM-DD HH:MM:SS' literal accepted by both
 // MySQL and SQLite. The wall-clock time is preserved exactly (no timezone

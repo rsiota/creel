@@ -105,6 +105,8 @@ var (
 	colorStatusInfo   lipgloss.Color
 	colorStatusBad    lipgloss.Color
 	colorStatusQuiet  lipgloss.Color
+	// Boolean ●/○ glyphs: default fg softened toward bg (~70% strength).
+	colorBool lipgloss.Color
 	// Soft primary wash behind unsaved (dirty) result cells — lighter than the
 	// cursor's solid primary so edits read as touched without competing.
 	colorDirty lipgloss.Color
@@ -193,6 +195,8 @@ func applyPalette(p colorPalette) {
 	colorStatusInfo = mixColors(p.accent, p.bg, statusBlend)
 	colorStatusBad = mixColors(p.err, p.bg, statusBlend)
 	colorStatusQuiet = mixColors(p.muted, p.bg, statusBlend)
+	// Boolean glyphs: same hue as cell text, ~70% strength (30% toward bg).
+	colorBool = mixColors(p.fg, p.bg, 0.30)
 	colorDirty = deriveDirtyBg(p)
 
 	// ERD selection: vivid for the selected card + arrows that touch it; dim

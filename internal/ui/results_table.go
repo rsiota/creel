@@ -213,7 +213,11 @@ func (r ResultsTable) IsCellTruncated(row, col int) bool {
 		w = 1
 	}
 	val := sanitizeCellValue(r.RowValue(row, col))
-	if r.isDatetimeDisplayCol(col) {
+	if r.isBooleanDisplayCol(col) {
+		if disp, ok := booleanCellDisplay(val, w); ok {
+			val = disp
+		}
+	} else if r.isDatetimeDisplayCol(col) {
 		if c, ok := compactTimestamp(val); ok {
 			val = c
 		}
@@ -1352,7 +1356,9 @@ func (r *ResultsTable) computeColWidths() {
 	for _, row := range r.rows {
 		for i := 0; i < len(r.columns) && i < len(row); i++ {
 			l := runeLen(row[i])
-			if r.isDatetimeDisplayCol(i) {
+			if r.isBooleanDisplayCol(i) {
+				l = booleanDisplayWidth(row[i])
+			} else if r.isDatetimeDisplayCol(i) {
 				l = datetimeDisplayWidth(row[i])
 			}
 			if l > r.colWidths[i] {
@@ -1888,11 +1894,22 @@ func (r ResultsTable) statusColumnFg(col int, val string) (lipgloss.Color, bool)
 	return statusValueFg(val)
 }
 
+// booleanColumnFg returns the softened default-fg tint for boolean glyphs.
+func (r ResultsTable) booleanColumnFg(col int, val string) (lipgloss.Color, bool) {
+	if !r.isBooleanDisplayCol(col) {
+		return "", false
+	}
+	return booleanValueFg(val)
+}
+
 // cellContentFg picks the default (non-highlight) foreground for a cell:
-// NULL/blob muted, then status enum, then FK tint, else normal fg.
+// NULL/blob muted, then boolean, then status enum, then FK tint, else normal fg.
 func (r ResultsTable) cellContentFg(col int, val string) lipgloss.Color {
 	if val == "NULL" || db.IsBlobPlaceholder(val) {
 		return colorMuted
+	}
+	if fg, ok := r.booleanColumnFg(col, val); ok {
+		return fg
 	}
 	if fg, ok := r.statusColumnFg(col, val); ok {
 		return fg
@@ -2080,7 +2097,11 @@ func (r ResultsTable) View() string {
 				b.WriteString(" " + inputView + " ")
 			} else {
 				cell := truncateCell(val, r.colWidths[i])
-				if isNumericType(r.columnType(i)) {
+				if r.isBooleanDisplayCol(i) {
+					if disp, ok := booleanCellDisplay(val, r.colWidths[i]); ok {
+						cell = disp
+					}
+				} else if isNumericType(r.columnType(i)) {
 					cell = truncateCellRight(val, r.colWidths[i])
 				} else if r.isDatetimeDisplayCol(i) {
 					if disp, ok := datetimeCellDisplay(val, r.colWidths[i]); ok {

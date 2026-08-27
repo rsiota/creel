@@ -394,6 +394,22 @@ func TestIsDateTimeType(t *testing.T) {
 	}
 }
 
+func TestIsBooleanType(t *testing.T) {
+	yes := []string{"BOOL", "boolean", "Boolean", "BOOLEAN(1)",
+		"tinyint(1)", "TINYINT(1)", "tinyint(1) unsigned", "TINYINT(1) UNSIGNED"}
+	for _, ty := range yes {
+		if !IsBooleanType(ty) {
+			t.Errorf("IsBooleanType(%q) = false, want true", ty)
+		}
+	}
+	no := []string{"TINYINT", "tinyint", "tinyint(4)", "INTEGER", "INT", "BIT", "TEXT", "", "VARCHAR"}
+	for _, ty := range no {
+		if IsBooleanType(ty) {
+			t.Errorf("IsBooleanType(%q) = true, want false", ty)
+		}
+	}
+}
+
 func TestIsNumericType(t *testing.T) {
 	numeric := []string{
 		"INT", "integer", "BIGINT", "DECIMAL(10,2)", "REAL", "FLOAT", "BOOLEAN", "bool", "TINYINT",
