@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/rsiota/creel/internal/db"
 )
 
@@ -359,7 +361,12 @@ func TestExplorerInsertRelatedRejectsOutbound(t *testing.T) {
 	}
 }
 
-func TestExplorerHighlightLinkedFK(t *testing.T) {
+func TestExplorerEdgesHaveNoFKTint(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	applyPalette(themes["git-hub-light-default"])
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(termenv.ANSI)
+
 	conn := newSQLiteTestConn(t)
 	defer conn.Close()
 	for _, q := range []string{
@@ -376,14 +383,20 @@ func TestExplorerHighlightLinkedFK(t *testing.T) {
 	m.results.SetResult([]string{"id", "user_id"}, [][]string{{"10", "1"}}, "")
 	m.results.SetEditable("orders", []string{"id"})
 	m.results.SetForeignKeys("orders", []db.ForeignKey{{Column: "user_id", RefTable: "users", RefColumn: "id"}})
-	m.results.SetCursor(0, 1)
+	m.results.SetCursor(0, 1) // on FK cell — must not tint the explorer edge
 	m.focus = FocusResults
 
 	root := m.loadExplorer()().(explorerLoadedMsg).root
 	m.explorer.applyRoot(root, 0)
-	m.syncExplorerFKHighlight()
-	n := m.explorer.selectedNode()
-	if n == nil || !n.isEdge() || n.edge.targetTable != "users" {
-		t.Fatalf("linked cursor = %+v, want outbound users edge", n)
+	m.explorer.SetSize(40, 16)
+	view := m.explorer.View()
+
+	fkPrefix := sgrPrefix(lipgloss.NewStyle().Foreground(colorFK))
+	if fkPrefix != "" && strings.Contains(view, fkPrefix) {
+		t.Fatalf("explorer must not tint edges with colorFK\nview:\n%s", view)
+	}
+	accentBg := sgrPrefix(lipgloss.NewStyle().Background(colorAccent))
+	if accentBg != "" && strings.Contains(view, accentBg) {
+		t.Fatalf("explorer must not wash edges with accent background\nview:\n%s", view)
 	}
 }

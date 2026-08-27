@@ -98,9 +98,6 @@ type RelExplorer struct {
 	err      string
 	emptyMsg string // why there is no root (no source table, etc.)
 
-	linkedTable string // FK target to emphasize (cross-highlight from the grid)
-	linkedCol   string // FK source column, for self-referential tables
-
 	docked  bool   // panel mode: rendered in the right slot, cursor-driven
 	anchor  string // the results row (table + PK tuple) the current tree is rooted at
 	focused bool   // mirror of Model.focus == FocusExplorer, for the border color
@@ -300,33 +297,6 @@ func (e RelExplorer) selectedNode() *expNode {
 	return v[e.cursor]
 }
 
-// HighlightLinked records the grid cursor's FK so matching explorer edges
-// render vivid. When moveCursor is set, the explorer cursor jumps to the
-// first matching outbound edge (used while the results grid has focus).
-func (e *RelExplorer) HighlightLinked(col, refTable string, moveCursor bool) {
-	e.linkedCol = col
-	e.linkedTable = refTable
-	if !moveCursor || (col == "" && refTable == "") || e.root == nil {
-		return
-	}
-	for _, n := range e.visibleNodes() {
-		if e.isLinkedEdge(n) && n.edge.dir == relOutbound {
-			e.cursorToNode(n)
-			return
-		}
-	}
-}
-
-func (e RelExplorer) isLinkedEdge(n *expNode) bool {
-	if n == nil || !n.isEdge() {
-		return false
-	}
-	if e.linkedCol != "" && strings.EqualFold(n.edge.sourceColumn, e.linkedCol) {
-		return true
-	}
-	return e.linkedTable != "" && strings.EqualFold(n.edge.targetTable, e.linkedTable)
-}
-
 // cursorToNode moves the cursor to a specific node (used by ← to jump to parent).
 func (e *RelExplorer) cursorToNode(n *expNode) {
 	for i, x := range e.visibleNodes() {
@@ -454,8 +424,7 @@ func (e RelExplorer) bodyLines() []string {
 	vis := e.visibleNodes()
 	all := make([]string, 0, len(vis))
 	for _, n := range vis {
-		linked := n.isEdge() && e.isLinkedEdge(n)
-		all = append(all, n.renderLine(e.cursorNodeIndex(n), inner, linked))
+		all = append(all, n.renderLine(e.cursorNodeIndex(n), inner))
 	}
 	vh := e.nodeViewport()
 	start := e.scroll
@@ -486,7 +455,7 @@ func (e RelExplorer) cursorNodeIndex(n *expNode) int {
 	return -1
 }
 
-// renderLine formats one tree node with depth indentation, an expand glyph,
+// renderLine builds one explorer tree line: depth indent, expand/collapse glyph,
 // and a kind-specific label. Each line carries 1 cell of padding per side via
 // the line style (not the panel) so the chevron sits one cell in from the
 // border — the same spacing as the sidebar/table explorer — while a selected
@@ -495,7 +464,7 @@ func (e RelExplorer) cursorNodeIndex(n *expNode) int {
 // colour); the selected/inverted line stays plain so its background fill is
 // not broken by the count's embedded colour reset. Depth indentation is the
 // only thing that shifts a line further right.
-func (n *expNode) renderLine(selectedIdx int, inner int, linked bool) string {
+func (n *expNode) renderLine(selectedIdx int, inner int) string {
 	indent := strings.Repeat("  ", n.depth)
 	glyph := icons.collapsed
 	switch {
@@ -529,12 +498,6 @@ func (n *expNode) renderLine(selectedIdx int, inner int, linked bool) string {
 	if selectedIdx >= 0 {
 		return lipgloss.NewStyle().
 			Background(colorPrimary).Foreground(colorBg).
-			Padding(0, 1).
-			Render(body)
-	}
-	if linked {
-		return lipgloss.NewStyle().
-			Background(colorAccent).Foreground(colorBg).
 			Padding(0, 1).
 			Render(body)
 	}

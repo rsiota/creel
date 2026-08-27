@@ -2001,22 +2001,9 @@ func (m *Model) maybeReloadDockedExplorer() tea.Cmd {
 	}
 	cur := m.explorerAnchor()
 	if cur == "" || cur == m.explorer.anchor {
-		m.syncExplorerFKHighlight()
 		return nil
 	}
 	return m.loadExplorer()
-}
-
-// syncExplorerFKHighlight marks the explorer edge that matches the results
-// cursor's FK column, and — when the grid has focus — moves the explorer
-// cursor onto it. Called after a row re-root and on every results cursor move
-// that doesn't change the row.
-func (m *Model) syncExplorerFKHighlight() {
-	col, ref := "", ""
-	if fk, ok := m.results.ForeignKeyAtCursor(); ok {
-		col, ref = fk.Column, fk.RefTable
-	}
-	m.explorer.HighlightLinked(col, ref, m.focus == FocusResults)
 }
 
 // loadExplorer builds the explorer tree root from the focused results row and

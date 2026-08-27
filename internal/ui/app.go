@@ -1655,7 +1655,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Record the row this tree is now rooted at, so the docked panel can tell
 		// a real cursor move from a redundant reload.
 		m.explorer.anchor = m.explorerAnchor()
-		m.syncExplorerFKHighlight()
 		return m, nil
 	case explorerChildrenMsg:
 		if !m.explorer.IsVisible() || msg.parent == nil {
