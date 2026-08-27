@@ -298,7 +298,8 @@ func TestExpandEdgeLoadsChildRows(t *testing.T) {
 		if !strings.Contains(r.label, "#") {
 			t.Errorf("child label %q should contain #", r.label)
 		}
-		want := `SELECT * FROM "orders" WHERE "id" = '` + strings.TrimPrefix(r.label, "#") + `'`
+		id := r.rowVals["id"]
+		want := `SELECT * FROM "orders" WHERE "id" = '` + id + `'`
 		if r.drillQuery != want {
 			t.Errorf("child drillQuery = %q, want %q", r.drillQuery, want)
 		}

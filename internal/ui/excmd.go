@@ -1868,8 +1868,18 @@ func (m *Model) focusedRowValues(table string) (vals map[string]string, label st
 
 // pkLabel builds a " · #val" suffix identifying the focused row, preferring
 // the primary key tuple and falling back to the first non-empty cell when
-// there is no PK. Empty when no usable value is found.
+// there is no PK. When a glanceable title column is present it is appended
+// (" · #1  Alice"). Empty when no usable value is found.
 func pkLabel(r ResultsTable) string {
+	cols := make([]string, r.NumCols())
+	vals := make(map[string]string, r.NumCols())
+	for c := 0; c < r.NumCols(); c++ {
+		cols[c] = r.ColumnName(c)
+		vals[strings.ToLower(cols[c])] = r.RowValue(r.CursorRow(), c)
+	}
+	pkCols := r.PKColumns()
+
+	id := ""
 	if tup := r.CursorPKTuple(); len(tup) > 0 {
 		parts := make([]string, 0, len(tup))
 		for _, v := range tup {
@@ -1879,15 +1889,24 @@ func pkLabel(r ResultsTable) string {
 			parts = append(parts, v)
 		}
 		if len(parts) > 0 {
-			return " · #" + strings.Join(parts, ", ")
+			id = "#" + strings.Join(parts, ", ")
 		}
 	}
-	for c := 0; c < r.NumCols(); c++ {
-		if v := r.RowValue(r.CursorRow(), c); v != "" && v != "NULL" {
-			return " · " + r.ColumnName(c) + "=" + v
+	if id == "" {
+		for c := 0; c < r.NumCols(); c++ {
+			if v := r.RowValue(r.CursorRow(), c); v != "" && v != "NULL" {
+				id = r.ColumnName(c) + "=" + v
+				break
+			}
 		}
 	}
-	return ""
+	if id == "" {
+		return ""
+	}
+	if title := rowTitle(cols, vals, pkCols); title != "" {
+		return " · " + id + "  " + title
+	}
+	return " · " + id
 }
 
 // countReferrer returns how many rows in the child table reference the focused
@@ -2307,9 +2326,18 @@ func ancestorRowNodes(node *expNode) []*expNode {
 }
 
 // rowLabel builds a human-friendly identity for a child row: the PK tuple
-// ("#1001") if available, else the first non-empty cell, else a positional
-// fallback rendered as "#N".
+// ("#1001") when available, optionally followed by a glanceable title column
+// ("#1001  Alice"), else the first non-empty cell, else a positional "#N".
 func rowLabel(cols []string, vals map[string]string, pkCols []string, idx int) string {
+	id := rowIdentityLabel(cols, vals, pkCols, idx)
+	if title := rowTitle(cols, vals, pkCols); title != "" {
+		return id + "  " + title
+	}
+	return id
+}
+
+// rowIdentityLabel is the stable identity part of a row label (PK or fallback).
+func rowIdentityLabel(cols []string, vals map[string]string, pkCols []string, idx int) string {
 	if len(pkCols) > 0 {
 		parts := make([]string, 0, len(pkCols))
 		ok := true
@@ -2332,6 +2360,149 @@ func rowLabel(cols []string, vals map[string]string, pkCols []string, idx int) s
 		}
 	}
 	return fmt.Sprintf("#%d", idx)
+}
+
+// explorerTitleMax is the max visible runes for a title crumb in the explorer.
+const explorerTitleMax = 40
+
+// exactTitleNames are preferred column names for a glanceable row title
+// (case-insensitive). Ordered by preference.
+var exactTitleNames = []string{
+	"name", "title", "label", "display_name", "fullname_name",
+	"username", "email", "slug",
+}
+
+// titleNameSuffixes match columns like product_name / job_title.
+var titleNameSuffixes = []string{"_name", "_title", "_label"}
+
+// skipTitleNames are never used as explorer titles (metadata / secrets).
+var skipTitleNames = map[string]bool{
+	"created_at": true, "updated_at": true, "deleted_at": true,
+	"created": true, "updated": true, "deleted": true,
+	"password": true, "passwd": true, "secret": true, "token": true,
+	"hash": true, "salt": true, "api_key": true, "access_token": true,
+}
+
+// rowTitle picks a short human-readable crumb from the row's columns, or "".
+// Preference: exact name matches → *_name/*_title/*_label → first short text
+// cell that isn't a PK, datetime, blob, or metadata column.
+func rowTitle(cols []string, vals map[string]string, pkCols []string) string {
+	pk := map[string]bool{}
+	for _, c := range pkCols {
+		pk[strings.ToLower(c)] = true
+	}
+	byLower := map[string]string{} // lower → original column name
+	for _, c := range cols {
+		byLower[strings.ToLower(c)] = c
+	}
+
+	try := func(col string) string {
+		if pk[strings.ToLower(col)] || skipTitleNames[strings.ToLower(col)] {
+			return ""
+		}
+		v := vals[strings.ToLower(col)]
+		return sanitizeTitleValue(v)
+	}
+
+	for _, name := range exactTitleNames {
+		if col, ok := byLower[name]; ok {
+			if t := try(col); t != "" {
+				return t
+			}
+		}
+	}
+	for _, c := range cols {
+		lower := strings.ToLower(c)
+		for _, suf := range titleNameSuffixes {
+			if strings.HasSuffix(lower, suf) {
+				if t := try(c); t != "" {
+					return t
+				}
+				break
+			}
+		}
+	}
+	for _, c := range cols {
+		lower := strings.ToLower(c)
+		if pk[lower] || skipTitleNames[lower] {
+			continue
+		}
+		if looksLikeIDColumn(lower) {
+			continue
+		}
+		if t := try(c); t != "" {
+			return t
+		}
+	}
+	return ""
+}
+
+func looksLikeIDColumn(lower string) bool {
+	if lower == "id" || lower == "uuid" || lower == "guid" {
+		return true
+	}
+	return strings.HasSuffix(lower, "_id") ||
+		strings.HasSuffix(lower, "_uuid") ||
+		strings.HasSuffix(lower, "_guid")
+}
+
+// sanitizeTitleValue rejects empty/NULL/opaque/numeric-only values and
+// truncates long text so the explorer stays scannable.
+func sanitizeTitleValue(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" || v == "NULL" {
+		return ""
+	}
+	if looksLikeOpaqueID(v) {
+		return ""
+	}
+	// Pure numbers make poor titles (qty, totals, status codes).
+	if isNumericCount(v) {
+		return ""
+	}
+	// Collapse internal whitespace so a multi-line TEXT cell stays one crumb.
+	v = strings.Join(strings.Fields(v), " ")
+	runes := []rune(v)
+	if len(runes) > explorerTitleMax {
+		return string(runes[:explorerTitleMax-1]) + "…"
+	}
+	return v
+}
+
+// looksLikeOpaqueID reports UUIDs and long hex hashes that make poor titles.
+func looksLikeOpaqueID(v string) bool {
+	if len(v) == 36 {
+		// 8-4-4-4-12 UUID shape
+		ok := true
+		for i, r := range v {
+			switch i {
+			case 8, 13, 18, 23:
+				if r != '-' {
+					ok = false
+				}
+			default:
+				if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+					ok = false
+				}
+			}
+		}
+		if ok {
+			return true
+		}
+	}
+	if len(v) >= 32 {
+		hex := true
+		for _, r := range v {
+			if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+				hex = false
+				break
+			}
+		}
+		if hex {
+			return true
+		}
+	}
+	return false
 }
 
 // rowDrillQuery builds the SELECT to open one exact row in the grid on Enter.
