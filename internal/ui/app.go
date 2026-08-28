@@ -2398,6 +2398,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.importPrompt.Hide()
 			return m, nil
 		case "enter":
+			// Prefer accepting the path-completion dropdown (mirrors Tab / ex-line
+			// Enter) over submitting the import.
+			if m.importPrompt.AcceptPathCompletion() {
+				return m, nil
+			}
 			path, err := m.importPrompt.ExpandPath()
 			if err != nil {
 				m.exportMsg = fmt.Sprintf("import failed: %v", err)

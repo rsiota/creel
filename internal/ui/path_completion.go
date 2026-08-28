@@ -29,6 +29,11 @@ func (pc *pathCompletion) clear() {
 	pc.compVisible = false
 }
 
+// hasChoices reports whether the dropdown has a selectable entry.
+func (pc pathCompletion) hasChoices() bool {
+	return pc.compVisible && len(pc.completions) > 0
+}
+
 func (pc *pathCompletion) accept(input *textinput.Model) {
 	if pc.compSelected >= len(pc.completions) {
 		return

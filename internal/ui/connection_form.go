@@ -415,7 +415,7 @@ func (f ConnectionForm) Update(msg tea.Msg) (ConnectionForm, tea.Cmd) {
 
 	if f.editing {
 		fi := f.activeField()
-		if key == "esc" || key == "enter" {
+		if key == "esc" {
 			f.editing = false
 			f.pathComp.clear()
 			f.fields[fi].Blur()
@@ -423,8 +423,11 @@ func (f ConnectionForm) Update(msg tea.Msg) (ConnectionForm, tea.Cmd) {
 		}
 		if f.isPathField(fi) {
 			switch key {
-			case "tab":
-				if f.pathComp.compVisible && len(f.pathComp.completions) > 0 {
+			case "tab", "enter":
+				// Enter mirrors Tab when the dropdown is open (same polish as
+				// the ex-line completion). With no choices, Enter still leaves
+				// insert mode below.
+				if f.pathComp.hasChoices() {
 					f.pathComp.accept(&f.fields[fi])
 					return f, nil
 				}
@@ -439,6 +442,12 @@ func (f ConnectionForm) Update(msg tea.Msg) (ConnectionForm, tea.Cmd) {
 					return f, nil
 				}
 			}
+		}
+		if key == "enter" {
+			f.editing = false
+			f.pathComp.clear()
+			f.fields[fi].Blur()
+			return f, nil
 		}
 		f.clearTransient()
 		var cmd tea.Cmd

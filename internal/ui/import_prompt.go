@@ -154,6 +154,16 @@ func completeFilePath(input string) []string {
 	return matches
 }
 
+// AcceptPathCompletion applies the highlighted filesystem completion when the
+// dropdown is open. Returns true when Enter/Tab should not submit the prompt.
+func (p *ImportPrompt) AcceptPathCompletion() bool {
+	if !p.pathComp.hasChoices() {
+		return false
+	}
+	p.pathComp.accept(&p.input)
+	return true
+}
+
 // refreshCompletions reads the directory implied by the current input and
 // populates the completion list with entries whose names start with the
 // partial prefix.
@@ -168,8 +178,10 @@ func (p ImportPrompt) Update(msg tea.Msg) (ImportPrompt, tea.Cmd) {
 
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
-		case "tab":
-			if p.pathComp.compVisible && len(p.pathComp.completions) > 0 {
+		case "tab", "enter":
+			// Enter accepts like Tab while the dropdown is open; the app-level
+			// Enter handler submits only when AcceptPathCompletion returns false.
+			if p.pathComp.hasChoices() {
 				p.pathComp.accept(&p.input)
 				return p, nil
 			}
