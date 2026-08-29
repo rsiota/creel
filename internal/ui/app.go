@@ -503,8 +503,11 @@ type Model struct {
 	reconnectRetry bool // re-run lastQuery after a successful reconnect
 	// colWidthMem is the in-memory column-width map for the active
 	// connection+database (table → column → width). Loaded from / saved with
-	// the session so widths survive reconnects.
+	// the session so widths survive reconnects. Grow-only floor from content.
 	colWidthMem map[string]map[string]int
+	// colWidthOverride holds exact widths from < / > resize; wins over auto-fit
+	// and colWidthMem so a manual shrink sticks across re-queries.
+	colWidthOverride map[string]map[string]int
 	// erdPosMem is the in-memory ERD card-position map for the active
 	// connection+database (scope → table → x,y). Loaded from / saved with
 	// the session so a drag or H/J/K/L nudge survives reopen. Scope is "*"
@@ -4020,6 +4023,16 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if m.results.NumCols() > 0 {
 					m.results.HideColumn(m.results.CursorCol())
 				}
+				return m, nil
+			case ">":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				m.resizeResultsColumn(colResizeStep)
+				return m, nil
+			case "<":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				m.resizeResultsColumn(-colResizeStep)
 				return m, nil
 			case "v":
 				// v — open the column-visibility overlay.

@@ -32,10 +32,10 @@ func TestApplyRememberedWidths(t *testing.T) {
 		t.Errorf("bio should not shrink below auto-fit")
 	}
 
-	// Cap at maxCellWidth.
-	r.ApplyRememberedWidths(map[string]int{"name": maxCellWidth + 50})
-	if r.ColWidth(1) != maxCellWidth {
-		t.Errorf("name width = %d, want capped %d", r.ColWidth(1), maxCellWidth)
+	// Cap at maxManualCellWidth (manual resize ceiling).
+	r.ApplyRememberedWidths(map[string]int{"name": maxManualCellWidth + 50})
+	if r.ColWidth(1) != maxManualCellWidth {
+		t.Errorf("name width = %d, want capped %d", r.ColWidth(1), maxManualCellWidth)
 	}
 }
 
@@ -147,9 +147,119 @@ func TestSessionClearDropsColWidthMem(t *testing.T) {
 	m.sessionStore = session.NewStore(dir)
 	m.connection = newNamedSQLiteConn(t, "clr")
 	m.colWidthMem = map[string]map[string]int{"t": {"c": 10}}
+	m.colWidthOverride = map[string]map[string]int{"t": {"c": 8}}
 	m.saveSession()
 	m.runExCommand("session clear")
 	if m.colWidthMem != nil {
 		t.Errorf("colWidthMem should be nil after clear, got %v", m.colWidthMem)
+	}
+	if m.colWidthOverride != nil {
+		t.Errorf("colWidthOverride should be nil after clear, got %v", m.colWidthOverride)
+	}
+}
+
+func TestResizeColumn(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult(
+		[]string{"id", "email"},
+		[][]string{{"1", "a@b.c"}},
+		"",
+	)
+	r.SetCursor(0, 1)
+	start := r.ColWidth(1)
+	w, ok := r.ResizeColumn(colResizeStep)
+	if !ok || w != start+colResizeStep {
+		t.Fatalf("widen: ok=%v w=%d, want %d", ok, w, start+colResizeStep)
+	}
+	w, ok = r.ResizeColumn(-colResizeStep * 100)
+	if !ok || w != minColWidth {
+		t.Fatalf("shrink floor: ok=%v w=%d, want %d", ok, w, minColWidth)
+	}
+	// Grow past auto-fit cap.
+	for r.ColWidth(1) < maxCellWidth+10 {
+		if _, ok := r.ResizeColumn(colResizeStep); !ok {
+			break
+		}
+	}
+	if r.ColWidth(1) <= maxCellWidth {
+		t.Fatalf("manual widen should exceed auto-fit cap %d, got %d", maxCellWidth, r.ColWidth(1))
+	}
+	// Cap at maxManualCellWidth.
+	for {
+		if _, ok := r.ResizeColumn(colResizeStep); !ok {
+			break
+		}
+	}
+	if r.ColWidth(1) != maxManualCellWidth {
+		t.Fatalf("manual cap = %d, want %d", r.ColWidth(1), maxManualCellWidth)
+	}
+}
+
+func TestManualWidthOverrideSticksAcrossSync(t *testing.T) {
+	m := NewModel(&config.Config{})
+	m.tables = []string{"users"}
+	m.results.SetResult(
+		[]string{"id", "email"},
+		[][]string{{"1", "alice@example.com"}},
+		"",
+	)
+	m.results.SetEditable("users", []string{"id"})
+	m.results.SetCursor(0, 1)
+	m.syncColWidthMemory()
+	auto := m.results.ColWidth(1)
+
+	// Shrink below auto-fit and persist as override.
+	for m.results.ColWidth(1) > minColWidth+2 {
+		m.resizeResultsColumn(-colResizeStep)
+	}
+	want := m.results.ColWidth(1)
+	if want >= auto {
+		t.Fatalf("expected shrink below auto %d, got %d", auto, want)
+	}
+	if got := m.colOverridesFor("users")["email"]; got != want {
+		t.Fatalf("override = %d, want %d", got, want)
+	}
+
+	// Re-query with longer content: override must win over auto-fit / floor.
+	m.results.SetResult(
+		[]string{"id", "email"},
+		[][]string{{"2", "verylongemailaddress@example.com"}},
+		"",
+	)
+	m.results.SetEditable("users", []string{"id"})
+	m.syncColWidthMemory()
+	if m.results.ColWidth(1) != want {
+		t.Errorf("after sync width = %d, want override %d", m.results.ColWidth(1), want)
+	}
+}
+
+func TestManualWidthSessionRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	store := session.NewStore(dir)
+	conn := newNamedSQLiteConn(t, "ovrdb")
+
+	m := NewModel(&config.Config{})
+	m.sessionStore = store
+	m.connection = conn
+	m.tables = []string{"users"}
+	m.results.SetResult(
+		[]string{"id", "name"},
+		[][]string{{"1", "alexandria"}},
+		"",
+	)
+	m.results.SetEditable("users", []string{"id"})
+	m.results.SetCursor(0, 1)
+	m.syncColWidthMemory()
+	m.resizeResultsColumn(colResizeStep * 5)
+	want := m.results.ColWidth(1)
+	m.saveSession()
+
+	m2 := NewModel(&config.Config{})
+	m2.sessionStore = store
+	m2.connection = conn
+	m2.tables = []string{"users"}
+	m2.restoreSession()
+	if got := m2.colOverridesFor("users")["name"]; got != want {
+		t.Errorf("restored override = %d, want %d", got, want)
 	}
 }

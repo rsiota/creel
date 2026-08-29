@@ -12,7 +12,14 @@ import (
 	"github.com/rsiota/creel/internal/db"
 )
 
-const maxCellWidth = 40
+const (
+	maxCellWidth = 40
+	// maxManualCellWidth caps user-resized columns (and persisted overrides).
+	// Auto-fit still stops at maxCellWidth; < / > can go wider for long values.
+	maxManualCellWidth = 120
+	minColWidth        = 3
+	colResizeStep      = 2
+)
 
 const (
 	copyFlashInterval   = 150 // milliseconds between flash toggles
@@ -1376,7 +1383,8 @@ func (r *ResultsTable) computeColWidths() {
 
 // ApplyRememberedWidths raises any column's width to at least the remembered
 // value for that column name (matched case-insensitively). Caps at
-// maxCellWidth. No-op when saved is empty.
+// maxManualCellWidth so a prior manual widen can survive as a floor. No-op
+// when saved is empty.
 func (r *ResultsTable) ApplyRememberedWidths(saved map[string]int) {
 	if len(saved) == 0 || len(r.colWidths) == 0 {
 		return
@@ -1390,11 +1398,58 @@ func (r *ResultsTable) ApplyRememberedWidths(saved map[string]int) {
 		if !ok || w <= r.colWidths[i] {
 			continue
 		}
-		if w > maxCellWidth {
-			w = maxCellWidth
+		if w > maxManualCellWidth {
+			w = maxManualCellWidth
 		}
 		r.colWidths[i] = w
 	}
+}
+
+// ApplyManualWidths sets exact widths from user < / > resizes, overriding
+// auto-fit and the grow-only floor. Caps to [minColWidth, maxManualCellWidth].
+func (r *ResultsTable) ApplyManualWidths(saved map[string]int) {
+	if len(saved) == 0 || len(r.colWidths) == 0 {
+		return
+	}
+	lookup := make(map[string]int, len(saved))
+	for k, v := range saved {
+		lookup[strings.ToLower(k)] = v
+	}
+	for i, name := range r.columns {
+		w, ok := lookup[strings.ToLower(name)]
+		if !ok || w <= 0 {
+			continue
+		}
+		if w < minColWidth {
+			w = minColWidth
+		}
+		if w > maxManualCellWidth {
+			w = maxManualCellWidth
+		}
+		r.colWidths[i] = w
+	}
+}
+
+// ResizeColumn grows or shrinks the cursor column by delta (typically
+// ±colResizeStep). Returns the new width and whether it changed.
+func (r *ResultsTable) ResizeColumn(delta int) (newWidth int, ok bool) {
+	col := r.cursorCol
+	if col < 0 || col >= len(r.colWidths) || delta == 0 {
+		return 0, false
+	}
+	w := r.colWidths[col] + delta
+	if w < minColWidth {
+		w = minColWidth
+	}
+	if w > maxManualCellWidth {
+		w = maxManualCellWidth
+	}
+	if w == r.colWidths[col] {
+		return w, false
+	}
+	r.colWidths[col] = w
+	r.ensureCursorVisible()
+	return w, true
 }
 
 // SnapshotWidths returns the current column widths keyed by column name.

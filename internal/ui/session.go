@@ -34,10 +34,11 @@ func (m *Model) saveSession() {
 	m.snapshotERDPositions()
 
 	st := session.State{
-		ColWidths:    m.colWidthMem,
-		ERDPositions: m.erdPosMem,
-		Layout:       m.snapshotSessionLayout(),
-		Panels:       &session.Panels{Right: m.sessionRightPanel()},
+		ColWidths:         m.colWidthMem,
+		ColWidthOverrides: m.colWidthOverride,
+		ERDPositions:      m.erdPosMem,
+		Layout:            m.snapshotSessionLayout(),
+		Panels:            &session.Panels{Right: m.sessionRightPanel()},
 	}
 	for i, t := range m.resultsTabs {
 		st.Tabs = append(st.Tabs, session.Tab{
@@ -109,6 +110,7 @@ func (m *Model) restoreSession() (panelsRestored bool) {
 		return false
 	}
 	m.colWidthMem = cloneColWidthMem(st.ColWidths)
+	m.colWidthOverride = cloneColWidthMem(st.ColWidthOverrides)
 	m.erdPosMem = cloneERDPosMem(st.ERDPositions)
 	if st.Layout != nil {
 		m.applySessionLayout(*st.Layout)
@@ -186,28 +188,38 @@ func (m *Model) beginQuit() {
 
 // syncColWidthMemory applies remembered widths for the current source table
 // onto the results grid (so a short page does not shrink columns), then folds
-// the resulting widths back into memory (so a wider page grows them). No-op
-// for custom queries with no backing table.
+// the resulting auto-fit widths back into the grow-only floor. Manual < / >
+// overrides are applied last so a user shrink sticks.
 func (m *Model) syncColWidthMemory() {
 	table := m.results.SourceTable()
 	if table == "" {
 		return
 	}
 	table = m.canonicalTableName(table)
+	auto := m.results.SnapshotWidths()
+	m.mergeColWidths(table, auto)
 	m.results.ApplyRememberedWidths(m.colWidthsFor(table))
-	m.mergeColWidths(table, m.results.SnapshotWidths())
+	m.results.ApplyManualWidths(m.colOverridesFor(table))
 }
 
 // colWidthsFor returns the remembered width map for a table, or nil.
 func (m *Model) colWidthsFor(table string) map[string]int {
-	if m.colWidthMem == nil {
+	return lookupColWidthMap(m.colWidthMem, table)
+}
+
+// colOverridesFor returns manual resize overrides for a table, or nil.
+func (m *Model) colOverridesFor(table string) map[string]int {
+	return lookupColWidthMap(m.colWidthOverride, table)
+}
+
+func lookupColWidthMap(mem map[string]map[string]int, table string) map[string]int {
+	if mem == nil {
 		return nil
 	}
-	if w, ok := m.colWidthMem[table]; ok {
+	if w, ok := mem[table]; ok {
 		return w
 	}
-	// Case-insensitive fallback for drivers that fold identifiers.
-	for name, w := range m.colWidthMem {
+	for name, w := range mem {
 		if strings.EqualFold(name, table) {
 			return w
 		}
@@ -261,16 +273,73 @@ func (m *Model) mergeColWidths(table string, widths map[string]int) {
 
 // renameColWidthTable moves remembered widths when a table is renamed.
 func (m *Model) renameColWidthTable(oldName, newName string) {
-	if m.colWidthMem == nil || oldName == "" || newName == "" {
+	renameColWidthMap(m.colWidthMem, oldName, newName)
+	renameColWidthMap(m.colWidthOverride, oldName, newName)
+}
+
+func renameColWidthMap(mem map[string]map[string]int, oldName, newName string) {
+	if mem == nil || oldName == "" || newName == "" {
 		return
 	}
-	for name, w := range m.colWidthMem {
+	for name, w := range mem {
 		if strings.EqualFold(name, oldName) {
-			delete(m.colWidthMem, name)
-			m.colWidthMem[newName] = w
+			delete(mem, name)
+			mem[newName] = w
 			return
 		}
 	}
+}
+
+// setColOverride stores an exact manual width for table.col (from < / >).
+func (m *Model) setColOverride(table, col string, width int) {
+	if table == "" || col == "" || width <= 0 {
+		return
+	}
+	if m.colWidthOverride == nil {
+		m.colWidthOverride = make(map[string]map[string]int)
+	}
+	cur, ok := m.colWidthOverride[table]
+	if !ok {
+		for name, w := range m.colWidthOverride {
+			if strings.EqualFold(name, table) {
+				cur = w
+				ok = true
+				table = name
+				break
+			}
+		}
+	}
+	if !ok {
+		cur = make(map[string]int)
+		m.colWidthOverride[table] = cur
+	}
+	key := col
+	for existing := range cur {
+		if strings.EqualFold(existing, col) {
+			key = existing
+			break
+		}
+	}
+	cur[key] = width
+	// Keep the grow-only floor in sync so content discovery does not fight
+	// a widen on the next sync.
+	m.mergeColWidths(table, map[string]int{key: width})
+}
+
+// resizeResultsColumn adjusts the cursor column width and persists an override
+// when the grid is backed by a named table.
+func (m *Model) resizeResultsColumn(delta int) {
+	w, ok := m.results.ResizeColumn(delta)
+	if !ok {
+		return
+	}
+	table := m.results.SourceTable()
+	if table == "" {
+		return
+	}
+	table = m.canonicalTableName(table)
+	col := m.results.ColumnName(m.results.CursorCol())
+	m.setColOverride(table, col, w)
 }
 
 // canonicalTableName returns the sidebar spelling of table when known.

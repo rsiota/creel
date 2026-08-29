@@ -224,6 +224,7 @@ func (m *Model) resetWorkspaceForNewConnection() {
 	m.sidebarFilter = ""
 	m.editor.CancelCompletion()
 	m.colWidthMem = nil
+	m.colWidthOverride = nil
 	m.erdPosMem = nil
 	m.watchPrevRows = nil
 	m.lastChartOK = false
@@ -408,6 +409,7 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	m.queryStack = nil
 	m.sidebarCursor = 0
 	m.colWidthMem = nil
+	m.colWidthOverride = nil
 	m.erdPosMem = nil
 	m.sidebarSplitW = 0
 	m.editorSplitH = 0

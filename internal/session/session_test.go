@@ -19,6 +19,9 @@ func TestStoreSaveLoadRoundTrip(t *testing.T) {
 		ColWidths: map[string]map[string]int{
 			"users": {"email": 28, "name": 12},
 		},
+		ColWidthOverrides: map[string]map[string]int{
+			"users": {"email": 50},
+		},
 		ERDPositions: map[string]map[string]ERDPos{
 			"*": {"users": {X: 2, Y: 1}, "orders": {X: 40, Y: 8}},
 		},
@@ -40,6 +43,9 @@ func TestStoreSaveLoadRoundTrip(t *testing.T) {
 	}
 	if got.ColWidths["users"]["email"] != 28 || got.ColWidths["users"]["name"] != 12 {
 		t.Errorf("col widths round-trip mismatch: %+v", got.ColWidths)
+	}
+	if got.ColWidthOverrides["users"]["email"] != 50 {
+		t.Errorf("col width overrides round-trip mismatch: %+v", got.ColWidthOverrides)
 	}
 	if got.ERDPositions["*"]["users"] != (ERDPos{X: 2, Y: 1}) || got.ERDPositions["*"]["orders"] != (ERDPos{X: 40, Y: 8}) {
 		t.Errorf("erd positions round-trip mismatch: %+v", got.ERDPositions)

@@ -62,6 +62,9 @@ type State struct {
 	// (or paging onto a short page) does not shrink columns the user already
 	// saw wider. Outer key is the table name; inner key is the column name.
 	ColWidths map[string]map[string]int `json:"col_widths,omitempty"`
+	// ColWidthOverrides are exact widths from manual < / > resize. They win
+	// over auto-fit and the grow-only ColWidths floor (so a shrink sticks).
+	ColWidthOverrides map[string]map[string]int `json:"col_width_overrides,omitempty"`
 	// ERDPositions remembers free-form ERD card coordinates so a drag or
 	// H/J/K/L nudge survives reopen. Outer key is the layout scope ("*" for
 	// the whole schema, otherwise the focused table); inner key is the card

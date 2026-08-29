@@ -298,6 +298,7 @@ func registry() []Section {
 				{"g e", []string{"g", "e"}, "explain query plan", ""},
 				{"H", []string{"H"}, "hide column", "H"},
 				{"g H", []string{"g", "H"}, "show all columns", ""},
+				{"< / >", []string{"<", ">"}, "narrow / widen column", "</>"},
 				{"v", []string{"v"}, "column visibility", "v"},
 				{"g /", []string{"g", "/"}, "regex search", "g/"},
 				{"n / N", []string{"n", "N"}, "next / prev match", "n"},
