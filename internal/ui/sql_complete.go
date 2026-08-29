@@ -29,6 +29,12 @@ type sqlCompleteScope struct {
 	activeSchema string            // current connection schema (bare tables live here)
 }
 
+// hasTrailingQualifier reports a trailing "ident." or "schema.table." before
+// the cursor — empty-partial completion should still open in that case.
+func (s sqlCompleteScope) hasTrailingQualifier() bool {
+	return len(s.qualParts) > 0 || s.qualifier != ""
+}
+
 func knownTablesFrom(all []completionItem) map[string]string {
 	out := map[string]string{}
 	for _, it := range all {
@@ -369,7 +375,7 @@ func (s sqlCompleteScope) filter(all []completionItem) []completionItem {
 	restrictCols := s.want == wantColumn && len(s.tables) > 0
 	scopedCols := (s.want == wantAny || s.want == wantColumn) && len(s.tables) > 0
 	hideUnscopedCols := s.want == wantAny && len(s.tables) == 0
-	hasQualifier := len(s.qualParts) > 0 || s.qualifier != ""
+	hasQualifier := s.hasTrailingQualifier()
 
 	var out []completionItem
 	seenCol := map[string]bool{}

@@ -55,12 +55,15 @@ type completion struct {
 // minAutoTriggerChars is the minimum word length to auto-trigger the popup.
 const minAutoTriggerChars = 1
 
-// isWordChar returns true for characters allowed in SQL identifiers.
+// isWordChar returns true for characters allowed in SQL identifiers and
+// Postgres-style bind params ($1). Kept in sync with isSQLIdent's body chars
+// plus leading '$' so "$1" is one completion token instead of a bare "1".
 func isWordChar(ch rune) bool {
 	return (ch >= 'a' && ch <= 'z') ||
 		(ch >= 'A' && ch <= 'Z') ||
 		(ch >= '0' && ch <= '9') ||
-		ch == '_'
+		ch == '_' ||
+		ch == '$'
 }
 
 // fitCompletionPopup keeps a w×h completion box inside [0,maxW)×[0,maxH).

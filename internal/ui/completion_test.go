@@ -111,6 +111,82 @@ func TestWordBeforeCursor(t *testing.T) {
 	}
 }
 
+func TestWordBeforeCursorIncludesDollar(t *testing.T) {
+	e := NewQueryEditor()
+	e.SetSize(80, 10)
+	e.vimMode = VimInsert
+	e.Focus()
+	e.textarea.InsertString("SELECT * FROM users WHERE id = $1")
+	word, start := e.wordBeforeCursor()
+	if word != "$1" {
+		t.Fatalf("word = %q, want $1 (so params are one token)", word)
+	}
+	if start != 31 { // len("SELECT * FROM users WHERE id = ")
+		t.Errorf("start = %d, want 31", start)
+	}
+	// A lone digit after $ must not be the completion partial.
+	e.textarea.InsertString("x")
+	word, _ = e.wordBeforeCursor()
+	if word != "$1x" {
+		t.Fatalf("word after extra char = %q, want $1x", word)
+	}
+}
+
+func TestCompletionAliasDotOpensColumns(t *testing.T) {
+	all := testCompleteCatalog()
+	e := NewQueryEditor()
+	e.SetSize(80, 10)
+	e.vimMode = VimInsert
+	e.Focus()
+	e.SetCandidates(all)
+
+	e.textarea.InsertString("SELECT * FROM users u WHERE u")
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'.'}})
+	if !e.CompletionVisible() {
+		t.Fatal("expected completion popup after alias.")
+	}
+	names := map[string]bool{}
+	for _, c := range e.completion.candidates {
+		if c.kind == kindColumn {
+			names[c.text] = true
+		}
+		if c.kind == kindKeyword || c.kind == kindTable {
+			t.Errorf("unexpected %v %q after alias.", c.kind, c.text)
+		}
+	}
+	if !names["email"] || !names["id"] {
+		t.Fatalf("missing users columns after u.: %v", names)
+	}
+	if names["total"] {
+		t.Fatalf("orders column leaked after u.: %v", names)
+	}
+
+	// Same path when a column partial was already showing, then '.' is typed.
+	e2 := NewQueryEditor()
+	e2.SetSize(80, 10)
+	e2.vimMode = VimInsert
+	e2.Focus()
+	e2.SetCandidates(append(all, completionItem{text: "user_name", kind: kindColumn, table: "users"}))
+	e2.textarea.InsertString("SELECT * FROM users u WHERE ")
+	e2, _ = e2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
+	if !e2.CompletionVisible() {
+		t.Fatal("expected popup for column partial u")
+	}
+	e2, _ = e2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'.'}})
+	if !e2.CompletionVisible() {
+		t.Fatal("expected popup to stay open / reopen for u.")
+	}
+	found := false
+	for _, c := range e2.completion.candidates {
+		if c.text == "email" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected users columns after typing u.; got %v", candidateTexts(e2.completion.candidates))
+	}
+}
+
 func TestCompletionManualTrigger(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(80, 10)

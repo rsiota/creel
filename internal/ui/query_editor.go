@@ -879,11 +879,13 @@ func (e *QueryEditor) StartCompletion() {
 	}
 }
 
-// tryAutoTrigger shows the popup if the current word is long enough and has matches.
+// tryAutoTrigger shows the popup if the current word is long enough and has
+// matches. A trailing qualifier (alias. / table. / schema.) always counts as
+// enough intent so "u." opens columns even with an empty partial.
 func (e *QueryEditor) tryAutoTrigger() {
 	partial, wordStart := e.wordBeforeCursor()
 	scope := e.completionScope()
-	if len(partial) < minAutoTriggerChars && len(scope.qualParts) == 0 && scope.qualifier == "" {
+	if len(partial) < minAutoTriggerChars && !scope.hasTrailingQualifier() {
 		e.completion.visible = false
 		return
 	}
