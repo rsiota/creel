@@ -66,7 +66,7 @@ func findResultsColumnX(t *testing.T, m Model, y int) (int, int) {
 		probe.results.cursorCol = -1
 		out, _ := probe.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseLeft, X: x, Y: y})
 		mm := out.(Model)
-		if mm.sidebarDragging || mm.splitDragging || mm.rightSlotDragging {
+		if mm.sidebarDragging || mm.splitDragging || mm.rightSlotDragging || mm.colResizeDragging {
 			continue
 		}
 		if mm.results.cursorCol == wantCol {

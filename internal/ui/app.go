@@ -445,6 +445,13 @@ type Model struct {
 	sidebarDragOff    int
 	rightSlotDragging bool
 	rightSlotDragOff  int
+	// colResizeDragging tracks an in-flight drag of a results header
+	// separator (│). StartX/StartW anchor width to the press so the edge
+	// tracks the cursor; Col is the column being resized.
+	colResizeDragging bool
+	colResizeCol      int
+	colResizeStartX   int
+	colResizeStartW   int
 
 	// Truncate confirmation dialog (non-empty table name while pending).
 	truncateConfirm string

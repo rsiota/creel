@@ -160,6 +160,7 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.splitDragging = false
 		m.sidebarDragging = false
 		m.rightSlotDragging = false
+		m.colResizeDragging = false
 		return m, nil
 	}
 
@@ -175,6 +176,9 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.rightSlotDragging {
 		return m.handleRightSlotDrag(msg)
+	}
+	if m.colResizeDragging {
+		return m.handleColResizeDrag(msg)
 	}
 
 	g := m.workspaceGeom()
@@ -371,10 +375,15 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Left-click on header row → sort by that column.
+	// Left-click on header row → resize if on a column separator, else sort.
 	headerY := resultsTop + 1 // border (0), header (1)
 	if msg.Y == headerY {
-		colIdx := m.results.ColumnAtX(msg.X - sidebarWidth)
+		relX := msg.X - sidebarWidth
+		if col := m.results.ColumnSepAtX(relX); col >= 0 &&
+			msg.Action != tea.MouseActionMotion {
+			return m.beginColResizeDrag(col, msg.X)
+		}
+		colIdx := m.results.ColumnAtX(relX)
 		if colIdx >= 0 {
 			colName := m.results.ColumnName(colIdx)
 			if colName != "" {
@@ -540,6 +549,51 @@ func (m Model) handleRightSlotDrag(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m Model) applyRightSlotDragX(x int) (tea.Model, tea.Cmd) {
 	m.rightSlotSplitW = m.width - x + m.rightSlotDragOff
 	m.layoutWorkspace()
+	return m, nil
+}
+
+// beginColResizeDrag starts a results header-separator resize for col.
+func (m Model) beginColResizeDrag(col, x int) (tea.Model, tea.Cmd) {
+	w := m.results.ColWidth(col)
+	if w <= 0 {
+		return m, nil
+	}
+	m.colResizeDragging = true
+	m.colResizeCol = col
+	m.colResizeStartX = x
+	m.colResizeStartW = w
+	m.focus = FocusResults
+	m.applyFocus()
+	return m, nil
+}
+
+// handleColResizeDrag continues or ends an in-flight header-separator resize.
+func (m Model) handleColResizeDrag(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action == tea.MouseActionMotion ||
+		(msg.Type == tea.MouseLeft && msg.Action != tea.MouseActionRelease) {
+		return m.applyColResizeDragX(msg.X)
+	}
+	if msg.Type == tea.MouseRelease || msg.Action == tea.MouseActionRelease {
+		m.colResizeDragging = false
+		return m, nil
+	}
+	return m, nil
+}
+
+// applyColResizeDragX sets the dragged column's width from the cursor delta
+// since press and persists a session override when the grid has a source table.
+func (m Model) applyColResizeDragX(x int) (tea.Model, tea.Cmd) {
+	w := m.colResizeStartW + (x - m.colResizeStartX)
+	if !m.results.SetColWidth(m.colResizeCol, w) {
+		return m, nil
+	}
+	table := m.results.SourceTable()
+	if table == "" {
+		return m, nil
+	}
+	table = m.canonicalTableName(table)
+	col := m.results.ColumnName(m.colResizeCol)
+	m.setColOverride(table, col, m.results.ColWidth(m.colResizeCol))
 	return m, nil
 }
 

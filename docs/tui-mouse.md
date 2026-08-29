@@ -182,7 +182,8 @@ Anything that adds drag elsewhere (e.g. moving a results column, panel
 splitters) should reuse this shape rather than inventing a fourth mouse
 protocol. The editor↔results, sidebar↔centre, and centre↔right-slot
 splitters (`handleSplitDrag` / `handleSidebarDrag` / `handleRightSlotDrag`)
-are the second consumers. The ERD mini-map is the exception that proves the
+and results header-separator column resize (`handleColResizeDrag`) are the
+other consumers. The ERD mini-map is the exception that proves the
 rule: click and drag are the *same* action there (pan), so it pans on press
 and on every motion instead of using pending/promote — see
 [ERD mini-map](#erd-mini-map).

@@ -1262,6 +1262,70 @@ func (r ResultsTable) ColumnAtX(relX int) int {
 	return -1
 }
 
+// colResizeGrip is how many cells on either side of a header "│" count as a
+// resize handle. Kept tight so header-click sort still owns the label text.
+const colResizeGrip = 1
+
+// ColumnSepAtX maps a relative X to the column whose right-edge separator is
+// under the cursor (within colResizeGrip), or -1. Layout matches View(),
+// including last-column fill to the panel edge.
+func (r ResultsTable) ColumnSepAtX(relX int) int {
+	cols, widths := r.columnLayoutWidths()
+	if len(cols) == 0 {
+		return -1
+	}
+	offset := 1 // skip left border
+	for j, i := range cols {
+		cellW := widths[j] + 2 // " value "
+		sepX := offset + cellW // "│" after the cell
+		if absInt(relX-sepX) <= colResizeGrip {
+			return i
+		}
+		offset += cellW + 1
+	}
+	return -1
+}
+
+// columnLayoutWidths returns visible column indices and their on-screen
+// content widths (last column may be stretched to fill the panel), matching
+// View() so mouse hit-tests land on the painted separators.
+func (r ResultsTable) columnLayoutWidths() (cols []int, widths []int) {
+	cols = r.visibleColRange()
+	if len(cols) == 0 {
+		return nil, nil
+	}
+	widths = make([]int, len(cols))
+	used := 0
+	for j, i := range cols {
+		widths[j] = r.colWidths[i]
+		used += r.colWidths[i] + 3
+	}
+	if fill := r.width - 1 - used; fill > 0 {
+		widths[len(widths)-1] += fill
+	}
+	return cols, widths
+}
+
+// SetColWidth sets an absolute display width for col (clamped). Returns false
+// when the index is invalid or the width is unchanged.
+func (r *ResultsTable) SetColWidth(col, width int) bool {
+	if col < 0 || col >= len(r.colWidths) {
+		return false
+	}
+	if width < minColWidth {
+		width = minColWidth
+	}
+	if width > maxManualCellWidth {
+		width = maxManualCellWidth
+	}
+	if r.colWidths[col] == width {
+		return false
+	}
+	r.colWidths[col] = width
+	r.ensureCursorVisible()
+	return true
+}
+
 // IsDirty returns whether a cell has a pending unsaved edit.
 func (r ResultsTable) IsDirty(row, col int) bool {
 	_, ok := r.dirtyCells[cellRef{row: row, col: col}]

@@ -125,7 +125,7 @@ In the add/edit form:
 | `D`        | Discard edits                                |
 | `H`        | Hide column                                  |
 | `g H`      | Show all columns                             |
-| `<` / `>`  | Narrow / widen column                        |
+| `<` / `>`  | Narrow / widen column (or drag header `│`)   |
 | `v`        | Column visibility overlay                    |
 | `:`        | Ex command line (`:q`, `:sort`, `:goto`, …; column jump in results) |
 | `y y`      | Copy cell                                    |
