@@ -159,6 +159,8 @@ func completionKindLabel(it completionItem) string {
 // typed prefix (the editor already shows what the user is typing). Border
 // matches the muted import-path completion dropdown (colorBorder). Table and
 // column rows carry a muted kind/owner label so mixed lists stay scannable.
+// The selected row uses a highlight background (same cue as path completion)
+// so up/down navigation is obvious — bold alone was too subtle.
 func (c completion) renderCompletion() string {
 	if !c.visible || len(c.candidates) == 0 {
 		return ""
@@ -175,36 +177,64 @@ func (c completion) renderCompletion() string {
 
 	visible := c.candidates[start:end]
 	nameWidth := 0
+	labelWidth := 0
 	for _, item := range visible {
 		if w := lipgloss.Width(item.text); w > nameWidth {
 			nameWidth = w
 		}
+		if w := lipgloss.Width(completionKindLabel(item)); w > labelWidth {
+			labelWidth = w
+		}
 	}
 
 	labelStyle := lipgloss.NewStyle().Foreground(colorMuted)
-	selectedName := lipgloss.NewStyle().Bold(true).Foreground(colorFg)
+	selectedRow := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(colorFg).
+		Background(colorHighlight).
+		Padding(0, 1)
 	normalName := lipgloss.NewStyle().Foreground(colorFg)
 	var lines []string
 	for i, item := range visible {
 		idx := start + i
-		name := item.text
-		if len(item.matchIdx) > 0 {
-			name = highlightMatches(item.text, item.matchIdx)
-		} else if idx == c.selected {
-			name = selectedName.Render(item.text)
-		} else {
-			name = normalName.Render(item.text)
-		}
-		if idx == c.selected && len(item.matchIdx) > 0 {
-			name = lipgloss.NewStyle().Bold(true).Render(name)
-		}
 		pad := nameWidth - lipgloss.Width(item.text)
 		if pad < 0 {
 			pad = 0
 		}
+		label := completionKindLabel(item)
+		labelPad := labelWidth - lipgloss.Width(label)
+		if labelPad < 0 {
+			labelPad = 0
+		}
+
+		if idx == c.selected {
+			// Plain text on a full-row highlight — nested match colours would
+			// fight the background and mute the selection cue.
+			row := item.text + strings.Repeat(" ", pad)
+			if labelWidth > 0 {
+				if label != "" {
+					row += "  " + label + strings.Repeat(" ", labelPad)
+				} else {
+					row += "  " + strings.Repeat(" ", labelWidth)
+				}
+			}
+			lines = append(lines, selectedRow.Render(row))
+			continue
+		}
+
+		name := item.text
+		if len(item.matchIdx) > 0 {
+			name = highlightMatches(item.text, item.matchIdx)
+		} else {
+			name = normalName.Render(item.text)
+		}
 		row := name + strings.Repeat(" ", pad)
-		if label := completionKindLabel(item); label != "" {
-			row += "  " + labelStyle.Render(label)
+		if labelWidth > 0 {
+			if label != "" {
+				row += "  " + labelStyle.Render(label) + strings.Repeat(" ", labelPad)
+			} else {
+				row += "  " + strings.Repeat(" ", labelWidth)
+			}
 		}
 		lines = append(lines, lipgloss.NewStyle().Padding(0, 1).Render(row))
 	}

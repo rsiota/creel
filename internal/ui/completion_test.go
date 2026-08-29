@@ -391,6 +391,46 @@ func TestCompletionKindLabel(t *testing.T) {
 	}
 }
 
+func TestRenderCompletionSelectedHighlight(t *testing.T) {
+	applyPalette(defaultPalette)
+	c := completion{
+		visible:  true,
+		selected: 1,
+		candidates: []completionItem{
+			{text: "SELECT", kind: kindKeyword},
+			{text: "users", kind: kindTable},
+			{text: "SET", kind: kindKeyword},
+		},
+	}
+	view := c.renderCompletion()
+	plain := ansi.Strip(view)
+	if !strings.Contains(plain, "users") {
+		t.Fatalf("missing selected candidate:\n%s", plain)
+	}
+	// Selected row must carry a background (path-completion style); bold-only
+	// was too easy to miss when moving up/down.
+	found := false
+	for _, line := range strings.Split(view, "\n") {
+		if !strings.Contains(ansi.Strip(line), "users") {
+			continue
+		}
+		found = true
+		if !hasBackgroundSGR(line) {
+			t.Errorf("selected row has no background highlight: %q", line)
+		}
+	}
+	if !found {
+		t.Fatal("selected users row not found in rendered popup")
+	}
+	wantBg := lipgloss.NewStyle().Background(colorHighlight).Render(" ")
+	if !strings.Contains(view, wantBg[:len(wantBg)-1]) && !strings.Contains(view, "48;") {
+		// Fallback: at least some SGR background must be present in the view.
+		if !hasBackgroundSGR(view) {
+			t.Error("popup view has no background SGR at all")
+		}
+	}
+}
+
 func TestDimBackgroundUsesOverlayDim(t *testing.T) {
 	applyPalette(themes["git-hub-light-default"])
 	want := lipgloss.NewStyle().Foreground(colorOverlayDim).Render("SELECT * FROM users")
