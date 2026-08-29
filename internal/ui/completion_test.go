@@ -342,6 +342,55 @@ func TestRenderCompletionOmitsTypedPrefix(t *testing.T) {
 	}
 }
 
+func TestRenderCompletionKindLabels(t *testing.T) {
+	applyPalette(defaultPalette)
+	c := completion{
+		visible: true,
+		candidates: []completionItem{
+			{text: "SELECT", kind: kindKeyword},
+			{text: "users", kind: kindTable},
+			{text: "email", kind: kindColumn, table: "users"},
+			{text: "orphan", kind: kindColumn},
+		},
+	}
+	plain := ansi.Strip(c.renderCompletion())
+	if !strings.Contains(plain, "table") {
+		t.Errorf("missing table kind label:\n%s", plain)
+	}
+	if !strings.Contains(plain, "users") {
+		t.Errorf("missing column owner label:\n%s", plain)
+	}
+	if !strings.Contains(plain, "column") {
+		t.Errorf("missing fallback column label:\n%s", plain)
+	}
+	// Keywords stay unlabeled — "SELECT" should not gain a "keyword" tag.
+	for _, line := range strings.Split(plain, "\n") {
+		if strings.Contains(line, "SELECT") && strings.Contains(line, "keyword") {
+			t.Errorf("keyword row should be unlabeled: %q", line)
+		}
+	}
+	view := c.renderCompletion()
+	muted := lipgloss.NewStyle().Foreground(colorMuted).Render("table")
+	if !strings.Contains(view, muted) {
+		t.Errorf("kind label should use muted colour")
+	}
+}
+
+func TestCompletionKindLabel(t *testing.T) {
+	if got := completionKindLabel(completionItem{kind: kindKeyword, text: "SELECT"}); got != "" {
+		t.Errorf("keyword label = %q, want empty", got)
+	}
+	if got := completionKindLabel(completionItem{kind: kindTable, text: "users"}); got != "table" {
+		t.Errorf("table label = %q, want table", got)
+	}
+	if got := completionKindLabel(completionItem{kind: kindColumn, text: "email", table: "users"}); got != "users" {
+		t.Errorf("column label = %q, want users", got)
+	}
+	if got := completionKindLabel(completionItem{kind: kindColumn, text: "id"}); got != "column" {
+		t.Errorf("orphan column label = %q, want column", got)
+	}
+}
+
 func TestDimBackgroundUsesOverlayDim(t *testing.T) {
 	applyPalette(themes["git-hub-light-default"])
 	want := lipgloss.NewStyle().Foreground(colorOverlayDim).Render("SELECT * FROM users")

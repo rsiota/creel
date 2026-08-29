@@ -138,9 +138,27 @@ func (c *completion) move(delta int) {
 // maxCompletionItems is the maximum visible rows in the popup.
 const maxCompletionItems = 8
 
+// completionKindLabel is a short muted suffix for mixed catalogs: tables are
+// tagged "table"; columns show their owning table (or "column"); keywords stay
+// unlabeled (ALL CAPS already reads as SQL).
+func completionKindLabel(it completionItem) string {
+	switch it.kind {
+	case kindTable:
+		return "table"
+	case kindColumn:
+		if it.table != "" {
+			return it.table
+		}
+		return "column"
+	default:
+		return ""
+	}
+}
+
 // renderCompletion renders the popup box. Candidates only — no echo of the
 // typed prefix (the editor already shows what the user is typing). Border
-// matches the muted import-path completion dropdown (colorBorder).
+// matches the muted import-path completion dropdown (colorBorder). Table and
+// column rows carry a muted kind/owner label so mixed lists stay scannable.
 func (c completion) renderCompletion() string {
 	if !c.visible || len(c.candidates) == 0 {
 		return ""
@@ -155,20 +173,40 @@ func (c completion) renderCompletion() string {
 		end = len(c.candidates)
 	}
 
+	visible := c.candidates[start:end]
+	nameWidth := 0
+	for _, item := range visible {
+		if w := lipgloss.Width(item.text); w > nameWidth {
+			nameWidth = w
+		}
+	}
+
+	labelStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	selectedName := lipgloss.NewStyle().Bold(true).Foreground(colorFg)
+	normalName := lipgloss.NewStyle().Foreground(colorFg)
 	var lines []string
-	for i := start; i < end; i++ {
-		item := c.candidates[i]
-		text := item.text
+	for i, item := range visible {
+		idx := start + i
+		name := item.text
 		if len(item.matchIdx) > 0 {
-			text = highlightMatches(item.text, item.matchIdx)
-		}
-		var line string
-		if i == c.selected {
-			line = lipgloss.NewStyle().Bold(true).Padding(0, 1).Render(text)
+			name = highlightMatches(item.text, item.matchIdx)
+		} else if idx == c.selected {
+			name = selectedName.Render(item.text)
 		} else {
-			line = normalStyle.Render(text)
+			name = normalName.Render(item.text)
 		}
-		lines = append(lines, line)
+		if idx == c.selected && len(item.matchIdx) > 0 {
+			name = lipgloss.NewStyle().Bold(true).Render(name)
+		}
+		pad := nameWidth - lipgloss.Width(item.text)
+		if pad < 0 {
+			pad = 0
+		}
+		row := name + strings.Repeat(" ", pad)
+		if label := completionKindLabel(item); label != "" {
+			row += "  " + labelStyle.Render(label)
+		}
+		lines = append(lines, lipgloss.NewStyle().Padding(0, 1).Render(row))
 	}
 
 	content := strings.Join(lines, "\n")
