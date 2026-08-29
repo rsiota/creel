@@ -507,9 +507,10 @@ func (a Assistant) renderTranscriptLines() []string {
 			wrapW = 4
 		}
 		// Reasoning (chain-of-thought from reasoning models) renders dimmed
-		// above the answer so it's clearly distinct from the SQL.
+		// above the answer so it's clearly distinct from the SQL. colorThinking
+		// stays soft on light themes where muted would read nearly as loud as fg.
 		if strings.TrimSpace(a.streamReason) != "" {
-			rstyle := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
+			rstyle := lipgloss.NewStyle().Foreground(colorThinking).Italic(true)
 			for i, wl := range wrapRunes(a.streamReason, wrapW) {
 				if i == 0 {
 					lines = append(lines, "  "+rstyle.Render("⋯ "+wl))
@@ -520,16 +521,21 @@ func (a Assistant) renderTranscriptLines() []string {
 		}
 		if strings.TrimSpace(a.streamText) != "" {
 			// Live preview of the streamed reply. Highlight like the editor only
-			// when the reply looks like SQL; prose (:aiexplain) stays plain.
+			// when the reply looks like SQL; prose (:aiexplain / misrouted
+			// thinking) stays plain — but always set an explicit fg so light
+			// themes don't inherit a loud terminal-default colour after SGR resets.
 			marker := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("AI:")
 			frame := spinnerFrames[a.spinner%len(spinnerFrames)]
 			tail := " " + lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(frame)
+			plain := lipgloss.NewStyle().Foreground(colorFg)
 			wrapped := wrapRunes(a.streamText, wrapW)
 			asSQL := streamLooksLikeSQL(a.streamText)
 			for i, wl := range wrapped {
 				s := wl
 				if asSQL {
 					s = highlightSegment(wl)
+				} else {
+					s = plain.Render(wl)
 				}
 				if i == len(wrapped)-1 {
 					s += tail
@@ -543,7 +549,7 @@ func (a Assistant) renderTranscriptLines() []string {
 		} else {
 			frame := spinnerFrames[a.spinner%len(spinnerFrames)]
 			spin := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(frame)
-			thinking := lipgloss.NewStyle().Foreground(colorAccent).Render("thinking…")
+			thinking := lipgloss.NewStyle().Foreground(colorThinking).Render("thinking…")
 			lines = append(lines, "  "+spin+" "+thinking)
 		}
 	}
@@ -551,8 +557,9 @@ func (a Assistant) renderTranscriptLines() []string {
 }
 
 // streamLooksLikeSQL reports whether a live reply should be SQL-highlighted.
-// Prose explanations (:aiexplain) usually start with ordinary English; SQL
-// turns start with a keyword or a ``` fence.
+// Prose explanations (:aiexplain) and chain-of-thought often start with English
+// that happens to begin with a SQL keyword ("Select the right table…"); require
+// a keyword-sized token that is not followed by a common English continuation.
 func streamLooksLikeSQL(s string) bool {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -565,15 +572,50 @@ func streamLooksLikeSQL(s string) bool {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		first = strings.TrimSpace(s[:i])
 	}
-	low := strings.ToLower(first)
+	return looksLikeSQLStatement(first)
+}
+
+// looksLikeSQLStatement reports whether line looks like the start of SQL rather
+// than English that merely begins with a SQL keyword (e.g. "Select the…").
+func looksLikeSQLStatement(line string) bool {
+	low := strings.ToLower(strings.TrimSpace(line))
+	if low == "" {
+		return false
+	}
 	for _, p := range []string{
 		"select", "with", "insert", "update", "delete", "create", "alter",
 		"drop", "truncate", "show", "describe", "explain", "begin", "commit",
 		"rollback",
 	} {
-		if strings.HasPrefix(low, p) {
+		if low == p {
+			return true // still streaming the keyword alone
+		}
+		if !strings.HasPrefix(low, p) {
+			continue
+		}
+		// Keyword must end on a word boundary (space / punctuation), not
+		// "selection" / "truncate…" English stems without a break.
+		rest := low[len(p):]
+		if rest == "" {
 			return true
 		}
+		if r := rest[0]; r == '_' || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			continue
+		}
+		rest = strings.TrimSpace(rest)
+		// "Select the…", "Create a…", "Show me…" — chain-of-thought, not SQL.
+		for _, eng := range []string{
+			"the ", "a ", "an ", "this ", "that ", "these ", "those ",
+			"my ", "our ", "your ", "his ", "her ", "its ", "their ",
+			"some ", "any ", "all ", "each ", "every ", "both ",
+			"how ", "what ", "why ", "when ", "whether ", "if ", "me ",
+			"which ", "whose ",
+		} {
+			if strings.HasPrefix(rest, eng) {
+				return false
+			}
+		}
+		return true
 	}
 	return false
 }

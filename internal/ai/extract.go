@@ -11,7 +11,7 @@ import "strings"
 // fenced block and trims trailing semicolons only if the statement is a
 // single one — leaving the caller (the editor) in control of execution.
 func ExtractSQL(reply string) string {
-	s := strings.TrimSpace(reply)
+	s := strings.TrimSpace(StripThinkTags(reply))
 	if s == "" {
 		return ""
 	}
@@ -102,6 +102,7 @@ func stripTrailingChat(s string) string {
 
 // looksLikeSQL is a cheap heuristic: does the line start with a SQL keyword?
 // Good enough to separate statements from prose without a full grammar.
+// Rejects English that merely begins with a keyword ("Select the…").
 func looksLikeSQL(s string) bool {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -114,9 +115,35 @@ func looksLikeSQL(s string) bool {
 	}
 	low := strings.ToLower(s)
 	for _, p := range prefixes {
-		if strings.HasPrefix(low, p) {
+		if low == strings.TrimSpace(p) {
 			return true
 		}
+		if !strings.HasPrefix(low, p) {
+			continue
+		}
+		rest := low[len(p):]
+		if rest == "" {
+			return true
+		}
+		// "desc "/"set "/"use " already include the trailing space in p.
+		if p[len(p)-1] != ' ' {
+			if r := rest[0]; r == '_' || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+				continue
+			}
+			rest = strings.TrimSpace(rest)
+		}
+		for _, eng := range []string{
+			"the ", "a ", "an ", "this ", "that ", "these ", "those ",
+			"my ", "our ", "your ", "his ", "her ", "its ", "their ",
+			"some ", "any ", "all ", "each ", "every ", "both ",
+			"how ", "what ", "why ", "when ", "whether ", "if ", "me ",
+			"which ", "whose ",
+		} {
+			if strings.HasPrefix(rest, eng) {
+				return false
+			}
+		}
+		return true
 	}
 	return false
 }

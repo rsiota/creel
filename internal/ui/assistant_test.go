@@ -367,6 +367,53 @@ func TestAssistantStreamReasoning(t *testing.T) {
 	}
 }
 
+// TestStreamLooksLikeSQL_RejectsEnglishThinking ensures chain-of-thought that
+// happens to start with a SQL keyword is not syntax-highlighted (which made
+// thinking look loud on light themes).
+func TestStreamLooksLikeSQL_RejectsEnglishThinking(t *testing.T) {
+	no := []string{
+		"Select the right table for user signups",
+		"Create a join between orders and users",
+		"Show me columns that look like timestamps",
+		"With the schema above I should query users",
+		"Explain why LIMIT belongs at the end",
+	}
+	for _, s := range no {
+		if streamLooksLikeSQL(s) {
+			t.Errorf("streamLooksLikeSQL(%q) = true, want false", s)
+		}
+	}
+	yes := []string{
+		"SELECT * FROM users",
+		"```sql\nSELECT 1\n```",
+		"WITH cte AS (SELECT 1) SELECT * FROM cte",
+		"CREATE TABLE t (id INT)",
+	}
+	for _, s := range yes {
+		if !streamLooksLikeSQL(s) {
+			t.Errorf("streamLooksLikeSQL(%q) = false, want true", s)
+		}
+	}
+}
+
+// TestAssistantEnglishThinkingNotSQLHighlighted verifies English CoT that
+// starts with "Select…" is rendered without SQL keyword colours.
+func TestAssistantEnglishThinkingNotSQLHighlighted(t *testing.T) {
+	a := NewAssistant()
+	a.SetSize(80, 24)
+	a.Show()
+	a.SetPending(true)
+	a.AppendStreamDelta("Select the users table and order by created_at", "")
+
+	view := a.View()
+	if want := sqlKeywordStyle.Render("Select"); strings.Contains(view, want) {
+		t.Errorf("English thinking was SQL-highlighted: %q", view)
+	}
+	if !strings.Contains(stripANSI(view), "Select the users table") {
+		t.Errorf("thinking text missing from view")
+	}
+}
+
 // TestAssistantStreamPreview verifies the streamed reply renders live (as a
 // highlighted SQL preview with a trailing spinner) and is replaced by the
 // committed turn on finalize.

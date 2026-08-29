@@ -117,6 +117,11 @@ var (
 	// Overlay backdrop: a touch more faded than ERD dim — content behind
 	// popups need not be readable, only recognisable as “there”.
 	colorOverlayDim lipgloss.Color
+	// Soft secondary text for intentionally recessed content (AI reasoning /
+	// "thinking…"). On dark themes muted already reads dim; on light themes
+	// muted is floored to WCAG AA and looks nearly as strong as body text, so
+	// applyPalette synthesizes a softer wash that matches the dark-theme feel.
+	colorThinking lipgloss.Color
 )
 
 // sbStyles are status-bar-specific styles that carry the status bar background
@@ -205,6 +210,7 @@ func applyPalette(p colorPalette) {
 	colorERDVivid, colorERDDim = deriveERDColors(p)
 	// Popup backdrop: same wash helper, softer than ERD dim (legibility not needed).
 	colorOverlayDim = erdDimWash(p.bg, p.fg, overlayDimMinBgContrast)
+	colorThinking = deriveThinkingColor(p)
 
 	// Status-bar styles (carry the status-bar bg so ANSI resets within
 	// multi-segment rendered strings don't lose it).
@@ -359,6 +365,11 @@ const erdDimMinBgContrast = 2.2
 // stay readable. 1.7 is a mild step down without collapsing into the bg.
 const overlayDimMinBgContrast = 1.7
 
+// thinkingDimMinBgContrast is the target for AI reasoning / "thinking…" text
+// on light themes. Softer than AA-strong muted (~6) so chain-of-thought stays
+// recessed next to the answer, but strong enough to read comfortably (~2.5).
+const thinkingDimMinBgContrast = 2.5
+
 // dirtyBgBlend is how far to wash primary toward bg for unsaved-cell
 // backgrounds. Mostly bg so colorFg stays readable; enough primary that the
 // cell still reads as touched (and lighter than the cursor's solid primary).
@@ -375,6 +386,16 @@ func deriveDirtyBg(p colorPalette) lipgloss.Color {
 		wash = mixColors(p.primary, p.bg, 0.70)
 	}
 	return wash
+}
+
+// deriveThinkingColor picks the foreground for AI chain-of-thought and the
+// pending "thinking…" label. Dark themes keep muted (already recessed); light
+// themes get a soft bg→fg wash so reasoning doesn't compete with the answer.
+func deriveThinkingColor(p colorPalette) lipgloss.Color {
+	if relLuminance(string(p.bg)) > 0.4 {
+		return erdDimWash(p.bg, p.fg, thinkingDimMinBgContrast)
+	}
+	return p.muted
 }
 
 // deriveERDColors builds the ERD selection pair from a palette. Dim is chosen

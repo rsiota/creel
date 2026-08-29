@@ -229,6 +229,7 @@ func (c *Client) CompleteStream(ctx context.Context, messages []Message, onDelta
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20) // allow long frames
 	var full strings.Builder
+	var think ThinkFilter
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data:") {
@@ -249,11 +250,27 @@ func (c *Client) CompleteStream(ctx context.Context, messages []Message, onDelta
 			continue
 		}
 		d := ch.Choices[0].Delta
-		if d.Content != "" {
-			full.WriteString(d.Content)
+		reason := d.ReasoningContent
+		if reason == "" {
+			reason = d.Reasoning
 		}
-		if onDelta != nil && (d.Content != "" || d.Reasoning != "") {
-			onDelta(StreamDelta{Content: d.Content, Reasoning: d.Reasoning})
+		content, fromTags := think.Feed(d.Content)
+		if fromTags != "" {
+			reason += fromTags
+		}
+		if content != "" {
+			full.WriteString(content)
+		}
+		if onDelta != nil && (content != "" || reason != "") {
+			onDelta(StreamDelta{Content: content, Reasoning: reason})
+		}
+	}
+	if c, r := think.Flush(); c != "" || r != "" {
+		if c != "" {
+			full.WriteString(c)
+		}
+		if onDelta != nil {
+			onDelta(StreamDelta{Content: c, Reasoning: r})
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -407,13 +424,15 @@ type chatResponse struct {
 
 // chatStreamChunk is one SSE frame from a streaming completion. Content is
 // the visible reply; reasoning is the model's chain-of-thought, emitted by
-// reasoning models (e.g. GLM) in a separate field before/around the content.
+// reasoning models before/around the content. Providers disagree on the field
+// name: GLM uses reasoning_content, Groq/Qwen parsed mode uses reasoning.
 // finish_reason is ignored (the [DONE] sentinel ends the stream).
 type chatStreamChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content   string `json:"content"`
-			Reasoning string `json:"reasoning_content"`
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
+			Reasoning        string `json:"reasoning"`
 		} `json:"delta"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`

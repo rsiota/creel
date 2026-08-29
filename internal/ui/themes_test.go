@@ -214,3 +214,25 @@ func TestDeriveERDColorsGitHubLight(t *testing.T) {
 			gap, erdVividDimMinGap, vivid, dim)
 	}
 }
+
+// AI reasoning / "thinking…" should read recessed on light themes, where
+// palette muted is AA-strong and nearly as loud as body text. Dark themes keep
+// muted as-is.
+func TestDeriveThinkingColor(t *testing.T) {
+	light := themes["git-hub-light-default"]
+	got := deriveThinkingColor(light)
+	vsBg := contrastRatio(string(got), string(light.bg))
+	mutedVsBg := contrastRatio(string(light.muted), string(light.bg))
+	if vsBg >= mutedVsBg-0.5 {
+		t.Fatalf("git-hub-light-default thinking (%.2f) should be softer than muted (%.2f); thinking=%s muted=%s",
+			vsBg, mutedVsBg, got, light.muted)
+	}
+	if vsBg < 2.1 || vsBg > 3.0 {
+		t.Fatalf("git-hub-light-default thinking/bg %.2f outside ~2.1–3.0 (thinking=%s)", vsBg, got)
+	}
+
+	dark := themes["git-hub-dark-default"]
+	if got := deriveThinkingColor(dark); got != dark.muted {
+		t.Fatalf("git-hub-dark-default thinking = %s, want muted %s", got, dark.muted)
+	}
+}
