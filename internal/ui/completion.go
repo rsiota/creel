@@ -27,6 +27,7 @@ type completionKind int
 
 const (
 	kindKeyword completionKind = iota
+	kindSchema
 	kindTable
 	kindColumn
 )
@@ -35,7 +36,8 @@ const (
 type completionItem struct {
 	text     string
 	kind     completionKind
-	table    string // owning table for columns; empty otherwise
+	table    string // owning table for columns; may be "schema.table"
+	schema   string // owning schema for tables from TablesInSchema; empty = active
 	matchIdx []int
 }
 
@@ -47,6 +49,7 @@ type completion struct {
 	selected      int
 	partial       string
 	wordStart     int
+	activeSchema  string // current connection schema for schema.table filtering
 }
 
 // minAutoTriggerChars is the minimum word length to auto-trigger the popup.
@@ -121,7 +124,10 @@ func filterCandidates(all []completionItem, partial string) []completionItem {
 		func(a, b fuzzyResult[completionItem]) bool { return a.Item.text < b.Item.text })
 	out := make([]completionItem, len(ranked))
 	for i, r := range ranked {
-		out[i] = completionItem{text: r.Item.text, kind: r.Item.kind, table: r.Item.table, matchIdx: r.MatchIdx}
+		out[i] = completionItem{
+			text: r.Item.text, kind: r.Item.kind, table: r.Item.table,
+			schema: r.Item.schema, matchIdx: r.MatchIdx,
+		}
 	}
 	return out
 }
@@ -138,12 +144,17 @@ func (c *completion) move(delta int) {
 // maxCompletionItems is the maximum visible rows in the popup.
 const maxCompletionItems = 8
 
-// completionKindLabel is a short muted suffix for mixed catalogs: tables are
-// tagged "table"; columns show their owning table (or "column"); keywords stay
-// unlabeled (ALL CAPS already reads as SQL).
+// completionKindLabel is a short muted suffix for mixed catalogs: schemas and
+// tables are tagged; columns show their owning table (or "column"); keywords
+// stay unlabeled (ALL CAPS already reads as SQL).
 func completionKindLabel(it completionItem) string {
 	switch it.kind {
+	case kindSchema:
+		return "schema"
 	case kindTable:
+		if it.schema != "" {
+			return it.schema
+		}
 		return "table"
 	case kindColumn:
 		if it.table != "" {

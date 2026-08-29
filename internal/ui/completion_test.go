@@ -380,8 +380,14 @@ func TestCompletionKindLabel(t *testing.T) {
 	if got := completionKindLabel(completionItem{kind: kindKeyword, text: "SELECT"}); got != "" {
 		t.Errorf("keyword label = %q, want empty", got)
 	}
+	if got := completionKindLabel(completionItem{kind: kindSchema, text: "public"}); got != "schema" {
+		t.Errorf("schema label = %q, want schema", got)
+	}
 	if got := completionKindLabel(completionItem{kind: kindTable, text: "users"}); got != "table" {
 		t.Errorf("table label = %q, want table", got)
+	}
+	if got := completionKindLabel(completionItem{kind: kindTable, text: "users", schema: "public"}); got != "public" {
+		t.Errorf("qualified table label = %q, want public", got)
 	}
 	if got := completionKindLabel(completionItem{kind: kindColumn, text: "email", table: "users"}); got != "users" {
 		t.Errorf("column label = %q, want users", got)

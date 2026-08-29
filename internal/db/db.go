@@ -153,6 +153,10 @@ type DB interface {
 	Ping() error
 	// Tables returns the list of tables and views in the database.
 	Tables() ([]string, error)
+	// TablesInSchema returns tables and views in the named schema (Postgres
+	// namespace / MySQL database). SQLite returns an error. Used by editor
+	// completion for schema.table qualification without switching schemas.
+	TablesInSchema(schema string) ([]string, error)
 	// Views returns the list of views in the database (excluding base tables).
 	Views() ([]string, error)
 	// TableRowCounts returns approximate row counts for all tables.
@@ -165,6 +169,9 @@ type DB interface {
 	TableSizes() ([]TableSize, error)
 	// TableSchema returns the column names and types for a given table.
 	TableSchema(table string) ([]Column, error)
+	// TableSchemaInSchema is TableSchema for a table in the named schema
+	// (Postgres namespace / MySQL database). SQLite returns an error.
+	TableSchemaInSchema(schema, table string) ([]Column, error)
 	// PrimaryKeys returns the primary key column names for a table.
 	PrimaryKeys(table string) ([]string, error)
 	// ForeignKeys returns outbound foreign keys defined on a table.

@@ -855,6 +855,12 @@ func (e *QueryEditor) SetCandidates(candidates []completionItem) {
 	e.completion.allCandidates = candidates
 }
 
+// SetActiveSchema records the connection's current schema so completion can
+// treat bare tables as belonging to it when filtering schema. qualifiers.
+func (e *QueryEditor) SetActiveSchema(schema string) {
+	e.completion.activeSchema = schema
+}
+
 // CompletionVisible returns whether the completion popup is shown.
 func (e QueryEditor) CompletionVisible() bool {
 	return e.completion.visible
@@ -876,7 +882,7 @@ func (e *QueryEditor) StartCompletion() {
 func (e *QueryEditor) tryAutoTrigger() {
 	partial, wordStart := e.wordBeforeCursor()
 	scope := e.completionScope()
-	if len(partial) < minAutoTriggerChars && scope.qualifier == "" {
+	if len(partial) < minAutoTriggerChars && len(scope.qualParts) == 0 && scope.qualifier == "" {
 		e.completion.visible = false
 		return
 	}
@@ -939,12 +945,18 @@ func (e QueryEditor) contextualCandidates() []completionItem {
 	return e.completionScope().filter(e.completion.allCandidates)
 }
 
-// completionScope derives table/column intent from the text before the
+// completionScope derives table/column/schema intent from the text before the
 // partial word, enriching SELECT lists with FROM tables from the full
 // statement under the cursor.
 func (e QueryEditor) completionScope() sqlCompleteScope {
-	known := knownTablesFrom(e.completion.allCandidates)
-	return sqlCompleteScopeFromQuery(e.textBeforePartial(), e.StatementAtCursor(), known)
+	all := e.completion.allCandidates
+	return sqlCompleteScopeFromQuery(
+		e.textBeforePartial(),
+		e.StatementAtCursor(),
+		knownTablesFrom(all),
+		knownSchemasFrom(all),
+		e.completion.activeSchema,
+	)
 }
 
 func (e QueryEditor) textBeforeCursor() string {

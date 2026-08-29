@@ -178,6 +178,31 @@ func (m *MySQL) Tables() ([]string, error) {
 	return tables, rows.Err()
 }
 
+// TablesInSchema lists tables/views in the given MySQL schema (database).
+func (m *MySQL) TablesInSchema(schema string) ([]string, error) {
+	if schema == "" {
+		return nil, fmt.Errorf("schema name is required")
+	}
+	rows, err := m.db.Query(
+		`SELECT table_name FROM information_schema.tables WHERE table_schema = ? ORDER BY table_name`,
+		schema,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		tables = append(tables, name)
+	}
+	return tables, rows.Err()
+}
+
 // Views returns MySQL views in the current database.
 func (m *MySQL) Views() ([]string, error) {
 	rows, err := m.db.Query(
@@ -262,6 +287,32 @@ func (m *MySQL) TableSchema(table string) ([]Column, error) {
 	rows, err := m.db.Query(
 		`SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position`,
 		m.config.Database, table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cols []Column
+	for rows.Next() {
+		var name, dataType string
+		if err := rows.Scan(&name, &dataType); err != nil {
+			return nil, err
+		}
+		cols = append(cols, Column{Name: name, Type: dataType})
+	}
+	return cols, rows.Err()
+}
+
+// TableSchemaInSchema returns columns for table in the given MySQL schema (database).
+func (m *MySQL) TableSchemaInSchema(schema, table string) ([]Column, error) {
+	if schema == "" || table == "" {
+		return nil, fmt.Errorf("schema and table are required")
+	}
+	rows, err := m.db.Query(
+		`SELECT column_name, data_type FROM information_schema.columns
+		 WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position`,
+		schema, table,
 	)
 	if err != nil {
 		return nil, err

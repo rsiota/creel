@@ -247,6 +247,33 @@ func (p *Postgres) Tables() ([]string, error) {
 	return tables, rows.Err()
 }
 
+// TablesInSchema lists tables/views in the given Postgres namespace.
+func (p *Postgres) TablesInSchema(schema string) ([]string, error) {
+	if schema == "" {
+		return nil, fmt.Errorf("schema name is required")
+	}
+	rows, err := p.db.Query(
+		`SELECT table_name FROM information_schema.tables
+		 WHERE table_schema = $1
+		 ORDER BY table_name`,
+		schema,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		tables = append(tables, name)
+	}
+	return tables, rows.Err()
+}
+
 // Views returns Postgres views in the current schema (excludes materialised views).
 func (p *Postgres) Views() ([]string, error) {
 	rows, err := p.db.Query(
@@ -327,6 +354,33 @@ func (p *Postgres) TableSchema(table string) ([]Column, error) {
 		 WHERE table_schema = current_schema() AND table_name = $1
 		 ORDER BY ordinal_position`,
 		table,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cols []Column
+	for rows.Next() {
+		var name, dataType string
+		if err := rows.Scan(&name, &dataType); err != nil {
+			return nil, err
+		}
+		cols = append(cols, Column{Name: name, Type: dataType})
+	}
+	return cols, rows.Err()
+}
+
+// TableSchemaInSchema returns columns for table in the given Postgres namespace.
+func (p *Postgres) TableSchemaInSchema(schema, table string) ([]Column, error) {
+	if schema == "" || table == "" {
+		return nil, fmt.Errorf("schema and table are required")
+	}
+	rows, err := p.db.Query(
+		`SELECT column_name, data_type FROM information_schema.columns
+		 WHERE table_schema = $1 AND table_name = $2
+		 ORDER BY ordinal_position`,
+		schema, table,
 	)
 	if err != nil {
 		return nil, err

@@ -223,7 +223,7 @@ func TestCompletionInsertColumnList(t *testing.T) {
 func TestCompletionSelectListUsesFromTables(t *testing.T) {
 	all := testCompleteCatalog()
 	// Cursor in SELECT list; FROM users appears after the cursor in the statement.
-	scope := sqlCompleteScopeFromQuery("SELECT ", "SELECT  FROM users", knownTablesFrom(all))
+	scope := sqlCompleteScopeFromQuery("SELECT ", "SELECT  FROM users", knownTablesFrom(all), nil, "")
 	if scope.want != wantColumn {
 		t.Fatalf("want = %v, want wantColumn (SELECT list with FROM users)", scope.want)
 	}
@@ -283,6 +283,95 @@ func candidateTexts(items []completionItem) []string {
 		out[i] = it.text
 	}
 	return out
+}
+
+func TestSQLCompleteSchemaQualifierOffersTables(t *testing.T) {
+	all := []completionItem{
+		{text: "public", kind: kindSchema},
+		{text: "users", kind: kindTable}, // active schema
+		{text: "orders", kind: kindTable, schema: "public"},
+		{text: "accounts", kind: kindTable, schema: "billing"},
+		{text: "id", kind: kindColumn, table: "users"},
+	}
+	known := knownTablesFrom(all)
+	schemas := knownSchemasFrom(all)
+	scope := sqlCompleteScopeFromQuery("SELECT * FROM public.", "", known, schemas, "public")
+	if scope.want != wantTable {
+		t.Fatalf("want = %v, want wantTable", scope.want)
+	}
+	if scope.schemaFilter != "public" {
+		t.Fatalf("schemaFilter = %q, want public", scope.schemaFilter)
+	}
+	got := scope.filter(all)
+	names := map[string]bool{}
+	for _, it := range got {
+		if it.kind == kindColumn {
+			t.Errorf("column %q after schema.", it.text)
+		}
+		if it.kind == kindSchema {
+			t.Errorf("schema %q after schema.", it.text)
+		}
+		if it.kind == kindTable {
+			names[it.text] = true
+		}
+	}
+	if !names["users"] && !names["orders"] {
+		t.Errorf("expected public tables, got %v", names)
+	}
+	if names["accounts"] {
+		t.Errorf("billing.accounts leaked into public.: %v", names)
+	}
+}
+
+func TestSQLCompleteSchemaTableQualifierOffersColumns(t *testing.T) {
+	all := []completionItem{
+		{text: "public", kind: kindSchema},
+		{text: "email", kind: kindColumn, table: "public.users"},
+		{text: "total", kind: kindColumn, table: "public.orders"},
+		{text: "id", kind: kindColumn, table: "users"},
+	}
+	scope := sqlCompleteScopeFromQuery("SELECT * FROM public.users WHERE public.users.", "", knownTablesFrom(all), knownSchemasFrom(all), "public")
+	if scope.want != wantColumn {
+		t.Fatalf("want = %v, want wantColumn", scope.want)
+	}
+	if len(scope.tables) != 1 || scope.tables[0] != "public.users" {
+		t.Fatalf("tables = %v, want [public.users]", scope.tables)
+	}
+	got := scope.filter(all)
+	names := map[string]bool{}
+	for _, it := range got {
+		if it.kind == kindColumn {
+			names[it.text] = true
+		}
+	}
+	if !names["email"] {
+		t.Errorf("missing public.users columns: %v", names)
+	}
+	if names["total"] || names["id"] {
+		t.Errorf("other table columns leaked: %v", names)
+	}
+}
+
+func TestScanSQLCompleteSchemaQualifiedFrom(t *testing.T) {
+	all := []completionItem{
+		{text: "public", kind: kindSchema},
+		{text: "users", kind: kindTable},
+	}
+	scope, _, _ := scanSQLComplete("SELECT * FROM public.users WHERE ", knownTablesFrom(all), knownSchemasFrom(all))
+	if len(scope.tables) != 1 || scope.tables[0] != "public.users" {
+		t.Fatalf("tables = %v, want [public.users]", scope.tables)
+	}
+}
+
+func TestTrailingQualifierParts(t *testing.T) {
+	parts := trailingQualifierParts(tokenizeSQL("SELECT * FROM public.users."))
+	if len(parts) != 2 || parts[0] != "public" || parts[1] != "users" {
+		t.Fatalf("parts = %v, want [public users]", parts)
+	}
+	parts = trailingQualifierParts(tokenizeSQL("SELECT * FROM u."))
+	if len(parts) != 1 || parts[0] != "u" {
+		t.Fatalf("parts = %v, want [u]", parts)
+	}
 }
 
 // TestCompletionSelectListHidesUnscopedColumns verifies that before FROM names

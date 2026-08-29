@@ -17,20 +17,33 @@ const (
 // sqlCompleteScope is the editor completion context: tables named in FROM/JOIN
 // /UPDATE/INTO (and aliases), plus whether the next token is a table or a
 // column. Before any table is known, wantAny suppresses columns so the
-// SELECT-list / start-of-query popup stays keywords (+ tables). Once FROM
-// tables are visible in the statement (including after the cursor), SELECT-list
-// / INSERT (…) / SET completion prefers those columns.
+// SELECT-list / start-of-query popup stays keywords (+ tables + schemas).
+// Qualifiers: alias/table. → columns; schema. → tables; schema.table. → columns.
 type sqlCompleteScope struct {
-	want      sqlCompleteWant
-	tables    []string          // canonical table names in the FROM list
-	aliases   map[string]string // lower(alias) → canonical table
-	qualifier string            // ident before a trailing "."; empty if none
+	want         sqlCompleteWant
+	tables       []string          // FROM-list tables; may be "schema.table"
+	aliases      map[string]string // lower(alias) → canonical table
+	qualifier    string            // single ident before trailing "."; empty if none
+	qualParts    []string          // 1–2 idents before trailing "."
+	schemaFilter string            // when set, only tables in this schema
+	activeSchema string            // current connection schema (bare tables live here)
 }
 
 func knownTablesFrom(all []completionItem) map[string]string {
 	out := map[string]string{}
 	for _, it := range all {
-		if it.kind == kindTable && it.text != "" {
+		// Active-schema tables only (schema == ""). Qualified cache entries use schema!= "".
+		if it.kind == kindTable && it.text != "" && it.schema == "" {
+			out[strings.ToLower(it.text)] = it.text
+		}
+	}
+	return out
+}
+
+func knownSchemasFrom(all []completionItem) map[string]string {
+	out := map[string]string{}
+	for _, it := range all {
+		if it.kind == kindSchema && it.text != "" {
 			out[strings.ToLower(it.text)] = it.text
 		}
 	}
@@ -75,26 +88,47 @@ func isSQLIdent(s string) bool {
 }
 
 // sqlCompleteScopeFrom inspects SQL to the left of the token being typed.
-// Prefer sqlCompleteScopeFromQuery when the full statement is available so a
-// SELECT list can see FROM tables that appear after the cursor.
 func sqlCompleteScopeFrom(prefix string, known map[string]string) sqlCompleteScope {
-	return sqlCompleteScopeFromQuery(prefix, "", known)
+	return sqlCompleteScopeFromQuery(prefix, "", known, nil, "")
 }
 
-// sqlCompleteScopeFromQuery is like sqlCompleteScopeFrom, but statement (the
-// statement under the cursor) is used to discover FROM/JOIN tables when the
-// cursor sits in a SELECT list before those clauses.
-func sqlCompleteScopeFromQuery(prefix, statement string, known map[string]string) sqlCompleteScope {
-	scope, lastKW, inInsertCols := scanSQLComplete(prefix, known)
+// sqlCompleteScopeFromQuery derives completion intent from prefix, optionally
+// enriching SELECT lists from statement, and resolving schema qualifiers via
+// knownSchemas / activeSchema.
+func sqlCompleteScopeFromQuery(prefix, statement string, known, schemas map[string]string, activeSchema string) sqlCompleteScope {
+	scope, lastKW, inInsertCols := scanSQLComplete(prefix, known, schemas)
+	scope.activeSchema = activeSchema
 
-	scope.qualifier = trailingQualifier(tokenizeSQL(prefix))
-	if q := scope.qualifier; q != "" {
+	parts := trailingQualifierParts(tokenizeSQL(prefix))
+	scope.qualParts = parts
+	if len(parts) == 1 {
+		scope.qualifier = parts[0]
+	}
+	if len(parts) == 2 {
 		scope.want = wantColumn
+		scope.tables = []string{parts[0] + "." + parts[1]}
+		scope.qualifier = parts[1]
+		return scope
+	}
+	if len(parts) == 1 {
+		q := parts[0]
 		if canon, ok := lookupKnown(known, q); ok {
+			scope.want = wantColumn
 			scope.tables = []string{canon}
-		} else if canon, ok := scope.aliases[strings.ToLower(unquoteIdent(q))]; ok {
-			scope.tables = []string{canon}
+			return scope
 		}
+		if canon, ok := scope.aliases[strings.ToLower(unquoteIdent(q))]; ok {
+			scope.want = wantColumn
+			scope.tables = []string{canon}
+			return scope
+		}
+		if canon, ok := lookupKnown(schemas, q); ok {
+			scope.want = wantTable
+			scope.schemaFilter = canon
+			return scope
+		}
+		// Unknown qualifier — still treat as column context (empty tables).
+		scope.want = wantColumn
 		return scope
 	}
 
@@ -107,10 +141,8 @@ func sqlCompleteScopeFromQuery(prefix, statement string, known map[string]string
 		lastKW == "AND" || lastKW == "OR" || lastKW == "BY":
 		scope.want = wantColumn
 	case lastKW == "SELECT" || lastKW == "DISTINCT":
-		// SELECT list: pull FROM/JOIN tables from the full statement when the
-		// cursor sits before them (prefix alone cannot see them).
 		if len(scope.tables) == 0 && strings.TrimSpace(statement) != "" {
-			fromStmt, _, _ := scanSQLComplete(statement, known)
+			fromStmt, _, _ := scanSQLComplete(statement, known, schemas)
 			scope.tables = fromStmt.tables
 			scope.aliases = fromStmt.aliases
 		}
@@ -126,8 +158,10 @@ func sqlCompleteScopeFromQuery(prefix, statement string, known map[string]string
 }
 
 // scanSQLComplete tokenizes prefix and collects FROM/JOIN/UPDATE/INTO tables,
-// aliases, and whether the cursor is inside an INSERT column list.
-func scanSQLComplete(prefix string, known map[string]string) (scope sqlCompleteScope, lastKW string, inInsertCols bool) {
+// aliases, and whether the cursor is inside an INSERT column list. schema.table
+// refs after FROM are recorded as "schema.table" when the first ident is a
+// known schema.
+func scanSQLComplete(prefix string, known, schemas map[string]string) (scope sqlCompleteScope, lastKW string, inInsertCols bool) {
 	scope = sqlCompleteScope{want: wantAny, aliases: map[string]string{}}
 	seen := map[string]bool{}
 	addTable := func(name string) {
@@ -141,6 +175,7 @@ func scanSQLComplete(prefix string, known map[string]string) (scope sqlCompleteS
 	tokens := tokenizeSQL(prefix)
 	expectTable := false
 	pendingAlias := false
+	pendingSchema := ""
 	lastTable := ""
 
 	flushAlias := func(raw string) {
@@ -162,6 +197,7 @@ func scanSQLComplete(prefix string, known map[string]string) (scope sqlCompleteS
 		if tok.kind == tokenKeyword {
 			kw := strings.ToUpper(tok.text)
 			pendingAlias = false
+			pendingSchema = ""
 			switch kw {
 			case "FROM", "JOIN", "INTO", "UPDATE":
 				expectTable = true
@@ -202,18 +238,22 @@ func scanSQLComplete(prefix string, known map[string]string) (scope sqlCompleteS
 					inInsertCols = true
 				}
 				pendingAlias = false
+				pendingSchema = ""
 			case ")":
 				inInsertCols = false
 				pendingAlias = false
+				pendingSchema = ""
 			case ",":
 				if lastKW == "FROM" || lastKW == "JOIN" || lastKW == "INTO" {
 					expectTable = true
 					pendingAlias = false
 				}
+				pendingSchema = ""
 			case ".":
-				// kept for completeness; handled above too
+				// pendingSchema retained for schema.table
 			default:
 				pendingAlias = false
+				pendingSchema = ""
 			}
 			continue
 		}
@@ -221,11 +261,22 @@ func scanSQLComplete(prefix string, known map[string]string) (scope sqlCompleteS
 		raw := strings.TrimSpace(tok.text)
 		if !isSQLIdent(raw) {
 			pendingAlias = false
+			pendingSchema = ""
 			continue
 		}
 		if lastKW == "AS" && lastTable != "" {
 			flushAlias(raw)
 			lastKW = ""
+			pendingSchema = ""
+			continue
+		}
+		if pendingSchema != "" {
+			qual := pendingSchema + "." + unquoteIdent(raw)
+			addTable(qual)
+			lastTable = qual
+			expectTable = false
+			pendingAlias = true
+			pendingSchema = ""
 			continue
 		}
 		if canon, ok := lookupKnown(known, raw); ok {
@@ -233,16 +284,21 @@ func scanSQLComplete(prefix string, known map[string]string) (scope sqlCompleteS
 			lastTable = canon
 			expectTable = false
 			pendingAlias = true
+			pendingSchema = ""
 			continue
 		}
 		if pendingAlias {
 			flushAlias(raw)
 			pendingAlias = false
+			pendingSchema = ""
 			continue
 		}
 		if expectTable {
-			// Unknown ident after FROM — might be a schema qualifier; wait for
-			// schema.table. If it isn't, we still shouldn't treat it as a column.
+			if schema, ok := lookupKnown(schemas, raw); ok {
+				pendingSchema = schema
+				pendingAlias = false
+				continue
+			}
 			pendingAlias = false
 			continue
 		}
@@ -250,27 +306,59 @@ func scanSQLComplete(prefix string, known map[string]string) (scope sqlCompleteS
 	return scope, lastKW, inInsertCols
 }
 
-func trailingQualifier(tokens []sqlToken) string {
-	// Walk back over trailing space and find ident "."
+// trailingQualifierParts returns the 1–2 idents before a trailing ".".
+// "u." → ["u"]; "public.users." → ["public","users"].
+func trailingQualifierParts(tokens []sqlToken) []string {
 	i := len(tokens) - 1
 	for i >= 0 && strings.TrimSpace(tokens[i].text) == "" {
 		i--
 	}
 	if i < 0 || tokens[i].kind != tokenOperator || tokens[i].text != "." {
-		return ""
+		return nil
 	}
-	i--
-	for i >= 0 && strings.TrimSpace(tokens[i].text) == "" {
+	var parts []string
+	for len(parts) < 2 {
 		i--
+		for i >= 0 && strings.TrimSpace(tokens[i].text) == "" {
+			i--
+		}
+		if i < 0 {
+			break
+		}
+		raw := strings.TrimSpace(tokens[i].text)
+		if !isSQLIdent(raw) {
+			break
+		}
+		parts = append([]string{unquoteIdent(raw)}, parts...)
+		j := i - 1
+		for j >= 0 && strings.TrimSpace(tokens[j].text) == "" {
+			j--
+		}
+		if j < 0 || tokens[j].kind != tokenOperator || tokens[j].text != "." {
+			break
+		}
+		i = j
 	}
-	if i < 0 {
+	return parts
+}
+
+func trailingQualifier(tokens []sqlToken) string {
+	parts := trailingQualifierParts(tokens)
+	if len(parts) == 0 {
 		return ""
 	}
-	raw := strings.TrimSpace(tokens[i].text)
-	if !isSQLIdent(raw) {
-		return ""
+	return parts[len(parts)-1]
+}
+
+func (s sqlCompleteScope) tableMatchesSchema(it completionItem) bool {
+	if s.schemaFilter == "" {
+		return true
 	}
-	return unquoteIdent(raw)
+	if it.schema != "" {
+		return strings.EqualFold(it.schema, s.schemaFilter)
+	}
+	// Bare active-schema tables.
+	return s.activeSchema != "" && strings.EqualFold(s.activeSchema, s.schemaFilter)
 }
 
 func (s sqlCompleteScope) filter(all []completionItem) []completionItem {
@@ -280,20 +368,33 @@ func (s sqlCompleteScope) filter(all []completionItem) []completionItem {
 	}
 	restrictCols := s.want == wantColumn && len(s.tables) > 0
 	scopedCols := (s.want == wantAny || s.want == wantColumn) && len(s.tables) > 0
-	// Start of query / SELECT list: no FROM tables yet → hide columns.
 	hideUnscopedCols := s.want == wantAny && len(s.tables) == 0
+	hasQualifier := len(s.qualParts) > 0 || s.qualifier != ""
 
 	var out []completionItem
 	seenCol := map[string]bool{}
 	for _, it := range all {
 		switch it.kind {
 		case kindKeyword:
-			if s.qualifier != "" {
+			if hasQualifier {
+				continue
+			}
+			out = append(out, it)
+		case kindSchema:
+			if hasQualifier || s.want == wantColumn {
 				continue
 			}
 			out = append(out, it)
 		case kindTable:
 			if s.want == wantColumn {
+				continue
+			}
+			if s.schemaFilter != "" {
+				if !s.tableMatchesSchema(it) {
+					continue
+				}
+			} else if it.schema != "" {
+				// Other-schema tables only appear after schema.
 				continue
 			}
 			out = append(out, it)

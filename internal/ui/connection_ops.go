@@ -275,6 +275,8 @@ func (m *Model) selectSchema(name string) tea.Cmd {
 
 	m.expanded = make(map[string][]db.Column)
 	m.columnCache = make(map[string][]db.Column)
+	m.schemaTableCache = nil
+	m.schemaNames = nil
 	m.results.Clear()
 	m.results.ClearEditable()
 	m.inspector.Hide()
@@ -296,7 +298,7 @@ func (m *Model) selectSchema(name string) tea.Cmd {
 	m.openInspectorIfPreferred()
 	m.layoutWorkspace()
 	m.applyFocus()
-	return tea.Batch(cmd, m.prefetchSchemas(), m.fetchTableRowCounts())
+	return tea.Batch(cmd, m.prefetchSchemas(), m.prefetchSchemaTables(), m.fetchTableRowCounts())
 }
 
 // connConfigToDB maps a stored connection config to the db package's
@@ -386,6 +388,8 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	// Reset workspace state for the new database.
 	m.expanded = make(map[string][]db.Column)
 	m.columnCache = make(map[string][]db.Column)
+	m.schemaTableCache = nil
+	m.schemaNames = nil
 	m.results.Clear()
 	m.results.ClearEditable()
 	m.inspector.Hide()
@@ -417,7 +421,7 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	cmd := m.editor.Focus()
 	m.layoutWorkspace()
 	m.applyFocus()
-	return tea.Batch(cmd, m.prefetchSchemas(), m.fetchTableRowCounts())
+	return tea.Batch(cmd, m.prefetchSchemas(), m.prefetchSchemaTables(), m.fetchTableRowCounts())
 }
 
 // openDatabasePicker fetches available databases and shows the picker overlay.
@@ -453,7 +457,28 @@ func (m *Model) loadTables() {
 			m.views[v] = true
 		}
 	}
+	m.schemaNames = nil
+	if schemas, err := m.connection.Schemas(); err == nil {
+		m.schemaNames = schemas
+	}
+	m.editor.SetActiveSchema(m.currentSchemaName())
 	m.refreshCompletionCandidates()
+}
+
+// currentSchemaName is the connection's active schema for completion filtering.
+// Postgres uses Config.Schema (search_path); MySQL uses the current database.
+func (m Model) currentSchemaName() string {
+	if m.connection == nil {
+		return ""
+	}
+	cfg := m.connection.Config()
+	if cfg.Schema != "" {
+		return cfg.Schema
+	}
+	if cfg.Driver == db.DriverMySQL {
+		return cfg.Database
+	}
+	return ""
 }
 
 // prefetchSchemas asynchronously fetches column schemas for all tables,
@@ -480,6 +505,53 @@ func (m Model) prefetchSchemas() tea.Cmd {
 		}
 		return schemasLoadedMsg{schemas: schemas, pks: pks, fks: fks}
 	}
+}
+
+// prefetchSchemaTables loads table lists for every schema so editor completion
+// can offer schema.table without switching the active schema. No-op when the
+// driver has no schemas (SQLite) or the list is empty.
+func (m Model) prefetchSchemaTables() tea.Cmd {
+	if m.connection == nil || len(m.schemaNames) == 0 {
+		return nil
+	}
+	d := m.connection.DB()
+	schemas := append([]string(nil), m.schemaNames...)
+	return func() tea.Msg {
+		cache := make(map[string][]string, len(schemas))
+		for _, s := range schemas {
+			if tables, err := d.TablesInSchema(s); err == nil {
+				cache[s] = tables
+			}
+		}
+		return schemaTablesLoadedMsg{cache: cache}
+	}
+}
+
+// fetchQualifiedTableSchema loads columns for schema.table into columnCache
+// when the user completes after a qualified name.
+func (m Model) fetchQualifiedTableSchema(schema, table string) tea.Cmd {
+	if m.connection == nil || schema == "" || table == "" {
+		return nil
+	}
+	key := schema + "." + table
+	if _, ok := m.columnCache[key]; ok {
+		return nil
+	}
+	d := m.connection.DB()
+	return func() tea.Msg {
+		cols, err := d.TableSchemaInSchema(schema, table)
+		return qualifiedTableSchemaMsg{key: key, cols: cols, err: err}
+	}
+}
+
+// ensureSchemaCompletionFetch loads columns for schema.table. when the popup
+// needs them and the cache is cold.
+func (m *Model) ensureSchemaCompletionFetch() tea.Cmd {
+	scope := m.editor.completionScope()
+	if len(scope.qualParts) != 2 {
+		return nil
+	}
+	return m.fetchQualifiedTableSchema(scope.qualParts[0], scope.qualParts[1])
 }
 
 // fetchTableRowCounts fetches approximate row counts for all tables

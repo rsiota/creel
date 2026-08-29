@@ -93,6 +93,11 @@ func (s *SQLite) Tables() ([]string, error) {
 	return tables, rows.Err()
 }
 
+// TablesInSchema is not supported for SQLite.
+func (s *SQLite) TablesInSchema(schema string) ([]string, error) {
+	return nil, fmt.Errorf("schemas are not supported for SQLite")
+}
+
 // Views returns SQLite views (type='view' in sqlite_master).
 func (s *SQLite) Views() ([]string, error) {
 	rows, err := s.db.Query(`SELECT name FROM sqlite_master WHERE type = 'view' ORDER BY name`)
@@ -214,6 +219,11 @@ func (s *SQLite) TableSchema(table string) ([]Column, error) {
 		cols = append(cols, Column{Name: name, Type: dataType})
 	}
 	return cols, rows.Err()
+}
+
+// TableSchemaInSchema is not supported for SQLite.
+func (s *SQLite) TableSchemaInSchema(schema, table string) ([]Column, error) {
+	return nil, fmt.Errorf("schemas are not supported for SQLite")
 }
 
 func (s *SQLite) PrimaryKeys(table string) ([]string, error) {

@@ -125,6 +125,18 @@ type schemasLoadedMsg struct {
 	fks     map[string][]db.ForeignKey
 }
 
+// schemaTablesLoadedMsg carries per-schema table lists for schema.table completion.
+type schemaTablesLoadedMsg struct {
+	cache map[string][]string
+}
+
+// qualifiedTableSchemaMsg carries columns for a schema.table cache key.
+type qualifiedTableSchemaMsg struct {
+	key  string
+	cols []db.Column
+	err  error
+}
+
 // tableRowCountsMsg carries approximate row counts for sidebar display.
 type tableRowCountsMsg struct {
 	counts map[string]int64
@@ -364,6 +376,8 @@ type Model struct {
 	views               map[string]bool            // view names from Views(); badges views in the sidebar
 	pkCache             map[string][]string        // table -> PK columns (AI schema context)
 	fkCache             map[string][]db.ForeignKey // table -> FKs (AI schema context)
+	schemaNames         []string                   // schemas/namespaces for editor completion
+	schemaTableCache    map[string][]string        // schema → tables (cross-schema completion)
 	recentTables        []string                   // MRU table names (most recent first); for :recent
 
 	// Fuzzy table search
@@ -1446,6 +1460,24 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshCompletionCandidates()
 		return m, nil
 
+	case schemaTablesLoadedMsg:
+		m.schemaTableCache = msg.cache
+		m.refreshCompletionCandidates()
+		return m, m.ensureSchemaCompletionFetch()
+
+	case qualifiedTableSchemaMsg:
+		if msg.err == nil && msg.key != "" {
+			if m.columnCache == nil {
+				m.columnCache = make(map[string][]db.Column)
+			}
+			m.columnCache[msg.key] = msg.cols
+			m.refreshCompletionCandidates()
+			if m.editor.CompletionVisible() {
+				m.editor.StartCompletion() // refilter with new columns
+			}
+		}
+		return m, nil
+
 	case tableRowCountsMsg:
 		m.tableRowCounts = msg.counts
 		return m, nil
@@ -1873,6 +1905,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.focus {
 		case FocusEditor:
 			m.editor, cmd = m.editor.Update(msg)
+			return m, tea.Batch(cmd, m.ensureSchemaCompletionFetch())
 		case FocusResults:
 			m.results, cmd = m.results.Update(msg)
 		}
@@ -3532,6 +3565,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		m.editor, cmd = m.editor.Update(msg)
+		return m, tea.Batch(cmd, m.ensureSchemaCompletionFetch())
 	case FocusResults:
 		// Clear dd pending state on any non-'d' key.
 		if msg.String() != "d" {
@@ -4347,15 +4381,23 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // refreshCompletionCandidates rebuilds the editor's candidate list from
-// keywords, tables, and cached column schemas.
+// keywords, schemas, tables (active + cached cross-schema), and columns.
 func (m *Model) refreshCompletionCandidates() {
 	var candidates []completionItem
 
 	for _, kw := range sqlKeywords {
 		candidates = append(candidates, completionItem{text: kw, kind: kindKeyword})
 	}
+	for _, s := range m.schemaNames {
+		candidates = append(candidates, completionItem{text: s, kind: kindSchema})
+	}
 	for _, t := range m.tables {
 		candidates = append(candidates, completionItem{text: t, kind: kindTable})
+	}
+	for schema, tables := range m.schemaTableCache {
+		for _, t := range tables {
+			candidates = append(candidates, completionItem{text: t, kind: kindTable, schema: schema})
+		}
 	}
 
 	for table, cols := range m.columnCache {
@@ -4364,6 +4406,7 @@ func (m *Model) refreshCompletionCandidates() {
 		}
 	}
 
+	m.editor.SetActiveSchema(m.currentSchemaName())
 	m.editor.SetCandidates(candidates)
 }
 
