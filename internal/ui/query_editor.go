@@ -875,7 +875,7 @@ func (e *QueryEditor) StartCompletion() {
 // tryAutoTrigger shows the popup if the current word is long enough and has matches.
 func (e *QueryEditor) tryAutoTrigger() {
 	partial, wordStart := e.wordBeforeCursor()
-	scope := sqlCompleteScopeFrom(e.textBeforePartial(), knownTablesFrom(e.completion.allCandidates))
+	scope := e.completionScope()
 	if len(partial) < minAutoTriggerChars && scope.qualifier == "" {
 		e.completion.visible = false
 		return
@@ -933,11 +933,18 @@ func (e *QueryEditor) RefilterCompletion() {
 }
 
 // contextualCandidates restricts the catalog to tables or columns based on the
-// SQL to the left of the token being typed (FROM/JOIN → tables, WHERE/ON →
-// columns of those tables).
+// SQL around the token being typed (FROM/JOIN → tables; WHERE/ON/SET/SELECT
+// list/INSERT cols → columns of those tables).
 func (e QueryEditor) contextualCandidates() []completionItem {
-	scope := sqlCompleteScopeFrom(e.textBeforePartial(), knownTablesFrom(e.completion.allCandidates))
-	return scope.filter(e.completion.allCandidates)
+	return e.completionScope().filter(e.completion.allCandidates)
+}
+
+// completionScope derives table/column intent from the text before the
+// partial word, enriching SELECT lists with FROM tables from the full
+// statement under the cursor.
+func (e QueryEditor) completionScope() sqlCompleteScope {
+	known := knownTablesFrom(e.completion.allCandidates)
+	return sqlCompleteScopeFromQuery(e.textBeforePartial(), e.StatementAtCursor(), known)
 }
 
 func (e QueryEditor) textBeforeCursor() string {
