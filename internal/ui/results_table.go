@@ -2058,6 +2058,8 @@ func (r ResultsTable) View() string {
 		switch {
 		case r.isVisualRow(rowIdx):
 			bg = colorVisual
+		case r.IsMarkedRow(rowIdx):
+			bg = colorMarkRow
 		case isCursorRow:
 			bg = colorCursorRow
 		case r.IsWatchDeltaRow(rowIdx):
@@ -2068,7 +2070,11 @@ func (r ResultsTable) View() string {
 
 		// Left border (outer frame)
 		if r.IsMarkedRow(rowIdx) {
-			b.WriteString(lipgloss.NewStyle().Foreground(colorMark).Render("◆"))
+			markBorder := lipgloss.NewStyle().Foreground(colorMark)
+			if bg != "" {
+				markBorder = markBorder.Background(bg)
+			}
+			b.WriteString(markBorder.Render("◆"))
 		} else {
 			leftStyle := outerStyle
 			if bg != "" {
@@ -2135,10 +2141,9 @@ func (r ResultsTable) View() string {
 				case isVisualRow:
 					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorVisual)
 				case isMarked:
-					style = lipgloss.NewStyle().Foreground(colorMark)
-					if isColMarked {
-						style = style.Background(colorVisual)
-					}
+					// Soft mark wash + body text (◆ stays mark-coloured). Teal
+					// text alone was too faint on near-white themes.
+					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorMarkRow)
 				case isColMarked:
 					style = lipgloss.NewStyle().Foreground(colorFg).Background(colorVisual)
 				case isSearchMatch:

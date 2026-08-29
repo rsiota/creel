@@ -110,6 +110,9 @@ var (
 	// Soft primary wash behind unsaved (dirty) result cells — lighter than the
 	// cursor's solid primary so edits read as touched without competing.
 	colorDirty lipgloss.Color
+	// Soft mark→bg wash behind space-marked result rows so the selection reads
+	// as a row tint (not just teal text / ◆), especially on near-white themes.
+	colorMarkRow lipgloss.Color
 	// ERD selection chrome: synthesized so vivid (selected card / hot arrows)
 	// and dim (faded cards / idle arrows) keep a contrast gap on every theme.
 	colorERDVivid lipgloss.Color
@@ -203,6 +206,7 @@ func applyPalette(p colorPalette) {
 	// Boolean glyphs: same hue as cell text, ~70% strength (30% toward bg).
 	colorBool = mixColors(p.fg, p.bg, 0.30)
 	colorDirty = deriveDirtyBg(p)
+	colorMarkRow = deriveMarkRowBg(p)
 
 	// ERD selection: vivid for the selected card + arrows that touch it; dim
 	// for everything else. Reusing muted/primary collapses on light themes
@@ -379,6 +383,14 @@ const dirtyBgBlend = 0.85
 // collapse into the panel on near-white / near-black schemes.
 const dirtyBgMinContrast = 1.08
 
+// markRowBgBlend is the preferred mark→bg wash for space-marked result rows
+// when both bg distinction and fg readability can be met.
+const markRowBgBlend = 0.78
+
+// markRowBgMinContrast floors mark-row wash vs panel bg when possible
+// (GitHub Light needs a clearer step than teal text alone provided).
+const markRowBgMinContrast = 1.12
+
 // deriveDirtyBg builds the soft primary wash used behind dirty result cells.
 func deriveDirtyBg(p colorPalette) lipgloss.Color {
 	wash := mixColors(p.primary, p.bg, dirtyBgBlend)
@@ -386,6 +398,38 @@ func deriveDirtyBg(p colorPalette) lipgloss.Color {
 		wash = mixColors(p.primary, p.bg, 0.70)
 	}
 	return wash
+}
+
+// deriveMarkRowBg builds the soft mark wash behind space-marked result rows.
+// Prefer a clear tint vs the panel bg, but never so strong that body text
+// drops below WCAG AA (some themes have a low-contrast mark hue).
+func deriveMarkRowBg(p colorPalette) lipgloss.Color {
+	best := mixColors(p.mark, p.bg, markRowBgBlend)
+	bestVsBg := -1.0
+	for _, t := range []float64{
+		0.65, 0.70, 0.75, 0.78, 0.82, 0.85, 0.88, 0.90, 0.93, 0.95, 0.97, 0.98, 0.99,
+	} {
+		cand := mixColors(p.mark, p.bg, t)
+		if contrastRatio(string(cand), string(p.fg)) < 4.5 {
+			continue
+		}
+		vsBg := contrastRatio(string(cand), string(p.bg))
+		if vsBg > bestVsBg {
+			bestVsBg = vsBg
+			best = cand
+		}
+	}
+	if bestVsBg >= 0 {
+		return best
+	}
+	// Rare themes where mark/fg can't coexist as a wash (e.g. coloured fg on
+	// light bg): fall back to an existing soft panel tint that keeps AA.
+	for _, cand := range []lipgloss.Color{p.cursorRow, p.highlight, p.stripe, p.bg} {
+		if contrastRatio(string(cand), string(p.fg)) >= 4.5 {
+			return cand
+		}
+	}
+	return p.bg
 }
 
 // deriveThinkingColor picks the foreground for AI chain-of-thought and the

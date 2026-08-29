@@ -166,6 +166,27 @@ func TestThemeMutedLabelBackgroundContrast(t *testing.T) {
 	}
 }
 
+// Space-marked row wash must keep body text readable. Prefer a clear step vs
+// the panel bg when the theme's mark hue allows it (GitHub Light was the
+// regression case for near-invisible marks).
+func TestThemeMarkRowWash(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	for name, p := range themes {
+		wash := deriveMarkRowBg(p)
+		if vsFg := contrastRatio(string(wash), string(p.fg)); vsFg < 4.5 {
+			t.Errorf("theme %q: markRow/fg %.2f < 4.5 (markRow=%s fg=%s)",
+				name, vsFg, wash, p.fg)
+		}
+	}
+	// GitHub Light: the wash must be visibly distinct from white.
+	gh := themes["git-hub-light-default"]
+	wash := deriveMarkRowBg(gh)
+	if vsBg := contrastRatio(string(wash), string(gh.bg)); vsBg < markRowBgMinContrast {
+		t.Fatalf("git-hub-light-default markRow/bg %.2f < %.2f (markRow=%s)",
+			vsBg, markRowBgMinContrast, wash)
+	}
+}
+
 // visual is the highlight BACKGROUND behind fg text (marked columns, visual
 // row selection). Terminal selectionBackground is often inverted on light
 // schemes; every theme must keep visual/fg above WCAG AA.

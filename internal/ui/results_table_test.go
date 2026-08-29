@@ -777,6 +777,44 @@ func TestDirtyCellPrimaryWash(t *testing.T) {
 	}
 }
 
+// Space-marked rows use a soft mark wash so the selection reads as a tinted
+// row on light themes (teal text alone was nearly invisible on GitHub Light).
+func TestMarkedRowWash(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(prev)
+
+	applyPalette(themes["git-hub-light-default"])
+	if vsBg := contrastRatio(string(colorMarkRow), string(colorBg)); vsBg < markRowBgMinContrast {
+		t.Fatalf("git-hub-light markRow/bg %.2f < %.2f (markRow=%s bg=%s)",
+			vsBg, markRowBgMinContrast, colorMarkRow, colorBg)
+	}
+	if contrastRatio(string(colorMarkRow), string(colorFg)) < 4.5 {
+		t.Errorf("markRow/fg contrast %.2f < 4.5 (markRow=%s fg=%s)",
+			contrastRatio(string(colorMarkRow), string(colorFg)), colorMarkRow, colorFg)
+	}
+
+	r := NewResultsTable()
+	r.SetSize(80, 12)
+	r.SetResult(
+		[]string{"id", "name"},
+		[][]string{{"1", "alice"}, {"2", "bob"}},
+		"2 rows",
+	)
+	r.SetEditable("users", []string{"id"})
+	r.ToggleMark() // mark cursor row 0
+	// Move cursor off the marked row so mark style is not overridden by the
+	// solid primary cursor cell.
+	r.SetCursor(1, 0)
+
+	view := r.View()
+	markStyle := sgrPrefix(lipgloss.NewStyle().Foreground(colorFg).Background(colorMarkRow))
+	if !strings.Contains(view, markStyle) {
+		t.Fatalf("marked row missing mark wash style %q\nview:\n%s", markStyle, view)
+	}
+}
+
 func TestMixColors(t *testing.T) {
 	a := lipgloss.Color("#000000")
 	b := lipgloss.Color("#ffffff")
