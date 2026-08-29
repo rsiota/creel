@@ -63,6 +63,33 @@ func isWordChar(ch rune) bool {
 		ch == '_'
 }
 
+// fitCompletionPopup keeps a w×h completion box inside [0,maxW)×[0,maxH).
+// Prefer the below-cursor spot (x, yBelow); when that would clip the bottom,
+// flip so the box sits just above cursorTop. Then clamp both axes.
+func fitCompletionPopup(x, yBelow, cursorTop, w, h, maxW, maxH int) (int, int) {
+	y := yBelow
+	if maxH > 0 && h > 0 && y+h > maxH {
+		y = cursorTop - h
+	}
+	if maxH > 0 && h > 0 {
+		if y+h > maxH {
+			y = maxH - h
+		}
+		if y < 0 {
+			y = 0
+		}
+	}
+	if maxW > 0 && w > 0 {
+		if x+w > maxW {
+			x = maxW - w
+		}
+		if x < 0 {
+			x = 0
+		}
+	}
+	return x, y
+}
+
 // placeOverlay overlays fg on top of bg at the given (x, y) position.
 // It handles ANSI-styled strings by using grapheme-aware cutting.
 func placeOverlay(bg, fg string, x, y int) string {

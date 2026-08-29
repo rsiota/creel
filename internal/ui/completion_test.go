@@ -437,6 +437,38 @@ func TestRenderCompletionSelectedHighlight(t *testing.T) {
 	}
 }
 
+func TestFitCompletionPopup(t *testing.T) {
+	// Fits below cursor — unchanged.
+	x, y := fitCompletionPopup(10, 5, 4, 20, 8, 100, 40)
+	if x != 10 || y != 5 {
+		t.Fatalf("fits: got (%d,%d), want (10,5)", x, y)
+	}
+
+	// Below would clip the bottom → flip above cursorTop.
+	x, y = fitCompletionPopup(10, 35, 34, 20, 10, 100, 40)
+	if x != 10 || y != 24 { // 34 - 10
+		t.Fatalf("flip above: got (%d,%d), want (10,24)", x, y)
+	}
+
+	// Neither side fits fully → clamp to top of viewport.
+	x, y = fitCompletionPopup(10, 5, 4, 20, 50, 100, 40)
+	if y != 0 {
+		t.Fatalf("tall popup Y: got %d, want 0", y)
+	}
+
+	// Wide popup near the right edge → shift left.
+	x, y = fitCompletionPopup(90, 5, 4, 20, 8, 100, 40)
+	if x != 80 || y != 5 { // 100 - 20
+		t.Fatalf("right clamp: got (%d,%d), want (80,5)", x, y)
+	}
+
+	// Negative X → pin to 0.
+	x, y = fitCompletionPopup(-5, 5, 4, 20, 8, 100, 40)
+	if x != 0 || y != 5 {
+		t.Fatalf("left clamp: got (%d,%d), want (0,5)", x, y)
+	}
+}
+
 func TestDimBackgroundUsesOverlayDim(t *testing.T) {
 	applyPalette(themes["git-hub-light-default"])
 	want := lipgloss.NewStyle().Foreground(colorOverlayDim).Render("SELECT * FROM users")

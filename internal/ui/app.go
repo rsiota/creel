@@ -5170,12 +5170,25 @@ func (m Model) viewWorkspace() string {
 		view = placeOverlay(view, panel, panelX, panelY)
 	}
 
-	// Overlay completion popup if visible
+	// Overlay completion popup if visible. Anchor below the cursor, then clamp
+	// into the workspace (above status/cmd, left of the right slot) so a long
+	// list or a cursor near the edge does not clip off-screen.
 	if m.editor.CompletionVisible() {
 		cursorLine, cursorCol := m.editor.CursorScreenPos()
 		popup := m.editor.CompletionView()
+		popupW := lipgloss.Width(popup)
+		popupH := lipgloss.Height(popup)
+		// Editor panel: top border (1) + tab bar (1) + separator (1) → content.
+		const editorContentTop = 1 + 1 + 1
+		cursorTop := editorContentTop + cursorLine
 		popupX := sidebarWidth + 2 + cursorCol
-		popupY := 1 + 2 + cursorLine + 1 // border + tab line + separator + cursor line + 1
+		popupY := cursorTop + 1 // one row below the cursor line
+		maxW := g.EditorRight
+		if maxW <= 0 {
+			maxW = m.width
+		}
+		maxH := m.height - statusHeight - g.CmdHeight
+		popupX, popupY = fitCompletionPopup(popupX, popupY, cursorTop, popupW, popupH, maxW, maxH)
 		view = placeOverlay(view, popup, popupX, popupY)
 	}
 
