@@ -22,27 +22,73 @@ func TestFilterCandidates(t *testing.T) {
 	}
 
 	// Fuzzy match "se" → SELECT, SET, users, user_settings (subsequence match)
-	filtered := filterCandidates(all, "se")
+	filtered := filterCandidates(all, "se", wantAny)
 	if len(filtered) != 4 {
 		t.Fatalf("expected 4 matches for 'se', got %d: %+v", len(filtered), filtered)
 	}
 
 	// Fuzzy match "us" → users, user_settings
-	filtered = filterCandidates(all, "us")
+	filtered = filterCandidates(all, "us", wantAny)
 	if len(filtered) != 2 {
 		t.Fatalf("expected 2 matches for 'us', got %d", len(filtered))
 	}
 
 	// Empty partial → all
-	filtered = filterCandidates(all, "")
+	filtered = filterCandidates(all, "", wantAny)
 	if len(filtered) != len(all) {
 		t.Errorf("expected all %d, got %d", len(all), len(filtered))
 	}
 
 	// No match
-	filtered = filterCandidates(all, "xyz")
+	filtered = filterCandidates(all, "xyz", wantAny)
 	if len(filtered) != 0 {
 		t.Errorf("expected 0 matches for 'xyz', got %d", len(filtered))
+	}
+}
+
+func TestCompletionRankPrefersPrefixAndKind(t *testing.T) {
+	all := []completionItem{
+		{text: "UPDATE", kind: kindKeyword},
+		{text: "UNION", kind: kindKeyword},
+		{text: "users", kind: kindTable},
+		{text: "user_id", kind: kindColumn, table: "users"},
+		{text: "email", kind: kindColumn, table: "users"},
+	}
+
+	// After FROM, tables outrank keyword subsequence/prefix noise.
+	got := filterCandidates(all, "u", wantTable)
+	if len(got) == 0 || got[0].text != "users" {
+		t.Fatalf("wantTable: first = %v, want users", candidateTexts(got))
+	}
+
+	// In WHERE/SET, columns outrank UPDATE/UNION.
+	got = filterCandidates(all, "u", wantColumn)
+	if len(got) == 0 || got[0].text != "user_id" {
+		t.Fatalf("wantColumn: first = %v, want user_id", candidateTexts(got))
+	}
+
+	// Exact match beats longer prefix.
+	got = filterCandidates([]completionItem{
+		{text: "SET", kind: kindKeyword},
+		{text: "SETTINGS", kind: kindKeyword},
+	}, "set", wantAny)
+	if len(got) < 2 || got[0].text != "SET" {
+		t.Fatalf("exact: first = %v, want SET", candidateTexts(got))
+	}
+
+	// Prefix beats interior fuzzy (SELECT vs users for "se").
+	got = filterCandidates([]completionItem{
+		{text: "SELECT", kind: kindKeyword},
+		{text: "users", kind: kindTable},
+	}, "se", wantAny)
+	if len(got) < 2 || got[0].text != "SELECT" {
+		t.Fatalf("prefix: first = %v, want SELECT", candidateTexts(got))
+	}
+
+	// Empty partial after FROM: tables before keywords.
+	got = filterCandidates(all, "", wantTable)
+	if len(got) == 0 || got[0].kind != kindTable {
+		t.Fatalf("empty wantTable: first kind = %v (%q), want table", got[0].kind, got[0].text)
 	}
 }
 

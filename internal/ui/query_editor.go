@@ -869,9 +869,10 @@ func (e QueryEditor) CompletionVisible() bool {
 // StartCompletion forces the popup open (manual trigger via Ctrl+N).
 func (e *QueryEditor) StartCompletion() {
 	partial, wordStart := e.wordBeforeCursor()
+	scope := e.completionScope()
 	e.completion.partial = partial
 	e.completion.wordStart = wordStart
-	e.completion.candidates = filterCandidates(e.contextualCandidates(), partial)
+	e.completion.candidates = filterCandidates(scope.filter(e.completion.allCandidates), partial, scope.want)
 	e.completion.selected = 0
 	if len(e.completion.candidates) > 0 {
 		e.completion.visible = true
@@ -888,7 +889,7 @@ func (e *QueryEditor) tryAutoTrigger() {
 	}
 	e.completion.partial = partial
 	e.completion.wordStart = wordStart
-	e.completion.candidates = filterCandidates(scope.filter(e.completion.allCandidates), partial)
+	e.completion.candidates = filterCandidates(scope.filter(e.completion.allCandidates), partial, scope.want)
 	e.completion.selected = 0
 	e.completion.visible = len(e.completion.candidates) > 0
 }
@@ -929,20 +930,14 @@ func (e *QueryEditor) MoveCompletion(delta int) {
 // If no candidates remain, the popup is hidden.
 func (e *QueryEditor) RefilterCompletion() {
 	partial, wordStart := e.wordBeforeCursor()
+	scope := e.completionScope()
 	e.completion.partial = partial
 	e.completion.wordStart = wordStart
-	e.completion.candidates = filterCandidates(e.contextualCandidates(), partial)
+	e.completion.candidates = filterCandidates(scope.filter(e.completion.allCandidates), partial, scope.want)
 	e.completion.selected = 0
 	if len(e.completion.candidates) == 0 {
 		e.completion.visible = false
 	}
-}
-
-// contextualCandidates restricts the catalog to tables or columns based on the
-// SQL around the token being typed (FROM/JOIN → tables; WHERE/ON/SET/SELECT
-// list/INSERT cols → columns of those tables).
-func (e QueryEditor) contextualCandidates() []completionItem {
-	return e.completionScope().filter(e.completion.allCandidates)
 }
 
 // completionScope derives table/column/schema intent from the text before the

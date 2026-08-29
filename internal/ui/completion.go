@@ -131,30 +131,115 @@ func dimBackground(view string) string {
 	return lipgloss.NewStyle().Foreground(colorOverlayDim).Render(ansi.Strip(view))
 }
 
+// completionKindRank orders kinds for empty-partial lists and score ties.
+// Lower is better. Tables/schemas lead after FROM; columns lead in WHERE/SET.
+func completionKindRank(k completionKind, want sqlCompleteWant) int {
+	switch want {
+	case wantTable:
+		switch k {
+		case kindTable:
+			return 0
+		case kindSchema:
+			return 1
+		case kindKeyword:
+			return 2
+		default:
+			return 3
+		}
+	case wantColumn:
+		switch k {
+		case kindColumn:
+			return 0
+		case kindKeyword:
+			return 1
+		default:
+			return 2
+		}
+	default:
+		return int(k)
+	}
+}
+
+func completionKindPreferred(k completionKind, want sqlCompleteWant) bool {
+	switch want {
+	case wantTable:
+		return k == kindTable || k == kindSchema
+	case wantColumn:
+		return k == kindColumn
+	default:
+		return false
+	}
+}
+
+// completionRankScore adjusts a fuzzy score (lower = better) with exact/prefix
+// and kind-fit boosts so "users" beats UPDATE after FROM, and "email" beats
+// stray keyword subsequence matches in column contexts.
+func completionRankScore(fuzzyScore int, partial string, it completionItem, want sqlCompleteWant) int {
+	score := fuzzyScore
+	lower := strings.ToLower(it.text)
+	q := strings.ToLower(partial)
+	switch {
+	case lower == q:
+		score -= 100
+	case strings.HasPrefix(lower, q):
+		score -= 40
+	}
+	if completionKindPreferred(it.kind, want) {
+		score -= 25
+	}
+	return score
+}
+
 // filterCandidates returns candidates whose text fuzzy-matches partial
-// (case-insensitive subsequence), sorted by match score (lower = better).
-// When partial is empty, all candidates are returned sorted by kind then text.
-func filterCandidates(all []completionItem, partial string) []completionItem {
+// (case-insensitive subsequence), ranked best-first. want boosts tables after
+// FROM / schemas, and columns in WHERE/SET/SELECT-list contexts. When partial
+// is empty, all candidates are returned ordered by kind preference then text.
+func filterCandidates(all []completionItem, partial string, want sqlCompleteWant) []completionItem {
 	if partial == "" {
 		out := make([]completionItem, len(all))
 		copy(out, all)
 		sort.SliceStable(out, func(i, j int) bool {
-			if out[i].kind != out[j].kind {
-				return out[i].kind < out[j].kind
+			ri, rj := completionKindRank(out[i].kind, want), completionKindRank(out[j].kind, want)
+			if ri != rj {
+				return ri < rj
 			}
 			return out[i].text < out[j].text
 		})
 		return out
 	}
-	ranked := fuzzyRank(partial, all,
-		func(it completionItem) string { return it.text },
-		func(a, b fuzzyResult[completionItem]) bool { return a.Item.text < b.Item.text })
-	out := make([]completionItem, len(ranked))
-	for i, r := range ranked {
-		out[i] = completionItem{
-			text: r.Item.text, kind: r.Item.kind, table: r.Item.table,
-			schema: r.Item.schema, matchIdx: r.MatchIdx,
+
+	type ranked struct {
+		item  completionItem
+		score int
+	}
+	var results []ranked
+	for _, it := range all {
+		idx, score := fuzzyMatch(partial, it.text)
+		if idx == nil {
+			continue
 		}
+		results = append(results, ranked{
+			item: completionItem{
+				text: it.text, kind: it.kind, table: it.table,
+				schema: it.schema, matchIdx: idx,
+			},
+			score: completionRankScore(score, partial, it, want),
+		})
+	}
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].score != results[j].score {
+			return results[i].score < results[j].score
+		}
+		ri := completionKindRank(results[i].item.kind, want)
+		rj := completionKindRank(results[j].item.kind, want)
+		if ri != rj {
+			return ri < rj
+		}
+		return results[i].item.text < results[j].item.text
+	})
+	out := make([]completionItem, len(results))
+	for i, r := range results {
+		out[i] = r.item
 	}
 	return out
 }
