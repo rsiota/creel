@@ -887,6 +887,44 @@ func TestMarkedRowWash(t *testing.T) {
 	}
 }
 
+// Visual-mode rows on light themes with a faint selectionBackground get a
+// primary→bg wash (same strength as marks, different hue).
+func TestVisualRowWash(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(prev)
+
+	applyPalette(themes["git-hub-light-default"])
+	if colorVisual == colorMarkRow {
+		t.Fatalf("visual and mark washes should differ; both=%s", colorVisual)
+	}
+	if vsBg := contrastRatio(string(colorVisual), string(colorBg)); vsBg < markRowBgMinContrast {
+		t.Fatalf("git-hub-light visual/bg %.2f < %.2f (visual=%s)",
+			vsBg, markRowBgMinContrast, colorVisual)
+	}
+
+	r := NewResultsTable()
+	r.SetSize(80, 12)
+	r.SetResult(
+		[]string{"id", "name"},
+		[][]string{{"1", "alice"}, {"2", "bob"}},
+		"2 rows",
+	)
+	r.SetEditable("users", []string{"id"})
+	r.SetVisualMode()
+	r.CursorDown()
+	// Cursor cell is solid primary; the extended visual row should still show
+	// the wash on non-cursor cells.
+	r.cursorCol = 1
+
+	view := r.View()
+	visualStyle := sgrPrefix(lipgloss.NewStyle().Foreground(colorFg).Background(colorVisual))
+	if !strings.Contains(view, visualStyle) {
+		t.Fatalf("visual row missing wash style %q\nview:\n%s", visualStyle, view)
+	}
+}
+
 func TestMixColors(t *testing.T) {
 	a := lipgloss.Color("#000000")
 	b := lipgloss.Color("#ffffff")

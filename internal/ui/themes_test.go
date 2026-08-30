@@ -189,7 +189,8 @@ func TestThemeMarkRowWash(t *testing.T) {
 
 // visual is the highlight BACKGROUND behind fg text (marked columns, visual
 // row selection). Terminal selectionBackground is often inverted on light
-// schemes; every theme must keep visual/fg above WCAG AA.
+// schemes; every theme must keep visual/fg above WCAG AA. applyPalette may
+// strengthen a faint visual via deriveVisualRowBg.
 func TestThemeVisualForegroundContrast(t *testing.T) {
 	for name, p := range themes {
 		ratio := contrastRatio(string(p.visual), string(p.fg))
@@ -197,6 +198,33 @@ func TestThemeVisualForegroundContrast(t *testing.T) {
 			t.Errorf("theme %q: visual/fg contrast %.2f < 4.5 (visual=%s fg=%s)",
 				name, ratio, p.visual, p.fg)
 		}
+	}
+}
+
+// Derived visual wash (used for V selection) must stay readable and, on light
+// themes with a near-white selectionBackground, use a primary→bg wash at
+// mark-row strength — distinct from the teal mark-row tint.
+func TestThemeVisualRowWash(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	for name, p := range themes {
+		wash := deriveVisualRowBg(p)
+		if vsFg := contrastRatio(string(wash), string(p.fg)); vsFg < 4.5 {
+			t.Errorf("theme %q: visualRow/fg %.2f < 4.5 (visualRow=%s fg=%s)",
+				name, vsFg, wash, p.fg)
+		}
+	}
+	gh := themes["git-hub-light-default"]
+	wash := deriveVisualRowBg(gh)
+	markWash := deriveMarkRowBg(gh)
+	if vsBg := contrastRatio(string(wash), string(gh.bg)); vsBg < markRowBgMinContrast {
+		t.Fatalf("git-hub-light-default visualRow/bg %.2f < %.2f (visualRow=%s raw visual=%s)",
+			vsBg, markRowBgMinContrast, wash, gh.visual)
+	}
+	if wash == markWash {
+		t.Fatalf("git-hub-light-default visualRow should not equal markRow (%s)", wash)
+	}
+	if wash == gh.visual {
+		t.Fatalf("git-hub-light-default should strengthen faint visual %s", gh.visual)
 	}
 }
 

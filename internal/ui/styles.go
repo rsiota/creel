@@ -84,6 +84,8 @@ var (
 	colorMark            lipgloss.Color
 	colorSearch          lipgloss.Color
 	colorSearchMatch     lipgloss.Color
+	// Wash behind visual-mode rows and marked columns. May be strengthened
+	// from the theme's raw visual when that tint is too faint on light bgs.
 	colorVisual          lipgloss.Color
 	colorCursorRow       lipgloss.Color
 	colorEdit            lipgloss.Color
@@ -175,7 +177,6 @@ func applyPalette(p colorPalette) {
 	colorMark = p.mark
 	colorSearch = p.search
 	colorSearchMatch = p.searchMatch
-	colorVisual = p.visual
 	colorCursorRow = p.cursorRow
 	colorEdit = p.edit
 	colorWarn = p.warn
@@ -207,6 +208,10 @@ func applyPalette(p colorPalette) {
 	colorBool = mixColors(p.fg, p.bg, 0.30)
 	colorDirty = deriveDirtyBg(p)
 	colorMarkRow = deriveMarkRowBg(p)
+	// Visual / marked-column wash: keep theme visual when it already pops;
+	// otherwise a primary→bg wash at mark-row strength (blue selection, not
+	// teal marks — so V and space marks stay distinguishable on light themes).
+	colorVisual = deriveVisualRowBg(p)
 
 	// ERD selection: vivid for the selected card + arrows that touch it; dim
 	// for everything else. Reusing muted/primary collapses on light themes
@@ -404,12 +409,31 @@ func deriveDirtyBg(p colorPalette) lipgloss.Color {
 // Prefer a clear tint vs the panel bg, but never so strong that body text
 // drops below WCAG AA (some themes have a low-contrast mark hue).
 func deriveMarkRowBg(p colorPalette) lipgloss.Color {
-	best := mixColors(p.mark, p.bg, markRowBgBlend)
+	return deriveTintWash(p.mark, p)
+}
+
+// deriveVisualRowBg picks the wash behind visual-mode rows and marked columns.
+// Keep the theme's visual when it already separates from the panel bg; faint
+// light-theme selectionBackgrounds (GitHub Light #f0f6fd on white) get a
+// primary→bg wash at mark-row strength so V pops without sharing the teal
+// mark hue — selection (blue) stays distinct from space marks (teal).
+func deriveVisualRowBg(p colorPalette) lipgloss.Color {
+	if contrastRatio(string(p.visual), string(p.fg)) >= 4.5 &&
+		contrastRatio(string(p.visual), string(p.bg)) >= markRowBgMinContrast {
+		return p.visual
+	}
+	return deriveTintWash(p.primary, p)
+}
+
+// deriveTintWash mixes tint toward bg, picking the blend with the strongest
+// bg distinction that still keeps body text at WCAG AA.
+func deriveTintWash(tint lipgloss.Color, p colorPalette) lipgloss.Color {
+	best := mixColors(tint, p.bg, markRowBgBlend)
 	bestVsBg := -1.0
 	for _, t := range []float64{
 		0.65, 0.70, 0.75, 0.78, 0.82, 0.85, 0.88, 0.90, 0.93, 0.95, 0.97, 0.98, 0.99,
 	} {
-		cand := mixColors(p.mark, p.bg, t)
+		cand := mixColors(tint, p.bg, t)
 		if contrastRatio(string(cand), string(p.fg)) < 4.5 {
 			continue
 		}
@@ -422,8 +446,8 @@ func deriveMarkRowBg(p colorPalette) lipgloss.Color {
 	if bestVsBg >= 0 {
 		return best
 	}
-	// Rare themes where mark/fg can't coexist as a wash (e.g. coloured fg on
-	// light bg): fall back to an existing soft panel tint that keeps AA.
+	// Rare themes where tint/fg can't coexist as a wash: fall back to an
+	// existing soft panel tint that keeps AA.
 	for _, cand := range []lipgloss.Color{p.cursorRow, p.highlight, p.stripe, p.bg} {
 		if contrastRatio(string(cand), string(p.fg)) >= 4.5 {
 			return cand
