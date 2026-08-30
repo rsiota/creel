@@ -102,7 +102,7 @@ func TestHintDescriptionLookup(t *testing.T) {
 	cases := map[string]string{
 		"j":      "move cursor",
 		"ctrl+s": "save edits",
-		"V":      "visual mode (select range)",
+		"V":      "visual mode (select range; p fills column)",
 	}
 	for key, want := range cases {
 		if got := m.hintDescription(key); got != want {

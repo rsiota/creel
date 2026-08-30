@@ -390,6 +390,11 @@ type Model struct {
 	resultsPendingY bool
 	resultsPendingD bool // dd double-tap state for row deletion
 
+	// yank holds the last cell copied with yy / :copy. Fill (visual/marked p)
+	// prefers this over the system clipboard so yy→mark→p stays reliable when
+	// the OS pasteboard is empty, flaky, or overwritten.
+	yank string
+
 	// Wheel coalescing: rapid wheel events accumulate here and are applied in
 	// a single scroll on wheelTickMsg, so a momentum-scroll flood can't outrun
 	// the render loop. wheelAccum is signed (+ = scroll down, - = up).
@@ -3851,12 +3856,13 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case "p":
 				m.resultsPendingG = false
 				m.resultsPendingY = false
-				if !m.results.IsEditable() || !m.results.HasPrimaryKey() || m.inspector.IsVisible() {
+				if !m.results.IsEditable() || !m.results.HasPrimaryKey() {
 					return m, nil
 				}
 				// With marks, fill the current column across marked rows
-				// (dirty only). Without marks, paste clipboard into the
-				// cursor cell and save immediately.
+				// (dirty only). Without marks, paste into the cursor cell
+				// and save immediately. Allowed even when the inspector is
+				// open — focus is still on results here.
 				if m.results.MarkCount() > 0 {
 					m.fillMarkedRows()
 					return m, nil
@@ -3870,11 +3876,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				clip, err := clipboard.ReadAll()
-				if err != nil || clip == "" {
+				val := ""
+				if err == nil && clip != "" {
+					val = clip
+				} else {
+					val = m.yank
+				}
+				if val == "" {
 					m.exportMsg = "clipboard is empty"
 					return m, copyFeedbackCmd()
 				}
-				m.results.SetDirtyCell(m.results.CursorRow(), m.results.CursorCol(), clip)
+				m.results.SetDirtyCell(m.results.CursorRow(), m.results.CursorCol(), val)
 				return m, m.saveChanges()
 			case "s":
 				if m.resultsPendingG {

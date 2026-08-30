@@ -9,19 +9,36 @@ import (
 	"github.com/rsiota/creel/internal/db"
 )
 
-// copyCursorCell writes the cell under the cursor to the clipboard and starts
-// the flash/confirmation feedback. Shared by the yy chord and :copy.
+// copyCursorCell writes the cell under the cursor to the internal yank
+// register and the system clipboard, then starts flash/confirmation feedback.
+// Shared by the yy chord and :copy.
 func (m *Model) copyCursorCell() tea.Cmd {
 	if !m.results.HasResult() || m.results.NumRows() == 0 {
 		m.schemaMsg = "nothing to copy"
 		return nil
 	}
-	if err := clipboard.WriteAll(m.results.CursorCellValue()); err != nil {
+	val := m.results.CursorCellValue()
+	m.yank = val
+	if err := clipboard.WriteAll(val); err != nil {
+		// Keep the internal yank so fill/paste still work without the OS board.
 		m.schemaMsg = "clipboard: " + err.Error()
-		return nil
+		m.results.StartCopyFeedback()
+		return copyFeedbackCmd()
 	}
 	m.results.StartCopyFeedback()
 	return copyFeedbackCmd()
+}
+
+// resolveFillValue picks the value for visual/marked fill: last yy yank first,
+// then the system clipboard, then fallback (cursor or visual-anchor cell).
+func (m Model) resolveFillValue(fallback string) string {
+	if m.yank != "" {
+		return m.yank
+	}
+	if clip, err := clipboard.ReadAll(); err == nil && clip != "" {
+		return clip
+	}
+	return fallback
 }
 
 func (m *Model) pushQueryStack() {
@@ -858,8 +875,8 @@ func (m *Model) commitVisualMarks() {
 }
 
 // fillVisualRange stages the fill value into the current column across the
-// visual row range. Prefers a non-empty clipboard (from yy); otherwise uses
-// the cell at the visual anchor. Stages dirty cells only — does not save.
+// visual row range. Prefers the last yy yank, then the system clipboard, then
+// the visual-anchor cell. Stages dirty cells only — does not save.
 func (m *Model) fillVisualRange() {
 	if !m.results.IsVisualMode() {
 		return
@@ -881,17 +898,20 @@ func (m *Model) fillVisualRange() {
 		return
 	}
 
-	val := ""
-	if clip, err := clipboard.ReadAll(); err == nil && clip != "" {
-		val = clip
-	} else {
-		anchor := m.results.visualAnchor
+	anchor := m.results.visualAnchor
+	fallback := ""
+	if !m.results.IsBlobCell(anchor, col) {
+		fallback = m.results.RowValue(anchor, col)
+	}
+	val := m.resolveFillValue(fallback)
+	if val == "" {
+		m.results.ClearVisualMode()
 		if m.results.IsBlobCell(anchor, col) {
-			m.results.ClearVisualMode()
 			m.schemaMsg = "binary cell — use :saveblob to export"
 			return
 		}
-		val = m.results.RowValue(anchor, col)
+		m.schemaMsg = "nothing to fill"
+		return
 	}
 
 	n := m.results.FillVisualColumn(col, val)
@@ -904,7 +924,7 @@ func (m *Model) fillVisualRange() {
 }
 
 // fillMarkedRows stages the fill value into the current column across marked
-// rows. Prefers a non-empty clipboard (from yy); otherwise uses the cursor
+// rows. Prefers the last yy yank, then the system clipboard, then the cursor
 // cell. Stages dirty cells only — does not save. Marks are kept.
 func (m *Model) fillMarkedRows() {
 	if m.results.MarkCount() == 0 {
@@ -924,16 +944,19 @@ func (m *Model) fillMarkedRows() {
 		return
 	}
 
-	val := ""
-	if clip, err := clipboard.ReadAll(); err == nil && clip != "" {
-		val = clip
-	} else {
-		row := m.results.CursorRow()
+	row := m.results.CursorRow()
+	fallback := ""
+	if !m.results.IsBlobCell(row, col) {
+		fallback = m.results.RowValue(row, col)
+	}
+	val := m.resolveFillValue(fallback)
+	if val == "" {
 		if m.results.IsBlobCell(row, col) {
 			m.schemaMsg = "binary cell — use :saveblob to export"
 			return
 		}
-		val = m.results.RowValue(row, col)
+		m.schemaMsg = "nothing to fill"
+		return
 	}
 
 	n := m.results.FillMarkedColumn(col, val)

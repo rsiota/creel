@@ -179,6 +179,7 @@ func TestVisualModeClearedOnTableSwitch(t *testing.T) {
 func TestVisualModeFillFromAnchor(t *testing.T) {
 	m := newResultsWorkspaceModel()
 	_ = clipboard.WriteAll("") // prefer anchor when clipboard empty
+	m.yank = ""
 
 	// Move to name column (col 1).
 	m = press(m, keyRunes('l'))
@@ -203,6 +204,7 @@ func TestVisualModeFillFromAnchor(t *testing.T) {
 func TestVisualModeFillRefusesPK(t *testing.T) {
 	m := newResultsWorkspaceModel()
 	_ = clipboard.WriteAll("")
+	m.yank = ""
 
 	// Stay on id (PK) column.
 	m = press(m, keyRunes('V'))
@@ -219,6 +221,7 @@ func TestVisualModeFillRefusesPK(t *testing.T) {
 
 func TestVisualModeFillFromClipboard(t *testing.T) {
 	m := newResultsWorkspaceModel()
+	m.yank = ""
 	if err := clipboard.WriteAll("filled"); err != nil {
 		t.Skipf("clipboard unavailable: %v", err)
 	}
