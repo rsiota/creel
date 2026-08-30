@@ -1459,38 +1459,44 @@ func (r *ResultsTable) computeColWidths() {
 	}
 
 	r.colWidths = make([]int, len(r.columns))
-
-	for i, col := range r.columns {
-		w := runeLen(col)
-		// Reserve room for PK suffix ("*") and sort indicator (" ↑"/" ↓")
-		// that are appended at render time. The sort indicator can appear
-		// on any column, so always reserve space for it.
-		if r.editable && r.isPKColumn(col) {
-			w += runeLen(" *")
-		}
-		w += runeLen(" ↑")
-		r.colWidths[i] = w
+	for i := range r.columns {
+		r.colWidths[i] = r.autoFitColWidth(i)
 	}
+}
 
+// autoFitColWidth returns the content-based width for col (capped at
+// maxCellWidth), matching computeColWidths for a single column.
+func (r ResultsTable) autoFitColWidth(col int) int {
+	if col < 0 || col >= len(r.columns) {
+		return minColWidth
+	}
+	name := r.columns[col]
+	w := runeLen(name)
+	if r.editable && r.isPKColumn(name) {
+		w += runeLen(" *")
+	}
+	w += runeLen(" ↑")
 	for _, row := range r.rows {
-		for i := 0; i < len(r.columns) && i < len(row); i++ {
-			l := runeLen(row[i])
-			if r.isBooleanDisplayCol(i) {
-				l = booleanDisplayWidth(row[i])
-			} else if r.isDatetimeDisplayCol(i) {
-				l = datetimeDisplayWidth(row[i])
-			}
-			if l > r.colWidths[i] {
-				r.colWidths[i] = l
-			}
+		if col >= len(row) {
+			continue
+		}
+		l := runeLen(row[col])
+		if r.isBooleanDisplayCol(col) {
+			l = booleanDisplayWidth(row[col])
+		} else if r.isDatetimeDisplayCol(col) {
+			l = datetimeDisplayWidth(row[col])
+		}
+		if l > w {
+			w = l
 		}
 	}
-
-	for i := range r.colWidths {
-		if r.colWidths[i] > maxCellWidth {
-			r.colWidths[i] = maxCellWidth
-		}
+	if w > maxCellWidth {
+		w = maxCellWidth
 	}
+	if w < minColWidth {
+		w = minColWidth
+	}
+	return w
 }
 
 // ApplyRememberedWidths raises any column's width to at least the remembered
@@ -1556,6 +1562,23 @@ func (r *ResultsTable) ResizeColumn(delta int) (newWidth int, ok bool) {
 	if w > maxManualCellWidth {
 		w = maxManualCellWidth
 	}
+	if w == r.colWidths[col] {
+		return w, false
+	}
+	r.colWidths[col] = w
+	r.ensureCursorVisible()
+	return w, true
+}
+
+// ResetColumnWidth restores the cursor column to its content auto-fit width
+// (same basis as a fresh SetResult). Returns the new width and whether it
+// changed from the previous value.
+func (r *ResultsTable) ResetColumnWidth() (newWidth int, ok bool) {
+	col := r.cursorCol
+	if col < 0 || col >= len(r.colWidths) {
+		return 0, false
+	}
+	w := r.autoFitColWidth(col)
 	if w == r.colWidths[col] {
 		return w, false
 	}

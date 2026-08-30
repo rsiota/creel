@@ -195,6 +195,84 @@ func TestResizeColumn(t *testing.T) {
 	}
 }
 
+func TestResetColumnWidth(t *testing.T) {
+	r := NewResultsTable()
+	r.SetResult(
+		[]string{"id", "email"},
+		[][]string{{"1", "a@b.c"}},
+		"",
+	)
+	r.SetCursor(0, 1)
+	auto := r.ColWidth(1)
+	if _, ok := r.ResizeColumn(colResizeStep * 10); !ok {
+		t.Fatal("expected widen")
+	}
+	if r.ColWidth(1) <= auto {
+		t.Fatalf("expected wider than auto %d, got %d", auto, r.ColWidth(1))
+	}
+	w, ok := r.ResetColumnWidth()
+	if !ok || w != auto {
+		t.Fatalf("reset: ok=%v w=%d, want %d", ok, w, auto)
+	}
+	if _, ok := r.ResetColumnWidth(); ok {
+		t.Error("second reset should report unchanged")
+	}
+}
+
+func TestResetColumnWidthClearsOverrideAndFloor(t *testing.T) {
+	m := NewModel(&config.Config{})
+	m.tables = []string{"users"}
+	m.results.SetResult(
+		[]string{"id", "email"},
+		[][]string{{"1", "alice@example.com"}},
+		"",
+	)
+	m.results.SetEditable("users", []string{"id"})
+	m.results.SetCursor(0, 1)
+	m.syncColWidthMemory()
+	auto := m.results.ColWidth(1)
+
+	m.resizeResultsColumn(colResizeStep * 8)
+	wide := m.results.ColWidth(1)
+	if wide <= auto {
+		t.Fatalf("expected widen above auto %d, got %d", auto, wide)
+	}
+	if m.colOverridesFor("users")["email"] != wide {
+		t.Fatalf("override missing after widen")
+	}
+
+	m.resetResultsColumnWidth()
+	if m.results.ColWidth(1) != auto {
+		t.Errorf("width after reset = %d, want auto %d", m.results.ColWidth(1), auto)
+	}
+	if m.colOverridesFor("users") != nil && m.colOverridesFor("users")["email"] != 0 {
+		t.Errorf("override should be cleared, got %v", m.colOverridesFor("users"))
+	}
+	if got := m.colWidthsFor("users")["email"]; got != auto {
+		t.Errorf("floor after reset = %d, want %d", got, auto)
+	}
+
+	// Sync must not re-inflate from a stale floor.
+	m.syncColWidthMemory()
+	if m.results.ColWidth(1) != auto {
+		t.Errorf("after sync width = %d, want auto %d", m.results.ColWidth(1), auto)
+	}
+}
+
+func TestResetColumnWidthKeybinding(t *testing.T) {
+	m := newResultsWorkspaceModel()
+	m.results.SetCursor(0, 1) // name
+	auto := m.results.ColWidth(1)
+	m.resizeResultsColumn(colResizeStep * 6)
+	if m.results.ColWidth(1) <= auto {
+		t.Fatal("expected widen before reset key")
+	}
+	m = press(m, keyRunes('='))
+	if m.results.ColWidth(1) != auto {
+		t.Errorf("after = width = %d, want %d", m.results.ColWidth(1), auto)
+	}
+}
+
 func TestManualWidthOverrideSticksAcrossSync(t *testing.T) {
 	m := NewModel(&config.Config{})
 	m.tables = []string{"users"}

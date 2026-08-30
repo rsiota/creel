@@ -126,6 +126,7 @@ In the add/edit form:
 | `H`        | Hide column                                  |
 | `g H`      | Show all columns                             |
 | `<` / `>`  | Narrow / widen column (or drag header `│`)   |
+| `=`        | Reset column width to auto-fit               |
 | `v`        | Column visibility overlay                    |
 | `:`        | Ex command line (`:q`, `:sort`, `:goto`, …; column jump in results) |
 | `y y`      | Copy cell                                    |

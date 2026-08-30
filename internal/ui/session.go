@@ -326,6 +326,66 @@ func (m *Model) setColOverride(table, col string, width int) {
 	m.mergeColWidths(table, map[string]int{key: width})
 }
 
+// clearColOverride removes a manual < / > / drag width for table.col.
+func (m *Model) clearColOverride(table, col string) {
+	if table == "" || col == "" || m.colWidthOverride == nil {
+		return
+	}
+	cur := lookupColWidthMap(m.colWidthOverride, table)
+	if cur == nil {
+		return
+	}
+	for key := range cur {
+		if strings.EqualFold(key, col) {
+			delete(cur, key)
+			break
+		}
+	}
+	if len(cur) == 0 {
+		for name := range m.colWidthOverride {
+			if strings.EqualFold(name, table) {
+				delete(m.colWidthOverride, name)
+				break
+			}
+		}
+	}
+}
+
+// setColWidthMemExact sets the grow-only floor for table.col to width
+// (replacing any higher remembered value). Used when resetting a column so a
+// prior manual widen does not keep the floor inflated.
+func (m *Model) setColWidthMemExact(table, col string, width int) {
+	if table == "" || col == "" || width <= 0 {
+		return
+	}
+	if m.colWidthMem == nil {
+		m.colWidthMem = make(map[string]map[string]int)
+	}
+	cur, ok := m.colWidthMem[table]
+	if !ok {
+		for name, w := range m.colWidthMem {
+			if strings.EqualFold(name, table) {
+				cur = w
+				ok = true
+				table = name
+				break
+			}
+		}
+	}
+	if !ok {
+		cur = make(map[string]int)
+		m.colWidthMem[table] = cur
+	}
+	key := col
+	for existing := range cur {
+		if strings.EqualFold(existing, col) {
+			key = existing
+			break
+		}
+	}
+	cur[key] = width
+}
+
 // resizeResultsColumn adjusts the cursor column width and persists an override
 // when the grid is backed by a named table.
 func (m *Model) resizeResultsColumn(delta int) {
@@ -340,6 +400,21 @@ func (m *Model) resizeResultsColumn(delta int) {
 	table = m.canonicalTableName(table)
 	col := m.results.ColumnName(m.results.CursorCol())
 	m.setColOverride(table, col, w)
+}
+
+// resetResultsColumnWidth restores the cursor column to content auto-fit,
+// clears any manual override, and resets the remembered floor for that column
+// so a prior widen does not stick on the next sync.
+func (m *Model) resetResultsColumnWidth() {
+	w, _ := m.results.ResetColumnWidth()
+	table := m.results.SourceTable()
+	col := m.results.ColumnName(m.results.CursorCol())
+	if table == "" || col == "" || w <= 0 {
+		return
+	}
+	table = m.canonicalTableName(table)
+	m.clearColOverride(table, col)
+	m.setColWidthMemExact(table, col, w)
 }
 
 // canonicalTableName returns the sidebar spelling of table when known.

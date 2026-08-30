@@ -4064,6 +4064,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingY = false
 				m.resizeResultsColumn(-colResizeStep)
 				return m, nil
+			case "=":
+				m.resultsPendingG = false
+				m.resultsPendingY = false
+				m.resetResultsColumnWidth()
+				return m, nil
 			case "v":
 				// v — open the column-visibility overlay.
 				m.resultsPendingG = false
