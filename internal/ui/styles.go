@@ -109,8 +109,9 @@ var (
 	colorStatusQuiet  lipgloss.Color
 	// Boolean ●/○ glyphs: default fg softened toward bg (~70% strength).
 	colorBool lipgloss.Color
-	// Soft primary wash behind unsaved (dirty) result cells — lighter than the
-	// cursor's solid primary so edits read as touched without competing.
+	// Soft accent wash behind unsaved (dirty) result cells — mark-row strength
+	// so edits read clearly on light themes, purple/accent hue so dirty stays
+	// distinct from blue visual selection and teal space marks.
 	colorDirty lipgloss.Color
 	// Soft mark→bg wash behind space-marked result rows so the selection reads
 	// as a row tint (not just teal text / ◆), especially on near-white themes.
@@ -379,30 +380,19 @@ const overlayDimMinBgContrast = 1.7
 // recessed next to the answer, but strong enough to read comfortably (~2.5).
 const thinkingDimMinBgContrast = 2.5
 
-// dirtyBgBlend is how far to wash primary toward bg for unsaved-cell
-// backgrounds. Mostly bg so colorFg stays readable; enough primary that the
-// cell still reads as touched (and lighter than the cursor's solid primary).
-const dirtyBgBlend = 0.85
-
-// dirtyBgMinContrast is the minimum wash-vs-bg contrast so dirty cells don't
-// collapse into the panel on near-white / near-black schemes.
-const dirtyBgMinContrast = 1.08
-
-// markRowBgBlend is the preferred mark→bg wash for space-marked result rows
-// when both bg distinction and fg readability can be met.
+// markRowBgBlend is the preferred tint→bg wash for mark / visual / dirty
+// backgrounds when both bg distinction and fg readability can be met.
 const markRowBgBlend = 0.78
 
-// markRowBgMinContrast floors mark-row wash vs panel bg when possible
-// (GitHub Light needs a clearer step than teal text alone provided).
+// markRowBgMinContrast floors selection/edit washes vs panel bg when possible
+// (GitHub Light needs a clearer step than near-white tints alone provided).
 const markRowBgMinContrast = 1.12
 
-// deriveDirtyBg builds the soft primary wash used behind dirty result cells.
+// deriveDirtyBg builds the soft accent wash behind unsaved result cells.
+// Same strength search as mark/visual rows, but tinted from accent so dirty
+// (purple) stays distinct from visual (blue) and marks (teal).
 func deriveDirtyBg(p colorPalette) lipgloss.Color {
-	wash := mixColors(p.primary, p.bg, dirtyBgBlend)
-	if contrastRatio(string(wash), string(p.bg)) < dirtyBgMinContrast {
-		wash = mixColors(p.primary, p.bg, 0.70)
-	}
-	return wash
+	return deriveTintWash(p.accent, p)
 }
 
 // deriveMarkRowBg builds the soft mark wash behind space-marked result rows.

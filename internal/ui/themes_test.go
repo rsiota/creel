@@ -187,6 +187,28 @@ func TestThemeMarkRowWash(t *testing.T) {
 	}
 }
 
+// Derived dirty wash must stay readable and, on light themes, match mark-row
+// strength while using accent (not primary/mark) so edits stay distinct.
+func TestThemeDirtyWash(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	for name, p := range themes {
+		wash := deriveDirtyBg(p)
+		if vsFg := contrastRatio(string(wash), string(p.fg)); vsFg < 4.5 {
+			t.Errorf("theme %q: dirty/fg %.2f < 4.5 (dirty=%s fg=%s)",
+				name, vsFg, wash, p.fg)
+		}
+	}
+	gh := themes["git-hub-light-default"]
+	wash := deriveDirtyBg(gh)
+	if vsBg := contrastRatio(string(wash), string(gh.bg)); vsBg < markRowBgMinContrast {
+		t.Fatalf("git-hub-light-default dirty/bg %.2f < %.2f (dirty=%s)",
+			vsBg, markRowBgMinContrast, wash)
+	}
+	if wash == deriveMarkRowBg(gh) || wash == deriveVisualRowBg(gh) {
+		t.Fatalf("git-hub-light-default dirty should differ from mark/visual (dirty=%s)", wash)
+	}
+}
+
 // visual is the highlight BACKGROUND behind fg text (marked columns, visual
 // row selection). Terminal selectionBackground is often inverted on light
 // schemes; every theme must keep visual/fg above WCAG AA. applyPalette may

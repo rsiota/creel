@@ -813,15 +813,24 @@ func TestResultsTableFKCellColorNotHeader(t *testing.T) {
 	}
 }
 
-// Dirty cells use a soft primary wash + fg text — not the old reverse-video
-// warn brown, which reads as a heavy dark block on GitHub Light.
-func TestDirtyCellPrimaryWash(t *testing.T) {
+// Dirty cells use an accent→bg wash at mark-row strength (not the old faint
+// primary mix, and not reverse-video warn). Distinct from blue visual / teal marks.
+func TestDirtyCellAccentWash(t *testing.T) {
 	defer applyPalette(defaultPalette)
 	prev := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(prev)
 
 	applyPalette(themes["git-hub-light-default"])
+	if vsBg := contrastRatio(string(colorDirty), string(colorBg)); vsBg < markRowBgMinContrast {
+		t.Fatalf("git-hub-light dirty/bg %.2f < %.2f (dirty=%s)",
+			vsBg, markRowBgMinContrast, colorDirty)
+	}
+	if colorDirty == colorMarkRow || colorDirty == colorVisual {
+		t.Fatalf("dirty wash should differ from mark/visual; dirty=%s mark=%s visual=%s",
+			colorDirty, colorMarkRow, colorVisual)
+	}
+
 	r := NewResultsTable()
 	r.SetSize(80, 12)
 	r.SetResult(
@@ -837,7 +846,7 @@ func TestDirtyCellPrimaryWash(t *testing.T) {
 	view := r.View()
 	dirtyStyle := sgrPrefix(lipgloss.NewStyle().Foreground(colorFg).Background(colorDirty))
 	if !strings.Contains(view, dirtyStyle) {
-		t.Fatalf("dirty cell missing primary wash style %q\nview:\n%s", dirtyStyle, view)
+		t.Fatalf("dirty cell missing accent wash style %q\nview:\n%s", dirtyStyle, view)
 	}
 	oldWarn := sgrPrefix(lipgloss.NewStyle().Foreground(colorBg).Background(colorWarn))
 	if strings.Contains(view, oldWarn) {
