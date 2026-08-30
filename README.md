@@ -1,8 +1,8 @@
+<h1>
 <p align="center">
-  <img src="docs/images/logo.svg" alt="creel" width="160">
-</p>
-
-# creel
+  <img src="docs/images/logo.svg" alt="Logo" width="128">
+  <br>creel
+</h1>
 
 <p align="center">
   <a href="https://github.com/rsiota/creel/actions/workflows/ci.yml"><img src="https://github.com/rsiota/creel/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
