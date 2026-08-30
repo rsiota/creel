@@ -222,10 +222,11 @@ erDiagram
 ## Editing
 
 - **Inline editing** — edit cells directly, insert rows, clone rows, paste from
-  clipboard. In visual mode (`V` + `j`/`k`), `p` fills the current column across
-  the selection (clipboard if set, else the anchor cell) without auto-saving —
-  review dirty cells, then `:w` / `ctrl+s`. Copy helpers: `y y` (cell), `y r` /
-  `:copyrow` (rows as TSV for Sheets/Slack), `Y` / `:copyinsert` (rows as INSERT).
+  clipboard. Fill a column without auto-saving via visual mode (`V` + `j`/`k` +
+  `p`) or marked rows (space + `p`): uses clipboard if set, else the anchor /
+  cursor cell. Review dirty cells, then `:w` / `ctrl+s`. Copy helpers: `y y`
+  (cell), `y r` / `:copyrow` (rows as TSV for Sheets/Slack), `Y` / `:copyinsert`
+  (rows as INSERT).
 - **Manual transactions** — `:begin` / `:commit` / `:rollback`, with optional
   isolation (`:begin serializable`, `:begin repeatable read`, `:begin read
   committed`, …). The status bar shows `TXN ●` (or `TXN S` / `TXN RR` / …).

@@ -3854,6 +3854,13 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if !m.results.IsEditable() || !m.results.HasPrimaryKey() || m.inspector.IsVisible() {
 					return m, nil
 				}
+				// With marks, fill the current column across marked rows
+				// (dirty only). Without marks, paste clipboard into the
+				// cursor cell and save immediately.
+				if m.results.MarkCount() > 0 {
+					m.fillMarkedRows()
+					return m, nil
+				}
 				colName := m.results.ColumnName(m.results.CursorCol())
 				if m.results.isPKColumn(colName) {
 					return m, nil

@@ -902,3 +902,44 @@ func (m *Model) fillVisualRange() {
 	}
 	m.schemaMsg = fmt.Sprintf("filled %d cells — :w to save", n)
 }
+
+// fillMarkedRows stages the fill value into the current column across marked
+// rows. Prefers a non-empty clipboard (from yy); otherwise uses the cursor
+// cell. Stages dirty cells only — does not save. Marks are kept.
+func (m *Model) fillMarkedRows() {
+	if m.results.MarkCount() == 0 {
+		return
+	}
+	if !m.results.IsEditable() || !m.results.HasPrimaryKey() {
+		m.schemaMsg = "results not editable"
+		return
+	}
+	col := m.results.CursorCol()
+	colName := m.results.ColumnName(col)
+	if colName == "" {
+		return
+	}
+	if m.results.isPKColumn(colName) {
+		m.schemaMsg = "cannot fill primary key column"
+		return
+	}
+
+	val := ""
+	if clip, err := clipboard.ReadAll(); err == nil && clip != "" {
+		val = clip
+	} else {
+		row := m.results.CursorRow()
+		if m.results.IsBlobCell(row, col) {
+			m.schemaMsg = "binary cell — use :saveblob to export"
+			return
+		}
+		val = m.results.RowValue(row, col)
+	}
+
+	n := m.results.FillMarkedColumn(col, val)
+	if n == 0 {
+		m.schemaMsg = "nothing to fill"
+		return
+	}
+	m.schemaMsg = fmt.Sprintf("filled %d cells — :w to save", n)
+}

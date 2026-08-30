@@ -276,7 +276,7 @@ func registry() []Section {
 				{"g g / G", []string{"g", "G"}, "top / bottom", "G"},
 				{"y y", []string{"y"}, "copy cell", "y"},
 				{"y r", []string{"y", "r"}, "copy rows as TSV (Sheets/Slack)", "yr"},
-				{"p", []string{"p"}, "paste clipboard (fill column in visual)", "p"},
+				{"p", []string{"p"}, "paste clipboard (fill marked/visual column)", "p"},
 				{"g d", []string{"g", "d"}, "follow foreign key", ""},
 				{"g b", []string{"g", "b"}, "go back", ""},
 				{"g r", []string{"g", "r"}, "relationship explorer (panel)", ""},

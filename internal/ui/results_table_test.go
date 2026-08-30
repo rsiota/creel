@@ -419,6 +419,44 @@ func TestResultsTableFillVisualColumn(t *testing.T) {
 	}
 }
 
+func TestResultsTableFillMarkedColumn(t *testing.T) {
+	r := NewResultsTable()
+	r.SetSize(80, 20)
+	r.SetResult(
+		[]string{"id", "name"},
+		[][]string{
+			{"1", "alice"},
+			{"2", "bob"},
+			{"3", "carol"},
+		},
+		"3 rows",
+	)
+	r.SetEditable("users", []string{"id"})
+
+	if n := r.FillMarkedColumn(1, "alice"); n != 0 {
+		t.Fatalf("no marks: fill should be 0, got %d", n)
+	}
+
+	r.cursorRow = 1
+	r.ToggleMark() // bob
+	r.cursorRow = 2
+	r.ToggleMark() // carol
+
+	n := r.FillMarkedColumn(1, "alice")
+	if n != 2 {
+		t.Fatalf("fill count = %d, want 2", n)
+	}
+	if !r.IsDirty(1, 1) || !r.IsDirty(2, 1) {
+		t.Error("expected marked rows dirty")
+	}
+	if r.IsDirty(0, 1) {
+		t.Error("unmarked row should not be dirty")
+	}
+	if r.MarkCount() != 2 {
+		t.Errorf("marks should remain, got %d", r.MarkCount())
+	}
+}
+
 func TestResultsTableClearAndSetResult(t *testing.T) {
 	r := NewResultsTable()
 	r.SetResult(

@@ -130,7 +130,7 @@ In the add/edit form:
 | `:`        | Ex command line (`:q`, `:sort`, `:goto`, …; column jump in results) |
 | `y y`      | Copy cell                                    |
 | `y r`      | Copy rows as TSV (Sheets/Slack; same as `:copyrow`) |
-| `p`        | Paste clipboard to cell / fill visual range  |
+| `p`        | Paste clipboard; fill marked or visual column |
 | `Y`        | Copy rows as INSERT statements               |
 | `P`        | Clone marked/cursor row                      |
 | `x`        | Export current page to CSV                 |

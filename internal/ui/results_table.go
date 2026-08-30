@@ -938,6 +938,31 @@ func (r *ResultsTable) FillVisualColumn(col int, value string) int {
 	return n
 }
 
+// FillMarkedColumn stages value into col for every marked row in the current
+// result page. Blob cells and cells that already hold value are skipped.
+// Returns the number of cells staged. Marks are left intact.
+func (r *ResultsTable) FillMarkedColumn(col int, value string) int {
+	if col < 0 || col >= len(r.columns) || r.MarkCount() == 0 {
+		return 0
+	}
+	value = r.normalizeEditValue(col, value)
+	n := 0
+	for row := 0; row < len(r.rows); row++ {
+		if !r.IsMarkedRow(row) {
+			continue
+		}
+		if r.IsBlobCell(row, col) {
+			continue
+		}
+		if r.RowValue(row, col) == value {
+			continue
+		}
+		r.SetDirtyCell(row, col, value)
+		n++
+	}
+	return n
+}
+
 // isVisualRow reports whether rowIdx falls within the active visual range.
 func (r ResultsTable) isVisualRow(rowIdx int) bool {
 	if !r.visualActive {
