@@ -11,15 +11,43 @@ commits, so it can come up empty).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-30
+
+Results editing and layout polish: fill-down, column resize, pinned PKs, richer
+SQL completion, and light-theme wash fixes.
+
 ### Added
+- Results fill-down: in visual mode (`V` + `j`/`k`) or with space-marked rows,
+  `p` stages the current column from the last `yy` yank (else clipboard, else
+  anchor/cursor cell) without auto-saving — review dirty cells, then `:w` /
+  `ctrl+s`.
+- Resize result columns with `<` / `>` or by dragging header separators; `=`
+  resets the cursor column to content auto-fit (clears manual overrides).
+- Leading primary-key columns stay pinned while scrolling horizontally.
+- Editor SQL completion: schema and schema-qualified table names; contextual
+  scoping for `SELECT` / `INSERT` / `SET`; muted kind labels; prefix/kind
+  ranking; Enter accepts path and ex-command popup selections.
+- `:sizes` — list tables by approximate row count and disk usage.
+- `:setnull` / clear datetime cells to `NULL`.
 - `inspector_open` setting / `:set inspector_open on|off` — open the row
   inspector by default when entering a workspace (also opens/closes immediately
   from `:set`).
+- Boolean cells render as soft `●` / `○` glyphs (display only).
+- Relationship explorer: glanceable titles next to row IDs; lookup cursor
+  highlight and Enter to open tables.
+- Session restore: panel layout and right-slot visibility.
 
 ### Fixed
+- Light themes: stronger visual-mode and dirty-cell washes (blue selection /
+  purple dirty / teal marks stay distinct); space-marked rows use a readable
+  mark wash; AI chain-of-thought stays dimmed.
+- Fill `p` works with the inspector open; prefers an internal `yy` yank so
+  marked/visual fill is reliable when the OS clipboard is flaky.
+- Completion: keep the popup inside the viewport; treat `$` as a word char and
+  lock `alias.` completion; highlight the selected completion row.
 - Transparent background: reset default-bg cells when transparency is on so
-  stale theme colour from a prior opaque frame does not linger (e.g. sidebar
-  borders on light themes after `:set transparent_background on`).
+  stale theme colour from a prior opaque frame does not linger.
+- Relationship explorer: remove FK cross-highlight tint noise.
 
 ## [0.3.1] - 2026-08-25
 
@@ -172,7 +200,8 @@ First public release. creel succeeds `gsql` (the project was renamed) and migrat
 - **Read-only mode** for safely pointing at production.
 - **Session restore**, per-connection query history & bookmarks, EXPLAIN plans, and ~570 themes.
 
-[Unreleased]: https://github.com/rsiota/creel/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/rsiota/creel/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/rsiota/creel/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/rsiota/creel/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/rsiota/creel/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rsiota/creel/compare/v0.1.1...v0.2.0
