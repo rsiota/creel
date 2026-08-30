@@ -1677,7 +1677,13 @@ func (r *ResultsTable) ensureCursorVisible() {
 	r.clampScrollRow()
 
 	// Horizontal: keep cursor column visible (skipping hidden columns).
-	for {
+	// Pinned PK columns are always in view when they fit.
+	if r.isPinnedCol(r.cursorCol) {
+		return
+	}
+	// Bound the search so a cursor that cannot fit beside pinned columns
+	// (narrow panel) cannot oscillate forever between scroll targets.
+	for n := 0; n < len(r.columns)+2; n++ {
 		vis := r.visibleColRange()
 		if len(vis) == 0 {
 			break
@@ -1692,17 +1698,15 @@ func (r *ResultsTable) ensureCursorVisible() {
 		if visible {
 			break
 		}
-		if r.cursorCol < vis[0] {
-			// Cursor is left of the visible window; scroll to it.
+		if r.cursorCol < r.scrollCol {
 			r.scrollCol = r.cursorCol
 			continue
 		}
-		// Cursor is right of the visible window; step right.
-		if r.scrollCol < len(r.colWidths)-1 {
-			r.scrollCol++
-		} else {
+		next := r.nextUnpinnedCol(r.scrollCol)
+		if next < 0 || next == r.scrollCol {
 			break
 		}
+		r.scrollCol = next
 	}
 }
 
@@ -1746,18 +1750,40 @@ func (r *ResultsTable) ScrollBy(rows int) {
 	}
 }
 
-// ScrollRight moves the visible columns right by one.
+// ScrollRight moves the visible columns right by one unpinned column.
 func (r *ResultsTable) ScrollRight() {
-	if r.scrollCol < len(r.colWidths)-1 {
-		r.scrollCol++
+	if next := r.nextUnpinnedCol(r.scrollCol); next >= 0 {
+		r.scrollCol = next
 	}
 }
 
-// ScrollLeft moves the visible columns left by one.
+// ScrollLeft moves the visible columns left by one unpinned column.
 func (r *ResultsTable) ScrollLeft() {
-	if r.scrollCol > 0 {
-		r.scrollCol--
+	if prev := r.prevUnpinnedCol(r.scrollCol); prev >= 0 {
+		r.scrollCol = prev
+	} else {
+		r.scrollCol = 0
 	}
+}
+
+// nextUnpinnedCol returns the next visible non-pinned column after from, or -1.
+func (r ResultsTable) nextUnpinnedCol(from int) int {
+	for i := from + 1; i < len(r.columns); i++ {
+		if !r.IsColumnHidden(i) && !r.isPinnedCol(i) {
+			return i
+		}
+	}
+	return -1
+}
+
+// prevUnpinnedCol returns the previous visible non-pinned column before from, or -1.
+func (r ResultsTable) prevUnpinnedCol(from int) int {
+	for i := from - 1; i >= 0; i-- {
+		if !r.IsColumnHidden(i) && !r.isPinnedCol(i) {
+			return i
+		}
+	}
+	return -1
 }
 
 // ScrollTop scrolls to the first row.
@@ -2027,8 +2053,9 @@ func renderEditInput(ti textinput.Model, width int, fg lipgloss.Color) string {
 		strings.Repeat(" ", pad)
 }
 
-// visibleColRange returns the start and end column indices that fit
-// within the available width, starting from scrollCol.
+// visibleColRange returns the column indices shown in the grid: pinned
+// primary-key columns first (always), then unpinned columns starting at
+// scrollCol, for as many as fit in the panel width.
 func (r ResultsTable) visibleColRange() []int {
 	// Each column renders as: " " + value(colWidth) + " " + "│" = colWidth + 3
 	// The leftmost "│" is 1 extra char.
@@ -2039,8 +2066,22 @@ func (r ResultsTable) visibleColRange() []int {
 
 	used := 0
 	var out []int
-	for i := r.scrollCol; i < len(r.colWidths); i++ {
-		if r.IsColumnHidden(i) {
+	pinned := r.pinnedCols()
+	for _, i := range pinned {
+		colW := r.colWidths[i] + 3
+		if used+colW > available && len(out) > 0 {
+			break
+		}
+		used += colW
+		out = append(out, i)
+	}
+
+	start := r.scrollCol
+	if start < 0 {
+		start = 0
+	}
+	for i := start; i < len(r.colWidths); i++ {
+		if r.IsColumnHidden(i) || r.isPinnedCol(i) {
 			continue
 		}
 		colW := r.colWidths[i] + 3
@@ -2052,6 +2093,35 @@ func (r ResultsTable) visibleColRange() []int {
 	}
 
 	return out
+}
+
+// pinnedCols returns the leading run of visible primary-key columns.
+// Only a left-side PK prefix is frozen (typical id / composite-key layout);
+// mid-table PK columns are not pulled left, so column order stays stable.
+func (r ResultsTable) pinnedCols() []int {
+	if len(r.pkColumns) == 0 || len(r.columns) == 0 {
+		return nil
+	}
+	var out []int
+	for i, name := range r.columns {
+		if r.IsColumnHidden(i) {
+			continue
+		}
+		if !r.isPKColumn(name) {
+			break
+		}
+		out = append(out, i)
+	}
+	return out
+}
+
+// isPinnedCol reports whether col is a visible primary-key column that
+// should stay fixed while scrolling horizontally.
+func (r ResultsTable) isPinnedCol(col int) bool {
+	if col < 0 || col >= len(r.columns) || r.IsColumnHidden(col) {
+		return false
+	}
+	return r.isPKColumn(r.columns[col])
 }
 
 // isPKColumn returns true if colName is a primary key column.
