@@ -225,7 +225,7 @@ func (r ResultsTable) IsCellTruncated(row, col int) bool {
 			val = disp
 		}
 	} else if r.isDatetimeDisplayCol(col) {
-		if c, ok := compactTimestamp(val); ok {
+		if c, ok := formatDatetimeDisplay(val, datetimeNow()); ok {
 			val = c
 		}
 	}

@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -45,56 +46,97 @@ func TestCompactTimestamp(t *testing.T) {
 	}
 }
 
-func TestResultsTableCompactsCreatedAt(t *testing.T) {
+func TestFormatDatetimeDisplayRelative(t *testing.T) {
+	now := time.Date(2026, 8, 30, 18, 0, 0, 0, time.Local)
+	cases := []struct {
+		in, want string
+	}{
+		{now.Add(-30 * time.Second).Format("2006-01-02 15:04:05"), "just now"},
+		{now.Add(-5 * time.Minute).Format("2006-01-02 15:04:05"), "5m ago"},
+		{now.Add(-3 * time.Hour).Format("2006-01-02 15:04:05"), "3h ago"},
+		{now.Add(-2 * 24 * time.Hour).Format("2006-01-02 15:04:05"), "2d ago"},
+		{now.Add(45 * time.Minute).Format("2006-01-02 15:04:05"), "in 45m"},
+		{now.Add(-10 * 24 * time.Hour).Format("2006-01-02 15:04:05"), now.Add(-10 * 24 * time.Hour).Format("2006-01-02 15:04")},
+		{now.Format("2006-01-02"), "today"},
+		{now.Add(-24 * time.Hour).Format("2006-01-02"), "yesterday"},
+		{now.Add(24 * time.Hour).Format("2006-01-02"), "tomorrow"},
+		{now.Add(-3 * 24 * time.Hour).Format("2006-01-02"), "3d ago"},
+		{"2020-01-15", "2020-01-15"},
+		{"14:32:05", "14:32"},
+	}
+	for _, tc := range cases {
+		got, ok := formatDatetimeDisplay(tc.in, now)
+		if !ok || got != tc.want {
+			t.Errorf("formatDatetimeDisplay(%q) = (%q, %v), want (%q, true)", tc.in, got, ok, tc.want)
+		}
+	}
+}
+
+func TestResultsTableShowsRelativeCreatedAt(t *testing.T) {
+	now := time.Date(2026, 8, 30, 18, 0, 0, 0, time.Local)
+	prev := datetimeNow
+	datetimeNow = func() time.Time { return now }
+	t.Cleanup(func() { datetimeNow = prev })
+
+	raw := now.Add(-2 * time.Hour).Format("2006-01-02 15:04:05") + ".123456"
 	r := NewResultsTable()
 	r.SetSize(100, 12)
 	r.SetResult(
 		[]string{"id", "created_at", "note"},
-		[][]string{{"1", "2026-08-21 14:32:05.123456", "hi"}},
+		[][]string{{"1", raw, "hi"}},
 		"1 row",
 	)
 	r.SetColumnTypes(map[string]string{"id": "INTEGER", "created_at": "TEXT", "note": "TEXT"})
 	r.SetCursor(0, 0)
 
 	view := ansi.Strip(r.View())
-	if strings.Contains(view, "14:32:05") {
-		t.Errorf("raw seconds should be dropped from display:\n%s", view)
+	if strings.Contains(view, "15:04:05") || strings.Contains(view, raw) {
+		t.Errorf("raw fractional timestamp should not appear:\n%s", view)
 	}
-	if !strings.Contains(view, "2026-08-21 14:32") {
-		t.Errorf("expected compact datetime:\n%s", view)
+	if !strings.Contains(view, "2h ago") {
+		t.Errorf("expected relative datetime:\n%s", view)
 	}
-	// Raw value preserved for yank / edit.
-	if got := r.RowValue(0, 1); got != "2026-08-21 14:32:05.123456" {
+	if got := r.RowValue(0, 1); got != raw {
 		t.Errorf("raw created_at = %q", got)
 	}
 }
 
-func TestResultsTableDatetimeColWidthUsesCompact(t *testing.T) {
+func TestResultsTableDatetimeColWidthUsesDisplay(t *testing.T) {
+	now := time.Date(2026, 8, 30, 18, 0, 0, 0, time.Local)
+	prev := datetimeNow
+	datetimeNow = func() time.Time { return now }
+	t.Cleanup(func() { datetimeNow = prev })
+
+	raw := now.Add(-2 * time.Hour).Format("2006-01-02 15:04:05") + ".123456789"
 	r := NewResultsTable()
 	r.SetResult(
 		[]string{"created_at"},
-		[][]string{{"2026-08-21 14:32:05.123456789"}},
+		[][]string{{raw}},
 		"1 row",
 	)
 	w := r.ColWidth(0)
-	compactW := runeLen("2026-08-21 14:32")
-	if w < compactW {
-		t.Fatalf("width %d < compact %d", w, compactW)
+	dispW := runeLen("2h ago")
+	if w < dispW {
+		t.Fatalf("width %d < display %d", w, dispW)
 	}
-	// Should not size to the full fractional string.
-	if w >= runeLen("2026-08-21 14:32:05.123456789") {
+	if w >= runeLen(raw) {
 		t.Errorf("width %d still sized to raw fractional timestamp", w)
 	}
 }
 
-func TestIsCellTruncatedUsesCompactDatetime(t *testing.T) {
+func TestIsCellTruncatedUsesDatetimeDisplay(t *testing.T) {
+	now := time.Date(2026, 8, 30, 18, 0, 0, 0, time.Local)
+	prev := datetimeNow
+	datetimeNow = func() time.Time { return now }
+	t.Cleanup(func() { datetimeNow = prev })
+
 	r := NewResultsTable()
 	r.SetResult(
 		[]string{"created_at"},
-		[][]string{{"2026-08-21 14:32:05.123456789"}},
+		[][]string{{now.Add(-2 * time.Hour).Format("2006-01-02 15:04:05") + ".123456789"}},
 		"1 row",
 	)
 	if r.IsCellTruncated(0, 0) {
-		t.Error("compact form fits column; should not report truncated")
+		t.Error("relative form fits column; should not report truncated")
 	}
 }

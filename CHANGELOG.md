@@ -11,6 +11,13 @@ commits, so it can come up empty).
 
 ## [Unreleased]
 
+### Added
+- Results grid: datetime columns show relative times when recent (`2h ago`,
+  `yesterday`, `just now`) and fall back to the compact absolute form beyond
+  about a week. Date-only values use `today` / `yesterday` / `Nd ago`;
+  time-only stays `15:04`. Display only — yank, edit, and `E` keep the raw
+  value.
+
 ## [0.4.0] - 2026-08-30
 
 Results editing and layout polish: fill-down, column resize, pinned PKs, richer
