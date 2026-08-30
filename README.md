@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/logo.svg" alt="creel" width="160">
+</p>
+
 # creel
 
 <p align="center">
