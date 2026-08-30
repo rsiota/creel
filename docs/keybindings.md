@@ -116,7 +116,7 @@ In the add/edit form:
 | `C`        | Clear marks (rows and columns)               |
 | `u`        | Undo last filter                             |
 | `c`        | Clear filters                                |
-| `V`        | Visual mode (select range)                   |
+| `V`        | Visual mode (select range; `p` fills column) |
 | `dd`       | Delete marked or cursor row                  |
 | `e`        | Edit cell                                    |
 | `E`        | Expand/view cell (multi-line)               |
@@ -130,7 +130,7 @@ In the add/edit form:
 | `:`        | Ex command line (`:q`, `:sort`, `:goto`, …; column jump in results) |
 | `y y`      | Copy cell                                    |
 | `y r`      | Copy rows as TSV (Sheets/Slack; same as `:copyrow`) |
-| `p`        | Paste clipboard to cell                      |
+| `p`        | Paste clipboard to cell / fill visual range  |
 | `Y`        | Copy rows as INSERT statements               |
 | `P`        | Clone marked/cursor row                      |
 | `x`        | Export current page to CSV                 |

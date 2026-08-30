@@ -915,6 +915,29 @@ func (r ResultsTable) VisualRangeSize() int {
 	return hi - lo + 1
 }
 
+// FillVisualColumn stages value into col for every row in the visual range.
+// Blob cells are skipped. Cells that already hold value are left untouched.
+// Returns the number of cells staged. No-op when visual mode is inactive.
+func (r *ResultsTable) FillVisualColumn(col int, value string) int {
+	if !r.visualActive || col < 0 || col >= len(r.columns) {
+		return 0
+	}
+	value = r.normalizeEditValue(col, value)
+	lo, hi := r.VisualRange()
+	n := 0
+	for row := lo; row <= hi; row++ {
+		if r.IsBlobCell(row, col) {
+			continue
+		}
+		if r.RowValue(row, col) == value {
+			continue
+		}
+		r.SetDirtyCell(row, col, value)
+		n++
+	}
+	return n
+}
+
 // isVisualRow reports whether rowIdx falls within the active visual range.
 func (r ResultsTable) isVisualRow(rowIdx int) bool {
 	if !r.visualActive {

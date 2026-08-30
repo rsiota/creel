@@ -3653,6 +3653,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.commitVisualMarks()
 				m.results.ClearVisualMode()
 				return m, nil
+			case "p":
+				// Fill current column across the visual range (dirty only).
+				m.fillVisualRange()
+				return m, nil
 			case "j", "down":
 				m.results.CursorDown()
 				return m, nil

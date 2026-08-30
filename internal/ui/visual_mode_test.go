@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -171,5 +173,68 @@ func TestVisualModeClearedOnTableSwitch(t *testing.T) {
 	m.results.SetEditable("other_table", []string{"id"})
 	if m.results.IsVisualMode() {
 		t.Error("visual mode should be cleared after SetEditable (table switch)")
+	}
+}
+
+func TestVisualModeFillFromAnchor(t *testing.T) {
+	m := newResultsWorkspaceModel()
+	_ = clipboard.WriteAll("") // prefer anchor when clipboard empty
+
+	// Move to name column (col 1).
+	m = press(m, keyRunes('l'))
+	m = press(m, keyRunes('V'))
+	m = press(m, keyRunes('j'))
+	m = press(m, keyRunes('p'))
+
+	if m.results.IsVisualMode() {
+		t.Error("visual mode should exit after fill")
+	}
+	if m.results.DirtyCellCount() != 1 {
+		t.Fatalf("dirty count = %d, want 1 (bob→alice)", m.results.DirtyCellCount())
+	}
+	if got := m.results.RowValue(1, 1); got != "alice" {
+		t.Errorf("row 1 name = %q, want alice", got)
+	}
+	if !strings.Contains(m.schemaMsg, "filled 1") {
+		t.Errorf("schemaMsg = %q, want filled 1…", m.schemaMsg)
+	}
+}
+
+func TestVisualModeFillRefusesPK(t *testing.T) {
+	m := newResultsWorkspaceModel()
+	_ = clipboard.WriteAll("")
+
+	// Stay on id (PK) column.
+	m = press(m, keyRunes('V'))
+	m = press(m, keyRunes('j'))
+	m = press(m, keyRunes('p'))
+
+	if m.results.DirtyCellCount() != 0 {
+		t.Errorf("PK fill should stage nothing, dirty=%d", m.results.DirtyCellCount())
+	}
+	if m.schemaMsg != "cannot fill primary key column" {
+		t.Errorf("schemaMsg = %q", m.schemaMsg)
+	}
+}
+
+func TestVisualModeFillFromClipboard(t *testing.T) {
+	m := newResultsWorkspaceModel()
+	if err := clipboard.WriteAll("filled"); err != nil {
+		t.Skipf("clipboard unavailable: %v", err)
+	}
+
+	m = press(m, keyRunes('l')) // name
+	m = press(m, keyRunes('V'))
+	m = press(m, keyRunes('j'))
+	m = press(m, keyRunes('p'))
+
+	if m.results.DirtyCellCount() != 2 {
+		t.Fatalf("dirty count = %d, want 2", m.results.DirtyCellCount())
+	}
+	if got := m.results.RowValue(0, 1); got != "filled" {
+		t.Errorf("row 0 name = %q, want filled", got)
+	}
+	if got := m.results.RowValue(1, 1); got != "filled" {
+		t.Errorf("row 1 name = %q, want filled", got)
 	}
 }

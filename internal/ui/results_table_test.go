@@ -385,6 +385,40 @@ func TestResultsTableVisualMode(t *testing.T) {
 	}
 }
 
+func TestResultsTableFillVisualColumn(t *testing.T) {
+	r := NewResultsTable()
+	r.SetSize(80, 20)
+	r.SetResult(
+		[]string{"id", "name"},
+		[][]string{
+			{"1", "alice"},
+			{"2", "bob"},
+			{"3", "carol"},
+		},
+		"3 rows",
+	)
+	r.SetEditable("users", []string{"id"})
+
+	if n := r.FillVisualColumn(1, "alice"); n != 0 {
+		t.Fatalf("inactive visual fill should be 0, got %d", n)
+	}
+
+	r.SetVisualMode()
+	r.CursorDown()
+	r.CursorDown()
+	n := r.FillVisualColumn(1, "alice")
+	if n != 2 {
+		t.Fatalf("fill count = %d, want 2 (bob+carol)", n)
+	}
+	if r.RowValue(0, 1) != "alice" || !r.IsDirty(1, 1) || !r.IsDirty(2, 1) {
+		t.Errorf("expected rows 1–2 dirty with alice; dirty=%v/%v values=%q/%q",
+			r.IsDirty(1, 1), r.IsDirty(2, 1), r.RowValue(1, 1), r.RowValue(2, 1))
+	}
+	if r.IsDirty(0, 1) {
+		t.Error("anchor cell already alice should not be dirty")
+	}
+}
+
 func TestResultsTableClearAndSetResult(t *testing.T) {
 	r := NewResultsTable()
 	r.SetResult(

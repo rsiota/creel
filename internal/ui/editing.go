@@ -856,3 +856,49 @@ func (m *Model) commitVisualMarks() {
 	}
 	m.results.ensureCursorVisible()
 }
+
+// fillVisualRange stages the fill value into the current column across the
+// visual row range. Prefers a non-empty clipboard (from yy); otherwise uses
+// the cell at the visual anchor. Stages dirty cells only — does not save.
+func (m *Model) fillVisualRange() {
+	if !m.results.IsVisualMode() {
+		return
+	}
+	if !m.results.IsEditable() || !m.results.HasPrimaryKey() {
+		m.results.ClearVisualMode()
+		m.schemaMsg = "results not editable"
+		return
+	}
+	col := m.results.CursorCol()
+	colName := m.results.ColumnName(col)
+	if colName == "" {
+		m.results.ClearVisualMode()
+		return
+	}
+	if m.results.isPKColumn(colName) {
+		m.results.ClearVisualMode()
+		m.schemaMsg = "cannot fill primary key column"
+		return
+	}
+
+	val := ""
+	if clip, err := clipboard.ReadAll(); err == nil && clip != "" {
+		val = clip
+	} else {
+		anchor := m.results.visualAnchor
+		if m.results.IsBlobCell(anchor, col) {
+			m.results.ClearVisualMode()
+			m.schemaMsg = "binary cell — use :saveblob to export"
+			return
+		}
+		val = m.results.RowValue(anchor, col)
+	}
+
+	n := m.results.FillVisualColumn(col, val)
+	m.results.ClearVisualMode()
+	if n == 0 {
+		m.schemaMsg = "nothing to fill"
+		return
+	}
+	m.schemaMsg = fmt.Sprintf("filled %d cells — :w to save", n)
+}
