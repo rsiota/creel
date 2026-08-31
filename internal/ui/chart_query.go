@@ -108,7 +108,13 @@ func (m *Model) runChart(spec chartSpec, all bool) tea.Cmd {
 	query = expanded
 	execQuery := query
 	if isSelectQuery(query) && !hasJoinClause(query) {
-		execQuery = fmt.Sprintf("SELECT * FROM (%s) AS _creel_chart LIMIT %d", query, chartAllMaxRows+1)
+		// Same rule as pageExecQuery: don't bury ORDER BY inside a derived
+		// table (MySQL may ignore it). Bang charts only need a row cap.
+		if queryHasTopLevelLimitOrOffset(query) {
+			execQuery = fmt.Sprintf("SELECT * FROM (%s) AS _creel_chart LIMIT %d", query, chartAllMaxRows+1)
+		} else {
+			execQuery = fmt.Sprintf("%s LIMIT %d", query, chartAllMaxRows+1)
+		}
 	}
 	conn := m.connection
 	tx := m.tx

@@ -18,6 +18,12 @@ commits, so it can come up empty).
   time-only stays `15:04`. Display only — yank, edit, and `E` keep the raw
   value.
 
+### Fixed
+- Results sort (`o` / header click / `:sort`): pagination no longer wraps the
+  query in a derived table when unnecessary, so `ORDER BY` is honored on
+  MySQL/MariaDB (where an inner `ORDER BY` without its own `LIMIT` is often
+  ignored). Sort columns are driver-quoted in the generated SQL.
+
 ## [0.4.0] - 2026-08-30
 
 Results editing and layout polish: fill-down, column resize, pinned PKs, richer

@@ -57,9 +57,18 @@ func (m Model) buildFilteredQuery() string {
 		q += " WHERE " + strings.Join(m.filters, " AND ")
 	}
 	if m.sortCol != "" {
-		q += fmt.Sprintf(" ORDER BY %s %s", m.sortCol, m.sortDir)
+		q += fmt.Sprintf(" ORDER BY %s %s", m.quoteSortCol(m.sortCol), m.sortDir)
 	}
 	return q
+}
+
+// quoteSortCol quotes a sort column for the active driver. Falls back to the
+// bare name when disconnected (unit tests).
+func (m Model) quoteSortCol(col string) string {
+	if m.connection == nil {
+		return col
+	}
+	return quoteIdentD(m.connection.Config().Driver, col)
 }
 
 // applyFilteredQuery rebuilds lastQuery from active filters/sort and mirrors it
@@ -215,7 +224,7 @@ func (m Model) buildBackendSearchQuery(term string) string {
 	}
 	q := fmt.Sprintf("SELECT * FROM %s WHERE %s", table, strings.Join(clauses, " OR "))
 	if m.sortCol != "" {
-		q += fmt.Sprintf(" ORDER BY %s %s", m.sortCol, m.sortDir)
+		q += fmt.Sprintf(" ORDER BY %s %s", m.quoteSortCol(m.sortCol), m.sortDir)
 	}
 	return q
 }

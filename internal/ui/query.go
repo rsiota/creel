@@ -224,14 +224,13 @@ func (m *Model) runPageQuery() tea.Cmd {
 	m.queryStart = time.Now()
 	m.querySpinner = 0
 
-	// Only wrap simple SELECT queries; everything else runs as-is.
-	// JOIN queries can't be wrapped because MySQL requires unique column
-	// names in derived tables, and JOINs often produce duplicates (e.g.
-	// both tables have an "id" column).
+	// Paginate SELECTs. Prefer appending LIMIT/OFFSET directly so an ORDER BY
+	// (e.g. from `o` sort) stays on the outer query — MySQL/MariaDB may ignore
+	// ORDER BY inside a derived table. Only wrap when the user query already
+	// has LIMIT/OFFSET; then hoist a trailing ORDER BY outside the wrap.
 	var execQuery string
 	if isSelectQuery(query) && !hasJoinClause(query) {
-		execQuery = fmt.Sprintf("%s%s) AS _creel_page LIMIT %d OFFSET %d",
-			db.PageWrapPrefix, query, pageSize+1, offset)
+		execQuery = pageExecQuery(query, pageSize, offset)
 	} else {
 		execQuery = query
 	}
@@ -291,6 +290,155 @@ func isSelectQuery(query string) bool {
 	trimmed := strings.TrimSpace(query)
 	upper := strings.ToUpper(trimmed)
 	return strings.HasPrefix(upper, "SELECT") || strings.HasPrefix(upper, "WITH")
+}
+
+// pageExecQuery builds the SQL sent for one results page. Avoids wrapping when
+// possible so ORDER BY remains effective on MySQL/MariaDB (which may ignore
+// ORDER BY inside a derived table that has no LIMIT of its own).
+func pageExecQuery(query string, pageSize, offset int) string {
+	if queryHasTopLevelLimitOrOffset(query) {
+		// User already limited the result; wrap to page over that set.
+		// ORDER BY … LIMIT inside the subquery is kept — engines treat that
+		// as changing the row set, so ordering is preserved.
+		return fmt.Sprintf("%s%s) AS _creel_page LIMIT %d OFFSET %d",
+			db.PageWrapPrefix, query, pageSize+1, offset)
+	}
+	return fmt.Sprintf("%s LIMIT %d OFFSET %d", query, pageSize+1, offset)
+}
+
+// queryHasTopLevelLimitOrOffset reports whether the query already contains a
+// LIMIT or OFFSET outside of parentheses (so pagination must wrap).
+func queryHasTopLevelLimitOrOffset(query string) bool {
+	upper := strings.ToUpper(query)
+	depth := 0
+	inSingle, inDouble, inBack := false, false, false
+	for i := 0; i < len(upper); i++ {
+		c := upper[i]
+		switch {
+		case inSingle:
+			if c == '\'' {
+				if i+1 < len(upper) && upper[i+1] == '\'' {
+					i++
+					continue
+				}
+				inSingle = false
+			}
+		case inDouble:
+			if c == '"' {
+				if i+1 < len(upper) && upper[i+1] == '"' {
+					i++
+					continue
+				}
+				inDouble = false
+			}
+		case inBack:
+			if c == '`' {
+				inBack = false
+			}
+		case c == '\'':
+			inSingle = true
+		case c == '"':
+			inDouble = true
+		case c == '`':
+			inBack = true
+		case c == '(':
+			depth++
+		case c == ')':
+			if depth > 0 {
+				depth--
+			}
+		case depth == 0:
+			if isSQLKeywordAt(upper, i, "LIMIT") || isSQLKeywordAt(upper, i, "OFFSET") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// peelTrailingOrderBy splits a trailing top-level ORDER BY off the query so it
+// can be applied outside a pagination wrap. Returns the original query and ""
+// when none is found.
+func peelTrailingOrderBy(query string) (inner, orderBy string) {
+	upper := strings.ToUpper(query)
+	depth := 0
+	inSingle, inDouble, inBack := false, false, false
+	orderAt := -1
+	for i := 0; i < len(upper); i++ {
+		c := upper[i]
+		switch {
+		case inSingle:
+			if c == '\'' {
+				if i+1 < len(upper) && upper[i+1] == '\'' {
+					i++
+					continue
+				}
+				inSingle = false
+			}
+		case inDouble:
+			if c == '"' {
+				if i+1 < len(upper) && upper[i+1] == '"' {
+					i++
+					continue
+				}
+				inDouble = false
+			}
+		case inBack:
+			if c == '`' {
+				inBack = false
+			}
+		case c == '\'':
+			inSingle = true
+		case c == '"':
+			inDouble = true
+		case c == '`':
+			inBack = true
+		case c == '(':
+			depth++
+		case c == ')':
+			if depth > 0 {
+				depth--
+			}
+		case depth == 0:
+			if isSQLKeywordAt(upper, i, "ORDER") {
+				// ORDER BY …
+				j := i + len("ORDER")
+				for j < len(upper) && upper[j] == ' ' {
+					j++
+				}
+				if j+1 < len(upper) && upper[j:j+2] == "BY" &&
+					(j+2 == len(upper) || !isASCIIIdentChar(rune(upper[j+2]))) {
+					orderAt = i
+				}
+			}
+		}
+	}
+	if orderAt < 0 {
+		return query, ""
+	}
+	// Trim whitespace before ORDER BY from inner; keep "ORDER BY …" as-is from
+	// the original query (preserve identifier quoting/case).
+	inner = strings.TrimRight(query[:orderAt], " \t\n\r")
+	orderBy = strings.TrimSpace(query[orderAt:])
+	return inner, orderBy
+}
+
+func isSQLKeywordAt(upper string, i int, kw string) bool {
+	n := len(kw)
+	if i+n > len(upper) || upper[i:i+n] != kw {
+		return false
+	}
+	if i > 0 && isASCIIIdentChar(rune(upper[i-1])) {
+		return false
+	}
+	if i+n < len(upper) && isASCIIIdentChar(rune(upper[i+n])) {
+		return false
+	}
+	return true
+}
+
+func isASCIIIdentChar(r rune) bool {
+	return (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_'
 }
 
 // hasJoinClause reports whether the query contains a JOIN. These can't be

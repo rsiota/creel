@@ -122,3 +122,52 @@ func TestHasJoinClause(t *testing.T) {
 		}
 	}
 }
+
+func TestPageExecQueryKeepsOrderByOuter(t *testing.T) {
+	// Normal browse/sort path: no wrap, ORDER BY stays before LIMIT so MySQL
+	// cannot drop it as an inner derived-table ORDER BY.
+	got := pageExecQuery("SELECT * FROM users ORDER BY name ASC", 200, 0)
+	want := "SELECT * FROM users ORDER BY name ASC LIMIT 201 OFFSET 0"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+
+	got = pageExecQuery("SELECT * FROM users", 50, 100)
+	want = "SELECT * FROM users LIMIT 51 OFFSET 100"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestPageExecQueryWrapPreservesInnerOrderLimit(t *testing.T) {
+	// User query already has LIMIT — wrap, keeping ORDER BY … LIMIT inside
+	// (MySQL honors that combination).
+	got := pageExecQuery("SELECT * FROM users ORDER BY name DESC LIMIT 10", 200, 0)
+	want := "SELECT * FROM (SELECT * FROM users ORDER BY name DESC LIMIT 10) AS _creel_page LIMIT 201 OFFSET 0"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestPeelTrailingOrderBy(t *testing.T) {
+	inner, order := peelTrailingOrderBy("SELECT * FROM users ORDER BY name ASC")
+	if inner != "SELECT * FROM users" || order != "ORDER BY name ASC" {
+		t.Errorf("got inner=%q order=%q", inner, order)
+	}
+	inner, order = peelTrailingOrderBy("SELECT * FROM (SELECT 1 ORDER BY x) t")
+	if order != "" || inner != "SELECT * FROM (SELECT 1 ORDER BY x) t" {
+		t.Errorf("should not peel nested ORDER BY: inner=%q order=%q", inner, order)
+	}
+}
+
+func TestQueryHasTopLevelLimitOrOffset(t *testing.T) {
+	if !queryHasTopLevelLimitOrOffset("SELECT * FROM t LIMIT 10") {
+		t.Error("expected LIMIT detected")
+	}
+	if queryHasTopLevelLimitOrOffset("SELECT * FROM t ORDER BY id") {
+		t.Error("ORDER BY alone is not LIMIT")
+	}
+	if queryHasTopLevelLimitOrOffset("SELECT * FROM (SELECT 1 LIMIT 1) t") {
+		t.Error("nested LIMIT should be ignored")
+	}
+}
