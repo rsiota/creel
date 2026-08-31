@@ -361,6 +361,7 @@ type Model struct {
 	schemaEditor        SchemaEditor
 	cellEdit            CellEditPopup
 	explainPanel        ExplainPanel
+	diffPanel           DiffPanel
 	lookupPanel         LookupPanel
 	erdPanel            ERDPanel
 	chartPanel          ChartPanel
@@ -2971,6 +2972,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Diff panel is modal — j/k scroll, a toggles all/changes, esc/q close.
+	if m.diffPanel.IsVisible() {
+		switch msg.String() {
+		case "esc", "q", "ctrl+c":
+			m.diffPanel.Hide()
+			return m, nil
+		}
+		m.diffPanel = m.diffPanel.Update(msg)
+		return m, nil
+	}
+
 	// Chart panel replaces the results grid — j/k scroll, esc/q close.
 	// Keep : / ? / ctrl+p available so :watch (and help/palette) work without
 	// closing the chart first; once the ex line or palette is open they own keys.
@@ -4961,7 +4973,7 @@ func (m Model) viewWorkspace() string {
 
 	// Dim the workspace panels behind long-lived editing overlays.
 	// The status bar is kept undimmed so hints remain clearly visible.
-	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() || m.crossSearch.IsVisible() || m.explainPanel.IsVisible() || m.lookupPanel.IsVisible() {
+	if m.cellEdit.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() || m.crossSearch.IsVisible() || m.explainPanel.IsVisible() || m.diffPanel.IsVisible() || m.lookupPanel.IsVisible() {
 		workspace = dimBackground(workspace)
 	}
 
@@ -5016,6 +5028,17 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, explainPanelView, panelX, panelY)
+	}
+
+	// Overlay result-set diff panel if visible
+	if m.diffPanel.IsVisible() {
+		m.diffPanel.SetSize(m.width*80/100, (m.height-1)*75/100)
+		diffPanelView := m.diffPanel.View()
+		panelW := lipgloss.Width(diffPanelView)
+		panelH := lipgloss.Height(diffPanelView)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, diffPanelView, panelX, panelY)
 	}
 
 	// Overlay lookup panel if visible

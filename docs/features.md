@@ -44,7 +44,10 @@ An overview of everything creel can do. For keys, see
   Datetime columns (by type or names like `created_at`) show relative times
   when recent (`2h ago`, `yesterday`) and fall back to a compact absolute
   form (`2026-08-21 14:32`) when older; copy / edit / `E` keep the raw value.
-  Large result sets are paged
+  `:diff [a] [b]` compares the loaded result pages of two tabs (PK match when
+  both share the same source table and PK columns; otherwise row index). No
+  args diffs previous vs active; overlay `a` toggles changes-only vs all;
+  `esc`/`q` closes. Large result sets are paged
   (LIMIT/OFFSET) for speed and low
   memory. Bang forms (`:bar!`, `:line!`, `:scatter!`, `:hist!`, `:freq!`,
   `:pie!`) re-run the last SELECT without the page LIMIT (capped at 50,000

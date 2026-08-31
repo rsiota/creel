@@ -12,6 +12,11 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- `:diff [a] [b]` — compare the loaded result pages of two tabs. Match by
+  primary key when both tabs share the same source table and PK columns;
+  otherwise by row index. Overlay shows adds / removes / changes; `a` toggles
+  changes-only vs all rows. Tab numbers are 1-based (same as `:tabs`). No
+  args diffs previous vs active; one arg diffs active vs that tab.
 - Results grid: datetime columns show relative times when recent (`2h ago`,
   `yesterday`, `just now`) and fall back to the compact absolute form beyond
   about a week. Date-only values use `today` / `yesterday` / `Nd ago`;

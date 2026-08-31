@@ -250,11 +250,12 @@ at a time so each can be checked before the next starts.
   ✅ DONE (`:aiexplain` / `:why`; caches plan from `g e` / `:explain`, else
   runs EXPLAIN then streams prose to the assistant panel).
 - Optional AI scratch-tab dry-run (still no auto-run DDL).
+- Result-set diff of two tabs — ✅ DONE (`:diff [a] [b]`; PK match when same
+  source table + PK cols, else row index; schema-diff stays rejected).
 
 **Fits the product (later)**
 - DuckDB as a fourth driver (charts + CSV/Parquet; static-binary friendly).
 - JSON/JSONB foldable tree in the inspector (`E` already pretty-prints).
-- Result-set diff of two tabs (not schema-diff — that stays rejected).
 - ERD tooltip nullability/defaults (`TableColumnInfo`).
 - Unify the two ERD routing systems onto the dynamic polyline router.
 - Discoverability content (short asciinema of `g r` → insert-related → ERD
@@ -308,7 +309,8 @@ palette). Never copy a key handler body into an ex executor. A full unified
 - Pager/tee (`:tee` / `:pager` — the TUI *is* the pager).
 - Macros (`:record` / `:play` — revisit only with a real Action ID layer).
 - Editor substitute (`:replace` — use vim `:s` in the editor).
-- Schema-diff product (`:diff <a> <b>`).
+- Schema-diff product (comparing DDL / table definitions). `:diff` is reserved
+  for result-page comparison between tabs.
 - Favorites as a second bookmarks system (`:favorite`).
 
 ---

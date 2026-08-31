@@ -136,6 +136,16 @@ In the add/edit form:
 | `P`        | Clone marked/cursor row                      |
 | `x`        | Export current page to CSV                 |
 | `g X`      | Export dialog (format · columns · scope)   |
+| `:diff`    | Diff result pages of two tabs (`:diff [a] [b]`) |
+
+## Diff panel (`:diff`)
+
+| Key        | Action                                          |
+| ---------- | ----------------------------------------------- |
+| `j/k`      | Scroll                                          |
+| `g` / `G`  | Top / bottom                                    |
+| `a`        | Toggle changes-only / all rows                  |
+| `esc` / `q`| Close                                           |
 
 ## Relationship explorer (`g r`)
 

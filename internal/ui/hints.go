@@ -93,6 +93,8 @@ func (m Model) resolveHints() (section string, hints []string) {
 		return "Cross-Table Search", hintsForSection("Cross-Table Search")
 	case m.explainPanel.IsVisible():
 		return "Explain Panel", hintsForSection("Explain Panel")
+	case m.diffPanel.IsVisible():
+		return "Diff Panel", hintsForSection("Diff Panel")
 	case m.chartPanel.IsVisible():
 		return "Chart Panel", hintsForSection("Chart Panel")
 	case m.lookupPanel.IsVisible():

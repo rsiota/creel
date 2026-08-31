@@ -146,6 +146,15 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exTabs() },
 		},
 		{
+			verbs:   []string{"diff"},
+			desc:    "diff result pages of two tabs (current pages, not schema)",
+			usage:   ":diff [a] [b]",
+			argKind: exArgOptional,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				return m.exDiff(args)
+			},
+		},
+		{
 			verbs:    []string{"sort"},
 			desc:     "sort results by a column",
 			usage:    ":sort <column>",

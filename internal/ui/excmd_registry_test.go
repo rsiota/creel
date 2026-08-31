@@ -63,7 +63,7 @@ func TestExLookupResolvesKnownVerbs(t *testing.T) {
 		"stats", "bar", "line", "scatter", "hist", "freq", "pie", "count", "sample", "head", "format",
 		"bookmark", "import", "rerun", "watch", "tail", "theme", "icons",
 		"limit", "timing", "peek", "filter", "open", "o", "save",
-		"tabnew", "tabclose", "tabnext", "tabn", "tabprev", "tabp", "tabs",
+		"tabnew", "tabclose", "tabnext", "tabn", "tabprev", "tabp", "tabs", "diff",
 		"ai", "aifix", "fixsql", "aiexplain", "why",
 	}
 	for _, v := range known {

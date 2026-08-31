@@ -71,6 +71,7 @@ func registry() []Section {
 				{"t", []string{"t"}, "new tab", ""},
 				{"g x", []string{"g", "x"}, "close tab", ""},
 				{"g 1-9", []string{"g", "1", "2", "3", "4", "5", "6", "7", "8", "9"}, "go to tab 1-9", ""},
+				{":diff [a] [b]", []string{":"}, "diff two tabs' result pages", ":diff"},
 			},
 		},
 		{
@@ -366,6 +367,16 @@ func registry() []Section {
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
 				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/ctrl+u"},
 				{"esc", []string{"esc"}, "close", "esc"},
+			},
+		},
+		{
+			Title:  "Diff Panel",
+			Source: "diff_panel.go app.go",
+			Items: []Binding{
+				{"j/k", []string{"j", "k", "up", "down"}, "scroll", "j/k"},
+				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
+				{"a", []string{"a"}, "toggle changes-only / all rows", "a"},
+				{"esc / q", []string{"esc", "q"}, "close", "esc"},
 			},
 		},
 		{

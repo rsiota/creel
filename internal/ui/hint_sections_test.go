@@ -45,6 +45,12 @@ func TestNewHintSections(t *testing.T) {
 	})
 	m.explainPanel.visible = false
 
+	m.diffPanel.visible = true
+	check("Diff Panel", map[string]string{
+		"j": "scroll", "a": "toggle changes-only / all rows", "esc": "close",
+	})
+	m.diffPanel.visible = false
+
 	m.lookupPanel.visible = true
 	check("Lookup Panel", map[string]string{
 		"j": "move", "G": "top / bottom", "ctrl+u": "page down / up", "esc": "close",

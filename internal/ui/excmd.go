@@ -699,6 +699,89 @@ func (m *Model) exTabs() tea.Cmd {
 	return nil
 }
 
+// exDiff compares the loaded result pages of two tabs (:diff [a] [b]).
+// Tab numbers are 1-based, same as :tabs. With no args, diffs the previous tab
+// against the active one; with one arg, diffs the active tab against that
+// number; with two args, diffs those two. Schema diff is intentionally not
+// supported.
+func (m *Model) exDiff(args []string) tea.Cmd {
+	if len(m.resultsTabs) < 2 {
+		m.schemaMsg = "diff needs at least two tabs — :tabnew, then load results in each"
+		return nil
+	}
+	m.saveTabState()
+
+	left, right, errMsg := m.resolveDiffTabs(args)
+	if errMsg != "" {
+		m.schemaMsg = errMsg
+		return nil
+	}
+	a := snapshotFromTab(m.resultsTabs[left])
+	b := snapshotFromTab(m.resultsTabs[right])
+	if !a.hasRows() || !b.hasRows() {
+		m.schemaMsg = "both tabs need a loaded result page"
+		return nil
+	}
+	if left == right {
+		m.schemaMsg = "pick two different tabs"
+		return nil
+	}
+	d := computeResultDiff(a, b)
+	m.diffPanel.Show(d)
+	m.schemaMsg = fmt.Sprintf("diff %d:%s → %d:%s  %s",
+		left+1, a.title, right+1, b.title, d.summary())
+	return nil
+}
+
+// resolveDiffTabs maps :diff args to 0-based indexes into resultsTabs.
+func (m *Model) resolveDiffTabs(args []string) (left, right int, errMsg string) {
+	active := -1
+	for i, tab := range m.resultsTabs {
+		if tab.ID == m.activeTabID {
+			active = i
+			break
+		}
+	}
+	if active < 0 {
+		active = 0
+	}
+
+	parseIdx := func(s string) (int, string) {
+		n, err := strconv.Atoi(strings.TrimSpace(s))
+		if err != nil || n < 1 || n > len(m.resultsTabs) {
+			return -1, fmt.Sprintf("bad tab %q — use 1..%d (see :tabs)", s, len(m.resultsTabs))
+		}
+		return n - 1, ""
+	}
+
+	switch len(args) {
+	case 0:
+		// Previous tab (cyclic) vs active.
+		left = active - 1
+		if left < 0 {
+			left = len(m.resultsTabs) - 1
+		}
+		right = active
+		return left, right, ""
+	case 1:
+		right, errMsg = parseIdx(args[0])
+		if errMsg != "" {
+			return 0, 0, errMsg
+		}
+		return active, right, ""
+	default:
+		left, errMsg = parseIdx(args[0])
+		if errMsg != "" {
+			return 0, 0, errMsg
+		}
+		right, errMsg = parseIdx(args[1])
+		if errMsg != "" {
+			return 0, 0, errMsg
+		}
+		return left, right, ""
+	}
+}
+
 // exCopy copies the cell under the cursor to the clipboard (:copy). Shares
 // copyCursorCell with the yy chord.
 func (m *Model) exCopy() tea.Cmd {
