@@ -18,7 +18,7 @@ func (m *Model) drillChartBar() tea.Cmd {
 		return nil
 	}
 	if !m.canFilter() {
-		m.schemaMsg = "can't filter this query — enter needs a simple SELECT"
+		m.schemaMsg = "can't filter this query — needs a SELECT with unique column names"
 		return nil
 	}
 	vis := c.visibleBars()

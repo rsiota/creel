@@ -3635,9 +3635,9 @@ func buildFilterFragment(col, op, value, dbType string) string {
 // filterByMarks: the fragment is appended (replacing any existing filter on the
 // same column), applyFilteredQuery rebuilds lastQuery, and the query re-runs at
 // page 0. The expression is structured rather than raw so the value is type-
-// quoted; ops are = != > < >= <= and ~ (LIKE substring). Requires a simple
-// single-table SELECT (canFilter), since the filter layer rebuilds from the
-// base table. "off"/"clear" drops all filters; bare ":filter" lists them.
+// quoted; ops are = != > < >= <= and ~ (LIKE substring). Works on simple
+// SELECT * FROM <table> and on other SELECTs via a subquery wrap. "off"/"clear"
+// drops all filters; bare ":filter" lists them.
 func (m *Model) exFilter(args []string) tea.Cmd {
 	if m.connection == nil {
 		m.schemaMsg = "not connected"
@@ -3665,7 +3665,7 @@ func (m *Model) exFilter(args []string) tea.Cmd {
 		return nil
 	}
 	if !m.canFilter() {
-		m.schemaMsg = "filtering needs a simple table query (SELECT * FROM <table>)"
+		m.schemaMsg = "filtering needs a SELECT with unique column names"
 		return nil
 	}
 	col, op, value, ok := parseFilterExpr(joined)

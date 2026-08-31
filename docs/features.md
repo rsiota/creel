@@ -30,6 +30,11 @@ An overview of everything creel can do. For keys, see
 - **Results grid** — sort, filter, search, hide/show columns, follow foreign
   keys (`g d`), mark rows and columns, bulk-delete rows, and chart marked
   columns with `:bar` / `:line` / `:scatter` / `:hist` / `:freq` / `:pie`.
+  Sort (`o`) and filters (`*` / `!` / `:filter` / value picker) work on
+  custom SELECTs too (JOINs, projections, `GROUP BY`) by wrapping the base
+  query; simple `SELECT * FROM <table>` still rebuilds in place. Result
+  columns must have unique names (avoid bare `SELECT *` on multi-table JOINs
+  that duplicate `id`).
   Primary-key columns keep the existing `*` marker and stay pinned on the
   left while you scroll horizontally. Foreign-key cells
   use a soft blue tint (primary darkened toward the theme background); headers

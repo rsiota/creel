@@ -37,22 +37,86 @@ func (m *Model) detectResultMetadata(query string) {
 	m.results.SetForeignKeys(table, fks)
 }
 
-// canFilter reports whether the current results support quick-filtering
-// (i.e. the base query is a simple single-table SELECT).
+// canFilter reports whether the current results support quick-filtering and
+// column sort. Simple SELECT * FROM <table> queries rebuild in place; other
+// SELECTs (JOINs, projections, GROUP BY, CTEs) wrap the base query as a
+// subquery. JOIN * with duplicate column names is rejected (MySQL derived
+// tables require unique names).
 func (m Model) canFilter() bool {
 	if m.connection == nil || m.baseQuery == "" {
 		return false
 	}
-	return parseSimpleSelectTable(m.baseQuery) != ""
+	if !isSelectQuery(m.baseQuery) {
+		return false
+	}
+	if isSelectStarFromSimpleTable(m.baseQuery) {
+		return true
+	}
+	return m.resultColumnsUnique()
 }
 
-// buildFilteredQuery reconstructs the query from the known table name with
-// all active filters and sort applied. Since canFilter() guarantees a simple
-// SELECT * FROM <table>, we rebuild from scratch to avoid issues with existing
-// LIMIT/ORDER BY clauses in the original query.
+// resultColumnsUnique reports whether every result column name is unique
+// (case-insensitive). Empty names count as duplicates.
+func (m Model) resultColumnsUnique() bool {
+	n := m.results.NumCols()
+	if n == 0 {
+		return true
+	}
+	seen := make(map[string]bool, n)
+	for i := 0; i < n; i++ {
+		name := strings.ToLower(strings.TrimSpace(m.results.ColumnName(i)))
+		if name == "" || seen[name] {
+			return false
+		}
+		seen[name] = true
+	}
+	return true
+}
+
+// isSelectStarFromSimpleTable reports whether query is a single-table
+// SELECT [*] / SELECT DISTINCT [*] that parseSimpleSelectTable accepts.
+// These rebuild as SELECT * FROM <table> WHEN … rather than wrapping.
+func isSelectStarFromSimpleTable(query string) bool {
+	if parseSimpleSelectTable(query) == "" {
+		return false
+	}
+	upper := strings.ToUpper(strings.TrimSpace(query))
+	if !strings.HasPrefix(upper, "SELECT") {
+		return false
+	}
+	after := strings.TrimSpace(upper[len("SELECT"):])
+	if strings.HasPrefix(after, "DISTINCT") {
+		after = strings.TrimSpace(after[len("DISTINCT"):])
+	}
+	if !strings.HasPrefix(after, "*") {
+		return false
+	}
+	if len(after) == 1 {
+		return true
+	}
+	switch after[1] {
+	case ' ', '\t', '\n', '\r':
+		return true
+	}
+	return false
+}
+
+// filterBaseSQL is the FROM-source used when applying filters/sort: either a
+// bare table name (simple SELECT *) or "(<baseQuery>) AS _creel_filt".
+func (m Model) filterBaseSQL() string {
+	base := strings.TrimRight(strings.TrimSpace(m.baseQuery), ";")
+	if isSelectStarFromSimpleTable(base) {
+		return parseSimpleSelectTable(base)
+	}
+	return "(" + base + ") AS _creel_filt"
+}
+
+// buildFilteredQuery reconstructs lastQuery with active filters and sort.
+// Simple SELECT * FROM <table> rebuilds from the table name (dropping any
+// prior WHERE/ORDER/LIMIT on the base). Other SELECTs wrap the original SQL
+// so projections, JOINs, and GROUP BY are preserved.
 func (m Model) buildFilteredQuery() string {
-	table := parseSimpleSelectTable(m.baseQuery)
-	q := fmt.Sprintf("SELECT * FROM %s", table)
+	q := "SELECT * FROM " + m.filterBaseSQL()
 	if len(m.filters) > 0 {
 		q += " WHERE " + strings.Join(m.filters, " AND ")
 	}
@@ -118,12 +182,13 @@ func (m *Model) openFilterPicker() tea.Cmd {
 		return nil
 	}
 
-	table := parseSimpleSelectTable(m.baseQuery)
+	src := m.filterBaseSQL()
+	col := m.quoteSortCol(colName)
 	m.filterPicker.Show(colName)
 
 	conn := m.connection
 	return func() tea.Msg {
-		result, err := conn.DB().Execute(fmt.Sprintf("SELECT DISTINCT %s FROM %s", colName, table))
+		result, err := conn.DB().Execute(fmt.Sprintf("SELECT DISTINCT %s FROM %s", col, src))
 		if err != nil {
 			return filterValuesMsg{column: colName}
 		}
@@ -203,26 +268,41 @@ func (m *Model) scheduleBackendSearch() tea.Cmd {
 }
 
 // buildBackendSearchQuery constructs a LIKE-based query across all text columns
-// of the current table.
+// of the current result source (table or wrapped base query).
 func (m Model) buildBackendSearchQuery(term string) string {
-	table := parseSimpleSelectTable(m.baseQuery)
-	if table == "" || term == "" {
+	if term == "" {
 		return m.baseQuery
 	}
-	cols, ok := m.columnCache[table]
-	if !ok {
+	src := m.filterBaseSQL()
+	if src == "" || src == "() AS _creel_filt" {
+		return m.baseQuery
+	}
+	var cols []db.Column
+	if table := parseSimpleSelectTable(m.baseQuery); table != "" {
+		if cached, ok := m.columnCache[table]; ok {
+			cols = cached
+		}
+	}
+	if len(cols) == 0 {
 		resultCols := m.results.columns
 		cols = make([]db.Column, len(resultCols))
 		for i, c := range resultCols {
 			cols[i] = db.Column{Name: c}
 		}
 	}
+	if len(cols) == 0 {
+		return m.baseQuery
+	}
 	escaped := strings.ReplaceAll(term, "'", "''")
 	var clauses []string
 	for _, c := range cols {
-		clauses = append(clauses, fmt.Sprintf("%s LIKE '%%%s%%'", c.Name, escaped))
+		name := c.Name
+		if m.connection != nil {
+			name = quoteIdentD(m.connection.Config().Driver, c.Name)
+		}
+		clauses = append(clauses, fmt.Sprintf("%s LIKE '%%%s%%'", name, escaped))
 	}
-	q := fmt.Sprintf("SELECT * FROM %s WHERE %s", table, strings.Join(clauses, " OR "))
+	q := fmt.Sprintf("SELECT * FROM %s WHERE %s", src, strings.Join(clauses, " OR "))
 	if m.sortCol != "" {
 		q += fmt.Sprintf(" ORDER BY %s %s", m.quoteSortCol(m.sortCol), m.sortDir)
 	}

@@ -76,9 +76,26 @@ func TestCanFilter_SimpleSelect(t *testing.T) {
 }
 
 func TestCanFilter_Join(t *testing.T) {
-	m := Model{baseQuery: "SELECT * FROM users JOIN orders ON users.id = orders.user_id", connection: &db.Connection{}}
+	m := Model{
+		baseQuery:  "SELECT u.id, o.total FROM users u JOIN orders o ON u.id = o.user_id",
+		connection: &db.Connection{},
+		results:    NewResultsTable(),
+	}
+	m.results.SetResult([]string{"id", "total"}, [][]string{{"1", "10"}}, "")
+	if !m.canFilter() {
+		t.Error("JOIN with unique column names should be filterable")
+	}
+}
+
+func TestCanFilter_JoinDuplicateColumns(t *testing.T) {
+	m := Model{
+		baseQuery:  "SELECT * FROM users JOIN orders ON users.id = orders.user_id",
+		connection: &db.Connection{},
+		results:    NewResultsTable(),
+	}
+	m.results.SetResult([]string{"id", "name", "id", "user_id"}, [][]string{{"1", "a", "2", "1"}}, "")
 	if m.canFilter() {
-		t.Error("JOIN query should not be filterable")
+		t.Error("JOIN with duplicate column names should not be filterable")
 	}
 }
 
@@ -86,6 +103,55 @@ func TestCanFilter_EmptyBaseQuery(t *testing.T) {
 	m := Model{baseQuery: ""}
 	if m.canFilter() {
 		t.Error("empty base query should not be filterable")
+	}
+}
+
+func TestBuildFilteredQuery_WrapsJoin(t *testing.T) {
+	m := Model{
+		baseQuery: "SELECT u.id, o.total FROM users u JOIN orders o ON u.id = o.user_id",
+		filters:   []string{"total > 10"},
+		sortCol:   "id",
+		sortDir:   "DESC",
+	}
+	got := m.buildFilteredQuery()
+	want := "SELECT * FROM (SELECT u.id, o.total FROM users u JOIN orders o ON u.id = o.user_id) AS _creel_filt WHERE total > 10 ORDER BY id DESC"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestBuildFilteredQuery_WrapsProjection(t *testing.T) {
+	m := Model{
+		baseQuery: "SELECT id, name FROM users",
+		filters:   []string{"name = 'alice'"},
+	}
+	got := m.buildFilteredQuery()
+	want := "SELECT * FROM (SELECT id, name FROM users) AS _creel_filt WHERE name = 'alice'"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestIsSelectStarFromSimpleTable(t *testing.T) {
+	yes := []string{
+		"SELECT * FROM users",
+		"select * from users where id = 1",
+		"SELECT DISTINCT * FROM users",
+	}
+	for _, q := range yes {
+		if !isSelectStarFromSimpleTable(q) {
+			t.Errorf("%q should be star-from-simple", q)
+		}
+	}
+	no := []string{
+		"SELECT id, name FROM users",
+		"SELECT * FROM users JOIN orders ON users.id = orders.user_id",
+		"SELECT count(*) FROM users",
+	}
+	for _, q := range no {
+		if isSelectStarFromSimpleTable(q) {
+			t.Errorf("%q should not be star-from-simple", q)
+		}
 	}
 }
 

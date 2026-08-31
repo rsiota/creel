@@ -75,12 +75,12 @@ func TestDrillChartBarKeepsMatchingRows(t *testing.T) {
 	}
 }
 
-func TestDrillChartBarNeedsSimpleSelect(t *testing.T) {
+func TestDrillChartBarNeedsFilterableQuery(t *testing.T) {
 	m := &Model{results: NewResultsTable(), chartPanel: NewChartPanel(), baseQuery: "SELECT 1"}
 	m.chartPanel.ShowBar("bar · a", []chartBar{{label: "x", value: 1, n: 1}}, 0, barAggCount)
 	m.chartPanel.filterCol = "a"
 	m.drillChartBar()
-	if !strings.Contains(m.schemaMsg, "simple SELECT") {
+	if !strings.Contains(m.schemaMsg, "can't filter") {
 		t.Errorf("schemaMsg = %q", m.schemaMsg)
 	}
 }

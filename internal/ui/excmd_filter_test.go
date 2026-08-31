@@ -81,15 +81,36 @@ func TestExFilterNotConnected(t *testing.T) {
 	}
 }
 
-func TestExFilterNeedsSimpleQuery(t *testing.T) {
+func TestExFilterNeedsUniqueColumns(t *testing.T) {
 	m := &Model{
 		connection: &db.Connection{},
 		baseQuery:  "SELECT * FROM a JOIN b ON a.id = b.id",
 		results:    NewResultsTable(),
 	}
+	m.results.SetResult([]string{"id", "name", "id"}, [][]string{{"1", "a", "2"}}, "")
 	m.runExCommand("filter level > 1")
-	if !strings.Contains(m.schemaMsg, "simple table query") {
-		t.Errorf(":filter on a join -> %q", m.schemaMsg)
+	if !strings.Contains(m.schemaMsg, "unique column") {
+		t.Errorf(":filter on duplicate columns -> %q", m.schemaMsg)
+	}
+}
+
+func TestExFilterAllowsJoinWithUniqueColumns(t *testing.T) {
+	m := filterTestModel(t)
+	m.baseQuery = "SELECT id, msg, level FROM events"
+	m.results.SetResult([]string{"id", "msg", "level"}, [][]string{{"1", "a", "5"}}, "")
+	m.results.SetColumnTypes(map[string]string{"id": "INTEGER", "msg": "TEXT", "level": "INTEGER"})
+	cmd := m.runExCommand("filter level > 1")
+	if cmd == nil && !strings.Contains(m.schemaMsg, "filtered") {
+		// runExCommand may return a cmd; schemaMsg should reflect success
+		if !strings.Contains(m.schemaMsg, "filtered") && len(m.filters) == 0 {
+			t.Fatalf(":filter on projection -> msg=%q filters=%v", m.schemaMsg, m.filters)
+		}
+	}
+	if len(m.filters) != 1 {
+		t.Fatalf("filters = %v, want 1", m.filters)
+	}
+	if !strings.Contains(m.lastQuery, "_creel_filt") {
+		t.Errorf("lastQuery should wrap projection, got %q", m.lastQuery)
 	}
 }
 

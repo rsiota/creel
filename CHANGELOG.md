@@ -17,6 +17,10 @@ commits, so it can come up empty).
   about a week. Date-only values use `today` / `yesterday` / `Nd ago`;
   time-only stays `15:04`. Display only — yank, edit, and `E` keep the raw
   value.
+- Results sort/filter (`o`, `*`/`!`, `:filter`, value picker, `/` backend
+  search) work on custom SELECTs — JOINs, projections, and `GROUP BY` wrap as
+  `SELECT * FROM (<query>) AS _creel_filt …`. Simple `SELECT * FROM <table>`
+  still rebuilds in place. Requires unique result column names.
 
 ### Changed
 - Connection / AI provider form `ctrl+t` feedback: keep ✓/✗ on every attributed
