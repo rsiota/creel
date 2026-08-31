@@ -113,6 +113,9 @@ var (
 	// so edits read clearly on light themes, purple/accent hue so dirty stays
 	// distinct from blue visual selection and teal space marks.
 	colorDirty lipgloss.Color
+	// Soft error→bg wash behind connection-form fields that failed ctrl+t
+	// (fail-only chrome; OK fields stay neutral aside from the ✓ marker).
+	colorTestFailWash lipgloss.Color
 	// Soft mark→bg wash behind space-marked result rows so the selection reads
 	// as a row tint (not just teal text / ◆), especially on near-white themes.
 	colorMarkRow lipgloss.Color
@@ -208,6 +211,7 @@ func applyPalette(p colorPalette) {
 	// Boolean glyphs: same hue as cell text, ~70% strength (30% toward bg).
 	colorBool = mixColors(p.fg, p.bg, 0.30)
 	colorDirty = deriveDirtyBg(p)
+	colorTestFailWash = deriveTintWash(p.err, p)
 	colorMarkRow = deriveMarkRowBg(p)
 	// Visual / marked-column wash: keep theme visual when it already pops;
 	// otherwise a primary→bg wash at mark-row strength (blue selection, not

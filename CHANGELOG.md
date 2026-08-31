@@ -18,6 +18,11 @@ commits, so it can come up empty).
   time-only stays `15:04`. Display only — yank, edit, and `E` keep the raw
   value.
 
+### Changed
+- Connection / AI provider form `ctrl+t` feedback: keep ✓/✗ on every attributed
+  field, but only failed fields get a red border and a soft error wash. Passing
+  fields stay neutral so light themes stay readable.
+
 ### Fixed
 - Results sort (`o` / header click / `:sort`): pagination no longer wraps the
   query in a derived table when unnecessary, so `ORDER BY` is honored on

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // testState is the per-field outcome of a connection test. The zero value
@@ -27,8 +28,8 @@ func (f ConnectionForm) statusOf(fi int) testState {
 }
 
 // fieldTestMarker returns the right-aligned label marker for a field's test
-// state: a green ✓ for OK, a red ✗ for fail, nothing when untested. Paired
-// with formFieldBorder so the outcome is readable even without colour.
+// state: a green ✓ for OK, a red ✗ for fail, nothing when untested. Markers
+// stay on every attributed field; only fails get border/wash chrome.
 func fieldTestMarker(s testState) string {
 	switch s {
 	case testOK:
@@ -39,18 +40,30 @@ func fieldTestMarker(s testState) string {
 	return ""
 }
 
-// formFieldBorder picks the border style for a connection-form field: red when
-// the field failed the last test, green when it passed, otherwise the usual
-// focus colouring (primary when active, grey otherwise). The test result takes
-// precedence over focus so problems stand out; it is cleared on the next edit.
+// formFieldBorder picks the border style for a connection-form field: error
+// red when the field failed the last test, otherwise the usual focus colouring
+// (primary when active, grey otherwise). Passing fields stay neutral so light
+// themes don't turn into a patchwork of green boxes — the ✓ marker is enough.
 func formFieldBorder(focused bool, st testState) lipgloss.Style {
-	switch st {
-	case testFail:
+	if st == testFail {
 		return lipgloss.NewStyle().Foreground(colorError)
-	case testOK:
-		return lipgloss.NewStyle().Foreground(colorSuccess)
 	}
 	return fieldBoxBorder(focused)
+}
+
+// applyFieldFailWash pads content to valueWidth and paints a soft error wash
+// behind it so failed ctrl+t fields read clearly on light themes.
+func applyFieldFailWash(content string, valueWidth int) string {
+	if valueWidth < 1 {
+		return content
+	}
+	w := lipgloss.Width(content)
+	if w < valueWidth {
+		content += strings.Repeat(" ", valueWidth-w)
+	} else if w > valueWidth {
+		content = ansi.Truncate(content, valueWidth, "…")
+	}
+	return lipgloss.NewStyle().Background(colorTestFailWash).Render(content)
 }
 
 // visibleFieldSet returns the currently visible field indices as a set, for
@@ -74,13 +87,13 @@ func isSSHField(fi int) bool {
 }
 
 // classifyTestError attributes a connection-test error to specific form fields
-// so the UI can tint them green/red like TablePlus. The connect path runs in
-// stages — SSH tunnel (if any) first, then the DB network/auth handshake — so
-// the stage that failed is the strongest signal and needs no string parsing:
-// an SSH-stage failure means the DB fields were never tried (left neutral).
-// Within the DB stage the error message is matched against stable driver/ssh
-// strings to pinpoint the network (host/port), credentials (user/pass), or the
-// database name. A nil error marks every visible field OK.
+// so the UI can mark them with ✓/✗ (and fail-only border/wash). The connect
+// path runs in stages — SSH tunnel (if any) first, then the DB network/auth
+// handshake — so the stage that failed is the strongest signal and needs no
+// string parsing: an SSH-stage failure means the DB fields were never tried
+// (left neutral). Within the DB stage the error message is matched against
+// stable driver/ssh strings to pinpoint the network (host/port), credentials
+// (user/pass), or the database name. A nil error marks every visible field OK.
 func (f ConnectionForm) classifyTestError(err error) map[int]testState {
 	vis := f.visibleFieldSet()
 	out := make(map[int]testState, len(vis))

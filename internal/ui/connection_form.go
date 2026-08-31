@@ -617,28 +617,34 @@ func (f ConnectionForm) View() string {
 // field fi's value box. Choice fields render as a selector (< value >); the
 // active free-text field in insert mode renders a bar cursor; other free-text
 // fields show their value, a masked value for password fields, or the muted
-// placeholder when empty.
+// placeholder when empty. Failed ctrl+t fields get a soft error wash.
 func (f ConnectionForm) fieldValueContent(fi, valueWidth int) string {
-	if isChoiceField(fi) {
-		return renderSelector(f.fields[fi].Value(), valueWidth)
-	}
-	if fi == f.activeField() && f.editing {
-		return renderEditInput(f.fields[fi], valueWidth, colorFg)
-	}
-	ti := f.fields[fi]
-	val := ti.Value()
-	var displayVal string
-	sty := lipgloss.NewStyle().Foreground(colorFg)
+	var content string
 	switch {
-	case ti.EchoMode == textinput.EchoPassword && val != "":
-		displayVal = strings.Repeat("*", runeLen(val))
-	case val == "":
-		displayVal = ti.Placeholder
-		sty = lipgloss.NewStyle().Foreground(colorMuted)
+	case isChoiceField(fi):
+		content = renderSelector(f.fields[fi].Value(), valueWidth)
+	case fi == f.activeField() && f.editing:
+		content = renderEditInput(f.fields[fi], valueWidth, colorFg)
 	default:
-		displayVal = val
+		ti := f.fields[fi]
+		val := ti.Value()
+		var displayVal string
+		sty := lipgloss.NewStyle().Foreground(colorFg)
+		switch {
+		case ti.EchoMode == textinput.EchoPassword && val != "":
+			displayVal = strings.Repeat("*", runeLen(val))
+		case val == "":
+			displayVal = ti.Placeholder
+			sty = lipgloss.NewStyle().Foreground(colorMuted)
+		default:
+			displayVal = val
+		}
+		content = sty.Render(truncateCell(displayVal, valueWidth))
 	}
-	return sty.Render(truncateCell(displayVal, valueWidth))
+	if f.statusOf(fi) == testFail {
+		return applyFieldFailWash(content, valueWidth)
+	}
+	return content
 }
 
 // renderSelector renders a cycling-selector value as "< value >", padded to

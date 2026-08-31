@@ -4,6 +4,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // formForDriver returns a fresh form with the given driver (and SSH toggle).
@@ -195,5 +198,51 @@ func TestFormRendersSuccessMarkers(t *testing.T) {
 	}
 	if strings.Contains(view, "✗") {
 		t.Errorf("no ✗ expected on success\n%s", view)
+	}
+}
+
+// Passing fields keep the normal focus/idle border; only fails use error red.
+func TestFormFieldBorderFailOnly(t *testing.T) {
+	okBorder := formFieldBorder(false, testOK).GetForeground()
+	idleBorder := fieldBoxBorder(false).GetForeground()
+	if okBorder != idleBorder {
+		t.Errorf("testOK border = %v, want idle %v (no green chrome)", okBorder, idleBorder)
+	}
+	failBorder := formFieldBorder(false, testFail).GetForeground()
+	if failBorder != colorError {
+		t.Errorf("testFail border = %v, want colorError %v", failBorder, colorError)
+	}
+	focusedOK := formFieldBorder(true, testOK).GetForeground()
+	focusedIdle := fieldBoxBorder(true).GetForeground()
+	if focusedOK != focusedIdle {
+		t.Errorf("focused testOK border = %v, want focus %v", focusedOK, focusedIdle)
+	}
+}
+
+func TestApplyFieldFailWashPads(t *testing.T) {
+	got := applyFieldFailWash("ab", 5)
+	if lipgloss.Width(got) != 5 {
+		t.Fatalf("width = %d, want 5", lipgloss.Width(got))
+	}
+	if plain := ansi.Strip(got); plain != "ab   " {
+		t.Fatalf("plain = %q, want %q", plain, "ab   ")
+	}
+}
+
+// Failed fields paint a soft error wash behind the value line; OK fields don't.
+func TestFormFailFieldGetsWash(t *testing.T) {
+	f := formForDriver("mysql", false)
+	f.SetSize(67, f.contentHeight())
+	f.fields[fieldUser].SetValue("root")
+	f.SetTestResult("✗ failed", errors.New("Error 1045: Access denied for user 'root'"))
+	washed := f.fieldValueContent(fieldUser, 40)
+	f.testStates[fieldUser] = testOK
+	neutral := f.fieldValueContent(fieldUser, 40)
+	if washed == neutral {
+		t.Fatal("fail wash should change the value-line rendering vs OK state")
+	}
+	if ansi.Strip(washed) != ansi.Strip(neutral) {
+		t.Fatalf("wash should not change visible text: washed=%q neutral=%q",
+			ansi.Strip(washed), ansi.Strip(neutral))
 	}
 }

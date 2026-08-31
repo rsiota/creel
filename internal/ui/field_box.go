@@ -31,7 +31,8 @@ func fieldBoxBorder(focused bool) lipgloss.Style {
 // each exactly (contentW-4) columns wide, that become the boxed value line(s).
 // border is the lipgloss style whose Foreground is used to draw the box
 // borders; callers pass fieldBoxBorder(focused) for the usual focus colouring,
-// or a green/red style to signal a per-field test result (connection form).
+// or a red style to signal a failed test field (connection / provider form).
+// Passing test fields keep the usual focus border — only the ✓ marker marks OK.
 // This is the single source of truth used by both the inspector and the
 // connection form so their field rendering never drifts.
 func renderFieldBox(labelStr, markerStr, valueContent string, contentW int, border lipgloss.Style) string {

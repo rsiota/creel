@@ -291,27 +291,34 @@ func (f ProviderForm) View() string {
 // value box. The Secrets selector renders as < value >; the active free-text
 // field in insert mode renders a bar cursor; other free-text fields show their
 // value, a masked value for the API key, or the muted placeholder when empty.
+// Failed ctrl+t fields get a soft error wash.
 func (f ProviderForm) fieldValueContent(fi, valueWidth int) string {
-	if isPFChoiceField(fi) {
-		return renderSelector(f.fields[fi].Value(), valueWidth)
-	}
-	if fi == f.activeField() && f.editing {
-		return renderEditInput(f.fields[fi], valueWidth, colorFg)
-	}
-	ti := f.fields[fi]
-	val := ti.Value()
-	var displayVal string
-	sty := lipgloss.NewStyle().Foreground(colorFg)
+	var content string
 	switch {
-	case ti.EchoMode == textinput.EchoPassword && val != "":
-		displayVal = strings.Repeat("*", runeLen(val))
-	case val == "":
-		displayVal = ti.Placeholder
-		sty = lipgloss.NewStyle().Foreground(colorMuted)
+	case isPFChoiceField(fi):
+		content = renderSelector(f.fields[fi].Value(), valueWidth)
+	case fi == f.activeField() && f.editing:
+		content = renderEditInput(f.fields[fi], valueWidth, colorFg)
 	default:
-		displayVal = val
+		ti := f.fields[fi]
+		val := ti.Value()
+		var displayVal string
+		sty := lipgloss.NewStyle().Foreground(colorFg)
+		switch {
+		case ti.EchoMode == textinput.EchoPassword && val != "":
+			displayVal = strings.Repeat("*", runeLen(val))
+		case val == "":
+			displayVal = ti.Placeholder
+			sty = lipgloss.NewStyle().Foreground(colorMuted)
+		default:
+			displayVal = val
+		}
+		content = sty.Render(truncateCell(displayVal, valueWidth))
 	}
-	return sty.Render(truncateCell(displayVal, valueWidth))
+	if f.statusOf(fi) == testFail {
+		return applyFieldFailWash(content, valueWidth)
+	}
+	return content
 }
 
 // messageLine returns the validation/test status line (blank when idle).
