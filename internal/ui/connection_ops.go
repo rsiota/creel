@@ -235,6 +235,8 @@ func (m *Model) resetWorkspaceForNewConnection() {
 	m.editorSplitH = 0
 	m.rightSlotSplitW = 0
 	m.editorMaximized = false
+	m.sidebarVisible = true
+	m.editorVisible = true
 }
 
 // showConnectionList disconnects (if needed) and returns to the connection

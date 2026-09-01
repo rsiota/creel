@@ -36,6 +36,8 @@ type Layout struct {
 	EditorHeight    int  `json:"editor_height,omitempty"`
 	RightSlotWidth  int  `json:"right_slot_width,omitempty"`
 	EditorMaximized bool `json:"editor_maximized,omitempty"`
+	SidebarHidden   bool `json:"sidebar_hidden,omitempty"`
+	EditorHidden    bool `json:"editor_hidden,omitempty"`
 }
 
 // Right-slot panel identifiers persisted in Panels.Right.

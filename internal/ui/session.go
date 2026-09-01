@@ -61,8 +61,11 @@ func (m *Model) snapshotSessionLayout() *session.Layout {
 		EditorHeight:    m.editorSplitH,
 		RightSlotWidth:  m.rightSlotSplitW,
 		EditorMaximized: m.editorMaximized,
+		SidebarHidden:   !m.sidebarVisible,
+		EditorHidden:    !m.editorVisible,
 	}
-	if l.SidebarWidth == 0 && l.EditorHeight == 0 && l.RightSlotWidth == 0 && !l.EditorMaximized {
+	if l.SidebarWidth == 0 && l.EditorHeight == 0 && l.RightSlotWidth == 0 &&
+		!l.EditorMaximized && !l.SidebarHidden && !l.EditorHidden {
 		return nil
 	}
 	return l
@@ -160,6 +163,8 @@ func (m *Model) applySessionLayout(l session.Layout) {
 		m.rightSlotSplitW = l.RightSlotWidth
 	}
 	m.editorMaximized = l.EditorMaximized
+	m.sidebarVisible = !l.SidebarHidden
+	m.editorVisible = !l.EditorHidden
 }
 
 // applySessionPanels opens or closes the right-slot panel to match a saved

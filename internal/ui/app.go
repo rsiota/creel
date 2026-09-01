@@ -430,6 +430,10 @@ type Model struct {
 
 	// Editor maximize toggle (ctrl+w)
 	editorMaximized bool
+	// sidebarVisible / editorVisible toggle the table list and SQL editor;
+	// split sizes are preserved for when they are shown again.
+	sidebarVisible bool
+	editorVisible  bool
 	// editorSplitH is the user-chosen outer height of the editor panel
 	// (editor↔results split). 0 means defaultEditorHeight. Honoured when not
 	// maximized; clamped by workspaceGeom.
@@ -723,6 +727,9 @@ func NewModel(cfg *config.Config) Model {
 		activeTabID: 0,
 		nextTabID:   1,
 		tabBar:      NewTabBar(),
+
+		sidebarVisible: true,
+		editorVisible:  true,
 	}
 	m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
 	m.editor.BindYank(&m.vimYank)
@@ -3228,6 +3235,30 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m = m.resizePane(msg.String())
 		return m, nil
+	case "alt+b":
+		if m.state != stateWorkspace {
+			return m, nil
+		}
+		if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() {
+			return m, nil
+		}
+		if m.focus == FocusEditor && m.editor.CapturingKeys() {
+			break
+		}
+		m.toggleSidebar()
+		return m, nil
+	case "alt+e":
+		if m.state != stateWorkspace {
+			return m, nil
+		}
+		if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() {
+			return m, nil
+		}
+		if m.focus == FocusEditor && m.editor.CapturingKeys() {
+			break
+		}
+		m.toggleEditor()
+		return m, nil
 	case "ctrl+o":
 		m.inspector.Toggle()
 		if m.inspector.IsVisible() {
@@ -4758,18 +4789,6 @@ func (m Model) viewWorkspace() string {
 			BorderForeground(colorPrimary).
 			Render(m.schemaEditor.View())
 	} else {
-		editorPanel := lipgloss.NewStyle().
-			Width(rightWidth).
-			Height(editorHeight - borderOverhead).
-			Border(panelBorder()).
-			BorderForeground(m.borderForFocus(FocusEditor)).
-			Render(lipgloss.JoinVertical(lipgloss.Left,
-				m.tabBar.View(),
-				lipgloss.NewStyle().Foreground(colorBorder).
-					Render(strings.Repeat("─", rightWidth)),
-				m.editor.View(),
-			))
-
 		var resultsPanel string
 		if m.chartPanel.IsVisible() {
 			resultsPanel = m.chartPanel.View()
@@ -4816,10 +4835,25 @@ func (m Model) viewWorkspace() string {
 			}())
 		}
 
-		contentPanel = lipgloss.JoinVertical(lipgloss.Left,
-			editorPanel,
-			resultsPanel,
-		)
+		if m.editorVisible {
+			editorPanel := lipgloss.NewStyle().
+				Width(rightWidth).
+				Height(editorHeight - borderOverhead).
+				Border(panelBorder()).
+				BorderForeground(m.borderForFocus(FocusEditor)).
+				Render(lipgloss.JoinVertical(lipgloss.Left,
+					m.tabBar.View(),
+					lipgloss.NewStyle().Foreground(colorBorder).
+						Render(strings.Repeat("─", rightWidth)),
+					m.editor.View(),
+				))
+			contentPanel = lipgloss.JoinVertical(lipgloss.Left,
+				editorPanel,
+				resultsPanel,
+			)
+		} else {
+			contentPanel = resultsPanel
+		}
 	}
 
 	rightPanel := contentPanel
@@ -4976,9 +5010,15 @@ func (m Model) viewWorkspace() string {
 
 	var workspace string
 	if m.inspector.IsVisible() || m.assistant.IsVisible() || (m.explorer.IsVisible() && m.explorer.docked) {
-		workspace = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel, slotPanel)
-	} else {
+		if m.sidebarVisible && sidebarWidth > 0 {
+			workspace = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel, slotPanel)
+		} else {
+			workspace = lipgloss.JoinHorizontal(lipgloss.Top, rightPanel, slotPanel)
+		}
+	} else if m.sidebarVisible && sidebarWidth > 0 {
 		workspace = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, rightPanel)
+	} else {
+		workspace = rightPanel
 	}
 
 	// Dim the workspace panels behind long-lived editing overlays.

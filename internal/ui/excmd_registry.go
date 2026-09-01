@@ -544,6 +544,20 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.refreshSchema() },
 		},
 		{
+			verbs:   []string{"sidebar"},
+			desc:    "toggle the table sidebar",
+			usage:   ":sidebar",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.toggleSidebar(); return nil },
+		},
+		{
+			verbs:   []string{"editor"},
+			desc:    "toggle the query editor and tab bar",
+			usage:   ":editor",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.toggleEditor(); return nil },
+		},
+		{
 			verbs:   []string{"history"},
 			desc:    "toggle the query history panel",
 			usage:   ":history",

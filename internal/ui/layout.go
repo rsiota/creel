@@ -69,12 +69,19 @@ func (m Model) workspaceGeom() workspaceGeom {
 	if sidebarPreferred < minSidebarWidth {
 		sidebarPreferred = minSidebarWidth
 	}
-	if rightDefault > 0 {
-		g.RightSlotW = m.effectiveRightSlotWidth(rightDefault, sidebarPreferred)
-	}
-	g.SidebarWidth = m.effectiveSidebarWidth(g.RightSlotW)
-	if rightDefault > 0 {
-		g.RightSlotW = m.effectiveRightSlotWidth(rightDefault, g.SidebarWidth)
+	if !m.sidebarVisible {
+		g.SidebarWidth = 0
+		if rightDefault > 0 {
+			g.RightSlotW = m.effectiveRightSlotWidth(rightDefault, 0)
+		}
+	} else {
+		if rightDefault > 0 {
+			g.RightSlotW = m.effectiveRightSlotWidth(rightDefault, sidebarPreferred)
+		}
+		g.SidebarWidth = m.effectiveSidebarWidth(g.RightSlotW)
+		if rightDefault > 0 {
+			g.RightSlotW = m.effectiveRightSlotWidth(rightDefault, g.SidebarWidth)
+		}
 	}
 
 	g.EditorHeight = m.effectiveEditorHeight(g.CmdHeight)
@@ -158,6 +165,10 @@ func (m Model) effectiveEditorHeight(cmdHeight int) int {
 		maxH = minEditorHeight
 	}
 
+	if !m.editorVisible {
+		return 0
+	}
+
 	if m.editorMaximized {
 		// Most of the vertical space; leave a results sliver (~12 rows of
 		// chrome for the bottom panel), matching the pre-geom behaviour.
@@ -191,6 +202,10 @@ func (m Model) effectiveEditorHeight(cmdHeight int) int {
 // share the right-hand slot).
 func (m Model) isFocusable(f Focus) bool {
 	switch f {
+	case FocusConnections:
+		return m.sidebarVisible
+	case FocusEditor:
+		return m.editorVisible
 	case FocusTabBar:
 		return false
 	case FocusInspector:
@@ -279,14 +294,24 @@ func (m Model) moveFocus(direction string) Model {
 	case FocusConnections:
 		// The sidebar spans the full height, so only horizontal moves apply.
 		if direction == "ctrl+l" {
-			m.focus = FocusEditor
+			if m.editorVisible {
+				m.focus = FocusEditor
+			} else {
+				m.focus = FocusResults
+			}
 		}
 	case FocusTabBar:
 		switch direction {
 		case "ctrl+h":
-			m.focus = FocusConnections
+			if m.sidebarVisible {
+				m.focus = FocusConnections
+			}
 		case "ctrl+j":
-			m.focus = FocusEditor
+			if m.editorVisible {
+				m.focus = FocusEditor
+			} else {
+				m.focus = FocusResults
+			}
 		case "ctrl+l":
 			if hasRight {
 				m.focus = right
@@ -295,7 +320,9 @@ func (m Model) moveFocus(direction string) Model {
 	case FocusEditor:
 		switch direction {
 		case "ctrl+h":
-			m.focus = FocusConnections
+			if m.sidebarVisible {
+				m.focus = FocusConnections
+			}
 		case "ctrl+k":
 			m.focus = FocusTabBar
 		case "ctrl+j":
@@ -308,9 +335,13 @@ func (m Model) moveFocus(direction string) Model {
 	case FocusResults:
 		switch direction {
 		case "ctrl+h":
-			m.focus = FocusConnections
+			if m.sidebarVisible {
+				m.focus = FocusConnections
+			}
 		case "ctrl+k":
-			m.focus = FocusEditor
+			if m.editorVisible {
+				m.focus = FocusEditor
+			}
 		case "ctrl+l":
 			if hasRight {
 				m.focus = right
@@ -320,7 +351,11 @@ func (m Model) moveFocus(direction string) Model {
 		// The right slot spans the full height; move back left to the editor
 		// (the centre hub).
 		if direction == "ctrl+h" {
-			m.focus = FocusEditor
+			if m.editorVisible {
+				m.focus = FocusEditor
+			} else {
+				m.focus = FocusResults
+			}
 		}
 	}
 	m.applyFocus()
@@ -454,6 +489,34 @@ func (m Model) updateLayout() Model {
 	return m
 }
 
+// toggleSidebar shows or hides the table sidebar. Split width is preserved.
+func (m *Model) toggleSidebar() {
+	m.sidebarVisible = !m.sidebarVisible
+	if !m.sidebarVisible && m.focus == FocusConnections {
+		if m.editorVisible {
+			m.focus = FocusEditor
+		} else {
+			m.focus = FocusResults
+		}
+	}
+	m.layoutWorkspace()
+	m.applyFocus()
+}
+
+// toggleEditor shows or hides the query editor and tab bar.
+func (m *Model) toggleEditor() {
+	m.editorVisible = !m.editorVisible
+	if !m.editorVisible {
+		m.editorMaximized = false
+		switch m.focus {
+		case FocusEditor, FocusTabBar:
+			m.focus = FocusResults
+		}
+	}
+	m.layoutWorkspace()
+	m.applyFocus()
+}
+
 // layoutWorkspace sizes the workspace panels. Uses pointer receiver so it
 // works correctly when called from both value and pointer receiver methods.
 func (m *Model) layoutWorkspace() {
@@ -473,14 +536,15 @@ func (m *Model) layoutWorkspace() {
 	}
 
 	editorContentHeight := g.EditorHeight - g.BorderOH - 2 // -2 for tab line + separator
-	if editorContentHeight < 1 {
-		editorContentHeight = 1
+	if m.editorVisible {
+		if editorContentHeight < 1 {
+			editorContentHeight = 1
+		}
+		m.editor.SetSize(g.RightWidth, editorContentHeight)
+		m.tabBar.SetSize(g.RightWidth, 1)
 	}
 
-	m.connList.SetSize(g.SidebarWidth-g.BorderOH, sideContentHeight)
-	m.editor.SetSize(g.RightWidth, editorContentHeight)
-
-	m.tabBar.SetSize(g.RightWidth, 1)
+	m.connList.SetSize(max(0, g.SidebarWidth-g.BorderOH), sideContentHeight)
 
 	m.results.SetSize(g.RightWidth+g.BorderOH, g.ResultsHeight+g.BorderOH)
 	// Same box model as results. Must be sized here: View is a value

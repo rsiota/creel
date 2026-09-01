@@ -679,6 +679,8 @@ func renderGettingStartedRows(contentW int) []helpRow {
 				{"ctrl+p", "Jump anywhere — tables, bookmarks, themes, shortcuts"},
 				{"?", "This help overlay (Start, Keys, Commands tabs)"},
 				{":", "Ex commands — :tabs, :export, :theme, …"},
+				{"alt+b", "Toggle the table sidebar"},
+				{"alt+e", "Toggle the query editor and tabs"},
 			},
 		},
 		{

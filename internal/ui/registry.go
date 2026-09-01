@@ -55,6 +55,7 @@ func registry() []Section {
 				{"ctrl+f", []string{"ctrl+f"}, "toggle AI assistant", ""},
 				{"ctrl+h/j/k/l", []string{"ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"}, "move focus", ""},
 				{"alt+h/j/k/l", []string{"alt+h", "alt+j", "alt+k", "alt+l", "alt+ctrl+h", "alt+ctrl+j", "alt+ctrl+k", "alt+ctrl+l"}, "resize focused pane", ""},
+				{"alt+b / alt+e", []string{"alt+b", "alt+e"}, "toggle sidebar / query editor", ""},
 				{"tab / shift+tab", []string{"tab", "shift+tab"}, "cycle focus (skips tab bar)", ""},
 				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "next / prev page", ""},
 				{"ctrl+p", []string{"ctrl+p"}, "jump-anywhere palette", ""},

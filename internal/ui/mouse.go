@@ -303,7 +303,7 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	// ── Tab bar (inside editor panel) ─────────────────────────
 	// Tab text sits at Y=1 (below the editor's top border).
-	if msg.Type == tea.MouseLeft && msg.Y == 1 && msg.X >= sidebarWidth && msg.X < editorRight {
+	if m.editorVisible && msg.Type == tea.MouseLeft && msg.Y == 1 && msg.X >= sidebarWidth && msg.X < editorRight {
 		m.focus = FocusTabBar
 		m.applyFocus()
 		relX := msg.X - sidebarWidth - 1 // -1 for editor's left border
@@ -318,11 +318,7 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// ── Editor (top-right) ────────────────────────────────────
-	// Any click within the editor panel (border, separator, or text area)
-	// that is not the tab bar focuses the editor. The underlying textarea has
-	// no mouse support, so the cursor stays where it was — focus is what
-	// matters here.
-	if msg.Y < resultsTop && msg.X >= sidebarWidth && msg.X < editorRight {
+	if m.editorVisible && msg.Y < resultsTop && msg.X >= sidebarWidth && msg.X < editorRight {
 		if msg.Type == tea.MouseLeft {
 			m.focus = FocusEditor
 			m.applyFocus()
@@ -434,6 +430,9 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // editor and results panels (editor bottom border or results top border),
 // within the centre column.
 func (m Model) onEditorResultsSplit(x, y int, g workspaceGeom) bool {
+	if !m.editorVisible || g.EditorHeight <= 0 {
+		return false
+	}
 	if x < g.SidebarWidth || x >= g.EditorRight {
 		return false
 	}
@@ -443,6 +442,9 @@ func (m Model) onEditorResultsSplit(x, y int, g workspaceGeom) bool {
 // onSidebarSplit reports whether (x,y) sits on the seam between the sidebar
 // and the centre column (sidebar right border or centre left border).
 func (m Model) onSidebarSplit(x, y int, g workspaceGeom) bool {
+	if !m.sidebarVisible || g.SidebarWidth <= 0 {
+		return false
+	}
 	if y < 0 || y > g.ResultsBottom {
 		return false
 	}
