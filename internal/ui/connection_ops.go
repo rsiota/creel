@@ -237,6 +237,7 @@ func (m *Model) resetWorkspaceForNewConnection() {
 	m.editorMaximized = false
 	m.sidebarVisible = true
 	m.editorVisible = true
+	m.zenActive = false
 }
 
 // showConnectionList disconnects (if needed) and returns to the connection

@@ -491,6 +491,9 @@ func (m Model) updateLayout() Model {
 
 // toggleSidebar shows or hides the table sidebar. Split width is preserved.
 func (m *Model) toggleSidebar() {
+	if m.zenActive {
+		m.clearZenState()
+	}
 	m.sidebarVisible = !m.sidebarVisible
 	if !m.sidebarVisible && m.focus == FocusConnections {
 		if m.editorVisible {
@@ -505,6 +508,9 @@ func (m *Model) toggleSidebar() {
 
 // toggleEditor shows or hides the query editor and tab bar.
 func (m *Model) toggleEditor() {
+	if m.zenActive {
+		m.clearZenState()
+	}
 	m.editorVisible = !m.editorVisible
 	if !m.editorVisible {
 		m.editorMaximized = false
@@ -519,6 +525,9 @@ func (m *Model) toggleEditor() {
 
 // toggleInspector shows or hides the row inspector in the right slot.
 func (m *Model) toggleInspector() {
+	if m.zenActive {
+		m.clearZenState()
+	}
 	m.inspector.Toggle()
 	if m.inspector.IsVisible() {
 		m.assistant.Hide()
@@ -533,6 +542,9 @@ func (m *Model) toggleInspector() {
 
 // toggleAssistant shows or hides the AI assistant in the right slot.
 func (m *Model) toggleAssistant() {
+	if m.zenActive {
+		m.clearZenState()
+	}
 	m.assistant.Toggle()
 	if m.assistant.IsVisible() {
 		m.inspector.Hide()

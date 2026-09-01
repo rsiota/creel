@@ -219,6 +219,10 @@ func (m Model) statusBar(connName string) string {
 			fmt.Sprintf("%s %s", label, humanDuration(m.watchInterval))))
 	}
 
+	if m.zenActive {
+		parts = append(parts, sbAccent.Render("ZEN"))
+	}
+
 	if m.showTiming && m.lastQueryElapsed > 0 {
 		parts = append(parts, sbAccent.Render(
 			fmt.Sprintf("%.3fs", m.lastQueryElapsed.Seconds())))

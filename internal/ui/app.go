@@ -434,6 +434,8 @@ type Model struct {
 	// split sizes are preserved for when they are shown again.
 	sidebarVisible bool
 	editorVisible  bool
+	zenActive      bool
+	zenSaved       zenSnapshot
 	// editorSplitH is the user-chosen outer height of the editor panel
 	// (editor↔results split). 0 means defaultEditorHeight. Honoured when not
 	// maximized; clamped by workspaceGeom.

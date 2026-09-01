@@ -683,6 +683,7 @@ func renderGettingStartedRows(contentW int) []helpRow {
 				{"alt+e", "Toggle the query editor and tabs"},
 				{":inspector", "Toggle the row inspector (same as ctrl+o)"},
 				{":assistant", "Toggle the AI assistant (same as ctrl+f)"},
+				{":zen", "Results-only layout — hide sidebar, editor, and side panels"},
 			},
 		},
 		{

@@ -572,6 +572,13 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.toggleAssistant(); return nil },
 		},
 		{
+			verbs:   []string{"zen"},
+			desc:    "toggle results-only layout (sidebar, editor, and side panels hidden)",
+			usage:   ":zen [off]",
+			argKind: exArgOptional,
+			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exZen(args) },
+		},
+		{
 			verbs:   []string{"history"},
 			desc:    "toggle the query history panel",
 			usage:   ":history",
