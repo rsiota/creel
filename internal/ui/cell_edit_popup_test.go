@@ -15,8 +15,8 @@ import (
 func TestCellEditPopupUnderlineCursorPlainText(t *testing.T) {
 	p := NewCellEditPopup()
 	p.Show("hello world", 0, 0, "name", false)
-	p.ta.Focus()
-	p.ta.Cursor.Blink = false // cursor "on" ⇒ ta.View() emits the reverse marker
+	p.buf.Focus()
+	p.buf.Textarea().Cursor.Blink = false
 
 	raw := p.View()
 	if strings.Contains(raw, "\x1b[7m") {
@@ -35,7 +35,7 @@ func TestCellEditPopupUnderlineCursorJSON(t *testing.T) {
 	if !p.jsonMode {
 		t.Fatal("expected JSON mode for an object value")
 	}
-	p.ta.Focus()
+	p.buf.Focus()
 
 	raw := p.View()
 	if strings.Contains(raw, "\x1b[7m") {
@@ -105,8 +105,8 @@ func TestCellEditPopupCursorLineHasForeground(t *testing.T) {
 	p := NewCellEditPopup()
 	p.Show("hello world", 0, 0, "name", false)
 	p.SetMaxSize(60, 5)
-	p.ta.Focus()
-	p.ta.Cursor.Blink = false
+	p.buf.Focus()
+	p.buf.Textarea().Cursor.Blink = false
 
 	view := p.View()
 	fgStyled := lipgloss.NewStyle().Foreground(colorFg).Render("hello")

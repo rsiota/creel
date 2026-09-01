@@ -2924,19 +2924,14 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Cell-edit popup is modal — ctrl+s stages the value into dirtyCells (same
-	// as pressing enter on the inline editor) and closes the popup; esc cancels.
-	// All other keys go to the textarea.
+	// Cell-edit popup is modal — vim editing; ctrl+s stages; esc insert→normal→close.
 	if m.cellEdit.IsVisible() {
 		switch msg.String() {
 		case "ctrl+s":
 			if m.cellEdit.IsReadOnly() {
-				// View-only peek: nothing to stage. esc closes the popup.
 				return m, nil
 			}
 			val := m.cellEdit.Value()
-			// Compact JSON so pretty-printing in the popup doesn't create
-			// a false dirty cell when the user just views and saves.
 			if compacted, ok := compactJSON(val); ok {
 				val = compacted
 			}
@@ -2953,8 +2948,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cellEdit.Hide()
 			return m, nil
 		case "esc", "ctrl+c":
-			m.cellEdit.Hide()
-			return m, nil
+			if handled, close := m.cellEdit.ConsumeEsc(); handled {
+				if close {
+					m.cellEdit.Hide()
+				}
+				return m, nil
+			}
+		case "q":
+			if !m.cellEdit.IsReadOnly() && m.cellEdit.VimMode() == VimNormal {
+				m.cellEdit.Hide()
+				return m, nil
+			}
 		}
 		var cmd tea.Cmd
 		m.cellEdit, cmd = m.cellEdit.Update(msg)

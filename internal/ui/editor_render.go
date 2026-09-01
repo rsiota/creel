@@ -35,11 +35,12 @@ func (e *QueryEditor) syncViewOffset() {
 }
 
 func (e QueryEditor) cursorDisplayLine() int {
+	ta := e.buf.Textarea()
 	line := 0
-	lines := strings.Split(e.textarea.Value(), "\n")
-	cursorRow := e.textarea.Line()
-	info := e.textarea.LineInfo()
-	width := e.textarea.Width()
+	lines := strings.Split(ta.Value(), "\n")
+	cursorRow := ta.Line()
+	info := ta.LineInfo()
+	width := ta.Width()
 
 	for i := 0; i < cursorRow && i < len(lines); i++ {
 		line += len(softWrapRunes([]rune(lines[i]), width))
@@ -49,10 +50,11 @@ func (e QueryEditor) cursorDisplayLine() int {
 }
 
 func (e QueryEditor) editorStyle() *textarea.Style {
-	if e.textarea.Focused() {
-		return &e.textarea.FocusedStyle
+	ta := e.buf.Textarea()
+	if ta.Focused() {
+		return &ta.FocusedStyle
 	}
-	return &e.textarea.BlurredStyle
+	return &ta.BlurredStyle
 }
 
 func inheritStyle(base, s lipgloss.Style) lipgloss.Style {
@@ -60,7 +62,7 @@ func inheritStyle(base, s lipgloss.Style) lipgloss.Style {
 }
 
 func (e QueryEditor) highlightedView() string {
-	ta := e.textarea
+	ta := e.buf.Textarea()
 	style := e.editorStyle()
 
 	if ta.Value() == "" && ta.Line() == 0 {
@@ -69,7 +71,7 @@ func (e QueryEditor) highlightedView() string {
 
 	displayLines := e.buildDisplayLines()
 	bufHeight := e.height
-	if e.searching && bufHeight > 1 {
+	if e.buf.IsSearching() && bufHeight > 1 {
 		bufHeight--
 	}
 
@@ -110,7 +112,7 @@ func (e QueryEditor) highlightedView() string {
 				}
 
 				cursorStyle := lipgloss.NewStyle()
-				if e.vimMode == VimInsert {
+				if e.buf.Mode() == VimInsert {
 					cursorStyle = cursorStyle.Underline(true).Foreground(colorFg)
 				} else {
 					cursorStyle = cursorStyle.Reverse(true)
@@ -141,7 +143,7 @@ func (e QueryEditor) highlightedView() string {
 		s.WriteRune('\n')
 	}
 
-	if e.searching {
+	if e.buf.IsSearching() {
 		s.WriteString(e.searchPrompt(ta.Width() + 1))
 	}
 
@@ -149,25 +151,26 @@ func (e QueryEditor) highlightedView() string {
 }
 
 func (e QueryEditor) highlightedPlaceholderView(style *textarea.Style) string {
+	ta := e.buf.Textarea()
 	var s strings.Builder
 
 	for i := 0; i < e.height; i++ {
 		lineStyle := inheritStyle(style.Base, style.CursorLine)
 
-		prompt := inheritStyle(style.Base, style.Prompt).Render(e.textarea.Prompt)
+		prompt := inheritStyle(style.Base, style.Prompt).Render(ta.Prompt)
 		s.WriteString(lineStyle.Render(prompt))
 
 		if i == 0 && e.Focused() {
 			cursorStyle := lipgloss.NewStyle()
-			if e.vimMode == VimInsert {
+			if e.buf.Mode() == VimInsert {
 				cursorStyle = cursorStyle.Underline(true).Foreground(colorFg)
 			} else {
 				cursorStyle = cursorStyle.Reverse(true)
 			}
 			s.WriteString(cursorStyle.Render(" "))
-			s.WriteString(lineStyle.Render(strings.Repeat(" ", e.textarea.Width()-1)))
+			s.WriteString(lineStyle.Render(strings.Repeat(" ", ta.Width()-1)))
 		} else {
-			s.WriteString(lineStyle.Render(strings.Repeat(" ", e.textarea.Width())))
+			s.WriteString(lineStyle.Render(strings.Repeat(" ", ta.Width())))
 		}
 		s.WriteRune('\n')
 	}
@@ -176,7 +179,7 @@ func (e QueryEditor) highlightedPlaceholderView(style *textarea.Style) string {
 }
 
 func (e QueryEditor) buildDisplayLines() []editorDisplayLine {
-	ta := e.textarea
+	ta := e.buf.Textarea()
 	lines := strings.Split(ta.Value(), "\n")
 	if len(lines) == 0 {
 		lines = []string{""}
@@ -195,7 +198,7 @@ func (e QueryEditor) buildDisplayLines() []editorDisplayLine {
 			dl := editorDisplayLine{
 				segment:    string(segment),
 				cursorLine: lineIdx == cursorRow,
-				visual:     e.visualLine && lineIdx >= visLo && lineIdx <= visHi,
+				visual:     e.buf.IsVisual() && lineIdx >= visLo && lineIdx <= visHi,
 			}
 
 			if lineIdx == cursorRow && info.RowOffset == wrapIdx {

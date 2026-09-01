@@ -119,7 +119,7 @@ In the add/edit form:
 | `V`        | Visual mode (select range; `p` fills column) |
 | `dd`       | Delete marked or cursor row                  |
 | `e`        | Edit cell                                    |
-| `E`        | Expand/view cell (multi-line)               |
+| `E`        | Expand/view cell (multi-line, vim editing)  |
 | `ctrl+s`   | Save edits                                   |
 | `A`        | Insert new row                               |
 | `D`        | Discard edits                                |
@@ -137,6 +137,19 @@ In the add/edit form:
 | `x`        | Export current page to CSV                 |
 | `g X`      | Export dialog (format · columns · scope)   |
 | `:diff`    | Diff result pages of two tabs (`:diff [a] [b]`) |
+
+## Cell editor (`E`)
+
+| Key        | Action                                          |
+| ---------- | ----------------------------------------------- |
+| `i/a/o`    | Insert mode                                     |
+| `esc`      | Normal mode / close                             |
+| `h/j/k/l`  | Move (normal)                                   |
+| `x` / `dd` | Delete (normal)                                 |
+| `y` / `p`  | Yank / paste (normal)                           |
+| `/`        | Search in buffer (normal)                       |
+| `ctrl+s`   | Stage edit & close                              |
+| `q`        | Close (normal mode)                             |
 
 ## Diff panel (`:diff`)
 

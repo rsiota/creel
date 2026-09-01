@@ -118,7 +118,7 @@ func TestCellEditPopupRouting(t *testing.T) {
 	}
 
 	// Edit the value in the popup and stage it with ctrl+s.
-	m.cellEdit.ta.SetValue("edited long body")
+	m.cellEdit.buf.setValueRaw("edited long body")
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
 	m = updated.(Model)
 	if m.cellEdit.IsVisible() {
@@ -141,11 +141,16 @@ func TestCellEditPopupRouting(t *testing.T) {
 		t.Fatal("popup should open after 'E' on short cell")
 	}
 
-	// esc cancels and closes.
+	// esc: insert → normal → close.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.cellEdit.IsVisible() && m.cellEdit.VimMode() != VimNormal {
+		t.Fatal("first esc should leave insert for normal mode")
+	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	if m.cellEdit.IsVisible() {
-		t.Fatal("popup should close after esc")
+		t.Fatal("popup should close after second esc")
 	}
 }
 

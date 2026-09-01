@@ -12,6 +12,10 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- Cell-edit popup (`E`) uses the same vim buffer as the query editor: normal /
+  insert modes, motions, delete, yank/paste, undo, and in-buffer search. Starts
+  in insert; `esc` leaves insert, `esc` again (or `q` in normal) closes without
+  saving; `ctrl+s` stages and closes.
 - `:diff [a] [b]` — compare the loaded result pages of two tabs. Match by
   primary key when both tabs share the same source table and PK columns;
   otherwise by row index. Overlay shows adds / removes / changes; `a` toggles

@@ -85,10 +85,10 @@ func TestSQLCompleteFilterWhereHidesOtherTable(t *testing.T) {
 func TestCompletionWhereOnlyCurrentTableColumns(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 	e.SetCandidates(testCompleteCatalog())
-	e.textarea.InsertString("SELECT * FROM users WHERE e")
+	e.buf.InsertString("SELECT * FROM users WHERE e")
 	e.StartCompletion()
 	if !e.CompletionVisible() {
 		t.Fatal("expected completion visible")
@@ -115,10 +115,10 @@ func TestCompletionWhereOnlyCurrentTableColumns(t *testing.T) {
 func TestCompletionFromSuggestsTablesNotColumns(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 	e.SetCandidates(testCompleteCatalog())
-	e.textarea.InsertString("SELECT * FROM u")
+	e.buf.InsertString("SELECT * FROM u")
 	e.StartCompletion()
 	for _, c := range e.completion.candidates {
 		if c.kind == kindColumn {
@@ -161,10 +161,10 @@ func TestCompletionUpdateSetSuggestsColumns(t *testing.T) {
 
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 	e.SetCandidates(all)
-	e.textarea.InsertString("UPDATE users SET e")
+	e.buf.InsertString("UPDATE users SET e")
 	e.StartCompletion()
 	found := false
 	for _, c := range e.completion.candidates {
@@ -201,10 +201,10 @@ func TestCompletionInsertColumnList(t *testing.T) {
 
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 	e.SetCandidates(all)
-	e.textarea.InsertString("INSERT INTO users (e")
+	e.buf.InsertString("INSERT INTO users (e")
 	e.StartCompletion()
 	found := false
 	for _, c := range e.completion.candidates {
@@ -249,16 +249,16 @@ func TestCompletionSelectListUsesFromTables(t *testing.T) {
 
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 	e.SetCandidates(all)
 	// Build "SELECT  FROM users" then move cursor back into the SELECT list.
-	e.textarea.InsertString("SELECT  FROM users")
+	e.buf.InsertString("SELECT  FROM users")
 	// Move left past " FROM users" (12 runes) to sit after "SELECT ".
 	for i := 0; i < len(" FROM users"); i++ {
-		e.sendKey("left")
+		e.buf.sendKey("left")
 	}
-	e.textarea.InsertString("e")
+	e.buf.InsertString("e")
 	e.StartCompletion()
 	if !e.CompletionVisible() {
 		t.Fatal("expected completion in SELECT list")
@@ -404,10 +404,10 @@ func TestCompletionSelectListHidesUnscopedColumns(t *testing.T) {
 
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 	e.SetCandidates(all)
-	e.textarea.InsertString("SELECT e")
+	e.buf.InsertString("SELECT e")
 	e.StartCompletion()
 	if !e.CompletionVisible() {
 		t.Fatal("expected completion visible after SELECT e")

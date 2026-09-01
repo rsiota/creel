@@ -252,7 +252,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Editor (Vim)",
-			Source: "query_editor.go app.go",
+			Source: "query_editor.go vim_buffer.go app.go",
 			Items: []Binding{
 				{"i/a/o/A/O", []string{"i", "a", "o", "A", "O"}, "insert mode", "i/a/o"},
 				{"esc", []string{"esc"}, "normal mode", "esc"},
@@ -395,10 +395,17 @@ func registry() []Section {
 		},
 		{
 			Title:  "Cell Editor",
-			Source: "app.go",
+			Source: "cell_edit_popup.go vim_buffer.go app.go",
 			Items: []Binding{
+				{"i/a/o", []string{"i", "a", "o", "A", "O"}, "insert mode", "i/a/o"},
+				{"esc", []string{"esc"}, "normal mode / close", "esc"},
+				{"h/j/k/l", []string{"h", "j", "k", "l"}, "move (normal)", "h/j/k/l"},
+				{"x / dd / D", []string{"x", "d", "D"}, "delete (normal)", "x"},
+				{"y / p", []string{"y", "p"}, "yank / paste (normal)", "y/p"},
+				{"u / U", []string{"u", "U"}, "undo / redo (normal)", "u"},
+				{"/", []string{"/"}, "search in buffer (normal)", "/"},
 				{"ctrl+s", []string{"ctrl+s"}, "stage edit & close", "ctrl+s"},
-				{"esc", []string{"esc"}, "cancel", "esc"},
+				{"q", []string{"q"}, "close (normal mode)", "q"},
 			},
 		},
 		{

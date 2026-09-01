@@ -163,7 +163,7 @@ func TestEditorVisualLineYank(t *testing.T) {
 	if e.IsVisual() {
 		t.Fatal("y should leave visual mode")
 	}
-	if e.yank != "one\ntwo" {
-		t.Fatalf("yank=%q, want one\\ntwo", e.yank)
+	if e.Yank() != "one\ntwo" {
+		t.Fatalf("yank=%q, want one\\ntwo", e.Yank())
 	}
 }

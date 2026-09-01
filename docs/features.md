@@ -47,7 +47,9 @@ An overview of everything creel can do. For keys, see
   `:diff [a] [b]` compares the loaded result pages of two tabs (PK match when
   both share the same source table and PK columns; otherwise row index). No
   args diffs previous vs active; overlay `a` toggles changes-only vs all;
-  `esc`/`q` closes. Large result sets are paged
+  `esc`/`q` closes. The cell-edit popup (`E`) uses vim editing for long
+  values: insert on open, `esc` to normal, `esc`/`q` to close, `ctrl+s` to
+  stage. Large result sets are paged
   (LIMIT/OFFSET) for speed and low
   memory. Bang forms (`:bar!`, `:line!`, `:scatter!`, `:hist!`, `:freq!`,
   `:pie!`) re-run the last SELECT without the page LIMIT (capped at 50,000

@@ -95,11 +95,11 @@ func TestCompletionRankPrefersPrefixAndKind(t *testing.T) {
 func TestWordBeforeCursor(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 
 	for _, ch := range "SELECT * FROM us" {
-		e.textarea.InsertString(string(ch))
+		e.buf.InsertString(string(ch))
 	}
 
 	word, start := e.wordBeforeCursor()
@@ -114,9 +114,9 @@ func TestWordBeforeCursor(t *testing.T) {
 func TestWordBeforeCursorIncludesDollar(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
-	e.textarea.InsertString("SELECT * FROM users WHERE id = $1")
+	e.buf.InsertString("SELECT * FROM users WHERE id = $1")
 	word, start := e.wordBeforeCursor()
 	if word != "$1" {
 		t.Fatalf("word = %q, want $1 (so params are one token)", word)
@@ -125,7 +125,7 @@ func TestWordBeforeCursorIncludesDollar(t *testing.T) {
 		t.Errorf("start = %d, want 31", start)
 	}
 	// A lone digit after $ must not be the completion partial.
-	e.textarea.InsertString("x")
+	e.buf.InsertString("x")
 	word, _ = e.wordBeforeCursor()
 	if word != "$1x" {
 		t.Fatalf("word after extra char = %q, want $1x", word)
@@ -136,11 +136,11 @@ func TestCompletionAliasDotOpensColumns(t *testing.T) {
 	all := testCompleteCatalog()
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 	e.SetCandidates(all)
 
-	e.textarea.InsertString("SELECT * FROM users u WHERE u")
+	e.buf.InsertString("SELECT * FROM users u WHERE u")
 	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'.'}})
 	if !e.CompletionVisible() {
 		t.Fatal("expected completion popup after alias.")
@@ -164,10 +164,10 @@ func TestCompletionAliasDotOpensColumns(t *testing.T) {
 	// Same path when a column partial was already showing, then '.' is typed.
 	e2 := NewQueryEditor()
 	e2.SetSize(80, 10)
-	e2.vimMode = VimInsert
+	e2.buf.SetMode(VimInsert)
 	e2.Focus()
 	e2.SetCandidates(append(all, completionItem{text: "user_name", kind: kindColumn, table: "users"}))
-	e2.textarea.InsertString("SELECT * FROM users u WHERE ")
+	e2.buf.InsertString("SELECT * FROM users u WHERE ")
 	e2, _ = e2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
 	if !e2.CompletionVisible() {
 		t.Fatal("expected popup for column partial u")
@@ -190,11 +190,11 @@ func TestCompletionAliasDotOpensColumns(t *testing.T) {
 func TestCompletionManualTrigger(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 
 	for _, ch := range "SEL" {
-		e.textarea.InsertString(string(ch))
+		e.buf.InsertString(string(ch))
 	}
 
 	e.SetCandidates([]completionItem{
@@ -218,11 +218,11 @@ func TestCompletionManualTrigger(t *testing.T) {
 func TestCompletionAccept(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 
 	for _, ch := range "SEL" {
-		e.textarea.InsertString(string(ch))
+		e.buf.InsertString(string(ch))
 	}
 
 	e.SetCandidates([]completionItem{
@@ -242,10 +242,10 @@ func TestCompletionAccept(t *testing.T) {
 func TestCompletionNavigation(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 
-	e.textarea.InsertString("s")
+	e.buf.InsertString("s")
 
 	e.SetCandidates([]completionItem{
 		{text: "SELECT", kind: kindKeyword},
@@ -274,10 +274,10 @@ func TestCompletionNavigation(t *testing.T) {
 func TestCompletionCancel(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 
-	e.textarea.InsertString("SEL")
+	e.buf.InsertString("SEL")
 	e.SetCandidates([]completionItem{
 		{text: "SELECT", kind: kindKeyword},
 	})
@@ -298,11 +298,11 @@ func TestCompletionCancel(t *testing.T) {
 func TestCompletionAcceptReplacesPartialWord(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 
 	for _, ch := range "SELECT * FROM us" {
-		e.textarea.InsertString(string(ch))
+		e.buf.InsertString(string(ch))
 	}
 
 	e.SetCandidates([]completionItem{
@@ -323,7 +323,7 @@ func TestCompletionAcceptReplacesPartialWord(t *testing.T) {
 func TestAutoTriggerAfterOneChar(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 
 	e.SetCandidates([]completionItem{
@@ -351,7 +351,7 @@ func TestAutoTriggerAfterOneChar(t *testing.T) {
 func TestAutoTriggerDismissOnSpace(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 
 	e.SetCandidates([]completionItem{
@@ -375,7 +375,7 @@ func TestAutoTriggerDismissOnSpace(t *testing.T) {
 func TestAutoTriggerBackspaceRefilter(t *testing.T) {
 	e := NewQueryEditor()
 	e.SetSize(80, 10)
-	e.vimMode = VimInsert
+	e.buf.SetMode(VimInsert)
 	e.Focus()
 
 	e.SetCandidates([]completionItem{
@@ -412,7 +412,7 @@ func TestAutoTriggerFromApp(t *testing.T) {
 	m.refreshCompletionCandidates()
 
 	// Enter insert mode
-	m.editor.vimMode = VimInsert
+	m.editor.buf.SetMode(VimInsert)
 	m.editor.Focus()
 
 	// Type "u" — should auto-trigger with "users" as a candidate
@@ -433,7 +433,7 @@ func TestAutoTriggerFromApp(t *testing.T) {
 	}
 
 	m.editor.SetValue("")
-	m.editor.textarea.InsertString("SELECT * FROM users WHERE ")
+	m.editor.buf.InsertString("SELECT * FROM users WHERE ")
 	m.editor, _ = m.editor.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 	if !m.editor.CompletionVisible() {
 		t.Fatal("expected popup visible after WHERE e")
