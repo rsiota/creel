@@ -17,13 +17,18 @@ func TestHelpPanelRender(t *testing.T) {
 	if out == "" {
 		t.Fatal("help panel rendered empty")
 	}
-	// First viewport shows the header, the tab bar, and the top section.
-	for _, want := range []string{"Keybindings", "Global", "Keys", "Commands"} {
+	for _, want := range []string{"Getting started", "Start", "Keys", "Commands", "ctrl+p"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help panel missing %q", want)
 		}
 	}
-	// Scrolling actually moves the viewport: the top section scrolls off.
+	h.page = helpPageKeys
+	h.keysOff = 0
+	for _, want := range []string{"Keybindings", "Global"} {
+		if !strings.Contains(stripAnsi(h.View()), want) {
+			t.Errorf("Keys page missing %q", want)
+		}
+	}
 	for i := 0; i < 3; i++ {
 		h.HandleKey(tea.KeyMsg{Type: tea.KeyPgDown})
 	}
@@ -64,12 +69,24 @@ func TestStatusBarRender(t *testing.T) {
 	}
 }
 
+func TestStatusBarFirstRunHint(t *testing.T) {
+	m := NewModel(&config.Config{})
+	m.width = 120
+	m.height = 40
+	m.state = stateConnections
+	out := stripAnsi(m.statusBar(""))
+	if !strings.Contains(out, "ctrl+p jump") {
+		t.Errorf("first-run hint missing from status bar: %q", out)
+	}
+}
+
 // Descriptions must align in a single display column even when a key display
 // contains multi-byte glyphs (e.g. "↑/↓"). The padding used to be computed
 // with len() (bytes), so arrow rows drifted left of the rest.
 func TestHelpPanelDescriptionAlignmentWithArrowKeys(t *testing.T) {
 	h := NewHelpPanel()
 	h.Show()
+	h.page = helpPageKeys
 	// Tall terminal so every section lands in a single column (the column
 	// balancer splits by height), keeping each binding on its own line.
 	h.SetSize(220, 500)

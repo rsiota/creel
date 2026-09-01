@@ -12,6 +12,10 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- Discoverability (Phase A): Ctrl+P palette lists jump targets (Tables,
+  Bookmarks, Themes) before keybindings with right-aligned section labels; `?`
+  help opens a Getting Started tab; connections screen shows `ctrl+p · ? · :`
+  hints when no saved connections exist.
 - Query editor shows vim mode on the status bar (`NORMAL`, `INSERT`, `SEARCH`,
   `V-LINE`) when the editor is focused.
 - Read-only cell popup (`E`) supports `/` search with `n`/`N`; `esc` dismisses

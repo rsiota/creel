@@ -10,6 +10,22 @@ import (
 	"github.com/rsiota/creel/internal/config"
 )
 
+// TestHelpGettingStartedTab pins the default help page to a short onboarding guide.
+func TestHelpGettingStartedTab(t *testing.T) {
+	h := NewHelpPanel()
+	h.Show()
+	h.SetSize(120, 40)
+	out := stripAnsi(h.View())
+	for _, want := range []string{"Getting started", "Try the demo database", "ctrl+p", "ctrl+enter"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Start tab missing %q", want)
+		}
+	}
+	if h.page != helpPageStart {
+		t.Errorf("Show() page = %d, want helpPageStart", h.page)
+	}
+}
+
 // TestHelpListsExCommands pins that the Commands tab of the "?" overlay folds
 // the ":" command registry into its output (title + usages), so the help sheet
 // is the single place to discover both keybindings and commands.
@@ -52,18 +68,25 @@ func TestHelpTabSwitchAndScroll(t *testing.T) {
 	h.Show()
 	h.SetSize(120, 40)
 
+	start := stripAnsi(h.View())
+	if !strings.Contains(start, "Getting started") {
+		t.Error("Start page should show the Getting started header")
+	}
+	if strings.Contains(start, "Keybindings") {
+		t.Error("Keybindings header should not appear on the Start page")
+	}
+
+	if !h.HandleKey(tea.KeyMsg{Type: tea.KeyTab}) {
+		t.Fatal("tab should be consumed to switch help pages")
+	}
 	keys := stripAnsi(h.View())
 	if !strings.Contains(keys, "Keybindings") {
 		t.Error("Keys page should show the Keybindings header")
 	}
-	// The Keys page lists bindings, not command usages; ":goto <table>" is a
-	// Commands-only usage form. (The "=" binding's description mentions
-	// ":goto" but never with a " <table>" argument.)
 	if strings.Contains(keys, ":goto <table>") {
 		t.Error("command usages should not appear on the Keys page")
 	}
 
-	// Tab over to Commands.
 	if !h.HandleKey(tea.KeyMsg{Type: tea.KeyTab}) {
 		t.Fatal("tab should be consumed to switch help pages")
 	}
@@ -71,7 +94,6 @@ func TestHelpTabSwitchAndScroll(t *testing.T) {
 		t.Error("Commands page should list command usages")
 	}
 
-	// Back to Keys; confirm scrolling moves the viewport (Global scrolls off).
 	h.page = helpPageKeys
 	h.keysOff = 0
 	if !strings.Contains(stripAnsi(h.View()), "Global") {
@@ -91,6 +113,8 @@ func TestHelpMouseScroll(t *testing.T) {
 	h := NewHelpPanel()
 	h.Show()
 	h.SetSize(120, 40)
+	h.page = helpPageKeys
+	h.keysOff = 0
 	if !strings.Contains(stripAnsi(h.View()), "Global") {
 		t.Fatal("Global should be visible at the top initially")
 	}
@@ -136,13 +160,16 @@ func TestHelpConstantHeightAcrossTabs(t *testing.T) {
 	h := NewHelpPanel()
 	h.Show()
 	h.SetSize(120, 40)
-	h.page = helpPageKeys
-	keysH := lipgloss.Height(h.View())
-	h.page = helpPageCommands
-	cmdsH := lipgloss.Height(h.View())
-	if keysH != cmdsH {
-		t.Errorf("help panel height differs across tabs: keys=%d commands=%d (border would jump)",
-			keysH, cmdsH)
+	heights := make([]int, helpPageCount)
+	for p := 0; p < helpPageCount; p++ {
+		h.page = p
+		heights[p] = lipgloss.Height(h.View())
+	}
+	for i := 1; i < helpPageCount; i++ {
+		if heights[i] != heights[0] {
+			t.Errorf("help panel height differs across tabs: page0=%d page%d=%d (border would jump)",
+				heights[0], i, heights[i])
+		}
 	}
 }
 
@@ -167,7 +194,7 @@ func TestHelpTabClickSwitchesPage(t *testing.T) {
 	m.width = 120
 	pl := helpPanelLeft(m.width)
 
-	for _, want := range []int{helpPageKeys, helpPageCommands} {
+	for _, want := range []int{helpPageStart, helpPageKeys, helpPageCommands} {
 		// Find an x coordinate that lands on tab `want`.
 		x := -1
 		for xx := pl; xx < pl+30; xx++ {
@@ -209,6 +236,8 @@ func TestHelpScrollAfterG(t *testing.T) {
 	h := NewHelpPanel()
 	h.Show()
 	h.SetSize(120, 40)
+	h.page = helpPageKeys
+	h.keysOff = 0
 
 	maxOff := h.maxOff()
 	if maxOff <= 0 {
@@ -280,6 +309,8 @@ func TestHelpScrollClampMatchesRender(t *testing.T) {
 	if !m.help.IsVisible() {
 		t.Fatal("help not visible")
 	}
+	m.help.page = helpPageKeys
+	m.help.keysOff = 0
 	// The persisted panel must know its size, so Update's maxOff matches View's.
 	if m.help.height == 0 {
 		t.Error("help panel height not persisted after resize (SetSize only hit a view copy)")

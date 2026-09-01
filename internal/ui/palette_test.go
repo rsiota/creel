@@ -65,19 +65,19 @@ func TestPaletteFuzzyFilter(t *testing.T) {
 func TestPaletteNavigation(t *testing.T) {
 	var p palette
 	p.Open(paletteJumpSrc{})
-	initial := p.cursor
+	before := p.selectedItem().desc
 
 	p = updatePalette(t, p, tea.KeyMsg{Type: tea.KeyDown})
-	if p.cursor != initial+1 {
-		t.Fatalf("cursor should be %d after down, got %d", initial+1, p.cursor)
+	after := p.selectedItem().desc
+	if before == after && len(p.filtered) > 1 {
+		t.Fatalf("selection should move after down (still on %q)", after)
 	}
 
 	p = updatePalette(t, p, tea.KeyMsg{Type: tea.KeyUp})
-	if p.cursor != initial {
-		t.Fatalf("cursor should be %d after up, got %d", initial, p.cursor)
+	if p.selectedItem().desc != before {
+		t.Fatalf("selection should return to %q after up, got %q", before, p.selectedItem().desc)
 	}
 
-	// Wrap from top to bottom.
 	p.cursor = 0
 	p = updatePalette(t, p, tea.KeyMsg{Type: tea.KeyUp})
 	if p.cursor != len(p.filtered)-1 {
@@ -102,20 +102,11 @@ func TestPaletteEnterExecutableSingleKey(t *testing.T) {
 	var p palette
 	p.Open(paletteJumpSrc{})
 
-	// Find a single-token binding (e.g. "ctrl+r" — refresh).
-	target := -1
-	for i, it := range p.items {
-		if len(it.replay) == 1 && it.replay[0] == "ctrl+r" {
-			target = i
-			break
-		}
-	}
-	if target == -1 {
+	if !paletteSetCursorToItem(&p, func(it paletteItem) bool {
+		return len(it.replay) == 1 && it.replay[0] == "ctrl+r"
+	}) {
 		t.Fatal("could not find ctrl+r binding in palette items")
 	}
-
-	// Navigate to it.
-	p.cursor = target
 	seq := p.selectedReplay()
 	if len(seq) != 1 || seq[0] != "ctrl+r" {
 		t.Fatalf("expected replay [ctrl+r], got %v", seq)
@@ -134,20 +125,11 @@ func TestPaletteEnterNonExecutable(t *testing.T) {
 	var p palette
 	p.Open(paletteJumpSrc{})
 
-	// Find a multi-token "alternative" binding (not executable): e.g. "g t / g T"
-	// or "ctrl+e / \".
-	target := -1
-	for i, it := range p.items {
-		if len(it.replay) == 0 {
-			target = i
-			break
-		}
-	}
-	if target == -1 {
+	if !paletteSetCursorToItem(&p, func(it paletteItem) bool {
+		return len(it.replay) == 0 && it.jump == paletteJumpNone
+	}) {
 		t.Fatal("could not find a non-executable binding")
 	}
-
-	p.cursor = target
 	p, cmd := p.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if p.IsVisible() {
 		t.Fatal("palette should be hidden after enter")
@@ -310,6 +292,73 @@ func TestSynthesizeKeyMsg(t *testing.T) {
 	}
 }
 
+func TestPaletteFixedColumnsWhileScrolling(t *testing.T) {
+	var p palette
+	p.Open(paletteJumpSrc{Tables: []string{"users"}})
+	const width = 120
+	innerW := width - 4
+	keyW, descW, secW := paletteColumnWidths(p.items, innerW)
+
+	short := stripAnsi(renderPaletteItemLine(paletteItem{
+		display: "j", desc: "move down", section: "Results",
+	}, keyW, descW, secW, false))
+	long := stripAnsi(renderPaletteItemLine(paletteItem{
+		display: "ctrl+shift+x", desc: "open the schema editor panel", section: "Editor (Vim)",
+	}, keyW, descW, secW, false))
+	if runeLen(short) != innerW || runeLen(long) != innerW {
+		t.Fatalf("row widths = %d and %d, want inner %d", runeLen(short), runeLen(long), innerW)
+	}
+
+	descStart := 2 + keyW + 2
+	if !strings.HasPrefix(long[descStart:], "open") {
+		t.Errorf("description should start at column %d, got %q", descStart, long[descStart:descStart+8])
+	}
+	if !strings.HasSuffix(strings.TrimRight(long, " "), "Editor (Vim)") {
+		t.Errorf("section column missing at end: %q", long)
+	}
+}
+
+func TestPaletteSectionOrderAndLabels(t *testing.T) {
+	var p palette
+	p.Open(paletteJumpSrc{
+		Tables:    []string{"users"},
+		Bookmarks: []string{"SELECT 1;"},
+	})
+	if len(p.filtered) == 0 || p.filtered[0].section != "Tables" {
+		t.Fatalf("first item section = %q, want Tables", p.filtered[0].section)
+	}
+	out := stripAnsi(p.View(120, 40))
+	lines := strings.Split(out, "\n")
+	var usersLine string
+	for _, ln := range lines {
+		if strings.Contains(ln, "users") && strings.Contains(ln, "Tables") {
+			usersLine = ln
+			break
+		}
+	}
+	if usersLine == "" {
+		t.Fatal("expected users row with right-aligned Tables label on one line")
+	}
+	idxUser := strings.Index(usersLine, "users")
+	if idxUser < 0 {
+		t.Fatal("users row missing table name")
+	}
+	idxSec := strings.Index(usersLine, "Tables")
+	if idxSec <= idxUser {
+		t.Errorf("Tables should trail the description: %q", usersLine)
+	}
+}
+
+func paletteSetCursorToItem(p *palette, pred func(paletteItem) bool) bool {
+	for i, it := range p.filtered {
+		if pred(it) {
+			p.cursor = i
+			return true
+		}
+	}
+	return false
+}
+
 // simulateTyping feeds printable characters into the palette via Update.
 func simulateTyping(p *palette, s string) {
 	for _, ch := range s {
@@ -367,17 +416,11 @@ func TestPaletteEnterJumpEmitsMsg(t *testing.T) {
 	var p palette
 	p.Open(paletteJumpSrc{Tables: []string{"orders"}})
 
-	target := -1
-	for i, it := range p.items {
-		if it.jump == paletteJumpTable && it.payload == "orders" {
-			target = i
-			break
-		}
-	}
-	if target < 0 {
+	if !paletteSetCursorToItem(&p, func(it paletteItem) bool {
+		return it.jump == paletteJumpTable && it.payload == "orders"
+	}) {
 		t.Fatal("orders table item missing")
 	}
-	p.cursor = target
 	p, cmd := p.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if p.IsVisible() {
 		t.Fatal("palette should hide after enter")
@@ -400,10 +443,13 @@ func TestPaletteEnterThemeJump(t *testing.T) {
 	p.Open(paletteJumpSrc{})
 	simulateTyping(&p, "gruvbox")
 	found := false
-	for i, it := range p.filtered {
+	for _, it := range p.filtered {
 		if it.jump == paletteJumpTheme && it.payload == "gruvbox" {
-			p.cursor = i
-			found = true
+			if paletteSetCursorToItem(&p, func(item paletteItem) bool {
+				return item.jump == paletteJumpTheme && item.payload == "gruvbox"
+			}) {
+				found = true
+			}
 			break
 		}
 	}
@@ -455,8 +501,13 @@ func TestPaletteViewNoWrapOnLongTheme(t *testing.T) {
 		jump:    paletteJumpTheme,
 		payload: "long-theme",
 	}}, p.items...)
+	sortPaletteItems(p.items)
 	p.filtered = p.items
-	p.cursor = 0
+	if !paletteSetCursorToItem(&p, func(it paletteItem) bool {
+		return it.payload == "long-theme"
+	}) {
+		t.Fatal("long theme item missing")
+	}
 
 	const width, height = 71, 19
 	out := p.View(width, height)

@@ -258,6 +258,10 @@ func (m Model) statusBar(connName string) string {
 		parts = append(parts, msg)
 	}
 
+	if m.state == stateConnections && !m.connList.HasSavedConnections() {
+		parts = append(parts, sbMuted.Render("ctrl+p jump · ? help · : commands"))
+	}
+
 	if len(m.filters) > 0 {
 		short := make([]string, len(m.filters))
 		for i, f := range m.filters {

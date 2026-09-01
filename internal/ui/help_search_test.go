@@ -44,6 +44,7 @@ func TestHelpSearchOpensTyping(t *testing.T) {
 func TestHelpSearchTypingFindsMatches(t *testing.T) {
 	h := NewHelpPanel()
 	h.Show()
+	h.page = helpPageKeys
 	h.SetSize(120, 40)
 
 	h.HandleKey(keyMsg("/"))
@@ -65,6 +66,7 @@ func TestHelpSearchTypingFindsMatches(t *testing.T) {
 func TestHelpSearchAdvanceAndWrap(t *testing.T) {
 	h := NewHelpPanel()
 	h.Show()
+	h.page = helpPageKeys
 	h.SetSize(120, 40)
 	h.query = "export"
 	h.rebuildMatchRe()

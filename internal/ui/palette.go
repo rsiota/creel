@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"sort"
 	"strings"
 	"unicode"
 
@@ -68,7 +69,9 @@ func (p *palette) Open(src paletteJumpSrc) {
 	p.input = ""
 	p.cursor = 0
 	p.items = buildPaletteItems(src)
+	sortPaletteItems(p.items)
 	p.filtered = p.items
+	p.cursor = 0
 }
 
 // Hide hides the palette.
@@ -77,21 +80,14 @@ func (p *palette) Hide() { p.visible = false }
 // IsVisible reports whether the palette is shown.
 func (p palette) IsVisible() bool { return p.visible }
 
-// buildPaletteItems flattens the keybinding registry and jump targets into
-// palette entries. Bindings come first so an empty filter still feels like the
-// command palette; jump rows follow and are easy to reach by typing.
+// Jump-target sections are listed first so Ctrl+P surfaces tables and themes
+// before the long keybinding catalog.
+var paletteJumpSections = []string{"Tables", "Bookmarks", "Themes"}
+
+// buildPaletteItems flattens jump targets and the keybinding registry into
+// palette entries grouped for discoverability.
 func buildPaletteItems(src paletteJumpSrc) []paletteItem {
 	var items []paletteItem
-	for _, sec := range registry() {
-		for _, b := range sec.Items {
-			items = append(items, paletteItem{
-				display: b.Display,
-				desc:    b.Desc,
-				section: sec.Title,
-				replay:  b.replayTokens(),
-			})
-		}
-	}
 	for _, t := range src.Tables {
 		if t == "" {
 			continue
@@ -128,7 +124,44 @@ func buildPaletteItems(src paletteJumpSrc) []paletteItem {
 			payload: name,
 		})
 	}
+	for _, sec := range registry() {
+		for _, b := range sec.Items {
+			items = append(items, paletteItem{
+				display: b.Display,
+				desc:    b.Desc,
+				section: sec.Title,
+				replay:  b.replayTokens(),
+			})
+		}
+	}
 	return items
+}
+
+func paletteSectionRank(section string) int {
+	for i, s := range paletteJumpSections {
+		if s == section {
+			return i
+		}
+	}
+	for i, sec := range registry() {
+		if sec.Title == section {
+			return len(paletteJumpSections) + i
+		}
+	}
+	return len(paletteJumpSections) + len(registry()) + 1
+}
+
+func sortPaletteItems(items []paletteItem) {
+	sort.SliceStable(items, func(i, j int) bool {
+		ri, rj := paletteSectionRank(items[i].section), paletteSectionRank(items[j].section)
+		if ri != rj {
+			return ri < rj
+		}
+		if items[i].section != items[j].section {
+			return items[i].section < items[j].section
+		}
+		return items[i].desc < items[j].desc
+	})
 }
 
 // flattenPaletteQuery collapses whitespace to a single line and truncates for
@@ -208,7 +241,8 @@ func (b Binding) replayTokens() []string {
 // matching over the description, key display, and section title.
 func (p *palette) refilter() {
 	if p.input == "" {
-		p.filtered = p.items
+		p.filtered = append([]paletteItem(nil), p.items...)
+		sortPaletteItems(p.filtered)
 		p.cursor = 0
 		return
 	}
@@ -308,15 +342,7 @@ func (p palette) View(width, height int) string {
 		innerW = 24
 	}
 
-	keyW := 0
-	for _, it := range p.filtered {
-		if w := runeLen(it.display); w > keyW {
-			keyW = w
-		}
-	}
-	if keyW < 6 {
-		keyW = 6
-	}
+	keyW, descW, secW := paletteColumnWidths(p.items, innerW)
 
 	start := 0
 	if p.cursor >= maxPaletteItems {
@@ -329,25 +355,7 @@ func (p palette) View(width, height int) string {
 
 	var lines []string
 	for i := start; i < end; i++ {
-		it := p.filtered[i]
-		desc, section := fitPaletteRow(it.desc, it.section, keyW, innerW)
-		key := it.display + strings.Repeat(" ", keyW-runeLen(it.display))
-		var line string
-		if i == p.cursor {
-			line = lipgloss.NewStyle().
-				Background(colorPrimary).
-				Foreground(colorBg).
-				Render("❯ " + key + "  " + desc + sectionSuffix(section))
-		} else {
-			keyStr := lipgloss.NewStyle().Foreground(colorPrimary).Render(key)
-			descStr := lipgloss.NewStyle().Foreground(colorLabel).Render(desc)
-			secStr := ""
-			if section != "" {
-				secStr = "  " + lipgloss.NewStyle().Foreground(colorMuted).Render(section)
-			}
-			line = "  " + keyStr + "  " + descStr + secStr
-		}
-		lines = append(lines, line)
+		lines = append(lines, renderPaletteItemLine(p.filtered[i], keyW, descW, secW, i == p.cursor))
 	}
 	if len(lines) == 0 {
 		lines = append(lines, mutedStyle.Render("  no matches"))
@@ -372,25 +380,69 @@ func (p palette) View(width, height int) string {
 	return panel
 }
 
-// fitPaletteRow clamps desc (and drops/truncates section if needed) so
-// "❯ " + key + "  " + desc + "  " + section fits in innerW columns.
+const (
+	paletteKeyColW = 12
+	paletteSecColW = 16
+)
+
+// paletteColumnWidths returns fixed key/section column widths; description
+// absorbs whatever space remains inside innerW.
+func paletteColumnWidths(_ []paletteItem, innerW int) (keyW, descW, secW int) {
+	const (
+		prefix   = 2
+		colGap   = 2
+		minDescW = 8
+	)
+	keyW = paletteKeyColW
+	secW = paletteSecColW
+	fixed := prefix + keyW + colGap + secW + colGap
+	descW = innerW - fixed
+	if descW < minDescW {
+		descW = minDescW
+	}
+	return keyW, descW, secW
+}
+
+func padRunes(s string, width int) string {
+	if w := runeLen(s); w < width {
+		return s + strings.Repeat(" ", width-w)
+	}
+	return s
+}
+
+// renderPaletteItemLine renders one palette row in three fixed-width columns:
+// key, description, and a right-aligned section label.
+func renderPaletteItemLine(it paletteItem, keyW, descW, secW int, selected bool) string {
+	const colGap = 2
+	prefix := "  "
+	if selected {
+		prefix = "❯ "
+	}
+	gap := strings.Repeat(" ", colGap)
+	key := padRunes(clampPaletteText(it.display, keyW), keyW)
+	desc := padRunes(clampPaletteText(it.desc, descW), descW)
+	sec := clampPaletteText(it.section, secW)
+	sec = strings.Repeat(" ", secW-runeLen(sec)) + sec
+	full := prefix + key + gap + desc + gap + sec
+
+	if selected {
+		return lipgloss.NewStyle().
+			Background(colorPrimary).
+			Foreground(colorBg).
+			Render(full)
+	}
+	keyStr := lipgloss.NewStyle().Foreground(colorPrimary).Render(key)
+	descStr := lipgloss.NewStyle().Foreground(colorLabel).Render(desc)
+	secStr := lipgloss.NewStyle().Foreground(colorMuted).Render(sec)
+	return prefix + keyStr + gap + descStr + gap + secStr
+}
+
+// fitPaletteRow clamps desc and section for tests and legacy callers.
 func fitPaletteRow(desc, section string, keyW, innerW int) (string, string) {
-	const prefix = 2 // "❯ " / "  "
-	const gap = 2    // between key and desc
-	fixed := prefix + keyW + gap
-	budget := innerW - fixed
-	if budget < 4 {
-		budget = 4
-	}
-	if section == "" {
-		return clampPaletteText(desc, budget), ""
-	}
-	secNeed := 2 + runeLen(section) // "  " + section
-	if budget > secNeed+4 {
-		return clampPaletteText(desc, budget-secNeed), section
-	}
-	// Not enough room for the section label — keep the description.
-	return clampPaletteText(desc, budget), ""
+	_, descW, secW := paletteColumnWidths([]paletteItem{
+		{display: strings.Repeat("x", keyW), section: section},
+	}, innerW)
+	return clampPaletteText(desc, descW), clampPaletteText(section, secW)
 }
 
 func sectionSuffix(section string) string {

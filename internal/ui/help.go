@@ -10,6 +10,7 @@ import (
 
 // HelpPanel renders a full-screen, scrollable, tabbed help overlay:
 //
+//   - Start    — a short getting-started guide (Ctrl+P, ?, :, demo DB).
 //   - Keys     — every keybinding (registry()), arranged in as few columns as
 //     fit the viewport so descriptions align, with more columns
 //     added only when the content would otherwise scroll forever.
@@ -26,7 +27,8 @@ import (
 // never overflows its borders regardless of terminal size.
 type HelpPanel struct {
 	visible bool
-	page    int // helpPageKeys | helpPageCommands
+	page    int // helpPageStart | helpPageKeys | helpPageCommands
+	startOff int // scroll offset (lines) for the Getting Started page
 	keysOff int // scroll offset (lines) for the Keys page
 	cmdsOff int // scroll offset (lines) for the Commands page
 	width   int
@@ -43,7 +45,8 @@ type HelpPanel struct {
 }
 
 const (
-	helpPageKeys = iota
+	helpPageStart = iota
+	helpPageKeys
 	helpPageCommands
 	helpPageCount
 )
@@ -53,8 +56,8 @@ func NewHelpPanel() HelpPanel {
 	return HelpPanel{}
 }
 
-// Toggle shows or hides the help panel. Opening always resets to the Keys page
-// at the top, so re-opening feels fresh rather than resuming a mid-scroll.
+// Toggle shows or hides the help panel. Opening always resets to the Start
+// page at the top, so re-opening feels fresh rather than resuming a mid-scroll.
 func (h *HelpPanel) Toggle() {
 	if h.visible {
 		h.visible = false
@@ -63,10 +66,11 @@ func (h *HelpPanel) Toggle() {
 	h.Show()
 }
 
-// Show forces the panel visible, on the Keys page, scrolled to the top.
+// Show forces the panel visible, on the Start page, scrolled to the top.
 func (h *HelpPanel) Show() {
 	h.visible = true
-	h.page = helpPageKeys
+	h.page = helpPageStart
+	h.startOff = 0
 	h.keysOff = 0
 	h.cmdsOff = 0
 	h.clearSearch()
@@ -189,10 +193,14 @@ func (h *HelpPanel) HandleKey(msg tea.KeyMsg) bool {
 // is clamped here; the upper bound is clamped in View (it depends on content
 // length, which is only known once the page is rendered).
 func (h HelpPanel) curOff() int {
-	if h.page == helpPageCommands {
+	switch h.page {
+	case helpPageCommands:
 		return h.cmdsOff
+	case helpPageKeys:
+		return h.keysOff
+	default:
+		return h.startOff
 	}
-	return h.keysOff
 }
 
 func (h *HelpPanel) setCurOff(v int) {
@@ -206,10 +214,13 @@ func (h *HelpPanel) setCurOff(v int) {
 	if max := h.maxOff(); v > max {
 		v = max
 	}
-	if h.page == helpPageCommands {
+	switch h.page {
+	case helpPageCommands:
 		h.cmdsOff = v
-	} else {
+	case helpPageKeys:
 		h.keysOff = v
+	default:
+		h.startOff = v
 	}
 }
 
@@ -287,10 +298,14 @@ func (h HelpPanel) currentRows() []helpRow {
 // the viewport). Both pages are single full-width columns: the Keys page is a
 // cheat sheet (one row per binding), the Commands page wraps long descriptions.
 func (h HelpPanel) pageRows(contentW int) []helpRow {
-	if h.page == helpPageCommands {
+	switch h.page {
+	case helpPageCommands:
 		return renderCommandsRows(contentW)
+	case helpPageKeys:
+		return renderKeysRows(contentW)
+	default:
+		return renderGettingStartedRows(contentW)
 	}
-	return renderKeysRows(contentW)
 }
 
 // matches returns the line indices on the current page whose searchable text
@@ -391,8 +406,11 @@ func (h HelpPanel) View() string {
 	}
 	body := strings.Join(bodyVisible, "\n")
 
-	title := "Keybindings"
-	if h.page == helpPageCommands {
+	title := "Getting started"
+	switch h.page {
+	case helpPageKeys:
+		title = "Keybindings"
+	case helpPageCommands:
 		title = "Commands"
 	}
 	header := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(title)
@@ -462,10 +480,14 @@ const (
 // renderer adds). Shared by renderTabBar and helpTabAt so mouse clicks track
 // the rendered layout exactly.
 func helpTabLabel(i int) string {
-	if i == helpPageCommands {
+	switch i {
+	case helpPageStart:
+		return "Start"
+	case helpPageCommands:
 		return "Commands"
+	default:
+		return "Keys"
 	}
-	return "Keys"
 }
 
 // renderTabBar renders the page tabs with the active one highlighted.
@@ -617,6 +639,87 @@ func renderHelpSegment(seg helpSegment, re *regexp.Regexp, isCurrent bool, match
 		b.WriteString(base.Render(seg.text[prev:]))
 	}
 	return b.String()
+}
+
+// renderGettingStartedRows lays out a short onboarding guide: connect, run a
+// query, and the three main discovery surfaces (Ctrl+P, ?, :).
+func renderGettingStartedRows(contentW int) []helpRow {
+	_ = contentW
+	fgStyle := lipgloss.NewStyle().Foreground(colorFg)
+	labelStyle := lipgloss.NewStyle().Foreground(colorLabel)
+	mutedStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	plain := lipgloss.NewStyle()
+
+	type entry struct {
+		key  string
+		desc string
+	}
+	sections := []struct {
+		title string
+		lines []string
+		keys  []entry
+	}{
+		{
+			title: "Welcome",
+			lines: []string{
+				"creel is a keyboard-first SQL browser. Connect to a database,",
+				"browse tables, run queries, and edit results — mostly without a mouse.",
+			},
+		},
+		{
+			title: "First steps",
+			lines: []string{
+				"On the connections screen, pick Try the demo database to explore.",
+				"Press enter to connect, then run a query with ctrl+enter.",
+			},
+		},
+		{
+			title: "Discover everything",
+			keys: []entry{
+				{"ctrl+p", "Jump anywhere — tables, bookmarks, themes, shortcuts"},
+				{"?", "This help overlay (Start, Keys, Commands tabs)"},
+				{":", "Ex commands — :tabs, :export, :theme, …"},
+			},
+		},
+		{
+			title: "While you work",
+			keys: []entry{
+				{"ctrl+enter", "Run the query in the editor"},
+				{"j/k", "Move around results and sidebar lists"},
+				{"E", "View or edit a cell in a popup"},
+				{"ctrl+s", "Save staged cell edits"},
+			},
+		},
+	}
+
+	keyW := 0
+	for _, sec := range sections {
+		for _, e := range sec.keys {
+			if w := runeLen(e.key); w > keyW {
+				keyW = w
+			}
+		}
+	}
+	const gap = 4
+	var out []helpRow
+	for _, sec := range sections {
+		out = append(out, helpRow{{text: sec.title, style: titleStyle}})
+		for _, ln := range sec.lines {
+			out = append(out, helpRow{{text: "  " + ln, style: fgStyle}})
+		}
+		for _, e := range sec.keys {
+			key := e.key + strings.Repeat(" ", max(0, keyW-runeLen(e.key)))
+			out = append(out, helpRow{
+				{text: "  ", style: plain},
+				{text: key, style: labelStyle},
+				{text: strings.Repeat(" ", gap), style: plain},
+				{text: e.desc, style: fgStyle},
+			})
+		}
+		out = append(out, helpRow{}) // blank separator
+	}
+	out = append(out, helpRow{{text: "  tab — switch tabs · / — search this page", style: mutedStyle}})
+	return out
 }
 
 // renderKeysRows lays the keybinding sections out as a single full-width
