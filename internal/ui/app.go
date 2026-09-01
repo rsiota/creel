@@ -3260,30 +3260,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.toggleEditor()
 		return m, nil
 	case "ctrl+o":
-		m.inspector.Toggle()
-		if m.inspector.IsVisible() {
-			// Inspector shares the right slot with assistant / docked explorer.
-			m.assistant.Hide()
-			m.explorer.Hide()
-			m.focus = FocusInspector
-		} else if m.focus == FocusInspector {
-			m.focus = FocusResults
-		}
-		m.layoutWorkspace()
-		m.applyFocus()
+		m.toggleInspector()
 		return m, nil
 	case "ctrl+f":
-		m.assistant.Toggle()
-		if m.assistant.IsVisible() {
-			// Assistant shares the right slot with inspector / docked explorer.
-			m.inspector.Hide()
-			m.explorer.Hide()
-			m.focus = FocusAssistant
-		} else if m.focus == FocusAssistant {
-			m.focus = FocusResults
-		}
-		m.layoutWorkspace()
-		m.applyFocus()
+		m.toggleAssistant()
 		return m, nil
 	case "tab":
 		// Don't cycle focus while editing a cell or inspector field.

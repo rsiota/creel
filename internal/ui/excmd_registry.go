@@ -370,7 +370,7 @@ func exCommands() []exCmdSpec {
 		},
 		{
 			verbs:   []string{"explore", "explorer", "er"},
-			desc:    "relationship explorer panel for the focused row (g r)",
+			desc:    "toggle the relationship explorer for the focused row (g r)",
 			usage:   ":explore [panel]",
 			argKind: exArgOptional,
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.openDockedExplorer() },
@@ -556,6 +556,20 @@ func exCommands() []exCmdSpec {
 			usage:   ":editor",
 			argKind: exArgNone,
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.toggleEditor(); return nil },
+		},
+		{
+			verbs:   []string{"inspector"},
+			desc:    "toggle the row inspector panel",
+			usage:   ":inspector",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.toggleInspector(); return nil },
+		},
+		{
+			verbs:   []string{"assistant"},
+			desc:    "toggle the AI assistant panel",
+			usage:   ":assistant",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { m.toggleAssistant(); return nil },
 		},
 		{
 			verbs:   []string{"history"},

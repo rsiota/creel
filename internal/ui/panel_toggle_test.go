@@ -92,6 +92,34 @@ func TestToggleEditorMovesFocusOffEditor(t *testing.T) {
 	}
 }
 
+func TestToggleInspectorAndAssistant(t *testing.T) {
+	m := workspaceModel(t)
+
+	m.toggleInspector()
+	if !m.inspector.IsVisible() {
+		t.Fatal("inspector should be visible")
+	}
+	if m.assistant.IsVisible() || m.explorer.IsVisible() {
+		t.Fatal("opening inspector should close other right-slot panels")
+	}
+	m.toggleInspector()
+	if m.inspector.IsVisible() {
+		t.Fatal("inspector should be hidden")
+	}
+
+	m.toggleAssistant()
+	if !m.assistant.IsVisible() {
+		t.Fatal("assistant should be visible")
+	}
+	if m.inspector.IsVisible() {
+		t.Fatal("opening assistant should close inspector")
+	}
+	m.toggleAssistant()
+	if m.assistant.IsVisible() {
+		t.Fatal("assistant should be hidden")
+	}
+}
+
 func TestSessionLayoutPanelVisibilityRoundTrip(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	conn := newNamedSQLiteConn(t, "panels")

@@ -517,6 +517,34 @@ func (m *Model) toggleEditor() {
 	m.applyFocus()
 }
 
+// toggleInspector shows or hides the row inspector in the right slot.
+func (m *Model) toggleInspector() {
+	m.inspector.Toggle()
+	if m.inspector.IsVisible() {
+		m.assistant.Hide()
+		m.explorer.Hide()
+		m.focus = FocusInspector
+	} else if m.focus == FocusInspector {
+		m.focus = FocusResults
+	}
+	m.layoutWorkspace()
+	m.applyFocus()
+}
+
+// toggleAssistant shows or hides the AI assistant in the right slot.
+func (m *Model) toggleAssistant() {
+	m.assistant.Toggle()
+	if m.assistant.IsVisible() {
+		m.inspector.Hide()
+		m.explorer.Hide()
+		m.focus = FocusAssistant
+	} else if m.focus == FocusAssistant {
+		m.focus = FocusResults
+	}
+	m.layoutWorkspace()
+	m.applyFocus()
+}
+
 // layoutWorkspace sizes the workspace panels. Uses pointer receiver so it
 // works correctly when called from both value and pointer receiver methods.
 func (m *Model) layoutWorkspace() {

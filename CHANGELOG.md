@@ -13,8 +13,8 @@ commits, so it can come up empty).
 
 ### Added
 - `alt+b` / `alt+e` toggle the table sidebar and query editor (including tabs);
-  `:sidebar` and `:editor` do the same. Split sizes and visibility restore from
-  the session.
+  `:sidebar`, `:editor`, `:inspector`, and `:assistant` do the same for their
+  panels. Split sizes and visibility restore from the session.
 - Discoverability (Phase A): Ctrl+P palette lists jump targets (Tables,
   Bookmarks, Themes) before keybindings with right-aligned section labels; `?`
   help opens a Getting Started tab; connections screen shows `ctrl+p · ? · :`
