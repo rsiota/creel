@@ -82,13 +82,16 @@ In the add/edit form:
 | `esc`        | Normal mode                     |
 | `h/j/k/l`, `w/b` | Move                       |
 | `x` / `dd` / `dw` / `D` | Delete              |
-| `y` / `p`    | Yank / paste                    |
-| `u` / `U`    | Undo / redo                     |
-| `/`          | Search in buffer                |
-| `n` / `N`    | Next / previous search match    |
-| `V`          | Visual line (yank / delete)     |
-| `ctrl+n`     | Autocomplete                    |
-| `==`         | Format SQL                      |
+| `y` / `p`    | Yank / paste (shared with cell popup)         |
+| `yy` / `yw` / `y$` | Yank line / word / to EOL               |
+| `u` / `U`    | Undo / redo                                     |
+| `/`          | Search in buffer                                |
+| `n` / `N`    | Next / previous search match                    |
+| `V`          | Visual line (yank / delete)                     |
+| `ctrl+n`     | Autocomplete                                    |
+| `==`         | Format SQL                                      |
+
+Status bar shows `NORMAL` / `INSERT` / `SEARCH` / `V-LINE` while the editor is focused.
 
 ## Results
 
@@ -146,8 +149,10 @@ In the add/edit form:
 | `esc`      | Normal mode / close                             |
 | `h/j/k/l`  | Move (normal)                                   |
 | `x` / `dd` | Delete (normal)                                 |
-| `y` / `p`  | Yank / paste (normal)                           |
-| `/`        | Search in buffer (normal)                       |
+| `y` / `p`  | Yank / paste (normal; shared with SQL editor)   |
+| `yy` / `yw` / `y$` | Yank line / word / to EOL (normal)      |
+| `/`        | Search in buffer (normal and read-only)       |
+| `n` / `N`  | Next / prev search match (normal)             |
 | `ctrl+s`   | Stage edit & close                              |
 | `q`        | Close (normal mode)                             |
 

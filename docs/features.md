@@ -49,7 +49,9 @@ An overview of everything creel can do. For keys, see
   args diffs previous vs active; overlay `a` toggles changes-only vs all;
   `esc`/`q` closes. The cell-edit popup (`E`) uses vim editing for long
   values: insert on open, `esc` to normal, `esc`/`q` to close, `ctrl+s` to
-  stage. Large result sets are paged
+  stage. The query editor shows `NORMAL` / `INSERT` / `SEARCH` on the status
+  bar; read-only `E` supports `/` search. Yank is shared between editor and
+  popup (`yw`, `y$`, `yy`). Large result sets are paged
   (LIMIT/OFFSET) for speed and low
   memory. Bang forms (`:bar!`, `:line!`, `:scatter!`, `:hist!`, `:freq!`,
   `:pie!`) re-run the last SELECT without the page LIMIT (capped at 50,000

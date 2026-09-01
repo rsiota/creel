@@ -591,6 +591,10 @@ type Model struct {
 	hintFlash   string
 	hintFlashAt time.Time
 
+	// vimYank is the shared register for yank/paste between the query editor
+	// and the cell-edit popup.
+	vimYank string
+
 	// hintDesc is the pressed key's registry description shown briefly next to
 	// the hint line. It expires on the next render after hintDescDuration
 	// (matching how hintFlash expires), so no timer command is needed.
@@ -721,6 +725,8 @@ func NewModel(cfg *config.Config) Model {
 		tabBar:      NewTabBar(),
 	}
 	m.tabBar.SetTabs(m.resultsTabs, m.activeTabID)
+	m.editor.BindYank(&m.vimYank)
+	m.cellEdit.BindYank(&m.vimYank)
 	m.loadConnections()
 	if len(m.config.Connections) > 0 {
 		m.connList.StartFilter()

@@ -196,6 +196,12 @@ func (m Model) statusBar(connName string) string {
 			fmt.Sprintf("VISUAL %d", m.results.VisualRangeSize())))
 	}
 
+	if m.focus == FocusEditor && !m.cellEdit.IsVisible() {
+		if mode := m.editor.VimModeStr(); mode != "" {
+			parts = append(parts, sbAccent.Render(mode))
+		}
+	}
+
 	if m.tx != nil {
 		parts = append(parts, sbAccent.Render(txnStatusLabel(m.txIsolation)))
 	}

@@ -27,6 +27,7 @@ const (
 	vimPendingD                // 'd' pressed, waiting for motion or 'd'
 	vimPendingG                // 'g' pressed, waiting for 'g'
 	vimPendingEqual            // '=' pressed, waiting for '='
+	vimPendingY                // 'y' pressed, waiting for y/w/$
 )
 
 // editorSnap is one undo/redo checkpoint: buffer text plus cursor.
@@ -43,6 +44,7 @@ type VimBufferConfig struct {
 	EnableVisualLine  bool
 	EnableFormatEqual bool // g=g motion only when false; = = waits for = to format SQL
 	StaticCursor      bool
+	ReadOnly          bool // view-only: motion and search, no edits
 }
 
 // VimBuffer is a bubbles textarea with vim normal/insert editing, search, and
@@ -54,6 +56,7 @@ type VimBuffer struct {
 	mode         VimMode
 	pending      vimPending
 	yank         string
+	yankReg      *string // optional shared register (editor ↔ cell popup)
 	undo         []editorSnap
 	redo         []editorSnap
 	insertBase   *editorSnap
@@ -89,6 +92,25 @@ func NewVimBuffer(cfg VimBufferConfig) VimBuffer {
 		cfg:      cfg,
 		mode:     cfg.InitialMode,
 	}
+}
+
+// BindYank wires the buffer to a shared yank register (e.g. on Model).
+func (b *VimBuffer) BindYank(reg *string) {
+	b.yankReg = reg
+}
+
+func (b *VimBuffer) yankSet(s string) {
+	b.yank = s
+	if b.yankReg != nil {
+		*b.yankReg = s
+	}
+}
+
+func (b *VimBuffer) yankGet() string {
+	if b.yankReg != nil && *b.yankReg != "" {
+		return *b.yankReg
+	}
+	return b.yank
 }
 
 // SetOnChange registers a callback after buffer mutations (e.g. sync scroll).
@@ -144,7 +166,7 @@ func (b VimBuffer) CapturingKeys() bool {
 func (b VimBuffer) IsSearching() bool  { return b.searching }
 func (b VimBuffer) IsVisual() bool     { return b.visualLine }
 func (b VimBuffer) Mode() VimMode      { return b.mode }
-func (b VimBuffer) Yank() string       { return b.yank }
+func (b VimBuffer) Yank() string { return b.yankGet() }
 
 // ModeStr returns a human-readable mode label.
 func (b VimBuffer) ModeStr() string {
@@ -153,6 +175,8 @@ func (b VimBuffer) ModeStr() string {
 		return "SEARCH"
 	case b.visualLine:
 		return "V-LINE"
+	case b.cfg.ReadOnly:
+		return "VIEW"
 	case b.mode == VimNormal:
 		return "NORMAL"
 	}
@@ -233,6 +257,9 @@ func (b VimBuffer) Update(msg tea.Msg) (VimBuffer, tea.Cmd) {
 }
 
 func (b VimBuffer) handleInsertMode(msg tea.KeyMsg) (VimBuffer, tea.Cmd) {
+	if b.cfg.ReadOnly {
+		return b, nil
+	}
 	if msg.String() == "esc" {
 		b.commitInsertUndo()
 		b.mode = VimNormal
@@ -249,12 +276,28 @@ func (b VimBuffer) handleInsertMode(msg tea.KeyMsg) (VimBuffer, tea.Cmd) {
 func (b VimBuffer) handleNormalMode(msg tea.KeyMsg) (VimBuffer, tea.Cmd) {
 	key := msg.String()
 
+	if b.pending == vimPendingY {
+		b.pending = vimPendingNone
+		switch key {
+		case "y":
+			b.yankSet(b.currentLineText())
+			return b, nil
+		case "w":
+			b.yankSet(b.yankWordAtCursor())
+			return b, nil
+		case "$":
+			b.yankSet(b.yankRestOfLine())
+			return b, nil
+		}
+		// fall through — first y already yanked the line
+	}
+
 	if b.pending == vimPendingD {
 		b.pending = vimPendingNone
 		switch key {
 		case "d":
 			b.pushUndo()
-			b.yank = b.currentLineText()
+			b.yankSet(b.currentLineText())
 			b.sendKey("home")
 			b.sendKey("ctrl+k")
 			if b.textarea.LineCount() > 1 {
@@ -304,9 +347,13 @@ func (b VimBuffer) handleNormalMode(msg tea.KeyMsg) (VimBuffer, tea.Cmd) {
 	case "G":
 		b.sendKey("ctrl+end")
 	case "g":
-		b.pending = vimPendingG
+		if b.cfg.ReadOnly {
+			b.sendKey("ctrl+home")
+		} else {
+			b.pending = vimPendingG
+		}
 	case "=":
-		if b.cfg.EnableFormatEqual {
+		if b.cfg.EnableFormatEqual && !b.cfg.ReadOnly {
 			b.pending = vimPendingEqual
 		}
 	case "ctrl+d":
@@ -317,55 +364,77 @@ func (b VimBuffer) handleNormalMode(msg tea.KeyMsg) (VimBuffer, tea.Cmd) {
 		for i := 0; i < 5; i++ {
 			b.sendKey("up")
 		}
-	case "i":
-		b.beginInsert()
-	case "a":
-		b.sendKey("right")
-		b.beginInsert()
-	case "A":
-		b.sendKey("end")
-		b.beginInsert()
-	case "I":
-		b.sendKey("home")
-		b.beginInsert()
-	case "o":
-		b.beginInsert()
-		b.sendKey("end")
-		b.sendKey("enter")
-	case "O":
-		b.beginInsert()
-		b.sendKey("home")
-		b.sendKey("enter")
-		b.sendKey("up")
-	case "x":
-		b.pushUndo()
-		b.sendKey("delete")
-	case "d":
-		b.pending = vimPendingD
-	case "D":
-		b.pushUndo()
-		b.yank = b.currentLineText()
-		b.sendKey("ctrl+k")
+	case "i", "a", "A", "I", "o", "O", "c", "C":
+		if b.cfg.ReadOnly {
+			break
+		}
+		switch key {
+		case "i":
+			b.beginInsert()
+		case "a":
+			b.sendKey("right")
+			b.beginInsert()
+		case "A":
+			b.sendKey("end")
+			b.beginInsert()
+		case "I":
+			b.sendKey("home")
+			b.beginInsert()
+		case "o":
+			b.beginInsert()
+			b.sendKey("end")
+			b.sendKey("enter")
+		case "O":
+			b.beginInsert()
+			b.sendKey("home")
+			b.sendKey("enter")
+			b.sendKey("up")
+		case "c":
+			b.beginInsert()
+			b.sendKey("ctrl+k")
+		case "C":
+			b.beginInsert()
+			b.sendKey("ctrl+k")
+		}
+	case "x", "d", "D":
+		if b.cfg.ReadOnly {
+			break
+		}
+		switch key {
+		case "x":
+			b.pushUndo()
+			b.sendKey("delete")
+		case "d":
+			b.pending = vimPendingD
+		case "D":
+			b.pushUndo()
+			b.yankSet(b.currentLineText())
+			b.sendKey("ctrl+k")
+		}
 	case "y":
-		b.yank = b.currentLineText()
+		b.yankSet(b.currentLineText())
+		b.pending = vimPendingY
 	case "p":
-		if b.yank != "" {
+		if b.cfg.ReadOnly {
+			break
+		}
+		if text := b.yankGet(); text != "" {
 			b.pushUndo()
 			b.sendKey("end")
 			b.sendKey("enter")
-			b.textarea.InsertString(b.yank)
+			b.textarea.InsertString(text)
 			b.notifyChange()
 		}
-	case "c":
-		b.beginInsert()
-		b.sendKey("ctrl+k")
-	case "C":
-		b.beginInsert()
-		b.sendKey("ctrl+k")
-	case "u":
-		b.undoOnce()
-	case "U":
-		b.redoOnce()
+	case "u", "U":
+		if b.cfg.ReadOnly {
+			break
+		}
+		switch key {
+		case "u":
+			b.undoOnce()
+		case "U":
+			b.redoOnce()
+		}
 	case "/":
 		b.searching = true
 		b.searchQuery = ""
@@ -374,7 +443,7 @@ func (b VimBuffer) handleNormalMode(msg tea.KeyMsg) (VimBuffer, tea.Cmd) {
 	case "N":
 		b.jumpSearch(-1)
 	case "V":
-		if b.cfg.EnableVisualLine {
+		if b.cfg.EnableVisualLine && !b.cfg.ReadOnly {
 			b.visualLine = true
 			b.visualAnchor = b.textarea.Line()
 		}
@@ -543,7 +612,7 @@ func (b *VimBuffer) yankVisual() {
 	if lo > hi || len(lines) == 0 {
 		return
 	}
-	b.yank = strings.Join(lines[lo:hi+1], "\n")
+	b.yankSet(strings.Join(lines[lo:hi+1], "\n"))
 }
 
 func (b *VimBuffer) deleteVisual() {
@@ -730,6 +799,37 @@ func (b VimBuffer) wordBeforeCursor() (word string, startCol int) {
 		start--
 	}
 	return string(runes[start:col]), start
+}
+
+func (b VimBuffer) yankWordAtCursor() string {
+	line := b.currentLineText()
+	_, col := b.CursorLineCol()
+	runes := []rune(line)
+	if col > len(runes) {
+		col = len(runes)
+	}
+	start := col
+	for start > 0 && isWordChar(runes[start-1]) {
+		start--
+	}
+	end := col
+	for end < len(runes) && isWordChar(runes[end]) {
+		end++
+	}
+	if start == end && end < len(runes) {
+		end++
+	}
+	return string(runes[start:end])
+}
+
+func (b VimBuffer) yankRestOfLine() string {
+	line := b.currentLineText()
+	_, col := b.CursorLineCol()
+	runes := []rune(line)
+	if col >= len(runes) {
+		return ""
+	}
+	return string(runes[col:])
 }
 
 func (b VimBuffer) textBeforeCursor() string {

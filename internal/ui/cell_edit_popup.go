@@ -13,16 +13,17 @@ import (
 // edit the value. On commit the value is staged into the same dirtyCells
 // pipeline used by the inline editor (no immediate DB flush).
 type CellEditPopup struct {
-	buf       VimBuffer
-	visible   bool
-	readOnly  bool
-	scrollY   int
-	row       int
-	col       int
-	colName   string
-	width     int
-	height    int
-	jsonMode  bool
+	buf      VimBuffer
+	yankReg  *string
+	visible  bool
+	readOnly bool
+	scrollY  int
+	row      int
+	col      int
+	colName  string
+	width    int
+	height   int
+	jsonMode bool
 }
 
 // NewCellEditPopup creates a hidden cell-edit popup.
@@ -34,6 +35,11 @@ func NewCellEditPopup() CellEditPopup {
 			EnableFormatEqual: false,
 		}),
 	}
+}
+
+// BindYank wires the popup to the shared yank register on Model.
+func (p *CellEditPopup) BindYank(reg *string) {
+	p.yankReg = reg
 }
 
 // Show opens the popup seeded with the given value. JSON objects and arrays
@@ -48,11 +54,18 @@ func (p *CellEditPopup) Show(val string, row, col int, colName string, readOnly 
 		p.jsonMode = true
 	}
 
-	p.buf = NewVimBuffer(VimBufferConfig{
-		InitialMode:       VimInsert,
+	cfg := VimBufferConfig{
 		EnableVisualLine:  false,
 		EnableFormatEqual: false,
-	})
+		ReadOnly:          readOnly,
+	}
+	if readOnly {
+		cfg.InitialMode = VimNormal
+	} else {
+		cfg.InitialMode = VimInsert
+	}
+	p.buf = NewVimBuffer(cfg)
+	p.buf.BindYank(p.yankReg)
 	p.buf.SetCharLimit(0)
 	p.buf.setValueRaw(val)
 	if !readOnly {
@@ -76,26 +89,25 @@ func (p *CellEditPopup) Hide() {
 	p.scrollY = 0
 }
 
-func (p CellEditPopup) IsVisible() bool  { return p.visible }
-func (p CellEditPopup) IsReadOnly() bool { return p.readOnly }
-func (p CellEditPopup) Value() string    { return p.buf.Value() }
-func (p CellEditPopup) Row() int         { return p.row }
-func (p CellEditPopup) Col() int         { return p.col }
-func (p CellEditPopup) VimMode() VimMode { return p.buf.Mode() }
-func (p CellEditPopup) VimModeStr() string {
-	if p.readOnly {
-		return "VIEW"
-	}
-	return p.buf.ModeStr()
-}
+func (p CellEditPopup) IsVisible() bool   { return p.visible }
+func (p CellEditPopup) IsReadOnly() bool  { return p.readOnly }
+func (p CellEditPopup) Value() string     { return p.buf.Value() }
+func (p CellEditPopup) Row() int          { return p.row }
+func (p CellEditPopup) Col() int          { return p.col }
+func (p CellEditPopup) VimMode() VimMode  { return p.buf.Mode() }
+func (p CellEditPopup) VimModeStr() string { return p.buf.ModeStr() }
 
-// ConsumeEsc handles esc in the cell popup. Read-only closes immediately;
-// editable insert → normal; editable normal → close.
+// ConsumeEsc handles esc in the cell popup. Read-only closes search first;
+// editable insert → normal; normal → close.
 func (p *CellEditPopup) ConsumeEsc() (handled bool, shouldClose bool) {
 	if !p.visible {
 		return false, false
 	}
 	if p.readOnly {
+		if p.buf.IsSearching() {
+			p.buf.ConsumeEsc(false)
+			return true, false
+		}
 		return true, true
 	}
 	return p.buf.ConsumeEsc(true)
@@ -116,7 +128,7 @@ func (p *CellEditPopup) SetMaxSize(contentW, contentH int) {
 }
 
 func (p *CellEditPopup) Focus() tea.Cmd {
-	if !p.visible || p.readOnly {
+	if !p.visible {
 		return nil
 	}
 	return p.buf.Focus()
@@ -126,47 +138,31 @@ func (p CellEditPopup) Update(msg tea.Msg) (CellEditPopup, tea.Cmd) {
 	if !p.visible {
 		return p, nil
 	}
-	if p.readOnly {
-		p.scrollReadOnly(msg)
-		return p, nil
-	}
 	var cmd tea.Cmd
 	p.buf, cmd = p.buf.Update(msg)
+	if p.readOnly {
+		p.syncScrollFromCursor()
+	}
 	return p, cmd
 }
 
-func (p *CellEditPopup) scrollReadOnly(msg tea.Msg) {
-	k, ok := msg.(tea.KeyMsg)
-	if !ok {
-		return
-	}
+func (p *CellEditPopup) syncScrollFromCursor() {
+	line := p.buf.Line()
 	maxScroll := len(strings.Split(p.buf.Value(), "\n")) - p.height
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
-	switch k.String() {
-	case "j", "down":
-		if p.scrollY < maxScroll {
-			p.scrollY++
-		}
-	case "k", "up":
-		if p.scrollY > 0 {
-			p.scrollY--
-		}
-	case "pgdown", "ctrl+d":
-		p.scrollY += p.height
-		if p.scrollY > maxScroll {
-			p.scrollY = maxScroll
-		}
-	case "pgup", "ctrl+u":
-		p.scrollY -= p.height
-		if p.scrollY < 0 {
-			p.scrollY = 0
-		}
-	case "g", "home":
-		p.scrollY = 0
-	case "G", "end":
+	if line < p.scrollY {
+		p.scrollY = line
+	}
+	if line >= p.scrollY+p.height {
+		p.scrollY = line - p.height + 1
+	}
+	if p.scrollY > maxScroll {
 		p.scrollY = maxScroll
+	}
+	if p.scrollY < 0 {
+		p.scrollY = 0
 	}
 }
 
@@ -174,6 +170,9 @@ func (p CellEditPopup) View() string {
 	label := lipgloss.NewStyle().Foreground(colorLabel).Render(p.colName)
 	if p.readOnly {
 		label += " " + lipgloss.NewStyle().Foreground(colorMuted).Render("(read-only)")
+		if p.buf.IsSearching() {
+			label += " " + lipgloss.NewStyle().Foreground(colorMuted).Render("(search)")
+		}
 	} else if mode := p.VimModeStr(); mode != "" {
 		label += " " + lipgloss.NewStyle().Foreground(colorMuted).Render("("+strings.ToLower(mode)+")")
 	}
@@ -258,13 +257,37 @@ func (p CellEditPopup) readOnlyLines(bs lipgloss.Style) []string {
 	if end > len(all) {
 		end = len(all)
 	}
+	cursorLine := p.buf.Line()
+	cursorCol := p.buf.LineInfo().CharOffset
+	cursorStyle := lipgloss.NewStyle().Foreground(colorFg).Reverse(true)
 	blank := bs.Render("│ ") + strings.Repeat(" ", p.width) + bs.Render(" │")
 	var out []string
-	for _, line := range all[start:end] {
+	for idx, line := range all[start:end] {
+		lineIdx := start + idx
 		raw := truncateCell(line, p.width)
 		var content string
 		if p.jsonMode {
-			content = highlightJSON(raw)
+			if p.buf.IsSearching() && lineIdx == cursorLine {
+				runes := []rune(raw)
+				if cursorCol < len(runes) {
+					content = highlightJSON(string(runes[:cursorCol])) +
+						cursorStyle.Render(string(runes[cursorCol])) +
+						highlightJSON(string(runes[cursorCol+1:]))
+				} else {
+					content = highlightJSON(raw) + cursorStyle.Render(" ")
+				}
+			} else {
+				content = highlightJSON(raw)
+			}
+		} else if p.buf.IsSearching() && lineIdx == cursorLine {
+			runes := []rune(raw)
+			if cursorCol < len(runes) {
+				content = lipgloss.NewStyle().Foreground(colorFg).Render(string(runes[:cursorCol])) +
+					cursorStyle.Render(string(runes[cursorCol])) +
+					lipgloss.NewStyle().Foreground(colorFg).Render(string(runes[cursorCol+1:]))
+			} else {
+				content = lipgloss.NewStyle().Foreground(colorFg).Render(raw) + cursorStyle.Render(" ")
+			}
 		} else {
 			content = lipgloss.NewStyle().Foreground(colorFg).Render(raw)
 		}

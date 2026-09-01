@@ -65,6 +65,7 @@ func TestCellEditPopupReadOnlyView(t *testing.T) {
 	// Five lines in a viewport three tall → scrollable by two lines.
 	p.Show("alpha\nbeta\ngamma\ndelta\nepsilon", 0, 0, "body", true)
 	p.SetMaxSize(60, 3)
+	p.buf.Focus()
 	if !p.IsReadOnly() {
 		t.Fatal("popup should report read-only after Show(..., true)")
 	}

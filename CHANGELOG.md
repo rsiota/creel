@@ -12,6 +12,13 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- Query editor shows vim mode on the status bar (`NORMAL`, `INSERT`, `SEARCH`,
+  `V-LINE`) when the editor is focused.
+- Read-only cell popup (`E`) supports `/` search with `n`/`N`; `esc` dismisses
+  the search prompt, then closes the popup.
+- Shared yank register between the query editor and cell-edit popup — `y` in
+  one, `p` in the other.
+- Yank motions: `y`/`yy` line, `yw` word, `y$` to end of line.
 - Cell-edit popup (`E`) uses the same vim buffer as the query editor: normal /
   insert modes, motions, delete, yank/paste, undo, and in-buffer search. Starts
   in insert; `esc` leaves insert, `esc` again (or `q` in normal) closes without

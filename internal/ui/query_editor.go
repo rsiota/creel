@@ -29,6 +29,10 @@ func NewQueryEditor() QueryEditor {
 	}
 }
 
+func (e *QueryEditor) BindYank(reg *string) {
+	e.buf.BindYank(reg)
+}
+
 // Value returns the current SQL text.
 func (e QueryEditor) Value() string {
 	return e.buf.Value()
