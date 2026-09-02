@@ -80,22 +80,25 @@ func (m Model) handleConnectionsMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	panelX := (m.width - pw) / 2
 	panelY := (m.height - 1 - ph) / 2
 
-	// Inside the border: border(1) + prompt(1) = offset 2 to the first row.
-	listY := msg.Y - panelY - 2
-	if listY < 0 || msg.X < panelX || msg.X >= panelX+pw {
+	// Inside the border: optional group tabs, then filter prompt, then rows.
+	// Padding(0,1) adds one column on each side.
+	innerY := msg.Y - panelY - 1
+	contentX := msg.X - panelX - 1 - 1
+	if innerY < 0 || msg.X < panelX || msg.X >= panelX+pw {
 		return m, nil
+	}
+	if m.connList.ClickGroupTab(contentX, innerY) {
+		return m, nil
+	}
+	listY := innerY - 1 // skip prompt
+	if m.connList.showGroupTabs() {
+		listY -= formTabBarLines // tabs sit above the prompt
 	}
 	idx := m.connList.YToRow(listY)
 	if idx < 0 {
 		return m, nil
 	}
 	m.connList.SetCursor(idx)
-	// Clicking a group header folds/unfolds it; clicking a connection selects
-	// and connects (matching the keyboard enter behaviour).
-	if m.connList.CursorOnGroupHeader() {
-		m.connList.ToggleGroupAtCursor()
-		return m, nil
-	}
 	if m.connList.IsFiltering() {
 		m.connList.CommitFilter()
 	}

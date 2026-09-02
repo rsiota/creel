@@ -407,7 +407,8 @@ palette). Never copy a key handler body into an ex executor. A full unified
       `erd_graph.go`, `erd_panel.go`, `app.go`, `registry.go`, `hints.go`.
       Tests: `erd_test.go`.
 12. **Connection groups / folders** (2026-07-12) — optional `group` field;
-    collapsible folder headers (▾/▸), flat when none grouped. Files:
+    tab strip when any connection is grouped (named A–Z, then Ungrouped);
+    `[`/`]` or click to switch; filter flattens across groups. Files:
     `config/config.go`, `connection_list.go`, `connection_form.go`, `app.go`,
     `mouse.go`. Tests: `connection_groups_test.go`.
 13. **Per-query timing history** (2026-07-27) — query duration is persisted in

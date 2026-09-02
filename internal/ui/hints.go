@@ -155,6 +155,9 @@ func (m Model) resolveHints() (section string, hints []string) {
 			if m.connList.IsFiltering() {
 				return "", []string{"j/k", "enter", "esc"}
 			}
+			if m.connList.hasGroups() {
+				return "Connections", []string{"[/]", "j/k", "enter", "n", "e", "d", "/", "esc"}
+			}
 			return "Connections", hintsForSection("Connections")
 		case m.focus == FocusEditor:
 			return "Editor (Vim)", hintsForSection("Editor (Vim)")

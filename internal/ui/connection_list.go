@@ -29,21 +29,18 @@ type connectionItem struct {
 	matchIdx []int // fuzzy match indices for highlighting
 }
 
-// connRowKind distinguishes group-header rows from connection rows in the
-// rendered list.
+// connRowKind distinguishes connection rows in the list sequence.
 type connRowKind int
 
 const (
 	rowConn connRowKind = iota
-	rowGroup
 )
 
-// connRow is a single renderable row: either a collapsible group header or a
-// connection line. Unifying them into one sequence lets cursor navigation,
-// line-based scroll, mouse mapping, and filtering all operate on a single list.
+// connRow is a single renderable connection line. Cursor navigation, scroll,
+// mouse mapping, and filtering all operate on this sequence.
 type connRow struct {
 	kind  connRowKind
-	group string         // header label group; or the owning group for a conn
+	group string         // owning group key when groups are in use
 	conn  connectionItem // valid when kind == rowConn
 }
 
@@ -55,9 +52,9 @@ type ConnectionList struct {
 	width  int
 	height int
 
-	// Collapsed groups (by name). Ungrouped uses the "" key. Preserved across
-	// SetItems reloads so adding/editing a connection doesn't reset folding.
-	collapsed map[string]bool
+	// groupTab is the active group key when connections use groups ("" =
+	// Ungrouped). Named groups are selected by their config group string.
+	groupTab string
 
 	// Fuzzy filter
 	filter    string
@@ -78,9 +75,9 @@ func (c *ConnectionList) SetPadBackground(bg lipgloss.Color) {
 	c.padBg = bg
 }
 
-// SetItems populates the list from connection entries. Collapse state is
-// preserved across reloads. An empty slice enables the synthetic demo row
-// (see rows).
+// SetItems populates the list from connection entries. An empty slice enables
+// the synthetic demo row (see rows). The active group tab is clamped to a
+// still-valid group when items change.
 func (c *ConnectionList) SetItems(conns []ConnectionEntry) {
 	c.items = make([]connectionItem, len(conns))
 	for i, conn := range conns {
@@ -92,40 +89,42 @@ func (c *ConnectionList) SetItems(conns []ConnectionEntry) {
 			recent: conn.Recent,
 		}
 	}
-	if c.cursor >= len(c.items) {
-		c.cursor = len(c.items) - 1
+	c.clampGroupTab()
+	rows := c.rows()
+	if c.cursor >= len(rows) {
+		c.cursor = len(rows) - 1
 	}
 	if c.cursor < 0 {
 		c.cursor = 0
 	}
 }
 
-// SelectByName moves the cursor onto the named connection row (expanding its
-// group if needed). Returns false when the name is not in the list.
+// SelectByName moves the cursor onto the named connection, switching to its
+// group tab when groups are in use. Returns false when the name is not found.
 func (c *ConnectionList) SelectByName(name string) bool {
 	if name == "" {
 		return false
 	}
-	// Expand every group so the target is visible even if folded.
-	if c.collapsed != nil {
-		for g, collapsed := range c.collapsed {
-			if collapsed {
-				c.collapsed[g] = false
+	for _, it := range c.items {
+		if it.name == name && !it.demo {
+			if c.hasGroups() {
+				c.setGroupTab(it.group)
 			}
-		}
-	}
-	rows := c.rows()
-	for i, r := range rows {
-		if r.kind == rowConn && r.conn.name == name && !r.conn.demo {
-			c.SetCursor(i)
-			return true
+			rows := c.rows()
+			for i, r := range rows {
+				if r.kind == rowConn && r.conn.name == name {
+					c.SetCursor(i)
+					return true
+				}
+			}
+			return false
 		}
 	}
 	return false
 }
 
 // hasGroups reports whether any connection belongs to a named group. When
-// false the list renders flat (no headers), preserving the pre-groups look.
+// false the list renders flat with no tab strip.
 func (c ConnectionList) hasGroups() bool {
 	for _, it := range c.items {
 		if it.group != "" {
@@ -135,9 +134,96 @@ func (c ConnectionList) hasGroups() bool {
 	return false
 }
 
+// showGroupTabs reports whether the group tab strip should render.
+func (c ConnectionList) showGroupTabs() bool {
+	return c.hasGroups() && !(c.filtering && c.filter != "")
+}
+
+// availableGroupTabs returns group keys for the tab strip: named groups in
+// alphabetical order, then Ungrouped ("") when any ungrouped connection exists.
+func (c ConnectionList) availableGroupTabs() []string {
+	ungrouped, order, _ := c.groupSections()
+	out := append([]string{}, order...)
+	if len(ungrouped) > 0 {
+		out = append(out, "")
+	}
+	return out
+}
+
+// groupTabLabel is the display label for a group tab key.
+func groupTabLabel(group string) string {
+	if group == "" {
+		return "Ungrouped"
+	}
+	return group
+}
+
+// groupTabAvailable reports whether g is in the current tab strip.
+func (c ConnectionList) groupTabAvailable(g string) bool {
+	for _, t := range c.availableGroupTabs() {
+		if t == g {
+			return true
+		}
+	}
+	return false
+}
+
+// clampGroupTab moves onto a valid tab when the active one disappeared.
+func (c *ConnectionList) clampGroupTab() {
+	if !c.hasGroups() {
+		c.groupTab = ""
+		return
+	}
+	if c.groupTabAvailable(c.groupTab) {
+		return
+	}
+	tabs := c.availableGroupTabs()
+	if len(tabs) == 0 {
+		c.groupTab = ""
+		return
+	}
+	c.groupTab = tabs[0]
+}
+
+// setGroupTab switches to group g and resets the list cursor to the top.
+func (c *ConnectionList) setGroupTab(g string) {
+	if !c.hasGroups() || !c.groupTabAvailable(g) {
+		return
+	}
+	if g == c.groupTab {
+		return
+	}
+	c.groupTab = g
+	c.cursor = 0
+	c.scroll = 0
+	c.ensureVisible(c.rows())
+}
+
+// MoveGroupTab steps left/right through availableGroupTabs (wrapping).
+func (c *ConnectionList) MoveGroupTab(delta int) {
+	tabs := c.availableGroupTabs()
+	if len(tabs) == 0 {
+		return
+	}
+	idx := 0
+	for i, t := range tabs {
+		if t == c.groupTab {
+			idx = i
+			break
+		}
+	}
+	idx = (idx + delta + len(tabs)) % len(tabs)
+	c.setGroupTab(tabs[idx])
+}
+
+// ActiveGroupTab returns the active group key ("" = Ungrouped / no groups).
+func (c ConnectionList) ActiveGroupTab() string {
+	return c.groupTab
+}
+
 // groupSections partitions items into the ungrouped slice (config order) and
 // named buckets (config order within each), returning group names in
-// alphabetical order. Shared by the grouped renderer and ExpandedHeight.
+// alphabetical order.
 func (c ConnectionList) groupSections() (ungrouped []connectionItem, order []string, buckets map[string][]connectionItem) {
 	buckets = map[string][]connectionItem{}
 	for _, it := range c.items {
@@ -167,11 +253,9 @@ func demoInvitation() connectionItem {
 
 // rows returns the renderable row sequence for the current state:
 //   - empty list: a single synthetic demo invitation (first-run);
-//   - filtering: a flat, fuzzy-ranked list of matching connections (no headers);
-//   - no groups: a flat list of all connections (backward-compatible);
-//   - otherwise: group headers + their connections, with collapsed groups
-//     showing only their header. Ungrouped connections lead under an
-//     "Ungrouped" header, then named groups alphabetically.
+//   - filtering: a flat, fuzzy-ranked list of matching connections;
+//   - no groups: a flat list of all connections;
+//   - otherwise: connections in the active group tab only (no headers).
 func (c ConnectionList) rows() []connRow {
 	if len(c.items) == 0 {
 		if c.filtering && c.filter != "" {
@@ -189,11 +273,11 @@ func (c ConnectionList) rows() []connRow {
 		}
 		return out
 	}
-	return c.groupedRows()
+	return c.groupTabRows()
 }
 
 // filteredRows ranks all connections by the fuzzy filter and returns them as
-// flat connection rows (no group headers), with match indices for highlighting.
+// flat connection rows, with match indices for highlighting.
 func (c ConnectionList) filteredRows() []connRow {
 	ranked := fuzzyRank(c.filter, c.items,
 		func(it connectionItem) string { return it.name },
@@ -207,79 +291,47 @@ func (c ConnectionList) filteredRows() []connRow {
 	return out
 }
 
-// groupedRows builds the grouped layout described in rows().
-func (c ConnectionList) groupedRows() []connRow {
-	ungrouped, order, buckets := c.groupSections()
-	var out []connRow
-	if len(ungrouped) > 0 {
-		out = append(out, connRow{kind: rowGroup, group: ""})
-		if !c.collapsed[""] {
-			for _, it := range ungrouped {
-				out = append(out, connRow{kind: rowConn, conn: it, group: ""})
-			}
-		}
+// groupTabRows returns connections belonging to the active group tab.
+func (c ConnectionList) groupTabRows() []connRow {
+	ungrouped, _, buckets := c.groupSections()
+	var items []connectionItem
+	if c.groupTab == "" {
+		items = ungrouped
+	} else {
+		items = buckets[c.groupTab]
 	}
-	for _, g := range order {
-		out = append(out, connRow{kind: rowGroup, group: g})
-		if c.collapsed[g] {
-			continue
-		}
-		for _, it := range buckets[g] {
-			out = append(out, connRow{kind: rowConn, conn: it, group: g})
-		}
+	out := make([]connRow, len(items))
+	for i, it := range items {
+		out[i] = connRow{kind: rowConn, conn: it, group: it.group}
 	}
 	return out
 }
 
-// groupIndent returns the number of leading spaces to shift a connection so it
-// expands exactly under the first letter of its group header (i.e. past the
-// "▾ " marker prefix). Zero in flat mode (no groups) and while filtering
-// (which flattens), preserving the original layout there.
-func (c ConnectionList) groupIndent() int {
-	if c.filtering && c.filter != "" {
-		return 0
-	}
-	if !c.hasGroups() {
-		return 0
-	}
-	return 2 // aligns the connection name under the first letter of "▾ Group"
-}
-
-// indentBlock prefixes every line of a (possibly multi-line) string with n
-// spaces, used to nest connection boxes under their group header.
-func indentBlock(s string, n int) string {
-	if n <= 0 {
-		return s
-	}
-	pad := strings.Repeat(" ", n)
-	lines := strings.Split(s, "\n")
-	for i := range lines {
-		lines[i] = pad + lines[i]
-	}
-	return strings.Join(lines, "\n")
-}
-
-// rowHeight returns the rendered height of a row. Group headers and connection
-// lines are both a single row so the picker stays dense and name-forward.
+// rowHeight returns the rendered height of a row (always one line).
 func rowHeight(r connRow) int {
 	return 1
 }
 
-// ExpandedHeight is the total rendered height with every group expanded.
+// ExpandedHeight is the total rendered height of every connection (one line
+// each). Kept for tests/diagnostics; popup sizing uses the shared shell.
 func (c ConnectionList) ExpandedHeight() int {
 	if len(c.items) == 0 {
 		return 1 // synthetic demo invitation
 	}
-	h := len(c.items) // one line per connection
-	if !c.hasGroups() {
-		return h
+	return len(c.items)
+}
+
+// listViewportHeight is the height available for connection rows (shell height
+// minus the group tab strip when shown).
+func (c ConnectionList) listViewportHeight() int {
+	h := c.height
+	if c.showGroupTabs() {
+		h -= formTabBarLines
 	}
-	ungrouped, order, _ := c.groupSections()
-	headers := len(order)
-	if len(ungrouped) > 0 {
-		headers++
+	if h < 1 {
+		return 1
 	}
-	return h + headers
+	return h
 }
 
 // TotalCount returns the total number of saved connections, ignoring any
@@ -323,8 +375,7 @@ func prefixTops(rows []connRow) []int {
 }
 
 // SelectedName returns the name of the connection under the cursor, or "" if
-// the cursor rests on a group header (which is not connectable) or on the
-// synthetic demo invitation (use SelectedIsDemo instead).
+// the cursor is on the synthetic demo invitation (use SelectedIsDemo instead).
 func (c ConnectionList) SelectedName() string {
 	rows := c.rows()
 	if c.cursor < 0 || c.cursor >= len(rows) {
@@ -388,7 +439,7 @@ func (c *ConnectionList) MoveCursor(delta int) {
 }
 
 // firstConnRow / lastConnRow return the cursor index of the first/last
-// connection row (skipping group headers), so g/G land on a connectable entry.
+// connection row so g/G land on a connectable entry.
 func (c ConnectionList) firstConnRow() int {
 	rows := c.rows()
 	for i, r := range rows {
@@ -409,87 +460,13 @@ func (c ConnectionList) lastConnRow() int {
 	return 0
 }
 
-// CursorOnGroupHeader reports whether the cursor rests on a group header.
-func (c ConnectionList) CursorOnGroupHeader() bool {
-	rows := c.rows()
-	return c.cursor >= 0 && c.cursor < len(rows) && rows[c.cursor].kind == rowGroup
-}
-
-// groupHeaderIndex returns the row index of a group's header, or -1.
-func groupHeaderIndex(rows []connRow, group string) int {
-	for i, r := range rows {
-		if r.kind == rowGroup && r.group == group {
-			return i
-		}
-	}
-	return -1
-}
-
-// ToggleGroupAtCursor folds/unfolds the group of the row under the cursor
-// (works whether the cursor is on that group's header or one of its
-// connections). After collapsing a group whose connection held the cursor, the
-// cursor relocates to that group's header so it never lands on a hidden row.
-func (c *ConnectionList) ToggleGroupAtCursor() {
-	rows := c.rows()
-	if c.cursor < 0 || c.cursor >= len(rows) {
-		return
-	}
-	g := rows[c.cursor].group
-	wasCollapsed := c.collapsed[g]
-	if c.collapsed == nil {
-		c.collapsed = map[string]bool{}
-	}
-	c.collapsed[g] = !wasCollapsed
-	rows = c.rows()
-	if !wasCollapsed {
-		// Just collapsed: if the cursor was on a now-hidden connection, move
-		// it to the group's (still-visible) header.
-		if hdr := groupHeaderIndex(rows, g); hdr >= 0 {
-			c.cursor = hdr
-		}
-	}
-	if c.cursor >= len(rows) {
-		c.cursor = len(rows) - 1
-	}
-	if c.cursor < 0 {
-		c.cursor = 0
-	}
-	c.ensureVisible(rows)
-}
-
-// SelectFirstConnectionInGroup moves the cursor from a group header onto that
-// group's first connection, expanding the group first if it was collapsed so
-// the target row is visible. It is a no-op (returns false) when the cursor is
-// not on a header. Used so the d/e command keys act on a connection instead
-// of silently doing nothing when invoked from a header.
-func (c *ConnectionList) SelectFirstConnectionInGroup() bool {
-	rows := c.rows()
-	if c.cursor < 0 || c.cursor >= len(rows) || rows[c.cursor].kind != rowGroup {
-		return false
-	}
-	g := rows[c.cursor].group
-	if c.collapsed[g] {
-		if c.collapsed == nil {
-			c.collapsed = map[string]bool{}
-		}
-		c.collapsed[g] = false
-		rows = c.rows() // expanding grows the row list
-	}
-	hdr := groupHeaderIndex(rows, g)
-	for i := hdr + 1; i < len(rows); i++ {
-		if rows[i].kind == rowConn && rows[i].group == g {
-			c.SetCursor(i) // clamps + ensureVisible
-			return true
-		}
-	}
-	return false
-}
-
-// visible, keeping the scroll snapped to a row boundary. Among the valid
-// boundaries it picks the smallest (most content above the cursor), so the
-// cursor sits near the bottom of the viewport rather than jumping to the top.
+// ensureVisible adjusts scroll so the cursor row stays in the list viewport,
+// keeping the scroll snapped to a row boundary. Among the valid boundaries it
+// picks the smallest (most content above the cursor), so the cursor sits near
+// the bottom of the viewport rather than jumping to the top.
 func (c *ConnectionList) ensureVisible(rows []connRow) {
-	if len(rows) == 0 || c.height <= 0 {
+	vh := c.listViewportHeight()
+	if len(rows) == 0 || vh <= 0 {
 		c.scroll = 0
 		return
 	}
@@ -502,8 +479,8 @@ func (c *ConnectionList) ensureVisible(rows []connRow) {
 	tops := prefixTops(rows)
 	cursorTop := tops[c.cursor]
 	cursorBot := tops[c.cursor+1]
-	lo := cursorBot - c.height // smallest scroll that still fits the cursor's bottom
-	hi := cursorTop            // largest scroll that keeps the cursor's top visible
+	lo := cursorBot - vh // smallest scroll that still fits the cursor's bottom
+	hi := cursorTop      // largest scroll that keeps the cursor's top visible
 	best := -1
 	for _, t := range tops {
 		if t > hi {
@@ -521,11 +498,7 @@ func (c *ConnectionList) ensureVisible(rows []connRow) {
 }
 
 func (c ConnectionList) maxVisibleItems() int {
-	max := c.height // one line per connection / header
-	if max < 1 {
-		return 1
-	}
-	return max
+	return c.listViewportHeight()
 }
 
 // IsFiltering returns whether the filter input is active.
@@ -547,26 +520,20 @@ func (c *ConnectionList) CancelFilter() {
 	c.filter = ""
 	c.cursor = 0
 	c.scroll = 0
+	c.ensureVisible(c.rows())
 }
 
-// CommitFilter exits filter mode, relocating the cursor to the selected match
-// within the (grouped) layout so it stays on the same connection.
+// CommitFilter exits filter mode, switching to the selected connection's group
+// tab (when groups are in use) so the cursor stays on that connection.
 func (c *ConnectionList) CommitFilter() {
 	name := c.SelectedName()
 	c.filtering = false
 	c.filter = ""
-	rows := c.rows()
-	if name != "" {
-		for i, r := range rows {
-			if r.kind == rowConn && r.conn.name == name {
-				c.cursor = i
-				c.ensureVisible(rows)
-				return
-			}
-		}
+	if name != "" && c.SelectByName(name) {
+		return
 	}
 	c.cursor = 0
-	c.ensureVisible(rows)
+	c.ensureVisible(c.rows())
 }
 
 // FilterAddChar appends a character to the filter.
@@ -597,12 +564,13 @@ func (c *ConnectionList) SetSize(width, height int) {
 	c.ensureVisible(c.rows())
 }
 
-// View renders the connection list. Each connection is a single quiet line
-// (name + muted host/path); group headers separate them when grouping is in
-// use. Only fully visible rows are drawn, and scroll snaps to row boundaries.
+// View renders quiet name+host rows for the active group (or ranked filter
+// matches). The group tab strip is rendered separately above the filter prompt
+// (see GroupTabBar / viewConnections).
 func (c ConnectionList) View() string {
 	rows := c.rows()
 	contentW := c.width
+	vh := c.listViewportHeight()
 
 	if len(rows) == 0 {
 		var msg string
@@ -611,12 +579,12 @@ func (c ConnectionList) View() string {
 		} else {
 			msg = mutedStyle.Render("  No saved connections. Press 'n' to add one.")
 		}
-		return padViewHeight(msg, contentW, c.height, c.padBg)
+		return padViewHeight(msg, contentW, vh, c.padBg)
 	}
 
 	tops := prefixTops(rows)
 	totalH := tops[len(rows)]
-	maxScroll := totalH - c.height
+	maxScroll := totalH - vh
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -633,40 +601,106 @@ func (c ConnectionList) View() string {
 		top := tops[i]
 		bot := tops[i+1]
 		if bot <= scroll {
-			continue // above the viewport
+			continue
 		}
-		if top >= scroll+c.height {
-			break // below the viewport
+		if top >= scroll+vh {
+			break
 		}
-		if bot > scroll+c.height {
-			break // would overflow — stop (cursor is kept visible by ensureVisible)
+		if bot > scroll+vh {
+			break
 		}
 		b.WriteString(c.renderRow(r, i, contentW))
 		b.WriteString("\n")
 	}
-	return padViewHeight(strings.TrimRight(b.String(), "\n"), contentW, c.height, c.padBg)
+	return padViewHeight(strings.TrimRight(b.String(), "\n"), contentW, vh, c.padBg)
 }
 
-// renderRow renders a single row (group header or connection line). Connection
-// lines are indented under their group header; headers are flush-left with a
-// connection count.
+// GroupTabBar returns the right-aligned group tab strip, or "" when tabs are
+// hidden (no groups, or an active filter query). Rendered above the filter
+// prompt in the connection popup.
+func (c ConnectionList) GroupTabBar() string {
+	if !c.showGroupTabs() {
+		return ""
+	}
+	return c.renderGroupTabBar()
+}
+
+// renderGroupTabBar renders available group tabs, right-aligned like the
+// connection form's page tabs.
+func (c ConnectionList) renderGroupTabBar() string {
+	var parts []string
+	for _, g := range c.availableGroupTabs() {
+		l := groupTabLabel(g)
+		var s string
+		if g == c.groupTab {
+			s = lipgloss.NewStyle().
+				Bold(true).
+				Background(colorPrimary).
+				Foreground(colorBg).
+				Render(" " + l + " ")
+		} else {
+			s = lipgloss.NewStyle().Foreground(colorMuted).Render(" " + l + " ")
+		}
+		parts = append(parts, s)
+	}
+	tabs := strings.Join(parts, " ")
+	w := c.width
+	if w < 1 {
+		return tabs
+	}
+	return lipgloss.NewStyle().Width(w).Align(lipgloss.Right).Render(tabs)
+}
+
+// groupTabWidth is the plain-text width of the tab strip for mouse hit-testing.
+func (c ConnectionList) groupTabWidth() int {
+	tabs := c.availableGroupTabs()
+	if len(tabs) == 0 {
+		return 0
+	}
+	total := 0
+	for i, g := range tabs {
+		total += 1 + len(groupTabLabel(g)) + 1
+		if i < len(tabs)-1 {
+			total++
+		}
+	}
+	return total
+}
+
+// ClickGroupTab switches to the group tab under content-relative coordinates
+// within the list body (y=0 is the tab row). Returns true when a tab was hit.
+func (c *ConnectionList) ClickGroupTab(contentX, contentY int) bool {
+	if !c.showGroupTabs() || contentY < 0 || contentY >= formTabBarLines {
+		return false
+	}
+	total := c.groupTabWidth()
+	start := c.width - total
+	if start < 0 {
+		start = 0
+	}
+	cur := start
+	for _, g := range c.availableGroupTabs() {
+		w := 1 + len(groupTabLabel(g)) + 1
+		if contentX >= cur && contentX < cur+w {
+			c.setGroupTab(g)
+			return true
+		}
+		cur += w + 1
+	}
+	return false
+}
+
+// renderRow renders a single connection line (name + muted trailing detail).
 func (c ConnectionList) renderRow(r connRow, idx, contentW int) string {
 	isCursor := idx == c.cursor
-	if r.kind == rowGroup {
-		return renderGroupHeader(r.group, c.collapsed[r.group], isCursor, contentW)
-	}
-
-	indent := c.groupIndent()
-	rowW := contentW - indent
+	item := r.conn
+	namePlain := item.name
+	detailPlain := strings.TrimSpace(item.detail)
+	rowW := contentW
 	if rowW < 1 {
 		rowW = 1
 	}
 
-	item := r.conn
-	namePlain := item.name
-	detailPlain := strings.TrimSpace(item.detail)
-
-	// Prefer the name; shrink the muted trailing detail first when space is tight.
 	const minGap = 2
 	nameBudget := rowW
 	detailBudget := 0
@@ -674,7 +708,6 @@ func (c ConnectionList) renderRow(r connRow, idx, contentW int) string {
 		detailBudget = runeLen(detailPlain)
 		nameBudget = rowW - minGap - detailBudget
 		if nameBudget < 8 {
-			// Keep a readable name; truncate detail harder.
 			nameBudget = min(rowW/2, rowW-minGap-1)
 			if nameBudget < 1 {
 				nameBudget = 1
@@ -709,15 +742,9 @@ func (c ConnectionList) renderRow(r connRow, idx, contentW int) string {
 		}
 		detailStr := mutedStyle.Render(detailDisp)
 		line = nameStr + strings.Repeat(" ", pad) + detailStr
-		// If ANSI width pushed us over, fall back to a simple left+gap+right trim.
 		if lipgloss.Width(line) > rowW {
-			pad = minGap
-			line = nameStr + strings.Repeat(" ", pad) + detailStr
+			line = nameStr + strings.Repeat(" ", minGap) + detailStr
 		}
-	}
-
-	if indent > 0 {
-		return strings.Repeat(" ", indent) + line
 	}
 	return line
 }
@@ -738,40 +765,18 @@ func clampMatchIdx(idx []int, displayed string) []int {
 	return out
 }
 
-// renderGroupHeader renders a foldable section header: a triangle marker and
-// the group name (or "Ungrouped"). The cursor header uses the primary colour.
-func renderGroupHeader(group string, collapsed, isCursor bool, contentW int) string {
-	label := group
-	if label == "" {
-		label = "Ungrouped"
-	}
-	marker := icons.expanded
-	if collapsed {
-		marker = icons.collapsed
-	}
-	nameSty := lipgloss.NewStyle().Foreground(colorLabel).Bold(true)
-	if isCursor {
-		nameSty = lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
-	}
-	head := nameSty.Render(marker + " " + label)
-	pad := contentW - lipgloss.Width(head)
-	if pad < 0 {
-		pad = 0
-	}
-	return head + strings.Repeat(" ", pad)
-}
-
-// YToRow maps a y-offset within the list content area to a row index,
-// accounting for variable row heights and the current scroll. Returns -1 when
-// the offset doesn't land on a row.
+// YToRow maps a y-offset within the list rows area (below any group tab strip)
+// to a row index, accounting for the current scroll. Returns -1 when the
+// offset doesn't land on a row.
 func (c ConnectionList) YToRow(y int) int {
 	rows := c.rows()
 	if len(rows) == 0 {
 		return -1
 	}
+	vh := c.listViewportHeight()
 	tops := prefixTops(rows)
 	totalH := tops[len(rows)]
-	maxScroll := totalH - c.height
+	maxScroll := totalH - vh
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -808,10 +813,11 @@ func (c ConnectionList) ScrollInfo() string {
 	}
 	tops := prefixTops(rows)
 	totalH := tops[len(rows)]
-	if totalH > c.height {
+	vh := c.listViewportHeight()
+	if totalH > vh {
 		scroll := c.scroll
-		if scroll > totalH-c.height {
-			scroll = totalH - c.height
+		if scroll > totalH-vh {
+			scroll = totalH - vh
 		}
 		if scroll < 0 {
 			scroll = 0
@@ -825,7 +831,7 @@ func (c ConnectionList) ScrollInfo() string {
 			}
 		}
 		for i := len(rows) - 1; i >= 0; i-- {
-			if tops[i] < scroll+c.height {
+			if tops[i] < scroll+vh {
 				lastVis = i
 				break
 			}

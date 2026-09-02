@@ -2009,17 +2009,17 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "enter":
-		// Folding a group header; otherwise connect to the selected entry.
-		if m.connList.CursorOnGroupHeader() {
-			m.connList.ToggleGroupAtCursor()
+		return m, m.connectToDB()
+	case "[", "left", "h":
+		if m.connList.hasGroups() {
+			m.connList.MoveGroupTab(-1)
 			return m, nil
 		}
-		return m, m.connectToDB()
-	case "tab", " ":
-		// Fold/unfold the group under the cursor (header or one of its entries).
-		// Space mirrors the sidebar's expand/collapse convention.
-		m.connList.ToggleGroupAtCursor()
-		return m, nil
+	case "]", "right", "l":
+		if m.connList.hasGroups() {
+			m.connList.MoveGroupTab(1)
+			return m, nil
+		}
 	case "?":
 		m.help.Show()
 		return m, nil
@@ -2032,14 +2032,8 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cmd := m.connForm.Focus()
 		return m, cmd
 	case "e":
-		// If the cursor is on a group header, step onto that group's first
-		// connection so the edit acts on a connection (a header itself is not
-		// editable and would otherwise be a silent no-op).
-		m.connList.SelectFirstConnectionInGroup()
 		return m.openEditForm()
 	case "d":
-		// Same header→connection step as `e` so delete targets a connection.
-		m.connList.SelectFirstConnectionInGroup()
 		return m.deleteSelectedConnection()
 	case "/", "i":
 		m.connList.StartFilter()
@@ -4620,6 +4614,12 @@ func (m Model) viewConnections() string {
 	m.connList.SetPadBackground(m.canvasBackground())
 
 	listStyled := m.connList.View()
+	// Tabs sit above the filter prompt so the fuzzy line stays next to the list.
+	parts := make([]string, 0, 4)
+	if tabs := m.connList.GroupTabBar(); tabs != "" {
+		parts = append(parts, tabs)
+	}
+	parts = append(parts, prompt, listStyled, m.connList.ScrollInfo())
 
 	panelStyle := lipgloss.NewStyle().
 		Width(panelW).
@@ -4631,11 +4631,7 @@ func (m Model) viewConnections() string {
 		panelStyle = panelStyle.Background(bg)
 	}
 	connPanel := panelStyle.Render(
-		lipgloss.JoinVertical(lipgloss.Left,
-			prompt,
-			listStyled,
-			m.connList.ScrollInfo(),
-		),
+		lipgloss.JoinVertical(lipgloss.Left, parts...),
 	)
 
 	// Space-filled canvas so paintBg covers the whole screen behind the popup.

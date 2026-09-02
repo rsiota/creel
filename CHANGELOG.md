@@ -12,6 +12,11 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- Connection picker group tabs: when any connection has a `group`, a
+  right-aligned tab strip above the filter prompt (named groups A–Z, then
+  Ungrouped) replaces foldable headers. `[` / `]` (or click) switches groups;
+  `/` filter flattens across groups and restores the selected connection's tab
+  on commit.
 - Connection picker shows quiet single-line rows (name + muted host/path);
   driver badges and field-box chrome are gone so the list stays name-forward.
 - Connection list, connection editor, and database picker share one popup

@@ -68,5 +68,6 @@ func TestNewHintSections(t *testing.T) {
 	check("Connections", map[string]string{
 		"enter": "connect", "n": "new connection", "e": "edit connection",
 		"d": "delete connection", "/": "filter connections",
+		"[": "switch group tab",
 	})
 }

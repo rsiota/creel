@@ -34,6 +34,7 @@ test keeps the documentation in sync with what's actually wired.
 | Key        | Action                          |
 | ---------- | ------------------------------- |
 | `enter`    | Connect to selected             |
+| `[` / `]`  | Prev / next group tab (when grouped) |
 | `n`        | New connection                  |
 | `e`        | Edit connection                 |
 | `d`        | Delete connection               |
@@ -41,9 +42,11 @@ test keeps the documentation in sync with what's actually wired.
 
 The picker remembers the last connections you opened (MRU) and selects the most
 recent on reopen. Each row shows the connection name with a muted host or path
-trailing. With no saved connections, a **Try the demo database** row opens the
-bundled sample schema (Enter) — using `./demo/creel-demo.db` when present,
-otherwise materializing one under the config dir.
+trailing. When connections use `group`, a tab strip switches between groups
+(same `[` / `]` as the form pages). With no saved connections, a **Try the demo
+database** row opens the bundled sample schema (Enter) — using
+`./demo/creel-demo.db` when present, otherwise materializing one under the
+config dir.
 
 In the add/edit form:
 

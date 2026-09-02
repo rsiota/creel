@@ -107,8 +107,7 @@ connections:
 
 ### Connection groups
 
-Give a connection a `group` to organize the connection list into collapsible
-folders:
+Give a connection a `group` to organize the connection picker into tabs:
 
 ```yaml
 connections:
@@ -122,11 +121,11 @@ connections:
     group: Personal
 ```
 
-In the connection list, grouped connections render indented under `▾ Group`
-headers, ungrouped ones lead under "Ungrouped", then named groups alphabetically.
-Press `space` (or `tab`) to fold/unfold the group under the cursor, or `enter`
-on a header to toggle it. Filtering (`/`) flattens the list to ranked matches
-regardless of groups. Connections with no `group` render exactly as before when
+When any connection has a `group`, the picker shows a right-aligned tab strip
+above the filter line (named groups A–Z, then **Ungrouped**). Press `[` / `]`
+(or click a tab) to switch groups; only that group's connections are listed.
+Filtering (`/`) flattens matches across every group and hides the tabs until
+you commit or cancel. Connections with no `group` render as a flat list when
 none of your connections use groups.
 
 ## AI assistant
@@ -188,7 +187,7 @@ optional and fall back to defaults when omitted:
 | `query_timeout`  | 30s          | Per-query deadline (friendly form: `2m`, `1h30m`, or a bare seconds int). `off` / `none` (or a negative value) disables the deadline entirely — `esc` still cancels |
 | `default_driver` | sqlite       | Driver pre-filled in the add-connection form                             |
 | `theme`          | tokyo-night  | Palette: `tokyo-night`, `gruvbox`, `nord`, `catppuccin`, `light` + ~565 auto-derived from iTerm2-Color-Schemes (dracula, solarized, …). Unknown → default |
-| `icons`          | unicode      | Glyph set for tree expand/collapse markers (sidebar, connection groups, relationship explorer). `unicode` uses portable triangles (▾/▸); `nerdfont` uses Nerd Font angle chevrons (U+F107/U+F105) — open, rotationally-symmetric like treemacs, but only renders correctly in a terminal running a Nerd Font. Unknown → default |
+| `icons`          | unicode      | Glyph set for tree expand/collapse markers (sidebar, relationship explorer). `unicode` uses portable triangles (▾/▸); `nerdfont` uses Nerd Font angle chevrons (U+F107/U+F105) — open, rotationally-symmetric like treemacs, but only renders correctly in a terminal running a Nerd Font. Unknown → default |
 | `transparent_background` | false | By default creel fills the app background with the theme's bg colour (required for light themes to be readable). Set `true` to leave it unpainted so the terminal's own background / transparency shows through — at the cost of light themes looking wrong. |
 | `confirm_destructive` | true | Destructive actions (drop table/database, truncate, delete rows, discard edits, drop column, delete provider/connection, clear history/bookmarks) prompt for confirmation. Set `false` to skip the prompts and run each action immediately. |
 | `inspector_open` | false | Show the row inspector when entering a workspace (after connect / database select). Toggle anytime with `ctrl+o`; `:set inspector_open on` opens it immediately and persists. |

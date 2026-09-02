@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/rsiota/creel/internal/config"
 )
 
@@ -25,287 +24,181 @@ var ansiRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
 func stripAnsi(s string) string { return ansiRe.ReplaceAllString(s, "") }
 
-func countRows(rows []connRow) (headers, conns int) {
-	for _, r := range rows {
-		if r.kind == rowGroup {
-			headers++
-		} else {
-			conns++
-		}
-	}
-	return
-}
-
-// With no groups in use the list renders flat — no headers, byte-for-byte the
-// pre-groups behaviour.
+// With no groups in use the list renders flat — no tab strip.
 func TestGroupsFlatWhenNoneGrouped(t *testing.T) {
 	m := newConnListModel(t, makeConns(3), 40)
 	if m.connList.hasGroups() {
 		t.Fatal("hasGroups=true for all-ungrouped list")
 	}
+	if m.connList.showGroupTabs() {
+		t.Fatal("showGroupTabs=true when no groups")
+	}
 	view := stripAnsi(m.connList.View())
-	if strings.Contains(view, "▾") || strings.Contains(view, "▸") {
-		t.Errorf("flat list should have no fold markers:\n%s", view)
+	if strings.Contains(view, "Ungrouped") {
+		t.Errorf("flat list should have no group tabs:\n%s", view)
 	}
 }
 
-// The grouped layout puts ungrouped first, then named groups alphabetically,
-// each under a header.
-func TestGroupsLayoutOrder(t *testing.T) {
+// Tab order is named groups A–Z, then Ungrouped when any ungrouped exist.
+func TestGroupsTabOrder(t *testing.T) {
 	m := newConnListModel(t, groupedConns(), 40)
-	rows := m.connList.rows()
-	headers, conns := countRows(rows)
-	if headers != 3 || conns != 4 {
-		t.Fatalf("expanded rows: headers=%d conns=%d, want 3/4", headers, conns)
+	m.connList.CancelFilter()
+	tabs := m.connList.availableGroupTabs()
+	want := []string{"Personal", "Work", ""}
+	if len(tabs) != len(want) {
+		t.Fatalf("tabs=%v, want %v", tabs, want)
 	}
-	// Verify header sequence and that each header is followed by its conns.
-	type want struct {
-		group string
-		conns []string
-	}
-	expected := []want{
-		{"", []string{"solo"}},
-		{"Personal", []string{"pers-c"}},
-		{"Work", []string{"wk-a", "wk-b"}},
-	}
-	idx := 0
-	for _, w := range expected {
-		if rows[idx].kind != rowGroup || rows[idx].group != w.group {
-			t.Fatalf("row %d: want header %q, got %+v", idx, w.group, rows[idx])
-		}
-		idx++
-		for _, name := range w.conns {
-			if rows[idx].kind != rowConn || rows[idx].conn.name != name {
-				t.Fatalf("row %d: want conn %q, got %+v", idx, name, rows[idx])
-			}
-			idx++
+	for i, g := range want {
+		if tabs[i] != g {
+			t.Fatalf("tab[%d]=%q, want %q", i, tabs[i], g)
 		}
 	}
-}
-
-// Collapsing a group hides its connections but keeps the header.
-func TestGroupsCollapseHidesConnections(t *testing.T) {
-	m := newConnListModel(t, groupedConns(), 40)
-	// Cursor onto the Work header (last header).
-	m.connList.SetCursor(groupHeaderIndex(m.connList.rows(), "Work"))
-	m.connList.ToggleGroupAtCursor()
-
+	// Default tab is Ungrouped when ungrouped connections exist.
+	if got := m.connList.ActiveGroupTab(); got != "" {
+		t.Errorf("default groupTab=%q, want Ungrouped (\"\")", got)
+	}
 	rows := m.connList.rows()
-	headers, conns := countRows(rows)
-	if headers != 3 || conns != 2 { // Work's 2 conns hidden
-		t.Fatalf("after collapse: headers=%d conns=%d, want 3/2", headers, conns)
-	}
-	// The Work header is the last row now.
-	last := rows[len(rows)-1]
-	if last.kind != rowGroup || last.group != "Work" {
-		t.Errorf("expected Work header last, got %+v", last)
-	}
-	// Expanding again restores the connections.
-	m.connList.ToggleGroupAtCursor()
-	if _, conns := countRows(m.connList.rows()); conns != 4 {
-		t.Errorf("after re-expand conns=%d, want 4", conns)
+	if len(rows) != 1 || rows[0].conn.name != "solo" {
+		t.Errorf("default tab rows=%v, want [solo]", namesOf(rows))
 	}
 }
 
-// Collapsing the group that contains the cursor relocates the cursor to that
-// group's header rather than a hidden row.
-func TestGroupsCollapseRelocatesCursor(t *testing.T) {
+// Switching tabs shows only that group's connections.
+func TestGroupsTabSwitchShowsGroup(t *testing.T) {
 	m := newConnListModel(t, groupedConns(), 40)
-	// Cursor onto a Work connection.
-	connIdx := indexOfConnName(m.connList.rows(), "wk-a")
-	m.connList.SetCursor(connIdx)
-	m.connList.ToggleGroupAtCursor()
-
-	if !m.connList.CursorOnGroupHeader() {
-		t.Fatal("cursor should rest on the Work header after collapsing it")
+	m.connList.CancelFilter()
+	m.connList.setGroupTab("Work")
+	rows := m.connList.rows()
+	if got := namesOf(rows); strings.Join(got, ",") != "wk-a,wk-b" {
+		t.Errorf("Work tab = %v, want wk-a,wk-b", got)
 	}
-	if got := m.connList.rows()[m.connList.cursor].group; got != "Work" {
-		t.Errorf("cursor on wrong header %q", got)
+	m.connList.setGroupTab("Personal")
+	if got := namesOf(m.connList.rows()); strings.Join(got, ",") != "pers-c" {
+		t.Errorf("Personal tab = %v, want pers-c", got)
 	}
 }
 
-// A header row is not connectable: SelectedName is empty there.
-func TestGroupsHeaderNotSelectable(t *testing.T) {
+// GroupTabBar is a right-aligned strip separate from the row View (tabs sit
+// above the filter prompt in the popup).
+func TestGroupsTabBarAbovePrompt(t *testing.T) {
 	m := newConnListModel(t, groupedConns(), 40)
-	m.connList.SetCursor(groupHeaderIndex(m.connList.rows(), "Work"))
-	if name := m.connList.SelectedName(); name != "" {
-		t.Errorf("SelectedName on header = %q, want empty", name)
+	m.connList.CancelFilter()
+	m.connList.setGroupTab("Work")
+	tabLine := stripAnsi(m.connList.GroupTabBar())
+	for _, label := range []string{"Personal", "Work", "Ungrouped"} {
+		if !strings.Contains(tabLine, label) {
+			t.Errorf("tab bar missing %q: %q", label, tabLine)
+		}
 	}
-	m.connList.SetCursor(indexOfConnName(m.connList.rows(), "wk-a"))
-	if name := m.connList.SelectedName(); name != "wk-a" {
-		t.Errorf("SelectedName on conn = %q, want wk-a", name)
+	view := stripAnsi(m.connList.View())
+	if strings.Contains(view, "Ungrouped") {
+		t.Errorf("row View should not include the tab strip:\n%s", view)
 	}
-}
-
-// g/G land on connection rows, skipping headers.
-func TestGroupsGAndGSkipHeaders(t *testing.T) {
-	m := newConnListModel(t, groupedConns(), 40)
-	m.connList.SetCursor(m.connList.firstConnRow())
-	if m.connList.CursorOnGroupHeader() {
-		t.Error("firstConnRow landed on a header")
-	}
-	if got := m.connList.SelectedName(); got != "solo" {
-		t.Errorf("first conn = %q, want solo", got)
-	}
-	m.connList.SetCursor(m.connList.lastConnRow())
-	if m.connList.CursorOnGroupHeader() {
-		t.Error("lastConnRow landed on a header")
-	}
-	if got := m.connList.SelectedName(); got != "wk-b" {
-		t.Errorf("last conn = %q, want wk-b", got)
+	if !strings.Contains(view, "wk-a") || strings.Contains(view, "pers-c") {
+		t.Errorf("Work tab should show wk-a only:\n%s", view)
 	}
 }
 
-// Filtering flattens the layout: matches show with no group headers.
+// Filtering flattens across groups and hides the tab strip.
 func TestGroupsFilterFlattensLayout(t *testing.T) {
 	m := newConnListModel(t, groupedConns(), 40)
 	m.connList.StartFilter()
 	m.connList.FilterAddChar("wk") // matches wk-a, wk-b
-	rows := m.connList.rows()
-	if headers, _ := countRows(rows); headers != 0 {
-		t.Errorf("filtering should show no headers, got %d", headers)
+	if m.connList.showGroupTabs() {
+		t.Error("filter should hide group tabs")
 	}
+	rows := m.connList.rows()
 	if len(rows) != 2 {
 		t.Errorf("filter matches = %d rows, want 2", len(rows))
 	}
+	view := stripAnsi(m.connList.View())
+	if strings.Contains(view, "Personal") || strings.Contains(view, "Ungrouped") {
+		t.Errorf("filter view should not show tab labels:\n%s", view)
+	}
 }
 
-// Committing a filter selection keeps the cursor on that connection in the
-// restored grouped layout.
+// Committing a filter selection jumps to that connection's group tab.
 func TestGroupsCommitFilterRelocates(t *testing.T) {
 	m := newConnListModel(t, groupedConns(), 40)
 	m.connList.StartFilter()
 	m.connList.FilterAddChar("pers") // matches pers-c
-	m.connList.SetCursor(0)          // the single match
+	m.connList.SetCursor(0)
 	m.connList.CommitFilter()
 
 	if m.connList.IsFiltering() {
 		t.Error("CommitFilter should exit filter mode")
 	}
+	if got := m.connList.ActiveGroupTab(); got != "Personal" {
+		t.Errorf("after commit groupTab=%q, want Personal", got)
+	}
 	if got := m.connList.SelectedName(); got != "pers-c" {
 		t.Errorf("after commit cursor = %q, want pers-c", got)
 	}
-	if m.connList.CursorOnGroupHeader() {
-		t.Error("cursor should be on the connection, not a header")
-	}
 }
 
-// ExpandedHeight accounts for group headers (one line each).
-func TestGroupsExpandedHeightIncludesHeaders(t *testing.T) {
+// ExpandedHeight counts connections only (tabs are not list rows).
+func TestGroupsExpandedHeightIsConnectionCount(t *testing.T) {
 	m := newConnListModel(t, groupedConns(), 40)
-	// 4 conns + 3 headers (one line each).
-	want := 4 + 3
-	if got := m.connList.ExpandedHeight(); got != want {
-		t.Errorf("ExpandedHeight=%d, want %d", got, want)
+	if got := m.connList.ExpandedHeight(); got != 4 {
+		t.Errorf("ExpandedHeight=%d, want 4", got)
 	}
 }
 
-// Popup height stays constant while folding groups (same guarantee as
-// filtering), because it's based on the fully-expanded layout.
-func TestGroupsPopupHeightConstantWhileFolding(t *testing.T) {
+// Popup height stays constant while switching group tabs.
+func TestGroupsPopupHeightConstantWhileSwitchingTabs(t *testing.T) {
 	m := newConnListModel(t, groupedConns(), 60)
+	m.connList.CancelFilter()
 	_, h0 := m.connListPopupDims()
-	m.connList.SetCursor(groupHeaderIndex(m.connList.rows(), "Work"))
-	m.connList.ToggleGroupAtCursor()
+	m.connList.MoveGroupTab(1)
 	_, h1 := m.connListPopupDims()
 	if h0 != h1 {
-		t.Errorf("popup height changed on collapse: %d -> %d (want equal)", h0, h1)
+		t.Errorf("popup height changed on tab switch: %d -> %d", h0, h1)
 	}
 }
 
-// Grouped connection boxes render indented under their header so the
-// connection name expands exactly under the first letter of the group, and the
-// header shows the connection count. Flat mode is not indented.
-func TestGroupsChildrenIndentedUnderHeader(t *testing.T) {
+// [ / ] cycle group tabs via the app key handler.
+func TestGroupsBracketKeysSwitchTabsViaApp(t *testing.T) {
 	m := newConnListModel(t, groupedConns(), 40)
 	m.connList.CancelFilter()
-	view := stripAnsi(m.connList.View())
-	lines := strings.Split(view, "\n")
-
-	// The Work header is present without a trailing connection count.
-	workLine := lineContaining(lines, "Work")
-	if workLine == "" {
-		t.Fatalf("Work header not found:\n%s", view)
-	}
-	if trimmed := strings.TrimRight(workLine, " "); !strings.HasSuffix(trimmed, "Work") {
-		t.Errorf("Work header should end with group name (no count): %q", workLine)
+	if m.connList.ActiveGroupTab() != "" {
+		t.Fatalf("start on Ungrouped, got %q", m.connList.ActiveGroupTab())
 	}
 
-	// The connection name expands exactly under the first letter of its group
-	// header ("▾ Work" -> 'W' at col 2; the connection name also at col 2).
-	// Measure display columns (lipgloss.Width), not byte offsets — '▾' is
-	// multibyte but one column wide.
-	hIdx := strings.Index(workLine, "Work")
-	nameLine := lineContaining(lines, "wk-a")
-	nIdx := strings.Index(nameLine, "wk-a")
-	if hIdx < 0 || nIdx < 0 {
-		t.Fatalf("can't locate header/name:\n%s", view)
+	mm, _ := m.updateConnections(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	m = mm.(Model)
+	if got := m.connList.ActiveGroupTab(); got != "Personal" {
+		// tabs: Personal, Work, Ungrouped — ] from Ungrouped wraps to Personal
+		t.Errorf("] from Ungrouped -> %q, want Personal", got)
 	}
-	firstLetterCol := lipgloss.Width(workLine[:hIdx])
-	nameCol := lipgloss.Width(nameLine[:nIdx])
-	if nameCol != firstLetterCol {
-		t.Errorf("connection name col %d != header first-letter col %d\n%s", nameCol, firstLetterCol, view)
+	if got := m.connList.SelectedName(); got != "pers-c" {
+		t.Errorf("Personal tab selection = %q, want pers-c", got)
 	}
 
-	// Flat mode (no groups) is not indented at all.
-	flat := newConnListModel(t, makeConns(2), 40)
-	flatView := stripAnsi(flat.connList.View())
-	for _, line := range strings.Split(flatView, "\n") {
-		if strings.HasPrefix(line, "conn") {
-			if strings.HasPrefix(line, " ") {
-				t.Errorf("flat mode should not indent connections: %q", line)
-			}
-			break
-		}
+	mm, _ = m.updateConnections(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	m = mm.(Model)
+	if got := m.connList.ActiveGroupTab(); got != "Work" {
+		t.Errorf("] from Personal -> %q, want Work", got)
+	}
+
+	mm, _ = m.updateConnections(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
+	m = mm.(Model)
+	if got := m.connList.ActiveGroupTab(); got != "Personal" {
+		t.Errorf("[ from Work -> %q, want Personal", got)
 	}
 }
 
-// lineContaining returns the first list line containing name.
-func lineContaining(lines []string, name string) string {
-	for _, l := range lines {
-		if strings.Contains(l, name) {
-			return l
-		}
-	}
-	return ""
-}
-
-// space folds/unfolds the group under the cursor, mirroring the sidebar.
-func TestGroupsSpaceFoldsViaApp(t *testing.T) {
+// SelectByName switches onto the connection's group tab.
+func TestGroupsSelectByNameSwitchesTab(t *testing.T) {
 	m := newConnListModel(t, groupedConns(), 40)
 	m.connList.CancelFilter()
-	m.connList.SetCursor(indexOfConnName(m.connList.rows(), "pers-c"))
-
-	mm, _ := m.updateConnections(tea.KeyMsg{Type: tea.KeySpace})
-	m = mm.(Model)
-	if !m.connList.collapsed["Personal"] {
-		t.Error("space on pers-c should collapse Personal")
+	if !m.connList.SelectByName("wk-b") {
+		t.Fatal("SelectByName wk-b failed")
 	}
-}
-
-// enter on a group header folds it; enter on a connection connects (returns a
-// non-nil connect command path). tab folds from anywhere within a group.
-func TestGroupsEnterAndTabFoldViaApp(t *testing.T) {
-	m := newConnListModel(t, groupedConns(), 40)
-	// The popup opens in filter mode by default; folding is a normal-mode
-	// operation (the grouped tree is browsed after dismissing the filter).
-	m.connList.CancelFilter()
-	workHdr := groupHeaderIndex(m.connList.rows(), "Work")
-
-	// enter on the Work header folds it.
-	m.connList.SetCursor(workHdr)
-	mm, _ := m.updateConnections(tea.KeyMsg{Type: tea.KeyEnter})
-	m = mm.(Model)
-	if !m.connList.collapsed["Work"] {
-		t.Error("enter on Work header should collapse Work")
+	if got := m.connList.ActiveGroupTab(); got != "Work" {
+		t.Errorf("groupTab=%q, want Work", got)
 	}
-
-	// tab on a Personal connection folds Personal.
-	m.connList.SetCursor(indexOfConnName(m.connList.rows(), "pers-c"))
-	mm, _ = m.updateConnections(tea.KeyMsg{Type: tea.KeyTab})
-	m = mm.(Model)
-	if !m.connList.collapsed["Personal"] {
-		t.Error("tab on pers-c should collapse Personal")
+	if got := m.connList.SelectedName(); got != "wk-b" {
+		t.Errorf("SelectedName=%q, want wk-b", got)
 	}
 }
 
@@ -323,7 +216,6 @@ func TestFormGroupFieldRoundTrip(t *testing.T) {
 		t.Errorf("cfg.Group=%q, want Work", cfg.Group)
 	}
 
-	// Edit form prefills the group.
 	edit := NewConnectionFormEdit(config.ConnectionConfig{
 		Name: "x", Driver: "sqlite", Database: "/tmp/x.db", Group: "Personal",
 	})
@@ -332,12 +224,12 @@ func TestFormGroupFieldRoundTrip(t *testing.T) {
 	}
 }
 
-// indexOfConnName returns the row index of the named connection, or -1.
-func indexOfConnName(rows []connRow, name string) int {
-	for i, r := range rows {
-		if r.kind == rowConn && r.conn.name == name {
-			return i
+func namesOf(rows []connRow) []string {
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		if r.kind == rowConn {
+			out = append(out, r.conn.name)
 		}
 	}
-	return -1
+	return out
 }

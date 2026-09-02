@@ -80,6 +80,7 @@ func registry() []Section {
 			Source: "app.go",
 			Items: []Binding{
 				{"j/k, ↑/↓", []string{"j", "k", "up", "down"}, "move", "j/k"},
+				{"[ / ]", []string{"[", "]", "left", "right", "h", "l"}, "switch group tab", "[/]"},
 				{"enter", []string{"enter"}, "connect", "enter"},
 				{"n", []string{"n"}, "new connection", "n"},
 				{"e", []string{"e"}, "edit connection", "e"},
