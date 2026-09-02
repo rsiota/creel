@@ -12,6 +12,8 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- Connection list, connection editor, and database picker share one popup
+  shell height (the 6-field editor footprint). Longer lists scroll inside.
 - Connection form splits into **Connection**, **SSH**, and **Options** pages
   (`[` / `]`, or click the tabs). For mysql/postgres each page shows six
   fields: Connection (name/driver/host/user/password/database), SSH (leave

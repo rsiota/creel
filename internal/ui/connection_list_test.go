@@ -84,18 +84,44 @@ func TestConnectionListCountFooter(t *testing.T) {
 	}
 }
 
-// The popup grows as connections are added (until capped by the viewport).
-func TestConnectionListPopupGrowsWithItems(t *testing.T) {
+// The popup uses a fixed shell height (shared with the connection form and
+// database picker), so adding connections does not grow the frame — the list
+// scrolls instead.
+func TestConnectionListPopupFixedShellHeight(t *testing.T) {
 	m1 := newConnListModel(t, makeConns(1), 60)
-	m4 := newConnListModel(t, makeConns(4), 60)
+	m8 := newConnListModel(t, makeConns(8), 60)
 	_, h1 := m1.connListPopupDims()
-	_, h4 := m4.connListPopupDims()
-	if h4 <= h1 {
-		t.Errorf("popup did not grow with items: 1-conn H=%d, 4-conn H=%d", h1, h4)
+	_, h8 := m8.connListPopupDims()
+	if h1 != h8 {
+		t.Errorf("popup height should be fixed: 1-conn H=%d, 8-conn H=%d", h1, h8)
 	}
-	// Three extra connections should add exactly 3*linesPerField rows.
-	if want := h1 + 3*linesPerField; h4 != want {
-		t.Errorf("4-conn H=%d, want %d (1-conn %d + 3*%d)", h4, want, h1, linesPerField)
+	_, wantOuter := popupOuterSize(60)
+	if h1 != wantOuter {
+		t.Errorf("popup H=%d, want shell outer %d", h1, wantOuter)
+	}
+	// Eight connections need more than six field-box rows → list must scroll.
+	cw, lh := m8.connListContentDims()
+	m8.connList.SetSize(cw, lh)
+	if m8.connList.maxVisibleItems() >= 8 {
+		t.Fatalf("expected scrolling for 8 conns: maxVisible=%d", m8.connList.maxVisibleItems())
+	}
+}
+
+// Connection list, connection form, and database picker share one outer height.
+func TestStartupPopupsShareShellHeight(t *testing.T) {
+	const termH = 60
+	m := newConnListModel(t, makeConns(2), termH)
+	_, listH := m.connListPopupDims()
+
+	iw, formContentH := popupContentSize(termH)
+	m.connForm = NewConnectionForm()
+	m.connForm.SetSize(iw, formContentH)
+	formOuter := m.connForm.effectiveHeight() + 2
+
+	dbW, dbH := popupOuterSize(termH)
+	_ = dbW
+	if listH != formOuter || listH != dbH {
+		t.Errorf("shell heights differ: list=%d form=%d db=%d", listH, formOuter, dbH)
 	}
 }
 

@@ -13,9 +13,54 @@ import (
 	"github.com/rsiota/creel/internal/db"
 )
 
-// popupDim returns the fixed popup dimensions matching the connection form.
+// popupStandardFields is the field count that defines the shared popup shell
+// used by the connection list, connection form, and database picker. Network
+// form pages show this many fields; keeping the outer frame fixed makes
+// transitions between those screens feel calm.
+const popupStandardFields = 6
+
+// popupShellContentHeight is the inner content height of that shell: one row
+// for tabs/chrome, N field-box rows, and one message/footer row.
+func popupShellContentHeight() int {
+	return formTabBarLines + popupStandardFields*linesPerField + 1
+}
+
+// popupDim returns the fixed outer popup dimensions (border included). Width
+// is shared by most overlays; height matches the 6-field connection-editor
+// shell. Callers that must fit a short terminal should prefer
+// popupContentSize / popupOuterSize, which cap against term height.
 func popupDim() (w, h int) {
-	return 71, 19
+	return 71, popupShellContentHeight() + 2
+}
+
+// popupContentSize returns the inner content width and shell content height
+// for the connection form (and matching list popups), capped so the popup
+// fits above the status bar with a small vertical margin.
+func popupContentSize(termHeight int) (width, height int) {
+	popupW, _ := popupDim()
+	const (
+		borderOverhead = 2 // rounded border on each side
+		padding        = 2 // padding(0,1) = 1 left + 1 right
+	)
+	innerW := popupW - borderOverhead - padding
+	target := popupShellContentHeight()
+	maxContentH := termHeight - 1 - 4 // status bar + top/bottom margin
+	if maxContentH < 12 {
+		maxContentH = 12
+	}
+	h := target
+	if h > maxContentH {
+		h = maxContentH
+	}
+	return innerW, h
+}
+
+// popupOuterSize returns border-included dimensions for the connection list
+// and database picker, matching the connection form's outer footprint.
+func popupOuterSize(termHeight int) (w, h int) {
+	pw, _ := popupDim()
+	_, contentH := popupContentSize(termHeight)
+	return pw, contentH + 2
 }
 
 func (m Model) connectionInfo(name string) string {

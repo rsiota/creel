@@ -4522,9 +4522,9 @@ func (m Model) buildView() string {
 		return m.paintBg(m.viewConnections())
 	}
 
-	// Database picker: space-filled canvas so paintBg covers the whole screen.
+	// Database picker: same shell as the connection list / form.
 	if m.dbPicker.IsVisible() {
-		pw, ph := popupDim()
+		pw, ph := popupOuterSize(m.height)
 		m.dbPicker.SetSize(pw, ph)
 		pickerPanel := m.dbPicker.View()
 		view := lipgloss.Place(m.width, m.height-1,
@@ -4584,33 +4584,11 @@ func (m Model) connFormPopupDims() (panelW, panelH, panelX, panelY int) {
 }
 
 // connListPopupDims returns the (width, height) of the connection-list popup.
-// The width is fixed (popupDim); the height fits the fully-expanded layout
-// (each connection a linesPerField-tall field box, plus one line per group
-// header) plus the prompt and scroll-info chrome, capped to the viewport so
-// the list scrolls internally instead of overflowing. Using the expanded —
-// not the filtered/collapsed — height keeps the popup height constant while
-// the user types in the filter or folds groups, so it doesn't jump around; the
-// list area simply shows fewer boxes (with breathing room at the bottom).
+// The footprint matches the connection form and database picker (see
+// popupOuterSize) so transitions between those screens stay calm. The list
+// scrolls internally when there are more connections than fit.
 func (m Model) connListPopupDims() (w, h int) {
-	pw, _ := popupDim()
-	expanded := m.connList.ExpandedHeight()
-	const (
-		chrome = 2 // prompt + scroll-info lines
-		border = 2
-		margin = 2 // top + bottom breathing room
-	)
-	maxListArea := m.height - 1 /*status bar*/ - margin - border - chrome
-	if maxListArea < linesPerField {
-		maxListArea = linesPerField
-	}
-	fit := expanded
-	if fit > maxListArea {
-		fit = maxListArea
-	}
-	if fit < 1 {
-		fit = 1 // keeps the geometry valid for the empty state too
-	}
-	return pw, border + chrome + fit
+	return popupOuterSize(m.height)
 }
 
 // connListContentDims returns the content width and list-area height the
@@ -4695,10 +4673,8 @@ func (m Model) viewConnections() string {
 
 func (m Model) viewAddConnection() string {
 	// Sizing is shared with layout.go via popupContentSize so the scroll model
-	// and rendering agree. popupContentSize returns the max available content
-	// height (the cap); the form shrinks below it to fit the current field
-	// count (effectiveHeight), so the popup is short for sqlite and tall for a
-	// tunneled mysql connection.
+	// and rendering agree. The form uses the fixed shell height (6-field
+	// footprint) so it matches the connection list and database picker.
 	popupW, _ := popupDim() // width stays fixed
 	borderOverhead := 2
 	innerW, capH := popupContentSize(m.height)

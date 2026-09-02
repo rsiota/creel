@@ -117,8 +117,8 @@ func (m Model) handleDatabasePickerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 		return m, nil
 	}
 
-	// Database picker is centered at popupDim() = 71×19.
-	pw, ph := popupDim()
+	// Database picker shares the connection-form shell (popupOuterSize).
+	pw, ph := popupOuterSize(m.height)
 	panelX := (m.width - pw) / 2
 	panelY := (m.height - 1 - ph) / 2
 

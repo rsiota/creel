@@ -929,14 +929,14 @@ func (f ConnectionForm) contentHeight() int {
 	return formTabBarLines + len(f.visibleFields())*linesPerField + 1
 }
 
-// effectiveHeight is the actual content height used for rendering: the needed
-// height, capped to the available height (set via SetSize). Because this
-// derives from the current visible field list, the popup grows and shrinks as
-// the driver, SSH toggle, or page changes without needing another SetSize call.
+// effectiveHeight is the rendered content height. It uses the shell height from
+// SetSize (shared with the connection list and database picker) so the popup
+// footprint stays stable across drivers and pages; fields scroll inside when
+// they do not all fit.
 func (f ConnectionForm) effectiveHeight() int {
-	h := f.contentHeight()
-	if h > f.height {
-		h = f.height
+	h := f.height
+	if h <= 0 {
+		h = f.contentHeight()
 	}
 	minH := formTabBarLines + linesPerField + 1
 	if h < minH {
@@ -968,31 +968,9 @@ func (f *ConnectionForm) ensureFieldVisible() {
 	}
 }
 
-// popupContentSize computes the inner content dimensions (width, height) the
-// add-connection form popup should be sized to, given the terminal height. The
-// popup has a fixed width (from popupDim); the returned height is the maximum
-// available content height (the cap) — the form itself shrinks below it to fit
-// the current field count (see effectiveHeight). This is the single source of
-// truth used by layout (which sizes the real model) and rendering, so the scroll
-// math and what is drawn always agree.
-func popupContentSize(termHeight int) (width, height int) {
-	popupW, _ := popupDim()
-	const (
-		borderOverhead = 2 // rounded border on each side
-		padding        = 2 // padding(0,1) = 1 left + 1 right
-	)
-	innerW := popupW - borderOverhead - padding
-	maxContentH := termHeight - 1 - 4 // status bar + top/bottom margin
-	if maxContentH < 12 {
-		maxContentH = 12
-	}
-	return innerW, maxContentH
-}
-
 // SetSize sets the content dimensions of the form: width is the usable content
-// width (inside border and padding), height is the maximum available content
-// height (the form shrinks below it to fit the visible fields, and scrolls if
-// even that is not enough).
+// width (inside border and padding), height is the shared popup shell height
+// (see popupContentSize). Fields scroll when they do not all fit.
 func (f *ConnectionForm) SetSize(width, height int) {
 	f.width = width
 	f.height = height
