@@ -66,18 +66,18 @@ func applyFieldFailWash(content string, valueWidth int) string {
 	return lipgloss.NewStyle().Background(colorTestFailWash).Render(content)
 }
 
-// visibleFieldSet returns the currently visible field indices as a set, for
-// fast membership checks during classification.
+// visibleFieldSet returns every field relevant to the current driver/SSH
+// config (across both pages) as a set, for fast membership checks during
+// classification.
 func (f ConnectionForm) visibleFieldSet() map[int]bool {
 	out := make(map[int]bool, len(f.fields))
-	for _, fi := range f.visibleFields() {
+	for _, fi := range f.relevantFields() {
 		out[fi] = true
 	}
 	return out
 }
 
-// isSSHField reports whether fi is one of the SSH-tunnel parameter fields (not
-// the on/off toggle itself, which is never the culprit).
+// isSSHField reports whether fi is one of the SSH-tunnel parameter fields.
 func isSSHField(fi int) bool {
 	switch fi {
 	case fieldSSHHost, fieldSSHPort, fieldSSHUser, fieldSSHKeyPath, fieldSSHPassword:

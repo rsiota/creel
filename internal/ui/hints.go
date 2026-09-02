@@ -148,9 +148,9 @@ func (m Model) resolveHints() (section string, hints []string) {
 				return "", []string{"enter", "esc"}
 			}
 			if m.connForm.ActiveIsChoice() {
-				return "", []string{"j/k", "h/l", "enter", "ctrl+t", "esc"}
+				return "", []string{"[/]", "j/k", "h/l", "enter", "ctrl+t", "esc"}
 			}
-			return "", []string{"j/k", "e", "enter", "ctrl+t", "esc"}
+			return "", []string{"[/]", "j/k", "e", "enter", "ctrl+t", "esc"}
 		case m.state == stateConnections:
 			if m.connList.IsFiltering() {
 				return "", []string{"j/k", "enter", "esc"}

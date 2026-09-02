@@ -87,7 +87,8 @@ func TestConnectionFormSSHKeyPathCompletion(t *testing.T) {
 
 	f := NewConnectionForm()
 	f.fields[fieldDriver].SetValue("mysql")
-	f.fields[fieldSSHTunnel].SetValue("yes")
+	f.fields[fieldSSHHost].SetValue("bastion")
+	f.setPage(formPageSSH)
 	f.SetSize(60, 30)
 	// Jump to SSH Key field.
 	for _, fi := range f.visibleFields() {
@@ -127,7 +128,8 @@ func TestConnectionFormSSHKeyPathCompletionEnterAccepts(t *testing.T) {
 
 	f := NewConnectionForm()
 	f.fields[fieldDriver].SetValue("mysql")
-	f.fields[fieldSSHTunnel].SetValue("yes")
+	f.fields[fieldSSHHost].SetValue("bastion")
+	f.setPage(formPageSSH)
 	f.SetSize(60, 30)
 	for _, fi := range f.visibleFields() {
 		if fi == fieldSSHKeyPath {

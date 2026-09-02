@@ -13,7 +13,7 @@ import (
 
 // FormField indices. The order is fixed; which of these are actually shown is
 // decided dynamically by visibleFields() based on the selected driver and
-// whether the SSH tunnel toggle is on.
+// page (Connection / SSH / Options).
 const (
 	fieldName = iota
 	fieldDriver
@@ -22,9 +22,8 @@ const (
 	fieldPort
 	fieldUser
 	fieldPass
-	fieldSSLMode   // disable / prefer / require / verify-full
-	fieldSocket    // unix socket path; hides nothing — TCP host is ignored at connect if set
-	fieldSSHTunnel // no/yes toggle: reveals the SSH fields below when "yes"
+	fieldSSLMode // disable / prefer / require / verify-full
+	fieldSocket  // unix socket path; TCP host is ignored at connect if set
 	fieldSSHHost
 	fieldSSHPort
 	fieldSSHUser
@@ -42,7 +41,7 @@ const (
 var formLabels = [...]string{
 	"Name", "Driver", "Database", "Host", "Port", "Username", "Password",
 	"SSL", "Socket",
-	"SSH Tunnel", "SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass", "SSH Passphrase",
+	"SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass", "SSH Passphrase",
 	"Secrets", "Read-only", "Group",
 }
 
@@ -50,11 +49,10 @@ var formLabels = [...]string{
 // cycling selectors (e.g. < sqlite >) and changed with h/l in normal mode.
 // Fields absent from the map are free-text and edited with e/i/a.
 var formChoices = map[int][]string{
-	fieldDriver:    {"sqlite", "mysql", "postgres"},
-	fieldSSLMode:   {"disable", "prefer", "require", "verify-full"},
-	fieldSSHTunnel: {"no", "yes"},
-	fieldSecrets:   {"keychain", "plain"},
-	fieldReadOnly:  {"no", "yes"},
+	fieldDriver:   {"sqlite", "mysql", "postgres"},
+	fieldSSLMode:  {"disable", "prefer", "require", "verify-full"},
+	fieldSecrets:  {"keychain", "plain"},
+	fieldReadOnly: {"no", "yes"},
 }
 
 // isChoiceField reports whether fi is a cycling-selector field.
@@ -71,12 +69,28 @@ const (
 	formModeEdit
 )
 
-// ConnectionForm is the add/edit connection form. It shows only the fields
-// relevant to the selected driver (and SSH toggle), so a sqlite connection
-// presents a short list while a tunneled mysql connection shows everything.
+// formPage is which short page of the connection form is shown. Pages swap
+// (they never stack): Connection for everyday fields, SSH for tunneling, and
+// Options for rarely touched settings.
+type formPage int
+
+const (
+	formPageConnection formPage = iota
+	formPageSSH
+	formPageOptions
+)
+
+// formTabBarLines is the height reserved at the top of the form for the
+// Connection / SSH / Options tab strip (one content row).
+const formTabBarLines = 1
+
+// ConnectionForm is the add/edit connection form. Fields are split across
+// swapped pages so the everyday path stays short; SSH is a first-class page
+// for network drivers, and Options holds the rest.
 type ConnectionForm struct {
 	fields    []textinput.Model
 	active    int // cursor position within the visible field list
+	page      formPage
 	mode      formMode
 	errMsg    string
 	width     int
@@ -129,9 +143,6 @@ func NewConnectionFormEdit(cfg config.ConnectionConfig) ConnectionForm {
 	f.fields[fieldSSHPassword].SetValue(resolveSecretOrKeep(cfg.SSHPassword))
 	f.fields[fieldSSHPassphrase].SetValue(resolveSecretOrKeep(cfg.SSHPassphrase))
 
-	// Reveal the SSH group if the saved connection used a tunnel.
-	f.fields[fieldSSHTunnel].SetValue(boolField(cfg.SSHHost != ""))
-
 	// Resolve any keychain references into plaintext so the masked fields show
 	// the real value (same UX as a plaintext config). If a reference cannot be
 	// resolved (e.g. keychain locked), leave the reference in place so a save
@@ -178,7 +189,6 @@ func newForm(mode formMode, name string) ConnectionForm {
 	fields[fieldPass] = newTextInput("Password", "", true)
 	fields[fieldSSLMode] = newTextInput("disable / prefer / require / verify-full", "prefer", false)
 	fields[fieldSocket] = newTextInput("Unix socket path", "/tmp/mysql.sock", false)
-	fields[fieldSSHTunnel] = newTextInput("no / yes", "", false)
 	fields[fieldSSHHost] = newTextInput("SSH host", "", false)
 	fields[fieldSSHPort] = newTextInput("SSH port (default 22)", "22", false)
 	fields[fieldSSHUser] = newTextInput("SSH user", "", false)
@@ -192,7 +202,6 @@ func newForm(mode formMode, name string) ConnectionForm {
 	fields[fieldName].SetValue(name)
 	fields[fieldDriver].SetValue("sqlite")
 	fields[fieldSSLMode].SetValue("prefer")
-	fields[fieldSSHTunnel].SetValue("no")
 	fields[fieldSecrets].SetValue("keychain")
 	fields[fieldReadOnly].SetValue("no")
 	fields[fieldGroup].SetValue("")
@@ -217,6 +226,7 @@ func newTextInput(placeholder, def string, masked bool) textinput.Model {
 
 func (f *ConnectionForm) setDriverField(driver string) {
 	f.fields[fieldDriver].SetValue(sanitizeDriver(driver))
+	f.clampPage()
 }
 
 // sanitizeDriver normalizes a default-driver value to one of the supported
@@ -242,26 +252,162 @@ func isNetworkDriver(d string) bool {
 	return d == "mysql" || d == "postgres"
 }
 
-// sshEnabled reports whether the SSH tunnel toggle is on.
+// sshEnabled reports whether an SSH tunnel is configured. Filling SSH Host on
+// the SSH tab is the signal — there is no separate on/off toggle.
 func (f ConnectionForm) sshEnabled() bool {
-	return parseBoolField(f.fields[fieldSSHTunnel].Value())
+	return strings.TrimSpace(f.fields[fieldSSHHost].Value()) != ""
 }
 
-// visibleFields returns the field indices relevant to the current driver and
-// SSH-toggle state, in display order. This is the dynamic field list the form
-// renders and navigates, mirroring the inspector's fieldList(). SQLite shows a
-// short list (no host/port/user/pass, no SSH); network drivers add those, and
-// enabling the SSH toggle reveals the SSH sub-fields.
-func (f ConnectionForm) visibleFields() []int {
-	out := []int{fieldName, fieldDriver, fieldDatabase}
+// connectionFields returns the everyday fields shown on the Connection page.
+// Network drivers omit Port (it lives on Options with Socket/SSL); defaults
+// still apply on save when Port is blank.
+func (f ConnectionForm) connectionFields() []int {
+	out := []int{fieldName, fieldDriver}
 	if isNetworkDriver(f.driver()) {
-		out = append(out, fieldHost, fieldPort, fieldSocket, fieldUser, fieldPass, fieldSSLMode, fieldSSHTunnel)
-		if f.sshEnabled() {
-			out = append(out, fieldSSHHost, fieldSSHPort, fieldSSHUser, fieldSSHKeyPath, fieldSSHPassword, fieldSSHPassphrase)
-		}
+		out = append(out, fieldHost, fieldUser, fieldPass, fieldDatabase)
+	} else {
+		out = append(out, fieldDatabase)
+	}
+	return out
+}
+
+// sshFields returns the SSH page fields (network drivers only), in daily-use
+// order. Leave SSH Host blank to connect without a tunnel.
+func (f ConnectionForm) sshFields() []int {
+	if !isNetworkDriver(f.driver()) {
+		return nil
+	}
+	return []int{fieldSSHHost, fieldSSHUser, fieldSSHPassword, fieldSSHKeyPath, fieldSSHPort, fieldSSHPassphrase}
+}
+
+// optionsFields returns less-common settings on the Options page. For network
+// drivers this is Port/Socket/SSL plus Secrets/Read-only/Group (six fields,
+// matching Connection and SSH).
+func (f ConnectionForm) optionsFields() []int {
+	var out []int
+	if isNetworkDriver(f.driver()) {
+		out = append(out, fieldPort, fieldSocket, fieldSSLMode)
 	}
 	out = append(out, fieldSecrets, fieldReadOnly, fieldGroup)
 	return out
+}
+
+// relevantFields returns every field that participates in the current
+// driver/SSH config across all pages. Used for save/test attribution so a
+// ctrl+t result is not limited to whichever page happens to be open.
+func (f ConnectionForm) relevantFields() []int {
+	out := f.connectionFields()
+	out = append(out, f.sshFields()...)
+	return append(out, f.optionsFields()...)
+}
+
+// availablePages returns the tab strip for the current driver. SQLite hides
+// SSH (no tunnel), so the strip is Connection · Options.
+func (f ConnectionForm) availablePages() []formPage {
+	if isNetworkDriver(f.driver()) {
+		return []formPage{formPageConnection, formPageSSH, formPageOptions}
+	}
+	return []formPage{formPageConnection, formPageOptions}
+}
+
+// visibleFields returns the field indices on the current page, in display
+// order. This is what the form renders and navigates.
+func (f ConnectionForm) visibleFields() []int {
+	switch f.page {
+	case formPageSSH:
+		return f.sshFields()
+	case formPageOptions:
+		return f.optionsFields()
+	default:
+		return f.connectionFields()
+	}
+}
+
+// pageForField returns which form page hosts fi for the current driver.
+// Unknown fields fall back to Connection.
+func (f ConnectionForm) pageForField(fi int) formPage {
+	for _, id := range f.sshFields() {
+		if id == fi {
+			return formPageSSH
+		}
+	}
+	for _, id := range f.optionsFields() {
+		if id == fi {
+			return formPageOptions
+		}
+	}
+	return formPageConnection
+}
+
+// pageAvailable reports whether p is in the current tab strip.
+func (f ConnectionForm) pageAvailable(p formPage) bool {
+	for _, id := range f.availablePages() {
+		if id == p {
+			return true
+		}
+	}
+	return false
+}
+
+// clampPage moves off a page that is no longer available (e.g. SSH after
+// switching the driver to sqlite).
+func (f *ConnectionForm) clampPage() {
+	if f.pageAvailable(f.page) {
+		return
+	}
+	f.page = formPageConnection
+	f.active = 0
+	f.scrollRow = 0
+}
+
+// setPage switches to page p, leaving insert mode and resetting the field
+// cursor to the top of that page. No-op when p is unavailable for the driver.
+func (f *ConnectionForm) setPage(p formPage) {
+	if !f.pageAvailable(p) || p == f.page {
+		return
+	}
+	if f.editing {
+		f.fields[f.activeField()].Blur()
+		f.editing = false
+		f.pathComp.clear()
+	}
+	f.page = p
+	f.active = 0
+	f.scrollRow = 0
+	f.ensureFieldVisible()
+}
+
+// movePage steps left/right through availablePages (wrapping).
+func (f *ConnectionForm) movePage(delta int) {
+	pages := f.availablePages()
+	if len(pages) == 0 {
+		return
+	}
+	idx := 0
+	for i, p := range pages {
+		if p == f.page {
+			idx = i
+			break
+		}
+	}
+	idx = (idx + delta + len(pages)) % len(pages)
+	f.setPage(pages[idx])
+}
+
+// focusField switches to the page that hosts fi (if needed) and moves the
+// cursor onto that field. Used when validation fails so the error is on-screen.
+func (f *ConnectionForm) focusField(fi int) {
+	f.setPage(f.pageForField(fi))
+	vis := f.visibleFields()
+	for i, id := range vis {
+		if id == fi {
+			f.active = i
+			f.ensureFieldVisible()
+			return
+		}
+	}
+	f.active = 0
+	f.ensureFieldVisible()
 }
 
 // activeField returns the field index at the current cursor position.
@@ -305,15 +451,16 @@ func (f ConnectionForm) CompletionView() string {
 // ClickField moves the field cursor to the field at the given content-relative
 // Y coordinate (0 = first line below the form panel's top border) and returns
 // the field index constant for that field. Returns -1 when the click does not
-// land on a field (e.g. on the message line or empty padding).
+// land on a field (e.g. on the tab bar, message line, or empty padding).
 func (f *ConnectionForm) ClickField(contentY int) int {
 	vis := f.visibleFields()
 	n := len(vis)
-	if n == 0 || contentY < 0 {
+	if n == 0 || contentY < formTabBarLines {
 		return -1
 	}
+	contentY -= formTabBarLines
 
-	fieldsHeight := f.effectiveHeight() - 1
+	fieldsHeight := f.effectiveHeight() - formTabBarLines - 1
 	if fieldsHeight < linesPerField {
 		fieldsHeight = linesPerField
 	}
@@ -346,6 +493,20 @@ func (f *ConnectionForm) ClickField(contentY int) int {
 	return vis[fieldIdx]
 }
 
+// ClickPageTab switches to the Connection/SSH/Options tab under content-
+// relative coordinates (contentX, contentY). Returns true when a tab was hit.
+func (f *ConnectionForm) ClickPageTab(contentX, contentY int) bool {
+	if contentY < 0 || contentY >= formTabBarLines {
+		return false
+	}
+	p := f.pageTabAt(contentX)
+	if p < 0 {
+		return false
+	}
+	f.setPage(formPage(p))
+	return true
+}
+
 // StartFieldEdit enters insert mode on the currently focused free-text field,
 // mirroring the e/i/a key binding. Choice fields are changed with h/l instead.
 func (f *ConnectionForm) StartFieldEdit() tea.Cmd {
@@ -371,7 +532,7 @@ func (f ConnectionForm) completionLineOffset() int {
 	}
 	vis := f.visibleFields()
 	n := len(vis)
-	fieldsHeight := f.effectiveHeight() - 1
+	fieldsHeight := f.effectiveHeight() - formTabBarLines - 1
 	if fieldsHeight < linesPerField {
 		fieldsHeight = linesPerField
 	}
@@ -388,7 +549,7 @@ func (f ConnectionForm) completionLineOffset() int {
 		return -1
 	}
 	// Value row is the third line of the field box; popup sits on the next row.
-	return rel*linesPerField + 3
+	return formTabBarLines + rel*linesPerField + 3
 }
 
 // --- update -----------------------------------------------------------------
@@ -396,7 +557,7 @@ func (f ConnectionForm) completionLineOffset() int {
 // Update handles messages for the form using a vim-like modal model that
 // mirrors the inspector. In normal mode j/k (and Tab/arrows) move the field
 // cursor without editing; h/l cycle the value of a selector field (Driver,
-// SSH Tunnel, Secrets, Read-only); e/i/a enter insert mode on free-text fields.
+// Secrets, Read-only); e/i/a enter insert mode on free-text fields.
 // In insert mode, keys edit the field; Esc/Enter return to normal mode.
 func (f ConnectionForm) Update(msg tea.Msg) (ConnectionForm, tea.Cmd) {
 	kmsg, isKey := msg.(tea.KeyMsg)
@@ -461,6 +622,10 @@ func (f ConnectionForm) Update(msg tea.Msg) (ConnectionForm, tea.Cmd) {
 	// Normal mode: navigate the field cursor, cycle selectors, or enter insert.
 	fi := f.activeField()
 	switch key {
+	case "[":
+		f.movePage(-1)
+	case "]":
+		f.movePage(1)
 	case "j", "down":
 		f.moveActive(1)
 	case "k", "up":
@@ -517,8 +682,8 @@ func (f *ConnectionForm) moveActive(delta int) {
 }
 
 // cycleChoice advances a selector field by dir (wrapping) and re-clamps the
-// cursor, since changing the driver or SSH toggle grows or shrinks the visible
-// field list.
+// cursor, since changing the driver grows or shrinks the available pages and
+// visible field list.
 func (f *ConnectionForm) cycleChoice(fi, dir int) {
 	choices := formChoices[fi]
 	cur := f.fields[fi].Value()
@@ -532,6 +697,9 @@ func (f *ConnectionForm) cycleChoice(fi, dir int) {
 	idx = (idx + dir + len(choices)) % len(choices)
 	f.fields[fi].SetValue(choices[idx])
 	f.clearTransient()
+	if fi == fieldDriver {
+		f.clampPage()
+	}
 	n := len(f.visibleFields())
 	if f.active >= n {
 		f.active = n - 1
@@ -563,9 +731,84 @@ func (f ConnectionForm) ActiveIsChoice() bool {
 
 // --- view -------------------------------------------------------------------
 
+func formPageLabel(p formPage) string {
+	switch p {
+	case formPageSSH:
+		return "SSH"
+	case formPageOptions:
+		return "Options"
+	default:
+		return "Connection"
+	}
+}
+
+// renderPageTabBar renders the available page tabs for the current driver,
+// right-aligned in the form content width.
+func (f ConnectionForm) renderPageTabBar() string {
+	var parts []string
+	for _, p := range f.availablePages() {
+		l := formPageLabel(p)
+		var s string
+		if p == f.page {
+			s = lipgloss.NewStyle().
+				Bold(true).
+				Background(colorPrimary).
+				Foreground(colorBg).
+				Render(" " + l + " ")
+		} else {
+			s = lipgloss.NewStyle().Foreground(colorMuted).Render(" " + l + " ")
+		}
+		parts = append(parts, s)
+	}
+	tabs := strings.Join(parts, " ")
+	w := f.width
+	if w < 1 {
+		return tabs
+	}
+	return lipgloss.NewStyle().Width(w).Align(lipgloss.Right).Render(tabs)
+}
+
+// pageTabWidth is the plain-text width of the tab strip (labels + padding +
+// separators), matching renderPageTabBar layout for mouse hit-testing.
+func (f ConnectionForm) pageTabWidth() int {
+	pages := f.availablePages()
+	if len(pages) == 0 {
+		return 0
+	}
+	total := 0
+	for i, p := range pages {
+		total += 1 + len(formPageLabel(p)) + 1 // " label "
+		if i < len(pages)-1 {
+			total++ // separator space
+		}
+	}
+	return total
+}
+
+// pageTabAt returns the formPage at content-relative column x, or -1.
+// Tabs are right-aligned; layout matches renderPageTabBar.
+func (f ConnectionForm) pageTabAt(x int) int {
+	pages := f.availablePages()
+	total := f.pageTabWidth()
+	start := f.width - total
+	if start < 0 {
+		start = 0
+	}
+	cur := start
+	for _, p := range pages {
+		w := 1 + len(formPageLabel(p)) + 1
+		if x >= cur && x < cur+w {
+			return int(p)
+		}
+		cur += w + 1
+	}
+	return -1
+}
+
 // View renders the form as a scrollable list of bordered fields, matching
 // the inspector's field-box look (shared via renderFieldBox). One line is
-// reserved at the bottom for the validation/test-connection message.
+// reserved at the top for page tabs and one at the bottom for the
+// validation/test-connection message.
 func (f ConnectionForm) View() string {
 	contentW := f.width
 	valueWidth := contentW - 4
@@ -576,7 +819,7 @@ func (f ConnectionForm) View() string {
 	vis := f.visibleFields()
 	n := len(vis)
 
-	fieldsHeight := f.effectiveHeight() - 1 // reserve 1 line for the message
+	fieldsHeight := f.effectiveHeight() - formTabBarLines - 1 // tabs + message
 	if fieldsHeight < linesPerField {
 		fieldsHeight = linesPerField
 	}
@@ -610,7 +853,7 @@ func (f ConnectionForm) View() string {
 		Height(fieldsHeight).
 		Render(strings.TrimRight(rendered.String(), "\n"))
 
-	return fieldsBlock + "\n" + f.messageLine()
+	return f.renderPageTabBar() + "\n" + fieldsBlock + "\n" + f.messageLine()
 }
 
 // fieldValueContent returns the already-styled, valueWidth-wide interior for
@@ -681,29 +924,30 @@ func (f ConnectionForm) messageLine() string {
 // --- sizing -----------------------------------------------------------------
 
 // contentHeight returns the total content height needed to show every currently
-// visible field plus the message line (before capping to the viewport).
+// visible field plus the tab bar and message line (before capping to the viewport).
 func (f ConnectionForm) contentHeight() int {
-	return len(f.visibleFields())*linesPerField + 1
+	return formTabBarLines + len(f.visibleFields())*linesPerField + 1
 }
 
 // effectiveHeight is the actual content height used for rendering: the needed
 // height, capped to the available height (set via SetSize). Because this
 // derives from the current visible field list, the popup grows and shrinks as
-// the driver or SSH toggle changes without needing another SetSize call.
+// the driver, SSH toggle, or page changes without needing another SetSize call.
 func (f ConnectionForm) effectiveHeight() int {
 	h := f.contentHeight()
 	if h > f.height {
 		h = f.height
 	}
-	if h < linesPerField+1 {
-		h = linesPerField + 1
+	minH := formTabBarLines + linesPerField + 1
+	if h < minH {
+		h = minH
 	}
 	return h
 }
 
 // visibleFieldCount returns how many complete fields fit in the fields area.
 func (f ConnectionForm) visibleFieldCount() int {
-	fieldsHeight := f.effectiveHeight() - 1
+	fieldsHeight := f.effectiveHeight() - formTabBarLines - 1
 	if fieldsHeight < linesPerField {
 		fieldsHeight = linesPerField
 	}
@@ -787,20 +1031,24 @@ func (f *ConnectionForm) Focus() tea.Cmd {
 // EnterPressed validates the visible, relevant fields and returns the resulting
 // connection config (or an error message). Fields that are not shown for the
 // current driver/SSH state are left empty, so a sqlite connection never carries
-// stale host or SSH values.
+// stale host or SSH values. On validation failure the cursor jumps to the
+// offending field (switching page if needed).
 func (f *ConnectionForm) EnterPressed() (config.ConnectionConfig, string) {
 	name := strings.TrimSpace(f.fields[fieldName].Value())
 	if name == "" {
+		f.focusField(fieldName)
 		return config.ConnectionConfig{}, "name is required"
 	}
 
 	driver := f.driver()
 	if driver != "sqlite" && driver != "mysql" && driver != "postgres" {
+		f.focusField(fieldDriver)
 		return config.ConnectionConfig{}, "driver must be 'sqlite', 'mysql', or 'postgres'"
 	}
 
 	database := f.fields[fieldDatabase].Value()
 	if database == "" && driver == "sqlite" {
+		f.focusField(fieldDatabase)
 		return config.ConnectionConfig{}, "database path is required"
 	}
 
@@ -824,6 +1072,7 @@ func (f *ConnectionForm) EnterPressed() (config.ConnectionConfig, string) {
 			var err error
 			port, err = strconv.Atoi(portStr)
 			if err != nil {
+				f.focusField(fieldPort)
 				return config.ConnectionConfig{}, "port must be a number"
 			}
 		}
@@ -844,6 +1093,7 @@ func (f *ConnectionForm) EnterPressed() (config.ConnectionConfig, string) {
 				var err error
 				sshPort, err = strconv.Atoi(sshPortStr)
 				if err != nil {
+					f.focusField(fieldSSHPort)
 					return config.ConnectionConfig{}, "SSH port must be a number"
 				}
 			}

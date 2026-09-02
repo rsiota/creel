@@ -12,6 +12,11 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- Connection form splits into **Connection**, **SSH**, and **Options** pages
+  (`[` / `]`, or click the tabs). For mysql/postgres each page shows six
+  fields: Connection (name/driver/host/user/password/database), SSH (leave
+  SSH Host blank for no tunnel), Options (port/socket/ssl/secrets/read-only/
+  group). SQLite hides the SSH tab. Pages swap — they never stack.
 - `alt+b` / `alt+e` toggle the table sidebar and query editor (including tabs);
   `:sidebar`, `:editor`, `:inspector`, and `:assistant` do the same for their
   panels. Split sizes and visibility restore from the session.

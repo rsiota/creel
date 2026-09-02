@@ -24,68 +24,193 @@ func formKey(r rune) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
 }
 
-// The visible field set depends on the driver and the SSH tunnel toggle:
+// The visible field set depends on the page and driver. Network drivers use a
+// consistent 6 / 6 / 6 layout across Connection · SSH · Options:
 //
-//	sqlite           → 6  (Name, Driver, Database, Secrets, Read-only, Group)
-//	sqlite           → 6   (Name, Driver, Database, Secrets, Read-only, Group)
-//	mysql/pg, no SSH → 13  (+ Host, Port, Socket, User, Pass, SSL, SSH Tunnel)
-//	mysql/pg + SSH   → 19  (+ 6 SSH fields)
+//	Connection · sqlite           → 3  (Name, Driver, Database)
+//	Connection · mysql/pg         → 6  (Name, Driver, Host, User, Pass, Database)
+//	Options    · sqlite           → 3  (Secrets, Read-only, Group)
+//	SSH        · mysql/pg         → 6  (Host, User, Pass, Key, Port, Passphrase)
+//	Options    · mysql/pg         → 6  (Port, Socket, SSL, Secrets, Read-only, Group)
+//
+// An SSH tunnel is used when SSH Host is non-empty (no separate toggle).
 func TestConnectionFormConditionalFields(t *testing.T) {
 	f := NewConnectionForm()
 	f.SetSize(67, f.contentHeight()) // tall enough to fit every visible field
 
-	// --- sqlite ---
+	// --- Connection · sqlite ---
 	view := formStripANSI(f.View())
-	if got := countTopBorders(view); got != 6 {
-		t.Errorf("sqlite: visible fields=%d, want 6\n%s", got, view)
+	if got := countTopBorders(view); got != 3 {
+		t.Errorf("sqlite connection: visible fields=%d, want 3\n%s", got, view)
 	}
-	for _, l := range []string{"Name", "Driver", "Database", "Secrets", "Read-only", "Group"} {
+	tabs := f.availablePages()
+	if len(tabs) != 2 || tabs[0] != formPageConnection || tabs[1] != formPageOptions {
+		t.Errorf("sqlite tabs=%v, want Connection·Options", tabs)
+	}
+	for _, l := range []string{"Name", "Driver", "Database"} {
 		if !strings.Contains(view, l) {
-			t.Errorf("sqlite: %q should be visible", l)
+			t.Errorf("sqlite connection: %q should be visible", l)
 		}
 	}
-	for _, l := range []string{"Host", "Port", "Username", "Password", "SSL", "Socket", "SSH Tunnel", "SSH Host"} {
+	for _, l := range []string{"Host", "Port", "Username", "Password", "SSL", "Socket", "SSH Host", "Secrets", "Read-only", "Group"} {
 		if strings.Contains(view, l) {
-			t.Errorf("sqlite: %q should be hidden", l)
+			t.Errorf("sqlite connection: %q should be hidden", l)
 		}
 	}
 
-	// --- mysql, no SSH ---
+	// --- Options · sqlite ---
+	f.setPage(formPageOptions)
+	f.SetSize(67, f.contentHeight())
+	view = formStripANSI(f.View())
+	if got := countTopBorders(view); got != 3 {
+		t.Errorf("sqlite options: visible fields=%d, want 3\n%s", got, view)
+	}
+	for _, l := range []string{"Secrets", "Read-only", "Group"} {
+		if !strings.Contains(view, l) {
+			t.Errorf("sqlite options: %q should be visible", l)
+		}
+	}
+	if strings.Contains(view, "SSH Host") || strings.Contains(view, "Socket") || strings.Contains(view, "Port") {
+		t.Error("sqlite options should not show network/SSH fields")
+	}
+
+	// --- Connection · mysql ---
+	f.setPage(formPageConnection)
 	f.fields[fieldDriver].SetValue("mysql")
 	f.SetSize(67, f.contentHeight())
 	view = formStripANSI(f.View())
-	if got := countTopBorders(view); got != 13 {
-		t.Errorf("mysql no-ssh: visible fields=%d, want 13\n%s", got, view)
+	if got := countTopBorders(view); got != 6 {
+		t.Errorf("mysql connection: visible fields=%d, want 6\n%s", got, view)
 	}
-	if !strings.Contains(view, "SSH Tunnel") {
-		t.Error("mysql: SSH Tunnel toggle should be visible")
+	tabs = f.availablePages()
+	if len(tabs) != 3 {
+		t.Errorf("mysql tabs=%v, want Connection·SSH·Options", tabs)
 	}
-	if !strings.Contains(view, "SSL") {
-		t.Error("mysql: SSL field should be visible")
+	wantConn := []string{"Name", "Driver", "Host", "Username", "Password", "Database"}
+	for _, l := range wantConn {
+		if !strings.Contains(view, l) {
+			t.Errorf("mysql connection: %q should be visible", l)
+		}
 	}
-	if !strings.Contains(view, "Socket") {
-		t.Error("mysql: Socket field should be visible")
+	for i, fi := range f.connectionFields() {
+		if formLabels[fi] != wantConn[i] {
+			t.Errorf("connectionFields[%d]=%q, want %q", i, formLabels[fi], wantConn[i])
+		}
 	}
-	for _, l := range []string{"SSH Host", "SSH Port", "SSH Key"} {
+	for _, l := range []string{"Port", "SSL", "Socket", "SSH Host", "Secrets"} {
 		if strings.Contains(view, l) {
-			t.Errorf("mysql no-ssh: %q should be hidden", l)
+			t.Errorf("mysql connection: %q should not be on Connection", l)
 		}
 	}
 
-	// --- mysql + SSH ---
-	f.fields[fieldSSHTunnel].SetValue("yes")
+	// --- SSH · mysql ---
+	f.setPage(formPageSSH)
 	f.SetSize(67, f.contentHeight())
 	view = formStripANSI(f.View())
-	if got := countTopBorders(view); got != 19 {
-		t.Errorf("mysql+ssh: visible fields=%d, want 19\n%s", got, view)
+	if got := countTopBorders(view); got != 6 {
+		t.Errorf("mysql ssh: visible fields=%d, want 6\n%s", got, view)
 	}
-	for _, l := range []string{"SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass"} {
+	wantSSH := []string{"SSH Host", "SSH User", "SSH Pass", "SSH Key", "SSH Port", "SSH Passphrase"}
+	for _, l := range wantSSH {
 		if !strings.Contains(view, l) {
-			t.Errorf("mysql+ssh: %q should be visible", l)
+			t.Errorf("mysql ssh: %q should be visible", l)
 		}
 	}
-	if !strings.Contains(view, "SSH Passphrase") {
-		t.Errorf("mysql+ssh: SSH Passphrase field should be visible\n%s", view)
+	for i, fi := range f.sshFields() {
+		if formLabels[fi] != wantSSH[i] {
+			t.Errorf("sshFields[%d]=%q, want %q", i, formLabels[fi], wantSSH[i])
+		}
+	}
+	for _, l := range []string{"SSL", "Secrets", "Username", "SSH Tunnel"} {
+		if strings.Contains(view, l) {
+			t.Errorf("mysql ssh: %q should be hidden", l)
+		}
+	}
+
+	// --- Options · mysql ---
+	f.setPage(formPageOptions)
+	f.SetSize(67, f.contentHeight())
+	view = formStripANSI(f.View())
+	if got := countTopBorders(view); got != 6 {
+		t.Errorf("mysql options: visible fields=%d, want 6\n%s", got, view)
+	}
+	wantOpt := []string{"Port", "Socket", "SSL", "Secrets", "Read-only", "Group"}
+	for _, l := range wantOpt {
+		if !strings.Contains(view, l) {
+			t.Errorf("mysql options: %q should be visible", l)
+		}
+	}
+	for i, fi := range f.optionsFields() {
+		if formLabels[fi] != wantOpt[i] {
+			t.Errorf("optionsFields[%d]=%q, want %q", i, formLabels[fi], wantOpt[i])
+		}
+	}
+	if strings.Contains(view, "SSH Host") || strings.Contains(view, "SSH Passphrase") {
+		t.Error("mysql options should not show SSH host/passphrase")
+	}
+}
+
+func TestConnectionFormPageSwapKeys(t *testing.T) {
+	f := NewConnectionForm()
+	f.fields[fieldDriver].SetValue("mysql")
+	f.SetSize(67, 40)
+
+	f, _ = f.Update(formKey(']'))
+	if f.page != formPageSSH {
+		t.Fatalf("] should open SSH, page=%d", f.page)
+	}
+	if !strings.Contains(formStripANSI(f.View()), "SSH Host") {
+		t.Error("SSH page should show SSH Host")
+	}
+
+	f, _ = f.Update(formKey(']'))
+	if f.page != formPageOptions {
+		t.Fatalf("second ] should open Options, page=%d", f.page)
+	}
+	if !strings.Contains(formStripANSI(f.View()), "Secrets") {
+		t.Error("Options page should show Secrets")
+	}
+
+	f, _ = f.Update(formKey(']'))
+	if f.page != formPageConnection {
+		t.Fatalf("third ] should wrap to Connection, page=%d", f.page)
+	}
+
+	f, _ = f.Update(formKey('['))
+	if f.page != formPageOptions {
+		t.Fatalf("[ should wrap to Options, page=%d", f.page)
+	}
+}
+
+func TestConnectionFormSqliteHidesSSHTab(t *testing.T) {
+	f := NewConnectionForm()
+	f.SetSize(67, 40)
+	f, _ = f.Update(formKey(']'))
+	if f.page != formPageOptions {
+		t.Fatalf("sqlite ] should skip SSH and open Options, page=%d", f.page)
+	}
+	f.setPage(formPageSSH) // unavailable
+	if f.page != formPageOptions {
+		t.Errorf("setPage(SSH) on sqlite should be no-op, page=%d", f.page)
+	}
+}
+
+func TestConnectionFormValidationJumpsToPage(t *testing.T) {
+	f := NewConnectionForm()
+	f.fields[fieldDriver].SetValue("mysql")
+	f.setPage(formPageConnection)
+	f.fields[fieldPort].SetValue("nope")
+	f.fields[fieldName].SetValue("x")
+
+	_, errMsg := f.EnterPressed()
+	if errMsg == "" {
+		t.Fatal("expected port validation error")
+	}
+	if f.page != formPageOptions {
+		t.Errorf("page=%d, want Options after port error", f.page)
+	}
+	if f.activeField() != fieldPort {
+		t.Errorf("activeField=%d, want Port", f.activeField())
 	}
 }
 
@@ -94,7 +219,7 @@ func TestConnectionFormNoOptionalMarkers(t *testing.T) {
 	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
 		f := NewConnectionForm()
 		f.fields[fieldDriver].SetValue(driver)
-		f.fields[fieldSSHTunnel].SetValue("yes")
+		f.fields[fieldSSHHost].SetValue("bastion")
 		f.SetSize(67, f.contentHeight())
 		if got := strings.Count(formStripANSI(f.View()), "(optional)"); got != 0 {
 			t.Errorf("%s: found %d '(optional)' markers, want 0", driver, got)
@@ -219,22 +344,22 @@ func TestConnectionFormTabNavigatesWithoutEditing(t *testing.T) {
 // into view (scrollRow advances).
 func TestConnectionFormTabScrollsActiveFieldIntoView(t *testing.T) {
 	f := NewConnectionForm()
-	f.fields[fieldDriver].SetValue("mysql") // 10 visible fields
-	// Small area: effectiveHeight=13 -> maxFields = (13-1)/4 = 3.
+	f.fields[fieldDriver].SetValue("mysql") // 6 connection fields
+	// Small area: effectiveHeight=13 -> maxFields = (13-tab-msg)/4 = 2.
 	f.SetSize(67, 13)
-	if f.visibleFieldCount() != 3 {
-		t.Fatalf("visibleFieldCount=%d, want 3", f.visibleFieldCount())
+	if f.visibleFieldCount() != 2 {
+		t.Fatalf("visibleFieldCount=%d, want 2", f.visibleFieldCount())
 	}
 	if f.scrollRow != 0 {
 		t.Fatalf("initial scrollRow=%d, want 0", f.scrollRow)
 	}
 
-	// Tab three times -> cursor at position 3, below the 3-field window -> scroll.
-	for i := 0; i < 3; i++ {
+	// Tab twice -> cursor at position 2, below the 2-field window -> scroll.
+	for i := 0; i < 2; i++ {
 		f, _ = f.Update(tea.KeyMsg{Type: tea.KeyTab})
 	}
-	if f.active != 3 {
-		t.Fatalf("active=%d, want 3", f.active)
+	if f.active != 2 {
+		t.Fatalf("active=%d, want 2", f.active)
 	}
 	if f.scrollRow != 1 {
 		t.Errorf("scrollRow=%d, want 1 after tabbing below the fold", f.scrollRow)
@@ -244,16 +369,16 @@ func TestConnectionFormTabScrollsActiveFieldIntoView(t *testing.T) {
 	if !strings.Contains(view, formLabels[f.activeField()]) {
 		t.Errorf("active field %q not visible after scrolling", formLabels[f.activeField()])
 	}
-	if countTopBorders(view) != 3 {
-		t.Errorf("visible fields=%d, want 3 (only the window should render)", countTopBorders(view))
+	if countTopBorders(view) != 2 {
+		t.Errorf("visible fields=%d, want 2 (only the window should render)", countTopBorders(view))
 	}
 }
 
 // Shift-Tab from the first field wraps to the last visible field and scrolls it in.
 func TestConnectionFormShiftTabWrapsAndScrolls(t *testing.T) {
 	f := NewConnectionForm()
-	f.fields[fieldDriver].SetValue("mysql") // 10 visible
-	f.SetSize(67, 13)                       // maxFields = 3
+	f.fields[fieldDriver].SetValue("mysql") // 6 connection fields
+	f.SetSize(67, 13)                       // maxFields = 2
 
 	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	last := len(f.visibleFields()) - 1
@@ -276,13 +401,13 @@ func TestConnectionFormDriverSelectorCycling(t *testing.T) {
 		t.Fatalf("activeField=%d, want Driver", f.activeField())
 	}
 
-	// l: sqlite -> mysql (network fields appear).
+	// l: sqlite -> mysql (network connection fields appear).
 	f, _ = f.Update(formKey('l'))
 	if f.driver() != "mysql" {
 		t.Errorf("after l: driver=%q, want mysql", f.driver())
 	}
-	if got := len(f.visibleFields()); got != 13 {
-		t.Errorf("mysql visible fields=%d, want 13", got)
+	if got := len(f.visibleFields()); got != 6 {
+		t.Errorf("mysql connection visible fields=%d, want 6", got)
 	}
 
 	// l: mysql -> postgres.
@@ -296,8 +421,8 @@ func TestConnectionFormDriverSelectorCycling(t *testing.T) {
 	if f.driver() != "sqlite" {
 		t.Errorf("after l: driver=%q, want sqlite (wrap)", f.driver())
 	}
-	if got := len(f.visibleFields()); got != 6 {
-		t.Errorf("sqlite visible fields=%d, want 6", got)
+	if got := len(f.visibleFields()); got != 3 {
+		t.Errorf("sqlite connection visible fields=%d, want 3", got)
 	}
 
 	// h: sqlite -> postgres (backward).
@@ -316,43 +441,23 @@ func TestConnectionFormDriverSelectorCycling(t *testing.T) {
 	}
 }
 
-// The SSH Tunnel toggle reveals and hides the SSH sub-fields.
-func TestConnectionFormSSHToggleRevealsFields(t *testing.T) {
+// An SSH tunnel is active when SSH Host is set; clearing it turns the tunnel off.
+func TestConnectionFormSSHEnabledFromHost(t *testing.T) {
 	f := NewConnectionForm()
 	f.fields[fieldDriver].SetValue("mysql")
-	f.SetSize(67, fieldCount*linesPerField+1) // cap that always fits, even with SSH on
+	f.setPage(formPageSSH)
+	f.SetSize(67, 40)
 
-	// Walk to the SSH Tunnel field (position 9 in the mysql list:
-	// Name, Driver, Database, Host, Port, Socket, User, Pass, SSL, SSH Tunnel).
-	for i := 0; i < 9; i++ {
-		f, _ = f.Update(formKey('j'))
-	}
-	if f.activeField() != fieldSSHTunnel {
-		t.Fatalf("activeField=%d, want SSHTunnel", f.activeField())
-	}
-	if strings.Contains(formStripANSI(f.View()), "SSH Host") {
-		t.Error("SSH fields should be hidden until the tunnel is enabled")
-	}
-
-	// l: no -> yes; SSH fields appear.
-	f, _ = f.Update(formKey('l'))
-	if !f.sshEnabled() {
-		t.Error("ssh should be enabled after l")
-	}
-	view := formStripANSI(f.View())
-	for _, l := range []string{"SSH Host", "SSH Port", "SSH User", "SSH Key", "SSH Pass"} {
-		if !strings.Contains(view, l) {
-			t.Errorf("after enabling SSH, %q should be visible", l)
-		}
-	}
-
-	// h: yes -> no; SSH fields disappear again.
-	f, _ = f.Update(formKey('h'))
 	if f.sshEnabled() {
-		t.Error("ssh should be disabled after h")
+		t.Fatal("empty SSH Host should mean no tunnel")
 	}
-	if strings.Contains(formStripANSI(f.View()), "SSH Host") {
-		t.Error("SSH fields should hide after disabling the tunnel")
+	f.fields[fieldSSHHost].SetValue("bastion")
+	if !f.sshEnabled() {
+		t.Fatal("non-empty SSH Host should enable the tunnel")
+	}
+	f.fields[fieldSSHHost].SetValue("  ")
+	if f.sshEnabled() {
+		t.Fatal("whitespace-only SSH Host should mean no tunnel")
 	}
 }
 
@@ -389,9 +494,11 @@ func TestConnectionFormWindowStableUntilEdge(t *testing.T) {
 	m = mm.(Model)
 	m.state = stateAddConnection
 	m.connForm = NewConnectionForm()
-	m.connForm.fields[fieldDriver].SetValue("mysql") // 10 visible -> needs scrolling
-	iw, ch := popupContentSize(termH)
-	m.connForm.SetSize(iw, ch)
+	m.connForm.fields[fieldDriver].SetValue("mysql")
+	m.connForm.fields[fieldSSHHost].SetValue("bastion")
+	m.connForm.setPage(formPageSSH) // 5 fields
+	iw, _ := popupContentSize(termH)
+	m.connForm.SetSize(iw, 13) // short viewport so the list must scroll
 
 	visN := len(m.connForm.visibleFields())
 	maxFields := m.connForm.visibleFieldCount()

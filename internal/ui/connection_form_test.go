@@ -334,7 +334,6 @@ func TestConnectionFormSSHPassphraseRoundTrip(t *testing.T) {
 	f2.fields[fieldName].SetValue("tun")
 	f2.fields[fieldDriver].SetValue("mysql")
 	f2.fields[fieldDatabase].SetValue("db")
-	f2.fields[fieldSSHTunnel].SetValue("yes")
 	f2.fields[fieldSSHHost].SetValue("bastion")
 	f2.fields[fieldSSHPassphrase].SetValue("typed-passphrase")
 	cfg, errMsg := f2.EnterPressed()
@@ -345,7 +344,7 @@ func TestConnectionFormSSHPassphraseRoundTrip(t *testing.T) {
 		t.Errorf("submit: passphrase=%q, want 'typed-passphrase'", cfg.SSHPassphrase)
 	}
 
-	// With the SSH tunnel off, the passphrase is ignored (not extracted).
+	// With no SSH host, the passphrase is ignored (not extracted).
 	f3 := NewConnectionForm()
 	f3.fields[fieldName].SetValue("tun")
 	f3.fields[fieldDriver].SetValue("mysql")
@@ -353,6 +352,6 @@ func TestConnectionFormSSHPassphraseRoundTrip(t *testing.T) {
 	f3.fields[fieldSSHPassphrase].SetValue("ignored")
 	cfg3, _ := f3.EnterPressed()
 	if cfg3.SSHPassphrase != "" {
-		t.Errorf("with SSH off, passphrase should be ignored, got %q", cfg3.SSHPassphrase)
+		t.Errorf("with no SSH host, passphrase should be ignored, got %q", cfg3.SSHPassphrase)
 	}
 }

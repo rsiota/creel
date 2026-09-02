@@ -57,8 +57,8 @@ connections:
 
 A `password:` value that is **not** a `secret://` reference is treated as
 plaintext and used directly, so existing configs keep working. Set the
-connection form's **Secrets** field to `plain` to opt out of the keychain for a
-specific connection.
+connection form's **Secrets** field (on the Options page) to `plain` to opt out
+of the keychain for a specific connection.
 
 ### TLS and unix sockets
 

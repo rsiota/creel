@@ -49,10 +49,17 @@ In the add/edit form:
 
 | Key        | Action                          |
 | ---------- | ------------------------------- |
+| `[` / `]`  | Prev / next form page           |
 | `tab`      | Next field                      |
 | `enter`    | Save                            |
 | `ctrl+t`   | Test connection (no save)       |
 | `esc`      | Cancel                          |
+
+The form splits fields across pages so the everyday path stays short. For
+mysql/postgres each page has six fields: **Connection** (name, driver, host,
+user, password, database), **SSH** (tunnel settings — leave SSH Host blank
+for no tunnel), and **Options** (port, socket, SSL, secrets, read-only,
+group). SQLite uses Connection + Options only.
 
 ## Sidebar (Tables)
 

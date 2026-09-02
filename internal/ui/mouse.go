@@ -43,8 +43,13 @@ func (m Model) handleConnectionFormMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 		}
 		return m, nil
 	case tea.MouseLeft:
+		contentY := msg.Y - panelY - 1
+		contentX := msg.X - panelX - 1 - 1 // border + left padding (matches View)
+		if m.connForm.ClickPageTab(contentX, contentY) {
+			return m, nil
+		}
 		// Content starts below the panel's top border.
-		fi := m.connForm.ClickField(msg.Y - panelY - 1)
+		fi := m.connForm.ClickField(contentY)
 		if fi < 0 {
 			return m, nil
 		}

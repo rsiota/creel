@@ -14,7 +14,7 @@ func formForDriver(driver string, ssh bool) ConnectionForm {
 	f := NewConnectionForm()
 	f.fields[fieldDriver].SetValue(driver)
 	if ssh {
-		f.fields[fieldSSHTunnel].SetValue("yes")
+		f.fields[fieldSSHHost].SetValue("bastion")
 	}
 	return f
 }
@@ -23,7 +23,7 @@ func formForDriver(driver string, ssh bool) ConnectionForm {
 func TestClassifySuccessAllGreen(t *testing.T) {
 	f := formForDriver("mysql", true)
 	got := f.classifyTestError(nil)
-	for _, fi := range f.visibleFields() {
+	for _, fi := range f.relevantFields() {
 		if got[fi] != testOK {
 			t.Errorf("field %d (%s): got %d, want testOK", fi, formLabels[fi], got[fi])
 		}
