@@ -767,7 +767,7 @@ func (m *Model) loadConnections() {
 			}
 		}
 		if conn.SSHHost != "" {
-			detail = fmt.Sprintf("%s via %s", detail, conn.SSHHost)
+			detail = conn.SSHHost
 		}
 		entries = append(entries, ConnectionEntry{
 			Name:   conn.Name,

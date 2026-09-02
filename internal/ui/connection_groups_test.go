@@ -193,8 +193,8 @@ func TestGroupsCommitFilterRelocates(t *testing.T) {
 // ExpandedHeight accounts for group headers (one line each).
 func TestGroupsExpandedHeightIncludesHeaders(t *testing.T) {
 	m := newConnListModel(t, groupedConns(), 40)
-	// 4 conns * linesPerField + 3 headers.
-	want := 4*linesPerField + 3
+	// 4 conns + 3 headers (one line each).
+	want := 4 + 3
 	if got := m.connList.ExpandedHeight(); got != want {
 		t.Errorf("ExpandedHeight=%d, want %d", got, want)
 	}
@@ -222,13 +222,13 @@ func TestGroupsChildrenIndentedUnderHeader(t *testing.T) {
 	view := stripAnsi(m.connList.View())
 	lines := strings.Split(view, "\n")
 
-	// The Work header carries its connection count.
+	// The Work header is present without a trailing connection count.
 	workLine := lineContaining(lines, "Work")
 	if workLine == "" {
 		t.Fatalf("Work header not found:\n%s", view)
 	}
-	if !strings.Contains(workLine, "2") {
-		t.Errorf("Work header should show count '2': %q", workLine)
+	if trimmed := strings.TrimRight(workLine, " "); !strings.HasSuffix(trimmed, "Work") {
+		t.Errorf("Work header should end with group name (no count): %q", workLine)
 	}
 
 	// The connection name expands exactly under the first letter of its group
@@ -249,8 +249,14 @@ func TestGroupsChildrenIndentedUnderHeader(t *testing.T) {
 
 	// Flat mode (no groups) is not indented at all.
 	flat := newConnListModel(t, makeConns(2), 40)
-	if strings.Contains(stripAnsi(flat.connList.View()), "\n \u250c") {
-		t.Errorf("flat mode should not indent child boxes")
+	flatView := stripAnsi(flat.connList.View())
+	for _, line := range strings.Split(flatView, "\n") {
+		if strings.HasPrefix(line, "conn") {
+			if strings.HasPrefix(line, " ") {
+				t.Errorf("flat mode should not indent connections: %q", line)
+			}
+			break
+		}
 	}
 }
 

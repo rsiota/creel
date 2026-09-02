@@ -37,8 +37,11 @@ func TestLoadConnectionsSelectsRecent(t *testing.T) {
 		t.Fatalf("SelectedName=%q, want beta (most recent)", got)
 	}
 	view := stripAnsiConn(m.connList.View())
-	if !strings.Contains(view, "recent") {
-		t.Errorf("expected recent badge in view:\n%s", view)
+	if strings.Contains(view, "recent") {
+		t.Errorf("picker should not show a recent badge:\n%s", view)
+	}
+	if !strings.Contains(view, "beta") {
+		t.Errorf("expected selected connection name in view:\n%s", view)
 	}
 }
 

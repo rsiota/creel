@@ -12,6 +12,8 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- Connection picker shows quiet single-line rows (name + muted host/path);
+  driver badges and field-box chrome are gone so the list stays name-forward.
 - Connection list, connection editor, and database picker share one popup
   shell height (the 6-field editor footprint). Longer lists scroll inside.
 - Connection form splits into **Connection**, **SSH**, and **Options** pages

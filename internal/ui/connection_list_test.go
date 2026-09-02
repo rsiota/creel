@@ -36,24 +36,46 @@ func makeConns(n int) []config.ConnectionConfig {
 	return out
 }
 
-// Each connection renders as an inspector-style field box: a bordered value
-// box with the name + driver badge on the label line and the detail inside.
-func TestConnectionListRendersFieldBoxes(t *testing.T) {
+// Each connection renders as a quiet single line: name + muted host/path.
+func TestConnectionListRendersQuietRows(t *testing.T) {
 	m := newConnListModel(t, []config.ConnectionConfig{
 		{Name: "local", Driver: "sqlite", Database: "/tmp/app.db"},
 		{Name: "staging", Driver: "mysql", Host: "10.0.0.5", Port: 3306, Database: "myapp"},
 	}, 40)
 
 	view := regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(m.connList.View(), "")
-	// Two entries → two field-box top borders.
-	if got := strings.Count(view, "┌"); got != 2 {
-		t.Errorf("field boxes=%d, want 2\n%s", got, view)
+	if strings.Contains(view, "┌") {
+		t.Errorf("connection rows should not use field-box chrome\n%s", view)
 	}
-	// Name + driver badge on the label line; detail inside the box.
-	for _, want := range []string{"local", "[SQLITE]", "/tmp/app.db", "staging", "[MYSQL]", "10.0.0.5"} {
+	for _, want := range []string{"local", "/tmp/app.db", "staging", "10.0.0.5"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("missing %q in view\n%s", want, view)
 		}
+	}
+	for _, noise := range []string{"[SQLITE]", "[MYSQL]", "recent"} {
+		if strings.Contains(view, noise) {
+			t.Errorf("unexpected %q in quiet picker\n%s", noise, view)
+		}
+	}
+}
+
+func TestLoadConnectionsSSHDetailShowsBastionOnly(t *testing.T) {
+	cfg := &config.Config{Connections: []config.ConnectionConfig{
+		{Name: "tunnel", Driver: "mysql", Host: "127.0.0.1", Port: 3306, Database: "app", SSHHost: "bastion.example"},
+	}}
+	m := NewModel(cfg)
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 90, Height: 40})
+	m = mm.(Model)
+	m.loadConnections()
+	cw, lh := m.connListContentDims()
+	m.connList.SetSize(cw, lh)
+
+	view := stripAnsiConn(m.connList.View())
+	if !strings.Contains(view, "bastion.example") {
+		t.Errorf("expected SSH host in detail:\n%s", view)
+	}
+	if strings.Contains(view, "127.0.0.1") || strings.Contains(view, "via") {
+		t.Errorf("SSH detail should be bastion only, not local host via tunnel:\n%s", view)
 	}
 }
 
@@ -99,11 +121,16 @@ func TestConnectionListPopupFixedShellHeight(t *testing.T) {
 	if h1 != wantOuter {
 		t.Errorf("popup H=%d, want shell outer %d", h1, wantOuter)
 	}
-	// Eight connections need more than six field-box rows → list must scroll.
-	cw, lh := m8.connListContentDims()
-	m8.connList.SetSize(cw, lh)
-	if m8.connList.maxVisibleItems() >= 8 {
-		t.Fatalf("expected scrolling for 8 conns: maxVisible=%d", m8.connList.maxVisibleItems())
+	// Enough connections to overflow the fixed shell's list area.
+	m40 := newConnListModel(t, makeConns(40), 60)
+	_, h40 := m40.connListPopupDims()
+	if h1 != h40 {
+		t.Errorf("popup height should be fixed: 1-conn H=%d, 40-conn H=%d", h1, h40)
+	}
+	cw, lh := m40.connListContentDims()
+	m40.connList.SetSize(cw, lh)
+	if m40.connList.maxVisibleItems() >= 40 {
+		t.Fatalf("expected scrolling for 40 conns: maxVisible=%d", m40.connList.maxVisibleItems())
 	}
 }
 
@@ -150,7 +177,7 @@ func TestConnectionListPopupHeightConstantWhileFiltering(t *testing.T) {
 // regression test for the value-receiver sizing bug that left connList.height
 // at 0 and made every cursor move scroll aggressively.
 func TestConnectionListWindowStableUntilEdge(t *testing.T) {
-	m := newConnListModel(t, makeConns(6), 22) // short terminal → maxVisible < 6
+	m := newConnListModel(t, makeConns(40), 22) // short terminal → maxVisible < 40
 
 	maxVisible := m.connList.maxVisibleItems()
 	items := len(m.connList.visibleItems())

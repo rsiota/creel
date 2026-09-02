@@ -39,9 +39,8 @@ const (
 )
 
 // connRow is a single renderable row: either a collapsible group header or a
-// connection field box. Unifying them into one sequence lets cursor
-// navigation, line-based scroll, mouse mapping, and filtering all operate on a
-// single list.
+// connection line. Unifying them into one sequence lets cursor navigation,
+// line-based scroll, mouse mapping, and filtering all operate on a single list.
 type connRow struct {
 	kind  connRowKind
 	group string         // header label group; or the owning group for a conn
@@ -232,9 +231,9 @@ func (c ConnectionList) groupedRows() []connRow {
 	return out
 }
 
-// groupIndent returns the number of leading spaces to shift a connection box
-// so it expands exactly under the first letter of its group header (i.e. past
-// the "▾ " marker prefix). Zero in flat mode (no groups) and while filtering
+// groupIndent returns the number of leading spaces to shift a connection so it
+// expands exactly under the first letter of its group header (i.e. past the
+// "▾ " marker prefix). Zero in flat mode (no groups) and while filtering
 // (which flattens), preserving the original layout there.
 func (c ConnectionList) groupIndent() int {
 	if c.filtering && c.filter != "" {
@@ -243,18 +242,7 @@ func (c ConnectionList) groupIndent() int {
 	if !c.hasGroups() {
 		return 0
 	}
-	return 1 // aligns the connection name under the first letter of "▾ Group"
-}
-
-// groupCount returns the number of connections in a group ("" = ungrouped).
-func (c ConnectionList) groupCount(group string) int {
-	n := 0
-	for _, it := range c.items {
-		if it.group == group {
-			n++
-		}
-	}
-	return n
+	return 2 // aligns the connection name under the first letter of "▾ Group"
 }
 
 // indentBlock prefixes every line of a (possibly multi-line) string with n
@@ -271,23 +259,18 @@ func indentBlock(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-// rowHeight returns the rendered height of a row: group headers are a single
-// line, connection boxes are linesPerField lines.
+// rowHeight returns the rendered height of a row. Group headers and connection
+// lines are both a single row so the picker stays dense and name-forward.
 func rowHeight(r connRow) int {
-	if r.kind == rowGroup {
-		return 1
-	}
-	return linesPerField
+	return 1
 }
 
-// ExpandedHeight is the total rendered height with every group expanded. Used
-// to size the popup so its height stays stable regardless of filtering or
-// folding (collapsed/filtered states simply leave breathing room).
+// ExpandedHeight is the total rendered height with every group expanded.
 func (c ConnectionList) ExpandedHeight() int {
 	if len(c.items) == 0 {
-		return linesPerField // synthetic demo invitation
+		return 1 // synthetic demo invitation
 	}
-	h := len(c.items) * linesPerField
+	h := len(c.items) // one line per connection
 	if !c.hasGroups() {
 		return h
 	}
@@ -538,9 +521,7 @@ func (c *ConnectionList) ensureVisible(rows []connRow) {
 }
 
 func (c ConnectionList) maxVisibleItems() int {
-	// Each entry renders as a field box (linesPerField lines). This is an
-	// approximation (group headers are shorter) used only for sizing heuristics.
-	max := c.height / linesPerField
+	max := c.height // one line per connection / header
 	if max < 1 {
 		return 1
 	}
@@ -616,17 +597,12 @@ func (c *ConnectionList) SetSize(width, height int) {
 	c.ensureVisible(c.rows())
 }
 
-// View renders the connection list. Each connection is an inspector-style
-// field box; when grouping is in use, collapsible group headers separate the
-// boxes. Only fully visible rows are drawn (partial boxes at the viewport
-// edges are skipped), and the scroll is snapped to row boundaries.
+// View renders the connection list. Each connection is a single quiet line
+// (name + muted host/path); group headers separate them when grouping is in
+// use. Only fully visible rows are drawn, and scroll snaps to row boundaries.
 func (c ConnectionList) View() string {
 	rows := c.rows()
 	contentW := c.width
-	valueWidth := contentW - 4
-	if valueWidth < 1 {
-		valueWidth = 1
-	}
 
 	if len(rows) == 0 {
 		var msg string
@@ -671,66 +647,100 @@ func (c ConnectionList) View() string {
 	return padViewHeight(strings.TrimRight(b.String(), "\n"), contentW, c.height, c.padBg)
 }
 
-// renderRow renders a single row (group header or connection field box).
-// Connection boxes are indented under their group header so the parent-child
-// relationship reads visually; headers are flush-left with a connection count.
+// renderRow renders a single row (group header or connection line). Connection
+// lines are indented under their group header; headers are flush-left with a
+// connection count.
 func (c ConnectionList) renderRow(r connRow, idx, contentW int) string {
 	isCursor := idx == c.cursor
 	if r.kind == rowGroup {
-		return renderGroupHeader(r.group, c.collapsed[r.group], isCursor, contentW, c.groupCount(r.group))
+		return renderGroupHeader(r.group, c.collapsed[r.group], isCursor, contentW)
 	}
 
 	indent := c.groupIndent()
-	boxW := contentW - indent
-	valueWidth := boxW - 4
-	if valueWidth < 1 {
-		valueWidth = 1
+	rowW := contentW - indent
+	if rowW < 1 {
+		rowW = 1
 	}
 
 	item := r.conn
+	namePlain := item.name
+	detailPlain := strings.TrimSpace(item.detail)
 
-	badgeSty := lipgloss.NewStyle().Foreground(colorAccent)
-	nameBold := lipgloss.NewStyle().Foreground(colorFg).Bold(true)
-	namePlain := lipgloss.NewStyle().Foreground(colorFg)
-	detailSty := lipgloss.NewStyle().Foreground(colorMuted)
-	detailCurSty := lipgloss.NewStyle().Foreground(colorLabel)
+	// Prefer the name; shrink the muted trailing detail first when space is tight.
+	const minGap = 2
+	nameBudget := rowW
+	detailBudget := 0
+	if detailPlain != "" {
+		detailBudget = runeLen(detailPlain)
+		nameBudget = rowW - minGap - detailBudget
+		if nameBudget < 8 {
+			// Keep a readable name; truncate detail harder.
+			nameBudget = min(rowW/2, rowW-minGap-1)
+			if nameBudget < 1 {
+				nameBudget = 1
+			}
+			detailBudget = rowW - minGap - nameBudget
+			if detailBudget < 0 {
+				detailBudget = 0
+			}
+		}
+	}
+	nameDisp := truncateCell(namePlain, nameBudget)
+	detailDisp := ""
+	if detailBudget > 0 {
+		detailDisp = truncateCell(detailPlain, detailBudget)
+	}
 
-	// Label: the connection name (bold when cursor; fuzzy-highlighted when
-	// filtering, in which case per-char styling replaces the bold).
-	var labelStr string
+	var nameStr string
 	switch {
-	case c.filtering:
-		labelStr = highlightMatches(item.name, item.matchIdx)
+	case c.filtering && c.filter != "":
+		nameStr = highlightMatches(nameDisp, clampMatchIdx(item.matchIdx, nameDisp))
 	case isCursor:
-		labelStr = nameBold.Render(item.name)
+		nameStr = lipgloss.NewStyle().Foreground(colorFg).Bold(true).Render(nameDisp)
 	default:
-		labelStr = namePlain.Render(item.name)
+		nameStr = lipgloss.NewStyle().Foreground(colorFg).Render(nameDisp)
 	}
 
-	// Marker: the driver badge, plus a muted "recent" tag for MRU entries.
-	markerStr := badgeSty.Render("[" + strings.ToUpper(item.driver) + "]")
-	if item.recent && !item.demo {
-		markerStr += " " + mutedStyle.Render("recent")
-	}
-	if item.demo {
-		markerStr = badgeSty.Render("[DEMO]")
+	line := nameStr
+	if detailDisp != "" {
+		pad := rowW - lipgloss.Width(nameStr) - runeLen(detailDisp)
+		if pad < minGap {
+			pad = minGap
+		}
+		detailStr := mutedStyle.Render(detailDisp)
+		line = nameStr + strings.Repeat(" ", pad) + detailStr
+		// If ANSI width pushed us over, fall back to a simple left+gap+right trim.
+		if lipgloss.Width(line) > rowW {
+			pad = minGap
+			line = nameStr + strings.Repeat(" ", pad) + detailStr
+		}
 	}
 
-	// Value: host/db detail, brightened for the cursor entry.
-	dSty := detailSty
-	if isCursor {
-		dSty = detailCurSty
+	if indent > 0 {
+		return strings.Repeat(" ", indent) + line
 	}
-	valueContent := dSty.Render(truncateCell(item.detail, valueWidth))
-
-	box := renderFieldBox(labelStr, markerStr, valueContent, boxW, fieldBoxBorder(isCursor))
-	return indentBlock(box, indent)
+	return line
 }
 
-// renderGroupHeader renders a foldable section header: a triangle marker, the
-// group name (or "Ungrouped"), and the connection count right-aligned. The
-// cursor header is rendered in the primary colour.
-func renderGroupHeader(group string, collapsed, isCursor bool, contentW, count int) string {
+// clampMatchIdx drops fuzzy highlight indices past the displayed (possibly
+// truncated) name so highlightMatches does not panic or style garbage.
+func clampMatchIdx(idx []int, displayed string) []int {
+	if len(idx) == 0 {
+		return idx
+	}
+	n := runeLen(displayed)
+	out := make([]int, 0, len(idx))
+	for _, i := range idx {
+		if i >= 0 && i < n {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// renderGroupHeader renders a foldable section header: a triangle marker and
+// the group name (or "Ungrouped"). The cursor header uses the primary colour.
+func renderGroupHeader(group string, collapsed, isCursor bool, contentW int) string {
 	label := group
 	if label == "" {
 		label = "Ungrouped"
@@ -744,12 +754,11 @@ func renderGroupHeader(group string, collapsed, isCursor bool, contentW, count i
 		nameSty = lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
 	}
 	head := nameSty.Render(marker + " " + label)
-	cnt := lipgloss.NewStyle().Foreground(colorMuted).Render(fmt.Sprintf("%d", count))
-	pad := contentW - lipgloss.Width(head) - lipgloss.Width(cnt)
-	if pad < 1 {
-		pad = 1
+	pad := contentW - lipgloss.Width(head)
+	if pad < 0 {
+		pad = 0
 	}
-	return head + strings.Repeat(" ", pad) + cnt
+	return head + strings.Repeat(" ", pad)
 }
 
 // YToRow maps a y-offset within the list content area to a row index,
