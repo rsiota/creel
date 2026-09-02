@@ -99,21 +99,25 @@ func TestGroupsTabBarAbovePrompt(t *testing.T) {
 	}
 }
 
-// Filtering flattens across groups and hides the tab strip.
-func TestGroupsFilterFlattensLayout(t *testing.T) {
+// Filtering flattens across groups; the tab strip stays visible and follows
+// the match under the cursor.
+func TestGroupsFilterKeepsTabsVisible(t *testing.T) {
 	m := newConnListModel(t, groupedConns(), 40)
 	m.connList.StartFilter()
 	m.connList.FilterAddChar("wk") // matches wk-a, wk-b
-	if m.connList.showGroupTabs() {
-		t.Error("filter should hide group tabs")
+	if !m.connList.showGroupTabs() {
+		t.Error("filter should keep group tabs visible")
+	}
+	if bar := m.connList.GroupTabBar(); bar == "" {
+		t.Error("GroupTabBar empty during filter")
 	}
 	rows := m.connList.rows()
 	if len(rows) != 2 {
 		t.Errorf("filter matches = %d rows, want 2", len(rows))
 	}
-	view := stripAnsi(m.connList.View())
-	if strings.Contains(view, "Personal") || strings.Contains(view, "Ungrouped") {
-		t.Errorf("filter view should not show tab labels:\n%s", view)
+	m.connList.SetCursor(0)
+	if got := m.connList.ActiveGroupTab(); got != "Work" {
+		t.Errorf("tab highlight after SetCursor=%q, want Work", got)
 	}
 }
 

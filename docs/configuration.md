@@ -124,9 +124,9 @@ connections:
 When any connection has a `group`, the picker shows a right-aligned tab strip
 above the filter line (named groups A–Z, then **Ungrouped**). Press `[` / `]`
 (or click a tab) to switch groups; only that group's connections are listed.
-Filtering (`/`) flattens matches across every group and hides the tabs until
-you commit or cancel. Connections with no `group` render as a flat list when
-none of your connections use groups.
+Filtering (`/`) flattens matches across every group; the tab strip stays
+visible and highlights the group of the match under the cursor. Connections
+with no `group` render as a flat list when none of your connections use groups.
 
 ## AI assistant
 

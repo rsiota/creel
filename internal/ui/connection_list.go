@@ -134,9 +134,10 @@ func (c ConnectionList) hasGroups() bool {
 	return false
 }
 
-// showGroupTabs reports whether the group tab strip should render.
+// showGroupTabs reports whether the group tab strip should render. Tabs stay
+// visible while filtering so the popup layout does not jump as matches narrow.
 func (c ConnectionList) showGroupTabs() bool {
-	return c.hasGroups() && !(c.filtering && c.filter != "")
+	return c.hasGroups()
 }
 
 // availableGroupTabs returns group keys for the tab strip: named groups in
@@ -416,7 +417,9 @@ func (c ConnectionList) Cursor() int {
 	return c.cursor
 }
 
-// SetCursor sets the cursor position, clamped to the row sequence.
+// SetCursor sets the cursor position, clamped to the row sequence. While
+// filtering across groups, the active tab highlight follows the connection
+// under the cursor.
 func (c *ConnectionList) SetCursor(i int) {
 	rows := c.rows()
 	if len(rows) == 0 {
@@ -430,7 +433,20 @@ func (c *ConnectionList) SetCursor(i int) {
 		i = len(rows) - 1
 	}
 	c.cursor = i
+	c.syncGroupTabFromRow(rows[c.cursor])
 	c.ensureVisible(rows)
+}
+
+// syncGroupTabFromRow updates the tab highlight to match a connection's group
+// without resetting the cursor (used while filtering).
+func (c *ConnectionList) syncGroupTabFromRow(r connRow) {
+	if !c.hasGroups() || r.kind != rowConn || r.conn.demo {
+		return
+	}
+	if !c.groupTabAvailable(r.conn.group) {
+		return
+	}
+	c.groupTab = r.conn.group
 }
 
 // MoveCursor moves the cursor by delta rows.
@@ -615,9 +631,9 @@ func (c ConnectionList) View() string {
 	return padViewHeight(strings.TrimRight(b.String(), "\n"), contentW, vh, c.padBg)
 }
 
-// GroupTabBar returns the right-aligned group tab strip, or "" when tabs are
-// hidden (no groups, or an active filter query). Rendered above the filter
-// prompt in the connection popup.
+// GroupTabBar returns the right-aligned group tab strip, or "" when no groups
+// are in use. Rendered above the filter prompt in the connection popup; stays
+// visible while filtering.
 func (c ConnectionList) GroupTabBar() string {
 	if !c.showGroupTabs() {
 		return ""
@@ -668,7 +684,9 @@ func (c ConnectionList) groupTabWidth() int {
 }
 
 // ClickGroupTab switches to the group tab under content-relative coordinates
-// within the list body (y=0 is the tab row). Returns true when a tab was hit.
+// within the panel body (y=0 is the tab row). Returns true when a tab was hit.
+// While filtering, jumps the cursor to the first match in that group (filter
+// stays cross-group); otherwise shows only that group's connections.
 func (c *ConnectionList) ClickGroupTab(contentX, contentY int) bool {
 	if !c.showGroupTabs() || contentY < 0 || contentY >= formTabBarLines {
 		return false
@@ -682,6 +700,17 @@ func (c *ConnectionList) ClickGroupTab(contentX, contentY int) bool {
 	for _, g := range c.availableGroupTabs() {
 		w := 1 + len(groupTabLabel(g)) + 1
 		if contentX >= cur && contentX < cur+w {
+			if c.filtering && c.filter != "" {
+				c.groupTab = g
+				rows := c.rows()
+				for i, r := range rows {
+					if r.kind == rowConn && r.conn.group == g {
+						c.SetCursor(i)
+						return true
+					}
+				}
+				return true
+			}
 			c.setGroupTab(g)
 			return true
 		}
