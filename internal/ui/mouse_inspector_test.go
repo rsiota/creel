@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/rsiota/creel/internal/config"
@@ -115,5 +116,77 @@ func TestInspectorDoubleClickPKFieldDoesNotEdit(t *testing.T) {
 	m = out.(Model)
 	if m.inspector.IsEditing() {
 		t.Errorf("double click on PK field should not enter edit mode")
+	}
+}
+
+func TestInspectorWheelMovesFieldCursor(t *testing.T) {
+	m := newInspectorMouseModel(t)
+	x := m.width - 10
+	y := inspectorFieldScreenY(t, m, "id")
+
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseWheelDown, X: x, Y: y})
+	m = out.(Model)
+	if m.focus != FocusInspector {
+		t.Fatalf("focus=%v, want FocusInspector", m.focus)
+	}
+	if m.inspector.cursorField != 1 {
+		t.Fatalf("cursorField=%d, want 1 after wheel down", m.inspector.cursorField)
+	}
+	if m.results.CursorCol() != 1 {
+		t.Fatalf("results col=%d, want 1 (column sync)", m.results.CursorCol())
+	}
+	if m.inspector.IsEditing() {
+		t.Error("wheel should not enter edit mode")
+	}
+
+	m.lastInspectorWheelTime = time.Time{}
+	out, _ = m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseWheelUp, X: x, Y: y})
+	m = out.(Model)
+	if m.inspector.cursorField != 0 {
+		t.Fatalf("cursorField=%d, want 0 after wheel up", m.inspector.cursorField)
+	}
+}
+
+func TestInspectorWheelDebouncesNotch(t *testing.T) {
+	m := newInspectorMouseModel(t)
+	x := m.width - 10
+	y := inspectorFieldScreenY(t, m, "id")
+
+	for i := 0; i < 3; i++ {
+		out, _ := m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseWheelDown, X: x, Y: y})
+		m = out.(Model)
+	}
+	if m.inspector.cursorField != 1 {
+		t.Errorf("after 3-event notch: cursorField=%d, want 1", m.inspector.cursorField)
+	}
+
+	m.lastInspectorWheelTime = time.Now().Add(-connFormWheelInterval - time.Millisecond)
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseWheelDown, X: x, Y: y})
+	m = out.(Model)
+	if m.inspector.cursorField != 2 {
+		t.Errorf("after debounce window: cursorField=%d, want 2", m.inspector.cursorField)
+	}
+}
+
+func TestInspectorWheelWhileEditingCommits(t *testing.T) {
+	m := newInspectorMouseModel(t)
+	m.focus = FocusInspector
+	m.inspector.cursorField = 1 // user_id
+	m.inspector.StartFieldEdit(m.results)
+	m.inspector.editInput.SetValue("99")
+
+	x := m.width - 10
+	y := inspectorFieldScreenY(t, m, "user_id")
+	out, _ := m.handleWorkspaceMouse(tea.MouseMsg{Type: tea.MouseWheelDown, X: x, Y: y})
+	m = out.(Model)
+
+	if m.inspector.IsEditing() {
+		t.Fatal("wheel should end edit mode")
+	}
+	if m.inspector.cursorField != 2 {
+		t.Fatalf("cursorField=%d, want 2 (email)", m.inspector.cursorField)
+	}
+	if m.results.RowValue(0, 1) != "99" {
+		t.Fatalf("staged user_id = %q, want 99", m.results.RowValue(0, 1))
 	}
 }

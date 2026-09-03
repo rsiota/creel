@@ -419,6 +419,7 @@ type Model struct {
 	lastResultsClickCell   cellRef
 	lastInspectorClickTime time.Time
 	lastInspectorClickCol  int // result column index of last inspector click (-1 = none)
+	lastInspectorWheelTime time.Time // debounce wheel → one field step per notch
 	lastConnFormClickTime  time.Time
 	lastConnFormClickField int // field index of last connection-form click (-1 = none)
 	lastConnFormWheelTime  time.Time // debounce wheel → one field step per notch

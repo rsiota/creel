@@ -146,6 +146,34 @@ func (m Model) handleDatabasePickerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 	return m, m.selectDatabase(name)
 }
 
+// handleInspectorWheel moves the inspector field cursor one step per wheel
+// notch. Reuses connFormWheelInterval so a macOS/trackpad burst (often 3
+// events) does not jump three fields. Does not call applyFocus: that would
+// snap the field cursor back to the grid column and undo the wheel.
+func (m Model) handleInspectorWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if !m.lastInspectorWheelTime.IsZero() &&
+		time.Since(m.lastInspectorWheelTime) < connFormWheelInterval {
+		return m, nil
+	}
+	m.lastInspectorWheelTime = time.Now()
+
+	m.focus = FocusInspector
+	m.editor.Blur()
+	m.tabBar.Blur()
+
+	if m.inspector.IsEditing() {
+		m.commitInspectorFieldEdit()
+	}
+	src := m.inspectorResults()
+	if msg.Type == tea.MouseWheelUp {
+		m.inspector.CursorUp()
+	} else {
+		m.inspector.CursorDown(src)
+	}
+	m.syncGridColFromInspector()
+	return m, nil
+}
+
 // handleWorkspaceMouse routes mouse events to the appropriate panel.
 func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// Click-outside-to-dismiss for overlay panels (left-click only).
@@ -227,7 +255,11 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	// ── Inspector (right column) ──────────────────────────────
 	if m.inspector.IsVisible() && msg.X >= editorRight && msg.Y < resultsBottom {
-		if msg.Type != tea.MouseLeft {
+		switch msg.Type {
+		case tea.MouseWheelUp, tea.MouseWheelDown:
+			return m.handleInspectorWheel(msg)
+		case tea.MouseLeft:
+		default:
 			return m, nil
 		}
 		m.focus = FocusInspector
