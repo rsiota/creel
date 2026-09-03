@@ -240,6 +240,19 @@ func (m *Model) goBackQuery() tea.Cmd {
 	return m.runPageQuery()
 }
 
+// inspectorGoBack pops the query stack from the inspector (u / g b). Refused
+// while inserting a new row so Esc remains the way out of that mode.
+func (m *Model) inspectorGoBack() tea.Cmd {
+	if m.inspector.IsInserting() {
+		return nil
+	}
+	if len(m.queryStack) == 0 {
+		m.schemaMsg = "nothing to go back to"
+		return nil
+	}
+	return m.goBackQuery()
+}
+
 // detectEditability checks if the query is a simple "SELECT * FROM <table>"
 // and, if so, sets up the results table for inline editing by fetching the
 // primary keys. Non-pointer because it only touches Model fields directly.

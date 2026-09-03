@@ -4365,6 +4365,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, m.followForeignKey()
 			}
 			return m, nil
+		case "b":
+			// g b — pop the FK / drill navigation stack (pairs with g d).
+			if m.inspector.pendingG {
+				m.inspector.pendingG = false
+				return m, m.inspectorGoBack()
+			}
+			return m, nil
+		case "u":
+			// Same stack-back as the explorer; g b remains the results-paired chord.
+			m.inspector.pendingG = false
+			return m, m.inspectorGoBack()
 		case "/":
 			m.inspector.StartFilter()
 			return m, nil

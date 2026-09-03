@@ -55,7 +55,7 @@ func TestNewHintSections(t *testing.T) {
 	m.inspector.visible = true
 	check("Inspector", map[string]string{
 		"j": "move field", "/": "filter fields", "e": "edit field",
-		"d": "follow foreign key", "A": "insert row",
+		"d": "follow foreign key", "u": "go back", "A": "insert row",
 	})
 	m.inspector.visible = false
 	m.focus = FocusResults

@@ -328,6 +328,7 @@ func registry() []Section {
 				{"e / i", []string{"e", "i"}, "edit field", "e"},
 				{"E", []string{"E"}, "expand/view field (multi-line)", "E"},
 				{"g d", []string{"g", "d"}, "follow foreign key", ""},
+				{"u / g b", []string{"u", "g", "b"}, "go back", "u"},
 				{"A", []string{"A"}, "insert row", "A"},
 				{"D", []string{"D"}, "discard edits", "D"},
 				{"ctrl+s", []string{"ctrl+s"}, "save", "ctrl+s"},

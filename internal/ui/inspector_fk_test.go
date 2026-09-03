@@ -112,3 +112,55 @@ func TestExFollowUsesInspectorField(t *testing.T) {
 		t.Fatalf("editor = %q, want departments query", m.editor.Value())
 	}
 }
+
+func TestInspectorUAndGBGoBack(t *testing.T) {
+	m := setupInspectorFKModel(t)
+	m.editor.SetValue("SELECT * FROM departments WHERE id = '10';")
+	m.lastQuery = "SELECT * FROM departments WHERE id = '10';"
+	m.queryStack = []queryStackEntry{{
+		query: "SELECT * FROM employees;",
+		page:  0,
+	}}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("u should go back")
+	}
+	if len(m.queryStack) != 0 {
+		t.Fatalf("stack len = %d, want 0 after u", len(m.queryStack))
+	}
+	if !strings.Contains(m.editor.Value(), "employees") {
+		t.Fatalf("editor = %q, want restored employees query", m.editor.Value())
+	}
+	// goBackQuery arms queryRunning when building its cmd; clear it so the
+	// next keystrokes aren't swallowed the way an in-flight query would.
+	m.queryRunning = false
+	m.queryCancel = nil
+
+	// Push again, then g b.
+	m.queryStack = []queryStackEntry{{query: "SELECT * FROM employees;", page: 0}}
+	m.editor.SetValue("SELECT * FROM departments WHERE id = '10';")
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	m = updated.(Model)
+	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("g b should go back")
+	}
+	if len(m.queryStack) != 0 {
+		t.Fatalf("stack len = %d after g b, want 0", len(m.queryStack))
+	}
+}
+
+func TestInspectorGoBackEmptyStack(t *testing.T) {
+	m := setupInspectorFKModel(t)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
+	m = updated.(Model)
+	if m.schemaMsg != "nothing to go back to" {
+		t.Fatalf("schemaMsg = %q", m.schemaMsg)
+	}
+	if len(m.queryStack) != 0 {
+		t.Fatalf("stack should stay empty, len=%d", len(m.queryStack))
+	}
+}
