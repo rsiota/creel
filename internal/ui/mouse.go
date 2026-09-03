@@ -248,6 +248,9 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if editCol >= 0 && col >= 0 && col != editCol {
 			m.commitInspectorFieldEdit()
 		}
+		if col >= 0 {
+			m.syncGridColFromInspector()
+		}
 
 		// Double-click on the same field within doubleClickInterval →
 		// enter field edit mode (mirrors the "e"/"i" key binding).
@@ -427,6 +430,7 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				m.results.CommitEdit()
 			}
 			m.results.SetCursor(rowIdx, colIdx)
+			m.syncInspectorFieldFromGrid()
 
 			// Double-click on the same cell within doubleClickInterval →
 			// enter inline edit mode (mirrors the "e"/"i" key binding).

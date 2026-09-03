@@ -819,6 +819,7 @@ func (m *Model) setActiveTab(id int) {
 			m.inspector.Reset()
 			m.insertTarget = nil
 			m.layoutWorkspace()
+			m.syncInspectorFieldFromGrid()
 			return
 		}
 	}
@@ -1328,6 +1329,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.results.SetCursor(m.restoreCursorRow, m.restoreCursorCol)
 				m.restoreCursor = false
 			}
+			m.syncInspectorFieldFromGrid()
 			// If the relationship explorer is open, refresh it for the new
 			// focused row. This covers drill-in (Enter), back, and any
 			// manual query — the panel always reflects the current location.
@@ -3809,16 +3811,19 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				m.results.CursorLeft()
+				m.syncInspectorFieldFromGrid()
 				return m, nil
 			case "0":
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				m.results.CursorFirstCol()
+				m.syncInspectorFieldFromGrid()
 				return m, nil
 			case "$":
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				m.results.CursorLastCol()
+				m.syncInspectorFieldFromGrid()
 				return m, nil
 			case "b":
 				if m.resultsPendingG {
@@ -3829,6 +3834,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				m.results.CursorLeft()
+				m.syncInspectorFieldFromGrid()
 				return m, nil
 			case "d":
 				if m.resultsPendingG {
@@ -3851,6 +3857,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingG = false
 				m.resultsPendingY = false
 				m.results.CursorRight()
+				m.syncInspectorFieldFromGrid()
 				return m, nil
 			case "G":
 				m.resultsPendingG = false
@@ -4082,6 +4089,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.resultsPendingY = false
 				if m.results.NumCols() > 0 {
 					m.results.HideColumn(m.results.CursorCol())
+					m.syncInspectorFieldFromGrid()
 				}
 				return m, nil
 			case ">":
@@ -4303,10 +4311,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				// focused field (same failure mode as results-grid click-away).
 				m.commitInspectorFieldEdit()
 				m.inspector.CursorUp()
+				m.syncGridColFromInspector()
 				return m, nil
 			case "down", "j":
 				m.commitInspectorFieldEdit()
 				m.inspector.CursorDown(m.inspectorResults())
+				m.syncGridColFromInspector()
 				return m, nil
 			}
 			m.inspector, cmd = m.inspector.Update(msg)
@@ -4320,15 +4330,18 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "enter":
 				m.inspector.CommitFilter(m.inspectorResults())
+				m.syncGridColFromInspector()
 				return m, nil
 			case "backspace":
 				m.inspector.FilterBackspace()
 				return m, nil
 			case "up", "k":
 				m.inspector.CursorUp()
+				m.syncGridColFromInspector()
 				return m, nil
 			case "down", "j":
 				m.inspector.CursorDown(m.inspectorResults())
+				m.syncGridColFromInspector()
 				return m, nil
 			}
 			if ch, ok := keyFilterChar(msg); ok {
@@ -4341,19 +4354,23 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			m.inspector.pendingG = false
 			m.inspector.CursorUp()
+			m.syncGridColFromInspector()
 			return m, nil
 		case "down", "j":
 			m.inspector.pendingG = false
 			m.inspector.CursorDown(m.inspectorResults())
+			m.syncGridColFromInspector()
 			return m, nil
 		case "G":
 			m.inspector.pendingG = false
 			m.inspector.CursorBottom(m.inspectorResults())
+			m.syncGridColFromInspector()
 			return m, nil
 		case "g":
 			if m.inspector.pendingG {
 				m.inspector.pendingG = false
 				m.inspector.CursorTop()
+				m.syncGridColFromInspector()
 				return m, nil
 			}
 			m.inspector.pendingG = true

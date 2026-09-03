@@ -343,6 +343,40 @@ func (m *Model) inspectorResults() ResultsTable {
 	return m.results
 }
 
+// inspectorColumnSyncActive reports whether the inspector and results grid
+// should share a column cursor. Insert (including insert-related) pauses
+// sync: there is no grid row to highlight, and the overlay table may differ.
+func (m Model) inspectorColumnSyncActive() bool {
+	return m.inspector.IsVisible() && !m.inspector.IsInserting() && m.insertTarget == nil
+}
+
+// syncGridColFromInspector moves the results column cursor to the inspector
+// field without changing focus. Hidden grid columns are left alone so j/k
+// can still inspect a column that is not shown in the table.
+func (m *Model) syncGridColFromInspector() {
+	if !m.inspectorColumnSyncActive() {
+		return
+	}
+	col := m.inspector.selectedColumn(m.results)
+	if col < 0 || col >= m.results.NumCols() || m.results.IsColumnHidden(col) {
+		return
+	}
+	if m.results.CursorCol() == col {
+		return
+	}
+	m.results.SetCursor(m.results.CursorRow(), col)
+}
+
+// syncInspectorFieldFromGrid moves the inspector field cursor to the results
+// column without changing focus. If that column is hidden by inspector "/",
+// the field cursor is left where it is.
+func (m *Model) syncInspectorFieldFromGrid() {
+	if !m.inspectorColumnSyncActive() {
+		return
+	}
+	m.inspector.SyncToColumn(m.results.CursorCol(), m.results)
+}
+
 // newInsertTarget builds a shadow editable table from schema metadata so
 // insert can target a table that is not the current results grid.
 func (m *Model) newInsertTarget(table string) (*ResultsTable, error) {

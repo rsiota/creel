@@ -258,6 +258,8 @@ func (m *Model) applyFocus() {
 		m.editor.Focus()
 	case FocusTabBar:
 		m.tabBar.Focus()
+	case FocusInspector:
+		m.syncInspectorFieldFromGrid()
 	case FocusAssistant:
 		// Browse mode by default: `i`/`a` enters compose to type a question,
 		// `M` opens the model picker, `j`/`k` scrolls. Compose is a transient

@@ -256,6 +256,20 @@ func (i Inspector) selectedColumn(results ResultsTable) int {
 	return fields[cf]
 }
 
+// SyncToColumn moves the field cursor to the given result column index, if
+// that column is in the current field list (respects inspector "/"). No-op
+// when the column is filtered out.
+func (i *Inspector) SyncToColumn(col int, results ResultsTable) {
+	fields := i.fieldList(results)
+	for fi, c := range fields {
+		if c == col {
+			i.cursorField = fi
+			i.ensureFieldVisible(results)
+			return
+		}
+	}
+}
+
 // IsFieldTruncated reports whether the value of the currently selected field
 // is wider than the inspector's value box (shown with an ellipsis). This is
 // the condition under which the expanded cell popup replaces the inline editor.
