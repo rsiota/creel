@@ -110,6 +110,14 @@ func TestLookupPanelEnterOpensTable(t *testing.T) {
 	if !strings.Contains(strings.ToLower(q), strings.ToLower(jump)) {
 		t.Fatalf("editor query = %q, want SELECT involving %s", q, jump)
 	}
+	item := m.currentSidebarItem()
+	if item == nil || item.isColumn || !strings.EqualFold(item.text, jump) {
+		got := ""
+		if item != nil {
+			got = item.text
+		}
+		t.Fatalf("sidebar selection = %q, want %s", got, jump)
+	}
 }
 
 func TestLookupPanelEnterNoJumpIsNoop(t *testing.T) {

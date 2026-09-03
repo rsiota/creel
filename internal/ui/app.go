@@ -3038,6 +3038,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if jump := m.lookupPanel.SelectedJump(); jump != "" {
 				m.lookupPanel.Hide()
+				m.syncSidebarCursorToTable(jump)
 				return m, m.openTable(jump)
 			}
 			return m, nil
