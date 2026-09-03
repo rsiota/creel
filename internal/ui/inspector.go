@@ -32,6 +32,7 @@ type Inspector struct {
 	inserting    bool
 	insertValues map[int]string
 	editingCol   int
+	editOriginal string // value loaded into editInput; used to skip no-op commits
 }
 
 // NewInspector creates a new inspector component.
@@ -432,6 +433,7 @@ func (i *Inspector) beginFieldEdit(val string) {
 
 	ti.Focus()
 	i.editInput = ti
+	i.editOriginal = val
 	i.editing = true
 }
 
@@ -447,6 +449,15 @@ func (i *Inspector) CommitFieldEdit() (col int, val string, ok bool) {
 		i.insertValues[col] = val
 	}
 	return col, val, true
+}
+
+// FieldEditChanged reports whether the in-flight edit buffer differs from the
+// value that StartFieldEdit loaded (so no-op Enter / click-away can skip dirty).
+func (i Inspector) FieldEditChanged() bool {
+	if !i.editing {
+		return false
+	}
+	return i.editInput.Value() != i.editOriginal
 }
 
 // CancelEdit discards the current field edit.

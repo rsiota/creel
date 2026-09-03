@@ -4292,13 +4292,21 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.inspector.IsEditing() {
 			switch msg.String() {
 			case "enter":
-				col, val, ok := m.inspector.CommitFieldEdit()
-				if ok && !m.inspector.IsInserting() {
-					m.results.SetDirtyCell(m.results.CursorRow(), col, val)
-				}
+				m.commitInspectorFieldEdit()
 				return m, nil
 			case "esc", "ctrl+c":
 				m.inspector.CancelEdit()
+				return m, nil
+			case "up", "k":
+				// Moving the field cursor must end the in-flight edit first;
+				// otherwise the shared textinput keeps rendering on the newly
+				// focused field (same failure mode as results-grid click-away).
+				m.commitInspectorFieldEdit()
+				m.inspector.CursorUp()
+				return m, nil
+			case "down", "j":
+				m.commitInspectorFieldEdit()
+				m.inspector.CursorDown(m.inspectorResults())
 				return m, nil
 			}
 			m.inspector, cmd = m.inspector.Update(msg)

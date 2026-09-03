@@ -233,9 +233,21 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.focus = FocusInspector
 		m.applyFocus()
 
-		// Map the click to a field. The inspector's top border is at Y=0,
-		// so content starts at Y=1.
-		col := m.inspector.ClickField(msg.Y-1, m.inspectorResults())
+		// Resolve an in-flight field edit before moving the cursor. Without
+		// this, clicking another field while editing left edit mode active
+		// with the original field's text buffer, which then rendered on the
+		// newly focused field. Commit — mirroring Enter / j/k — so the value
+		// is staged on its own column, then move. Clicking the field already
+		// being edited is left alone.
+		src := m.inspectorResults()
+		editCol := -1
+		if m.inspector.IsEditing() {
+			editCol = m.inspector.selectedColumn(src)
+		}
+		col := m.inspector.ClickField(msg.Y-1, src)
+		if editCol >= 0 && col >= 0 && col != editCol {
+			m.commitInspectorFieldEdit()
+		}
 
 		// Double-click on the same field within doubleClickInterval →
 		// enter field edit mode (mirrors the "e"/"i" key binding).

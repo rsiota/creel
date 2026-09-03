@@ -437,6 +437,22 @@ func (m *Model) startInspectorFieldEdit() tea.Cmd {
 	return nil
 }
 
+// commitInspectorFieldEdit stages an in-flight inspector field edit onto the
+// results row (or insert values) and leaves edit mode. No-op when not editing.
+// Unchanged buffers are not marked dirty — matching the expanded cell editor.
+func (m *Model) commitInspectorFieldEdit() {
+	if !m.inspector.IsEditing() {
+		return
+	}
+	inserting := m.inspector.IsInserting()
+	changed := m.inspector.FieldEditChanged()
+	col, val, ok := m.inspector.CommitFieldEdit()
+	if !ok || inserting || !changed {
+		return
+	}
+	m.results.SetDirtyCell(m.results.CursorRow(), col, val)
+}
+
 // editValueSQLArg maps a staged cell value to the driver argument for UPDATE.
 // The "NULL" sentinel and empty strings on datetime columns become SQL NULL;
 // other empty strings remain empty strings.
@@ -619,12 +635,7 @@ func (m *Model) saveEdits() tea.Cmd {
 
 // saveChanges saves pending inserts or cell edits.
 func (m *Model) saveChanges() tea.Cmd {
-	if m.inspector.IsEditing() {
-		col, val, ok := m.inspector.CommitFieldEdit()
-		if ok && !m.inspector.IsInserting() {
-			m.results.SetDirtyCell(m.results.CursorRow(), col, val)
-		}
-	}
+	m.commitInspectorFieldEdit()
 	if m.inspector.IsInserting() {
 		return m.saveInsert()
 	}
