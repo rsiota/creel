@@ -71,6 +71,9 @@ commits, so it can come up empty).
   fields stay neutral so light themes stay readable.
 
 ### Fixed
+- Import prompt (`I`): Enter submits when the selected dump path is already
+  complete. Accepting a file from the path dropdown used to leave that file as
+  a completion match, so Enter re-accepted forever and never started the import.
 - Results sort (`o` / header click / `:sort`): pagination no longer wraps the
   query in a derived table when unnecessary, so `ORDER BY` is honored on
   MySQL/MariaDB (where an inner `ORDER BY` without its own `LIMIT` is often

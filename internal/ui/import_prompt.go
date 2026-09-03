@@ -30,10 +30,12 @@ func NewImportPrompt() ImportPrompt {
 }
 
 // Show opens the prompt, pre-filled with the given default directory.
+// Keep a trailing "/" when the caller supplies one so path completion lists
+// that directory's entries (filepath.Join would strip it).
 func (p *ImportPrompt) Show(defaultDir string) {
 	p.input.Reset()
 	if defaultDir != "" {
-		p.input.SetValue(filepath.Join(defaultDir, ""))
+		p.input.SetValue(defaultDir)
 	}
 	p.input.Focus()
 	p.visible = true
@@ -156,8 +158,15 @@ func completeFilePath(input string) []string {
 
 // AcceptPathCompletion applies the highlighted filesystem completion when the
 // dropdown is open. Returns true when Enter/Tab should not submit the prompt.
+// If the highlighted entry is already fully typed, returns false so Enter can
+// submit the import instead of looping on the same match.
 func (p *ImportPrompt) AcceptPathCompletion() bool {
 	if !p.pathComp.hasChoices() {
+		return false
+	}
+	entry := p.pathComp.completions[p.pathComp.compSelected]
+	dir, _ := splitPathVal(p.input.Value())
+	if dir+entry == p.input.Value() {
 		return false
 	}
 	p.pathComp.accept(&p.input)

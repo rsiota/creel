@@ -43,7 +43,14 @@ func (pc *pathCompletion) accept(input *textinput.Model) {
 	dir, _ := splitPathVal(val)
 	input.SetValue(dir + entry)
 	input.CursorEnd()
-	pc.refresh(input.Value())
+	// Directories keep completing into their children; files are done — clear
+	// so a following Enter can submit (import) instead of re-accepting the
+	// same basename forever.
+	if strings.HasSuffix(entry, "/") {
+		pc.refresh(input.Value())
+	} else {
+		pc.clear()
+	}
 }
 
 func (pc *pathCompletion) move(delta int) {
