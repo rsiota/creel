@@ -44,6 +44,8 @@ implement the interface in a new file.
 - `statements.go` — top-level statement splitter (powers "run statement under cursor")
 - `dump.go` / `import.go` — pure-Go export and streaming SQL import (MySQL dumps
   use backslash string escapes, backticks, and `#` comments)
+- `mysqldump.go` — optional `:backup` wrapper around the `mysqldump` CLI
+  (defaults-extra-file for the password; no SSH-tunnel support)
 - `ssh_tunnel.go` — SSH tunnel for remote MySQL and PostgreSQL
 
 The interface also exposes catalog metadata used by the structure panel:

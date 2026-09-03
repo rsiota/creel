@@ -32,7 +32,7 @@ func (m *Model) exportToCSV() tea.Cmd {
 //
 //   - scopePage:   the rows currently in memory (the visible page).
 //   - scopeAll:    re-query the source table with no LIMIT (whole table), or
-//                  re-run the user's query for custom (non-table) result sets.
+//     re-run the user's query for custom (non-table) result sets.
 //   - scopeMarked: re-query the marked rows by primary key (may span pages).
 //
 // The re-query paths run asynchronously and deliver exportDoneMsg; the
@@ -518,6 +518,43 @@ func (m *Model) execExportDump(tables []string) tea.Cmd {
 			tables: tables,
 			name:   tables[0],
 		}
+	}
+}
+
+// exBackup shells out to mysqldump for the current MySQL database, writing
+// ~/Downloads/<db>_YYYY-MM-DD.sql. Password goes in a 0600 defaults file, never
+// argv. SSH-tunneled connections are refused (Creel's tunnel has no local port).
+func (m *Model) exBackup() tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	cfg := m.connection.Config()
+	if err := db.MysqlDumpGuard(cfg); err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	bin, err := db.FindMysqlDump()
+	if err != nil {
+		m.schemaMsg = "mysqldump is not on PATH"
+		return nil
+	}
+	fileLabel := filepath.Base(cfg.Database)
+	if fileLabel == "" {
+		fileLabel = "database"
+	}
+	filename := fmt.Sprintf("%s_%s.sql", fileLabel, time.Now().Format("2006-01-02"))
+	m.exportMsg = "Backing up…"
+	return func() tea.Msg {
+		dir, err := os.UserHomeDir()
+		if err != nil {
+			return backupDoneMsg{err: err}
+		}
+		path := filepath.Join(dir, "Downloads", filename)
+		if err := db.RunMysqlDump(bin, cfg, path); err != nil {
+			return backupDoneMsg{path: path, err: err}
+		}
+		return backupDoneMsg{path: path}
 	}
 }
 

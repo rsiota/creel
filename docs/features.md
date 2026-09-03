@@ -261,7 +261,9 @@ erDiagram
   pure-Go `mysqldump`-compatible exporter (`X`) that uses native CREATE TABLE
   DDL (MySQL `SHOW CREATE TABLE`, SQLite `sqlite_master`); result-set export
   via the `g X` dialog (format, columns, and whole-table/marked/page scope)
-  or instant CSV (`x`).
+  or instant CSV (`x`). `:backup` / `:mysqldump` runs the `mysqldump` binary
+  from PATH into `~/Downloads` (MySQL/MariaDB only; SSH tunnels are not
+  supported — use `X`).
 
 ## Workflow
 

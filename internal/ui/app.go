@@ -249,6 +249,12 @@ type exportDumpMsg struct {
 	err    error
 }
 
+// backupDoneMsg carries the result of an async :backup (mysqldump) run.
+type backupDoneMsg struct {
+	path string
+	err  error
+}
+
 // exportProgressMsg carries incremental progress during a table-by-table dump.
 // The open file handle flows through the message stream so the model stays free
 // of file-state. Each message represents one table written; the Update handler
@@ -418,10 +424,10 @@ type Model struct {
 	lastResultsClickTime   time.Time
 	lastResultsClickCell   cellRef
 	lastInspectorClickTime time.Time
-	lastInspectorClickCol  int // result column index of last inspector click (-1 = none)
+	lastInspectorClickCol  int       // result column index of last inspector click (-1 = none)
 	lastInspectorWheelTime time.Time // debounce wheel → one field step per notch
 	lastConnFormClickTime  time.Time
-	lastConnFormClickField int // field index of last connection-form click (-1 = none)
+	lastConnFormClickField int       // field index of last connection-form click (-1 = none)
 	lastConnFormWheelTime  time.Time // debounce wheel → one field step per notch
 	lastERDClickTime       time.Time
 	lastERDClickCard       string // table name of last ERD card click ("" = none)
@@ -1635,6 +1641,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.exportMsg = fmt.Sprintf("export failed: %v", msg.err)
 		} else {
 			m.exportMsg = fmt.Sprintf("dumped %d table%s → %s", msg.tables, pluralIf(msg.tables != 1, "s"), msg.path)
+		}
+		return m, nil
+	case backupDoneMsg:
+		if msg.err != nil {
+			m.exportMsg = fmt.Sprintf("backup failed: %v", msg.err)
+		} else {
+			m.exportMsg = fmt.Sprintf("backed up → %s", msg.path)
 		}
 		return m, nil
 

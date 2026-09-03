@@ -12,6 +12,10 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- `:backup` / `:mysqldump` — shell out to `mysqldump` (must be on PATH) for the
+  current MySQL/MariaDB database, writing `~/Downloads/<db>_YYYY-MM-DD.sql`.
+  Password is passed via a 0600 defaults file, never argv. SSH-tunneled
+  connections are refused (use `X` instead). SQLite and Postgres keep using `X`.
 - Connection picker group tabs: when any connection has a `group`, a
   right-aligned tab strip above the filter prompt (named groups A–Z, then
   Ungrouped) replaces foldable headers. `[` / `]` (or click) switches groups;

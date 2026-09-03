@@ -79,7 +79,8 @@ group). SQLite uses Connection + Options only.
 | `T`        | Truncate table            |
 | `D`        | Drop table                |
 | `N`        | New table (grid editor)   |
-| `X`        | Export database            |
+| `X`        | Export database (portable SQL dump) |
+| `:backup`  | `mysqldump` to `~/Downloads` (MySQL; no SSH tunnel) |
 | `I`        | Import SQL dump           |
 | `S`        | Cross-table search        |
 | `/`        | Filter tables             |

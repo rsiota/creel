@@ -341,6 +341,13 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exSchema(args) },
 		},
 		{
+			verbs:   []string{"backup", "mysqldump"},
+			desc:    "backup the current MySQL database with mysqldump to ~/Downloads",
+			usage:   ":backup",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exBackup() },
+		},
+		{
 			verbs:    []string{"import"},
 			desc:     "import a SQL dump file into the database",
 			usage:    ":import <file>",

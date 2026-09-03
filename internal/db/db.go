@@ -497,6 +497,12 @@ func (c *Connection) Config() ConnectionConfig {
 	return c.config
 }
 
+// ConnectionFromConfig reports cfg without opening a database. Used by
+// command guards and tests that need Config() without a live driver.
+func ConnectionFromConfig(cfg ConnectionConfig) *Connection {
+	return &Connection{config: cfg}
+}
+
 // UseDatabase switches the active database on the underlying driver and keeps
 // the wrapper's config in sync so that Config().Database always reflects the
 // active database.
