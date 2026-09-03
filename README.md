@@ -63,7 +63,7 @@ Linux, macOS, and Windows binaries are on the [latest release](https://github.co
 
 - Inline editing — edit cells, insert/clone rows, paste from clipboard.
 - Schema editing — add columns, rename/drop/truncate tables, table designer (`N`), structure view (`d`).
-- Import / export — streaming SQL dump importer (`I`), `mysqldump`-compatible exporter (`X`), `:backup` via the `mysqldump` CLI, CSV/result export.
+- Import / export — streaming SQL dump importer (`I`), `mysqldump`-compatible exporter (`X`), `:backup` via the `mysqldump` CLI (including over SSH), CSV/result export.
 
 **Workflow**
 

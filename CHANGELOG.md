@@ -15,7 +15,10 @@ commits, so it can come up empty).
 - `:backup` / `:mysqldump` — shell out to `mysqldump` (must be on PATH) for the
   current MySQL/MariaDB database, writing `~/Downloads/<db>_YYYY-MM-DD.sql`.
   Password is passed via a 0600 defaults file, never argv. SSH-tunneled
-  connections are refused (use `X` instead). SQLite and Postgres keep using `X`.
+  connections open a short-lived `127.0.0.1` forward through Creel's existing
+  tunnel so local `mysqldump` can reach the remote server. MySQL 8 clients get
+  `--column-statistics=0` so dumps against MariaDB / older MySQL don't fail on
+  `COLUMN_STATISTICS`. SQLite and Postgres keep using `X`.
 - Connection picker group tabs: when any connection has a `group`, a
   right-aligned tab strip above the filter prompt (named groups A–Z, then
   Ungrouped) replaces foldable headers. `[` / `]` (or click) switches groups;

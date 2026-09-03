@@ -45,7 +45,9 @@ implement the interface in a new file.
 - `dump.go` / `import.go` — pure-Go export and streaming SQL import (MySQL dumps
   use backslash string escapes, backticks, and `#` comments)
 - `mysqldump.go` — optional `:backup` wrapper around the `mysqldump` CLI
-  (defaults-extra-file for the password; no SSH-tunnel support)
+  (defaults-extra-file for the password; SSH uses a localhost TCP forward)
+- `local_forward.go` — short-lived `127.0.0.1` proxy for tools that cannot use
+  Creel's in-process SSH dialer
 - `ssh_tunnel.go` — SSH tunnel for remote MySQL and PostgreSQL
 
 The interface also exposes catalog metadata used by the structure panel:

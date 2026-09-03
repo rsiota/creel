@@ -503,6 +503,30 @@ func ConnectionFromConfig(cfg ConnectionConfig) *Connection {
 	return &Connection{config: cfg}
 }
 
+// startMysqlDumpForward opens a 127.0.0.1 proxy through the live MySQL SSH
+// tunnel so mysqldump can reach the remote server.
+func (c *Connection) startMysqlDumpForward() (*LocalForward, error) {
+	if c == nil || c.db == nil {
+		return nil, fmt.Errorf(":backup needs an active SSH connection")
+	}
+	m, ok := c.db.(*MySQL)
+	if !ok {
+		return nil, fmt.Errorf(":backup SSH forward requires MySQL")
+	}
+	if m.tunnel == nil {
+		return nil, fmt.Errorf("no active SSH tunnel")
+	}
+	host := c.config.Host
+	if host == "" {
+		host = "localhost"
+	}
+	port := c.config.Port
+	if port == 0 {
+		port = 3306
+	}
+	return m.tunnel.StartLocalForward(fmt.Sprintf("%s:%d", host, port))
+}
+
 // UseDatabase switches the active database on the underlying driver and keeps
 // the wrapper's config in sync so that Config().Database always reflects the
 // active database.

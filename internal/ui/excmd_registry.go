@@ -342,7 +342,7 @@ func exCommands() []exCmdSpec {
 		},
 		{
 			verbs:   []string{"backup", "mysqldump"},
-			desc:    "backup the current MySQL database with mysqldump to ~/Downloads",
+			desc:    "backup the current MySQL database with mysqldump to ~/Downloads (SSH OK)",
 			usage:   ":backup",
 			argKind: exArgNone,
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exBackup() },

@@ -80,7 +80,7 @@ group). SQLite uses Connection + Options only.
 | `D`        | Drop table                |
 | `N`        | New table (grid editor)   |
 | `X`        | Export database (portable SQL dump) |
-| `:backup`  | `mysqldump` to `~/Downloads` (MySQL; no SSH tunnel) |
+| `:backup`  | `mysqldump` to `~/Downloads` (MySQL; works over SSH) |
 | `I`        | Import SQL dump           |
 | `S`        | Cross-table search        |
 | `/`        | Filter tables             |

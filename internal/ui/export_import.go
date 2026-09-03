@@ -523,7 +523,8 @@ func (m *Model) execExportDump(tables []string) tea.Cmd {
 
 // exBackup shells out to mysqldump for the current MySQL database, writing
 // ~/Downloads/<db>_YYYY-MM-DD.sql. Password goes in a 0600 defaults file, never
-// argv. SSH-tunneled connections are refused (Creel's tunnel has no local port).
+// argv. SSH connections open a short-lived 127.0.0.1 forward through Creel's
+// existing tunnel so local mysqldump can reach the remote server.
 func (m *Model) exBackup() tea.Cmd {
 	if m.connection == nil {
 		m.schemaMsg = "not connected"
@@ -544,6 +545,7 @@ func (m *Model) exBackup() tea.Cmd {
 		fileLabel = "database"
 	}
 	filename := fmt.Sprintf("%s_%s.sql", fileLabel, time.Now().Format("2006-01-02"))
+	conn := m.connection
 	m.exportMsg = "Backing up…"
 	return func() tea.Msg {
 		dir, err := os.UserHomeDir()
@@ -551,7 +553,7 @@ func (m *Model) exBackup() tea.Cmd {
 			return backupDoneMsg{err: err}
 		}
 		path := filepath.Join(dir, "Downloads", filename)
-		if err := db.RunMysqlDump(bin, cfg, path); err != nil {
+		if err := db.RunMysqlDump(bin, cfg, path, conn); err != nil {
 			return backupDoneMsg{path: path, err: err}
 		}
 		return backupDoneMsg{path: path}

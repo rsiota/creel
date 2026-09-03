@@ -17,8 +17,8 @@ func TestMysqlDumpGuard(t *testing.T) {
 	}
 	if err := MysqlDumpGuard(ConnectionConfig{
 		Driver: DriverMySQL, Database: "app", SSHHost: "bastion",
-	}); err == nil || !strings.Contains(err.Error(), "SSH tunnel") {
-		t.Fatalf("ssh: %v", err)
+	}); err != nil {
+		t.Fatalf("SSH should be allowed (local forward): %v", err)
 	}
 	if err := MysqlDumpGuard(ConnectionConfig{Driver: DriverMySQL, Database: "app"}); err != nil {
 		t.Fatal(err)
@@ -112,6 +112,10 @@ func TestRunMysqlDumpUsesDefaultsFileNotPassword(t *testing.T) {
 		return "/usr/bin/mysqldump", nil
 	})
 	t.Cleanup(restorePath)
+	restoreHelp := SwapRunMysqlDumpHelp(func(string) ([]byte, error) {
+		return []byte("no column stats here"), nil
+	})
+	t.Cleanup(restoreHelp)
 
 	var gotArgs []string
 	restoreRun := SwapRunMysqlDumpCmd(func(cmd *exec.Cmd) error {
@@ -128,7 +132,7 @@ func TestRunMysqlDumpUsesDefaultsFileNotPassword(t *testing.T) {
 		Password: "s3cret",
 	}
 	out := filepath.Join(t.TempDir(), "shop.sql")
-	if err := RunMysqlDump("/usr/bin/mysqldump", cfg, out); err != nil {
+	if err := RunMysqlDump("/usr/bin/mysqldump", cfg, out, nil); err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(gotArgs, " ")
@@ -140,5 +144,78 @@ func TestRunMysqlDumpUsesDefaultsFileNotPassword(t *testing.T) {
 	}
 	if !strings.Contains(joined, "--result-file="+out) {
 		t.Fatalf("missing result file: %v", gotArgs)
+	}
+	if strings.Contains(joined, "column-statistics") {
+		t.Fatalf("MariaDB-style binary should not get column-statistics: %v", gotArgs)
+	}
+}
+
+func TestRunMysqlDumpDisablesColumnStatisticsForMySQL8(t *testing.T) {
+	restoreHelp := SwapRunMysqlDumpHelp(func(string) ([]byte, error) {
+		return []byte("  --column-statistics  Add ANALYZE TABLE...\ncolumn-statistics TRUE\n"), nil
+	})
+	t.Cleanup(restoreHelp)
+
+	var gotArgs []string
+	restoreRun := SwapRunMysqlDumpCmd(func(cmd *exec.Cmd) error {
+		gotArgs = cmd.Args[1:]
+		return nil
+	})
+	t.Cleanup(restoreRun)
+
+	cfg := ConnectionConfig{Driver: DriverMySQL, Database: "shop", Host: "db"}
+	out := filepath.Join(t.TempDir(), "shop.sql")
+	if err := RunMysqlDump("/usr/bin/mysqldump", cfg, out, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(gotArgs) < 2 || !strings.HasPrefix(gotArgs[0], "--defaults-extra-file=") {
+		t.Fatalf("defaults file must stay first: %v", gotArgs)
+	}
+	if gotArgs[1] != "--column-statistics=0" {
+		t.Fatalf("want column-statistics=0 second, got %v", gotArgs)
+	}
+}
+
+func TestMysqlDumpConfigViaForward(t *testing.T) {
+	fwd := &LocalForward{Host: "127.0.0.1", Port: 54321}
+	got := mysqlDumpConfigViaForward(ConnectionConfig{
+		Driver:   DriverMySQL,
+		Database: "app",
+		Host:     "db.internal",
+		Port:     3306,
+		SSHHost:  "bastion",
+		Socket:   "/ignored.sock",
+		SSLMode:  "verify-full",
+		Password: "x",
+	}, fwd)
+	if got.SSHHost != "" || got.Socket != "" {
+		t.Fatalf("SSH/socket should be cleared: %+v", got)
+	}
+	if got.Host != "127.0.0.1" || got.Port != 54321 {
+		t.Fatalf("local endpoint: %+v", got)
+	}
+	if got.SSLMode != "disable" {
+		t.Fatalf("ssl: %q", got.SSLMode)
+	}
+	args := BuildMysqlDumpArgs(got, "/tmp/c.cnf", "/tmp/out.sql")
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--host=127.0.0.1") || !strings.Contains(joined, "--port=54321") {
+		t.Fatalf("args: %v", args)
+	}
+	if !strings.Contains(joined, "--ssl-mode=DISABLED") {
+		t.Fatalf("expected DISABLED ssl over local forward: %v", args)
+	}
+	if strings.Contains(joined, "bastion") || strings.Contains(joined, "db.internal") {
+		t.Fatalf("remote hosts leaked onto argv: %v", args)
+	}
+}
+
+func TestRunMysqlDumpSSHRequiresLiveConnection(t *testing.T) {
+	cfg := ConnectionConfig{
+		Driver: DriverMySQL, Database: "app", Host: "db", SSHHost: "bastion",
+	}
+	err := RunMysqlDump("/usr/bin/mysqldump", cfg, filepath.Join(t.TempDir(), "x.sql"), nil)
+	if err == nil || !strings.Contains(err.Error(), "SSH") {
+		t.Fatalf("got %v", err)
 	}
 }

@@ -262,8 +262,9 @@ erDiagram
   DDL (MySQL `SHOW CREATE TABLE`, SQLite `sqlite_master`); result-set export
   via the `g X` dialog (format, columns, and whole-table/marked/page scope)
   or instant CSV (`x`). `:backup` / `:mysqldump` runs the `mysqldump` binary
-  from PATH into `~/Downloads` (MySQL/MariaDB only; SSH tunnels are not
-  supported — use `X`).
+  from PATH into `~/Downloads` (MySQL/MariaDB only). SSH-tunneled connections
+  get a temporary localhost forward through Creel's tunnel so the local binary
+  can dump the remote server.
 
 ## Workflow
 
