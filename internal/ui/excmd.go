@@ -821,17 +821,22 @@ func (m *Model) exClone() tea.Cmd {
 
 // exFollow follows the foreign key under the cursor (:follow), sharing
 // followForeignKey with the g d chord. Gives feedback when there is no FK on
-// the current column (the key silently no-ops).
+// the current column (the key silently no-ops). From the inspector, the
+// focused field is the current column.
 func (m *Model) exFollow() tea.Cmd {
 	if m.results.NumCols() == 0 {
 		m.schemaMsg = "no results to navigate"
 		return nil
 	}
-	if _, ok := m.results.ForeignKeyAtCursor(); !ok {
+	col := m.results.CursorCol()
+	if m.focus == FocusInspector && m.insertTarget == nil && !m.inspector.IsInserting() {
+		col = m.inspector.selectedColumn(m.results)
+	}
+	if _, ok := m.results.ForeignKeyAt(col); !ok {
 		m.schemaMsg = "no foreign key on this column"
 		return nil
 	}
-	return m.followForeignKey()
+	return m.followForeignKeyAt(col)
 }
 
 // exBack returns to the previous query in the navigation stack (:back),

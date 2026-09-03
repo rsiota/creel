@@ -51,6 +51,15 @@ func TestNewHintSections(t *testing.T) {
 	})
 	m.diffPanel.visible = false
 
+	m.focus = FocusInspector
+	m.inspector.visible = true
+	check("Inspector", map[string]string{
+		"j": "move field", "/": "filter fields", "e": "edit field",
+		"d": "follow foreign key", "A": "insert row",
+	})
+	m.inspector.visible = false
+	m.focus = FocusResults
+
 	m.lookupPanel.visible = true
 	check("Lookup Panel", map[string]string{
 		"j": "move", "G": "top / bottom", "ctrl+u": "page down / up", "esc": "close",

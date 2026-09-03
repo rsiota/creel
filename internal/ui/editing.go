@@ -51,11 +51,20 @@ func (m *Model) pushQueryStack() {
 }
 
 func (m *Model) followForeignKey() tea.Cmd {
-	fk, ok := m.results.ForeignKeyAtCursor()
+	col := m.results.CursorCol()
+	// From the inspector, follow the focused field — not the grid column cursor.
+	if m.focus == FocusInspector && m.insertTarget == nil && !m.inspector.IsInserting() {
+		col = m.inspector.selectedColumn(m.results)
+	}
+	return m.followForeignKeyAt(col)
+}
+
+func (m *Model) followForeignKeyAt(col int) tea.Cmd {
+	fk, ok := m.results.ForeignKeyAt(col)
 	if !ok {
 		return nil
 	}
-	val := m.results.CursorCellValue()
+	val := m.results.RowValue(m.results.CursorRow(), col)
 	if val == "" || val == "NULL" {
 		return nil
 	}

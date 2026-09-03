@@ -592,7 +592,16 @@ func (i Inspector) View(results ResultsTable) string {
 			ls = pkLabelStyle
 		}
 		labelStr := ls.Render(labelRaw)
+		// Marker: FK target when present (→ table.col), otherwise the column type.
 		markerStr := typeStyle.Render(strings.ToLower(results.ColumnType(c)))
+		if fk, ok := results.ForeignKeyAt(c); ok {
+			target := "→ " + fk.RefTable + "." + fk.RefColumn
+			fkStyle := lipgloss.NewStyle().Foreground(colorFK)
+			if !isFocused {
+				fkStyle = typeStyle
+			}
+			markerStr = fkStyle.Render(target)
+		}
 
 		// Value line(s) filling the box interior.
 		var valueContent string

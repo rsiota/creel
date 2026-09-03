@@ -4358,6 +4358,13 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.inspector.pendingG = true
 			return m, nil
+		case "d":
+			// g d — follow FK on the focused inspector field (same as results).
+			if m.inspector.pendingG {
+				m.inspector.pendingG = false
+				return m, m.followForeignKey()
+			}
+			return m, nil
 		case "/":
 			m.inspector.StartFilter()
 			return m, nil
