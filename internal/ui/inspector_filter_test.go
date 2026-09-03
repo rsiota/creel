@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -84,5 +85,42 @@ func TestInspectorFilterNoMatch(t *testing.T) {
 	fields := m.inspector.fieldList(m.results)
 	if len(fields) != 0 {
 		t.Fatalf("expected 0 matches for 'xyz', got %d", len(fields))
+	}
+}
+
+// TestInspectorTracksCursorOnNonEditable ensures the form follows the cell
+// cursor on read-only results (JOINs, custom SELECTs), not the scroll offset.
+func TestInspectorTracksCursorOnNonEditable(t *testing.T) {
+	var r ResultsTable
+	r.SetSize(80, 20)
+	r.SetResult(
+		[]string{"id", "name"},
+		[][]string{
+			{"1", "alice"},
+			{"2", "bob"},
+			{"3", "carol"},
+		},
+		"3 rows",
+	)
+	if r.IsEditable() {
+		t.Fatal("precondition: results should be non-editable")
+	}
+	r.SetCursor(2, 0)
+	if r.CursorRow() != 2 {
+		t.Fatalf("cursor row = %d, want 2", r.CursorRow())
+	}
+	if r.ScrollRow() != 0 {
+		t.Fatalf("scroll row = %d, want 0 (cursor mid-viewport)", r.ScrollRow())
+	}
+
+	var insp Inspector
+	insp.visible = true
+	insp.SetSize(40, 24)
+	view := insp.View(r)
+	if !strings.Contains(view, "carol") {
+		t.Fatalf("inspector should show cursor row (carol):\n%s", view)
+	}
+	if strings.Contains(view, "alice") {
+		t.Fatalf("inspector must not show scroll-top row (alice):\n%s", view)
 	}
 }

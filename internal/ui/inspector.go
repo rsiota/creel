@@ -496,11 +496,12 @@ func (i Inspector) View(results ResultsTable) string {
 		return empty
 	}
 
+	// Always track the results cell cursor. Using ScrollRow for non-editable
+	// grids was wrong: scroll is the first visible row, so a mid-viewport
+	// cursor showed the wrong record.
 	row := results.CursorRow()
 	if i.inserting {
 		row = 0
-	} else if !results.IsEditable() {
-		row = results.ScrollRow()
 	}
 	if row >= results.NumRows() {
 		row = results.NumRows() - 1
