@@ -76,6 +76,9 @@ commits, so it can come up empty).
   fields stay neutral so light themes stay readable.
 
 ### Fixed
+- Export / `:backup` unit tests no longer write into the real `~/Downloads`
+  folder (`creel_test_unit.json`, `creel_users_*.csv`, etc.); they use a temp
+  directory instead.
 - Import prompt (`I`): Enter submits when the selected dump path is already
   complete. Accepting a file from the path dropdown used to leave that file as
   a completion match, so Enter re-accepted forever and never started the import.

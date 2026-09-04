@@ -18,6 +18,9 @@ import (
 func newExportTestModel(t *testing.T, pageRows [][]string) (Model, *db.Connection) {
 	t.Helper()
 	dir := t.TempDir()
+	restore := SwapUserDownloadsDir(func() (string, error) { return dir, nil })
+	t.Cleanup(restore)
+
 	conn, err := db.New(db.ConnectionConfig{Driver: db.DriverSQLite, Database: filepath.Join(dir, "t.db")})
 	if err != nil {
 		t.Fatal(err)

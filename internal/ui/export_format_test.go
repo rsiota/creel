@@ -112,6 +112,10 @@ func TestSerializeFormatDispatch(t *testing.T) {
 
 // writeExport writes a file with the correct extension and content.
 func TestWriteExportJSON(t *testing.T) {
+	dir := t.TempDir()
+	restore := SwapUserDownloadsDir(func() (string, error) { return dir, nil })
+	t.Cleanup(restore)
+
 	cols := []string{"id"}
 	rows := [][]string{{"1"}}
 	path, count, err := writeExport(fmtJSON, cols, rows, "creel_test_unit.json")
@@ -123,6 +127,9 @@ func TestWriteExportJSON(t *testing.T) {
 	}
 	if !strings.HasSuffix(path, "creel_test_unit.json") {
 		t.Errorf("path=%s, want .json suffix", path)
+	}
+	if !strings.HasPrefix(path, dir) {
+		t.Errorf("path %q should be under temp dir %q", path, dir)
 	}
 }
 
@@ -317,6 +324,9 @@ func TestExportDialogEnterDefaults(t *testing.T) {
 // With a couple of columns unchecked, enter exports the projected set to a CSV.
 func TestExportDialogColumnProjection(t *testing.T) {
 	dir := t.TempDir()
+	restore := SwapUserDownloadsDir(func() (string, error) { return dir, nil })
+	t.Cleanup(restore)
+
 	dbPath := filepath.Join(dir, "t.db")
 	conn, err := db.New(db.ConnectionConfig{Driver: db.DriverSQLite, Database: dbPath})
 	if err != nil {
@@ -380,5 +390,8 @@ func TestExportDialogColumnProjection(t *testing.T) {
 	}
 	if !strings.Contains(m.exportMsg, ".csv") {
 		t.Errorf("expected a .csv file in %q", m.exportMsg)
+	}
+	if !strings.Contains(m.exportMsg, dir) {
+		t.Errorf("export should land in temp dir %q, got %q", dir, m.exportMsg)
 	}
 }

@@ -259,15 +259,35 @@ func exportStatusMessage(path string, count int, err error) string {
 	return fmt.Sprintf("exported %d rows → %s", count, path)
 }
 
+// userDownloadsDir resolves ~/Downloads, creating it if needed. Tests replace
+// it so export/backup helpers never write into the real Downloads folder.
+var userDownloadsDir = defaultUserDownloadsDir
+
+func defaultUserDownloadsDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(home, "Downloads")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// SwapUserDownloadsDir replaces the Downloads directory resolver; the returned
+// func restores the previous resolver.
+func SwapUserDownloadsDir(fn func() (string, error)) func() {
+	prev := userDownloadsDir
+	userDownloadsDir = fn
+	return func() { userDownloadsDir = prev }
+}
+
 // writeCSV serializes columns and rows to a CSV file in ~/Downloads and
 // returns the absolute path and row count.
 func writeCSV(cols []string, rows [][]string, filename string) (string, int, error) {
-	dir, err := os.UserHomeDir()
+	dir, err := userDownloadsDir()
 	if err != nil {
-		return "", 0, err
-	}
-	dir = filepath.Join(dir, "Downloads")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", 0, err
 	}
 	path := filepath.Join(dir, filename)
@@ -317,12 +337,8 @@ func writeExport(format exportFormat, cols []string, rows [][]string, filename s
 // writeFile writes content to ~/Downloads/<filename> and returns the absolute
 // path and row count.
 func writeFile(filename, content string, count int) (string, int, error) {
-	dir, err := os.UserHomeDir()
+	dir, err := userDownloadsDir()
 	if err != nil {
-		return "", 0, err
-	}
-	dir = filepath.Join(dir, "Downloads")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", 0, err
 	}
 	path := filepath.Join(dir, filename)
@@ -486,12 +502,8 @@ func (m *Model) execExportDump(tables []string) tea.Cmd {
 	database := conn.DB()
 
 	return func() tea.Msg {
-		dir, err := os.UserHomeDir()
+		dir, err := userDownloadsDir()
 		if err != nil {
-			return exportProgressMsg{err: err, total: total}
-		}
-		dir = filepath.Join(dir, "Downloads")
-		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return exportProgressMsg{err: err, total: total}
 		}
 		path := filepath.Join(dir, filename)
@@ -559,12 +571,12 @@ func (m *Model) exBackup() tea.Cmd {
 	progress := make(chan backupProgressMsg, 1)
 	done := make(chan backupDoneMsg, 1)
 	go func() {
-		dir, err := os.UserHomeDir()
+		dir, err := userDownloadsDir()
 		if err != nil {
 			done <- backupDoneMsg{err: err}
 			return
 		}
-		path := filepath.Join(dir, "Downloads", filename)
+		path := filepath.Join(dir, filename)
 		var last int64
 		err = db.RunMysqlDump(bin, cfg, path, conn, func(n int64) {
 			last = n
