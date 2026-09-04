@@ -1699,6 +1699,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			size := db.FormatDumpSize(msg.bytes)
 			m.exportMsg = fmt.Sprintf("restored %s ← %s", size, msg.path)
+			m.loadTables()
 		}
 		return m, nil
 
