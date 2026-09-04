@@ -21,6 +21,12 @@ commits, so it can come up empty).
   `ssh -L` (or an in-process forward) is used with the local binary. MySQL 8
   clients get `--column-statistics=0` so dumps against MariaDB / older MySQL
   don't fail on `COLUMN_STATISTICS`. SQLite and Postgres keep using `X`.
+- `:restore` / `:mysqlload` — shell out to the `mysql` client to load a SQL dump
+  into the current MySQL/MariaDB database (`:restore <file>`). Same credential
+  and SSH strategy as `:backup`: remote `mysql` when the server is on the SSH
+  host, otherwise local `mysql` through a forward. Live status-bar byte count
+  while the file streams. Prefer this for large dumps; keep `I` / `:import` for
+  in-app progress and non-MySQL engines.
 - Connection picker group tabs: when any connection has a `group`, a
   right-aligned tab strip above the filter prompt (named groups A–Z, then
   Ungrouped) replaces foldable headers. `[` / `]` (or click) switches groups;

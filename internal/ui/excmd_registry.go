@@ -348,6 +348,20 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exBackup() },
 		},
 		{
+			verbs:    []string{"restore", "mysqlload"},
+			desc:     "restore a MySQL dump with the mysql CLI (fast; SSH OK); use :import for in-app import",
+			usage:    ":restore <file>",
+			argKind:  exArgRequired,
+			complete: completePath,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				if len(args) == 0 {
+					m.schemaMsg = ":restore needs a file path"
+					return nil
+				}
+				return m.exRestore(args[0])
+			},
+		},
+		{
 			verbs:    []string{"import"},
 			desc:     "import a SQL dump file into the database",
 			usage:    ":import <file>",

@@ -47,6 +47,8 @@ implement the interface in a new file.
 - `mysqldump.go` / `mysqldump_remote.go` — `:backup` via `mysqldump`; when MySQL
   is on the SSH host, run the dump remotely and stream stdout back; otherwise
   local `mysqldump` through OpenSSH `ssh -L` or an in-process forward
+- `mysqlrestore.go` / `mysqlrestore_remote.go` — `:restore` via the `mysql`
+  client; same remote-vs-forward strategy, dump streamed on stdin
 - `local_forward.go` / `ssh_openssh_forward.go` — localhost TCP forward fallback
 - `ssh_tunnel.go` — SSH tunnel for remote MySQL and PostgreSQL
 

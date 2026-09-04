@@ -81,6 +81,7 @@ group). SQLite uses Connection + Options only.
 | `N`        | New table (grid editor)   |
 | `X`        | Export database (portable SQL dump) |
 | `:backup`  | `mysqldump` to `~/Downloads` (MySQL; works over SSH) |
+| `:restore <file>` | `mysql` CLI load of a dump (MySQL; works over SSH; prefer over `I` for large files) |
 | `I`        | Import SQL dump           |
 | `S`        | Cross-table search        |
 | `/`        | Filter tables             |

@@ -615,6 +615,92 @@ func backupProgressStatus(n int64, started time.Time) string {
 	return fmt.Sprintf("Backing up… %s · %s/s", size, db.FormatDumpSize(int64(bps)))
 }
 
+// exRestore shells out to the mysql client to load a SQL dump into the current
+// MySQL database. Password goes in a 0600 defaults file, never argv. When MySQL
+// is on the SSH host, mysql runs remotely and the dump streams over SSH stdin.
+// Live byte counts update the status bar while the restore runs.
+func (m *Model) exRestore(path string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if m.isReadOnly() {
+		m.schemaMsg = "read-only: restore disabled"
+		return nil
+	}
+	cfg := m.connection.Config()
+	if err := db.MysqlRestoreGuard(cfg); err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	expanded, err := expandTilde(filepath.Clean(path))
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	if st, err := os.Stat(expanded); err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	} else if st.IsDir() {
+		m.schemaMsg = "path is a directory"
+		return nil
+	}
+	// Local mysql is only required when we cannot run it on the SSH host.
+	bin := ""
+	needLocal := strings.TrimSpace(cfg.SSHHost) == "" || !db.MysqlHostOnSSHTarget(cfg.Host)
+	if needLocal {
+		var err error
+		bin, err = db.FindMysql()
+		if err != nil {
+			m.schemaMsg = "mysql is not on PATH"
+			return nil
+		}
+	}
+	conn := m.connection
+	m.restoreStarted = time.Now()
+	m.exportMsg = "Restoring…"
+
+	progress := make(chan restoreProgressMsg, 1)
+	done := make(chan restoreDoneMsg, 1)
+	go func() {
+		var last int64
+		err := db.RunMysqlRestore(bin, cfg, expanded, conn, func(n int64) {
+			last = n
+			select {
+			case progress <- restoreProgressMsg{bytes: n, path: expanded}:
+			default:
+			}
+		})
+		done <- restoreDoneMsg{path: expanded, bytes: last, err: err}
+	}()
+	return waitForRestoreProgress(progress, done)
+}
+
+func waitForRestoreProgress(progress <-chan restoreProgressMsg, done <-chan restoreDoneMsg) tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case msg := <-done:
+			return msg
+		case msg := <-progress:
+			return restoreProgressWrapper{msg: msg, progress: progress, done: done}
+		}
+	}
+}
+
+// restoreProgressStatus formats the live status-bar line during :restore.
+func restoreProgressStatus(n int64, started time.Time) string {
+	size := db.FormatDumpSize(n)
+	if started.IsZero() {
+		return fmt.Sprintf("Restoring… %s", size)
+	}
+	elapsed := time.Since(started).Seconds()
+	if elapsed < 0.25 || n <= 0 {
+		return fmt.Sprintf("Restoring… %s", size)
+	}
+	bps := float64(n) / elapsed
+	return fmt.Sprintf("Restoring… %s · %s/s", size, db.FormatDumpSize(int64(bps)))
+}
+
 // dumpTableCmd returns a command that writes a single table to an open dump
 // file and reports progress via exportProgressMsg.
 func dumpTableCmd(f *os.File, bw *bufio.Writer, database db.DB, driver db.Driver, table string, index, total int, tables []string, path string) tea.Cmd {

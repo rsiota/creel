@@ -269,6 +269,26 @@ type backupProgressWrapper struct {
 	done     <-chan backupDoneMsg
 }
 
+// restoreDoneMsg carries the result of an async :restore (mysql CLI) run.
+type restoreDoneMsg struct {
+	path  string
+	bytes int64
+	err   error
+}
+
+// restoreProgressMsg carries live byte-count updates during :restore.
+type restoreProgressMsg struct {
+	bytes int64
+	path  string
+}
+
+// restoreProgressWrapper re-issues the progress poll after each status update.
+type restoreProgressWrapper struct {
+	msg      restoreProgressMsg
+	progress <-chan restoreProgressMsg
+	done     <-chan restoreDoneMsg
+}
+
 // exportProgressMsg carries incremental progress during a table-by-table dump.
 // The open file handle flows through the message stream so the model stays free
 // of file-state. Each message represents one table written; the Update handler
@@ -577,7 +597,8 @@ type Model struct {
 	totalRowsSet  bool      // whether totalRows has been fetched for this query
 	statsMsg      string    // transient column statistics display
 	exportMsg     string    // transient CSV export / backup / import status
-	backupStarted time.Time // wall clock when the current :backup started (for MB/s)
+	backupStarted  time.Time // wall clock when the current :backup started (for MB/s)
+	restoreStarted time.Time // wall clock when the current :restore started (for MB/s)
 	searchMsg     string    // transient regex search result display
 	truncateMsg   string    // transient truncate result display
 	deleteRowsMsg string    // transient row deletion result display
@@ -1667,6 +1688,17 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			size := db.FormatDumpSize(msg.bytes)
 			m.exportMsg = fmt.Sprintf("backed up %s → %s", size, msg.path)
+		}
+		return m, nil
+	case restoreProgressWrapper:
+		m.exportMsg = restoreProgressStatus(msg.msg.bytes, m.restoreStarted)
+		return m, waitForRestoreProgress(msg.progress, msg.done)
+	case restoreDoneMsg:
+		if msg.err != nil {
+			m.exportMsg = fmt.Sprintf("restore failed: %v", msg.err)
+		} else {
+			size := db.FormatDumpSize(msg.bytes)
+			m.exportMsg = fmt.Sprintf("restored %s ← %s", size, msg.path)
 		}
 		return m, nil
 
