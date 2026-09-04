@@ -251,8 +251,22 @@ type exportDumpMsg struct {
 
 // backupDoneMsg carries the result of an async :backup (mysqldump) run.
 type backupDoneMsg struct {
-	path string
-	err  error
+	path  string
+	bytes int64
+	err   error
+}
+
+// backupProgressMsg carries live byte-count updates during :backup.
+type backupProgressMsg struct {
+	bytes int64
+	path  string
+}
+
+// backupProgressWrapper re-issues the progress poll after each status update.
+type backupProgressWrapper struct {
+	msg      backupProgressMsg
+	progress <-chan backupProgressMsg
+	done     <-chan backupDoneMsg
 }
 
 // exportProgressMsg carries incremental progress during a table-by-table dump.
@@ -559,15 +573,16 @@ type Model struct {
 	pageSize      int
 	lastQuery     string
 	pageMsg       string
-	totalRows     int    // total rows in the current table (0 = unknown)
-	totalRowsSet  bool   // whether totalRows has been fetched for this query
-	statsMsg      string // transient column statistics display
-	exportMsg     string // transient CSV export result display
-	searchMsg     string // transient regex search result display
-	truncateMsg   string // transient truncate result display
-	deleteRowsMsg string // transient row deletion result display
-	schemaMsg     string // transient schema change result display
-	bookmarkMsg   string // transient bookmark result display
+	totalRows     int       // total rows in the current table (0 = unknown)
+	totalRowsSet  bool      // whether totalRows has been fetched for this query
+	statsMsg      string    // transient column statistics display
+	exportMsg     string    // transient CSV export / backup / import status
+	backupStarted time.Time // wall clock when the current :backup started (for MB/s)
+	searchMsg     string    // transient regex search result display
+	truncateMsg   string    // transient truncate result display
+	deleteRowsMsg string    // transient row deletion result display
+	schemaMsg     string    // transient schema change result display
+	bookmarkMsg   string    // transient bookmark result display
 
 	// flashGen tracks the current "generation" of the transient status message.
 	// Each time a new flash is set, the wrapper increments this and arms a
@@ -1643,11 +1658,15 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.exportMsg = fmt.Sprintf("dumped %d table%s → %s", msg.tables, pluralIf(msg.tables != 1, "s"), msg.path)
 		}
 		return m, nil
+	case backupProgressWrapper:
+		m.exportMsg = backupProgressStatus(msg.msg.bytes, m.backupStarted)
+		return m, waitForBackupProgress(msg.progress, msg.done)
 	case backupDoneMsg:
 		if msg.err != nil {
 			m.exportMsg = fmt.Sprintf("backup failed: %v", msg.err)
 		} else {
-			m.exportMsg = fmt.Sprintf("backed up → %s", msg.path)
+			size := db.FormatDumpSize(msg.bytes)
+			m.exportMsg = fmt.Sprintf("backed up %s → %s", size, msg.path)
 		}
 		return m, nil
 

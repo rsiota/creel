@@ -4,9 +4,22 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rsiota/creel/internal/db"
 )
+
+func TestBackupProgressStatus(t *testing.T) {
+	started := time.Now().Add(-2 * time.Second)
+	got := backupProgressStatus(20*1024*1024, started)
+	if !strings.Contains(got, "Backing up…") || !strings.Contains(got, "MB") || !strings.Contains(got, "/s") {
+		t.Fatalf("got %q", got)
+	}
+	got = backupProgressStatus(100, time.Time{})
+	if got != "Backing up… 100B" {
+		t.Fatalf("got %q", got)
+	}
+}
 
 func TestExBackupNotConnected(t *testing.T) {
 	m := &Model{}

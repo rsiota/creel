@@ -49,7 +49,7 @@ mysqldump --defaults-extra-file="$CNF"%s --single-transaction --routines --event
 // runRemoteMysqlDump runs mysqldump on the SSH host via the live tunnel and
 // streams stdout into resultFile. This matches how large dumps succeed when
 // run on the server (fast local MySQL) instead of through a localhost forward.
-func (c *Connection) runRemoteMysqlDump(resultFile string) error {
+func (c *Connection) runRemoteMysqlDump(resultFile string, onBytes func(int64)) error {
 	if c == nil || c.db == nil {
 		return fmt.Errorf(":backup needs an active SSH connection")
 	}
@@ -70,7 +70,7 @@ func (c *Connection) runRemoteMysqlDump(resultFile string) error {
 	defer session.Close()
 
 	var stderr bytes.Buffer
-	session.Stdout = out
+	session.Stdout = &countingWriter{w: out, onBytes: onBytes}
 	session.Stderr = &stderr
 	session.Stdin = strings.NewReader(buildRemoteMysqlDumpScript(c.config))
 	if err := session.Run("bash -s"); err != nil {

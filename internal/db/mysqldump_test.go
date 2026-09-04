@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"errors"
 	"os/exec"
 	"path/filepath"
@@ -35,7 +36,7 @@ func TestBuildMysqlDumpArgsOmitsPassword(t *testing.T) {
 		Password: "s3cret",
 		SSLMode:  "require",
 	}
-	args := BuildMysqlDumpArgs(cfg, "/tmp/c.cnf", "/tmp/out.sql", false)
+	args := BuildMysqlDumpArgs(cfg, "/tmp/c.cnf", false)
 	joined := strings.Join(args, " ")
 	if strings.Contains(joined, "s3cret") {
 		t.Fatalf("password leaked onto argv: %v", args)
@@ -52,7 +53,6 @@ func TestBuildMysqlDumpArgsOmitsPassword(t *testing.T) {
 		"--routines",
 		"--events",
 		"--max-allowed-packet=1073741824",
-		"--result-file=/tmp/out.sql",
 		"shop",
 	}
 	got := strings.Join(args[1:], " ")
@@ -64,12 +64,15 @@ func TestBuildMysqlDumpArgsOmitsPassword(t *testing.T) {
 	if strings.Contains(joined, "--compress") {
 		t.Fatalf("compress is SSH-only: %v", args)
 	}
+	if strings.Contains(joined, "--result-file=") {
+		t.Fatalf("stdout streaming should not use --result-file: %v", args)
+	}
 }
 
 func TestBuildMysqlDumpArgsSSHCompress(t *testing.T) {
 	args := BuildMysqlDumpArgs(ConnectionConfig{
 		Driver: DriverMySQL, Database: "shop", Host: "127.0.0.1", Port: 3306,
-	}, "/tmp/c.cnf", "/tmp/out.sql", true)
+	}, "/tmp/c.cnf", true)
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--compress") {
 		t.Fatalf("SSH dumps should compress: %v", args)
@@ -82,7 +85,7 @@ func TestBuildMysqlDumpArgsSocket(t *testing.T) {
 		Database: "app",
 		Socket:   "/tmp/mysql.sock",
 	}
-	args := BuildMysqlDumpArgs(cfg, "/tmp/c.cnf", "/tmp/out.sql", false)
+	args := BuildMysqlDumpArgs(cfg, "/tmp/c.cnf", false)
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--socket=/tmp/mysql.sock") {
 		t.Fatalf("socket: %v", args)
@@ -146,7 +149,7 @@ func TestRunMysqlDumpUsesDefaultsFileNotPassword(t *testing.T) {
 		Password: "s3cret",
 	}
 	out := filepath.Join(t.TempDir(), "shop.sql")
-	if err := RunMysqlDump("/usr/bin/mysqldump", cfg, out, nil); err != nil {
+	if err := RunMysqlDump("/usr/bin/mysqldump", cfg, out, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(gotArgs, " ")
@@ -156,8 +159,8 @@ func TestRunMysqlDumpUsesDefaultsFileNotPassword(t *testing.T) {
 	if !strings.Contains(joined, "--defaults-extra-file=") {
 		t.Fatalf("missing defaults file: %v", gotArgs)
 	}
-	if !strings.Contains(joined, "--result-file="+out) {
-		t.Fatalf("missing result file: %v", gotArgs)
+	if strings.Contains(joined, "--result-file=") {
+		t.Fatalf("stdout streaming should not use --result-file: %v", gotArgs)
 	}
 	if strings.Contains(joined, "column-statistics") {
 		t.Fatalf("MariaDB-style binary should not get column-statistics: %v", gotArgs)
@@ -179,7 +182,7 @@ func TestRunMysqlDumpDisablesColumnStatisticsForMySQL8(t *testing.T) {
 
 	cfg := ConnectionConfig{Driver: DriverMySQL, Database: "shop", Host: "db"}
 	out := filepath.Join(t.TempDir(), "shop.sql")
-	if err := RunMysqlDump("/usr/bin/mysqldump", cfg, out, nil); err != nil {
+	if err := RunMysqlDump("/usr/bin/mysqldump", cfg, out, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(gotArgs) < 2 || !strings.HasPrefix(gotArgs[0], "--defaults-extra-file=") {
@@ -211,7 +214,7 @@ func TestMysqlDumpConfigViaForward(t *testing.T) {
 	if got.SSLMode != "disable" {
 		t.Fatalf("ssl: %q", got.SSLMode)
 	}
-	args := BuildMysqlDumpArgs(got, "/tmp/c.cnf", "/tmp/out.sql", true)
+	args := BuildMysqlDumpArgs(got, "/tmp/c.cnf", true)
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--host=127.0.0.1") || !strings.Contains(joined, "--port=54321") {
 		t.Fatalf("args: %v", args)
@@ -224,11 +227,47 @@ func TestMysqlDumpConfigViaForward(t *testing.T) {
 	}
 }
 
+func TestFormatDumpSize(t *testing.T) {
+	cases := []struct {
+		n    int64
+		want string
+	}{
+		{0, "0B"},
+		{512, "512B"},
+		{1536, "1.5KB"},
+		{3 * 1024 * 1024, "3.0MB"},
+		{11 * 1024 * 1024 * 1024 / 10, "1.1GB"},
+	}
+	for _, c := range cases {
+		if got := FormatDumpSize(c.n); got != c.want {
+			t.Errorf("FormatDumpSize(%d) = %q, want %q", c.n, got, c.want)
+		}
+	}
+}
+
+func TestCountingWriterReportsBytes(t *testing.T) {
+	var got []int64
+	var buf bytes.Buffer
+	w := &countingWriter{w: &buf, onBytes: func(n int64) { got = append(got, n) }}
+	if _, err := w.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte(" world")); err != nil {
+		t.Fatal(err)
+	}
+	if buf.String() != "hello world" {
+		t.Fatalf("buf = %q", buf.String())
+	}
+	if len(got) != 2 || got[0] != 5 || got[1] != 11 {
+		t.Fatalf("progress = %v", got)
+	}
+}
+
 func TestRunMysqlDumpSSHRequiresLiveConnection(t *testing.T) {
 	cfg := ConnectionConfig{
 		Driver: DriverMySQL, Database: "app", Host: "db", SSHHost: "bastion",
 	}
-	err := RunMysqlDump("/usr/bin/mysqldump", cfg, filepath.Join(t.TempDir(), "x.sql"), nil)
+	err := RunMysqlDump("/usr/bin/mysqldump", cfg, filepath.Join(t.TempDir(), "x.sql"), nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "SSH") {
 		t.Fatalf("got %v", err)
 	}

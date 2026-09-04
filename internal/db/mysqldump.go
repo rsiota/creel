@@ -3,6 +3,7 @@ package db
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -104,7 +105,8 @@ func MysqlDumpDefaults(cfg ConnectionConfig) string {
 // BuildMysqlDumpArgs is the mysqldump argv after the binary. defaultsFile must
 // be the first option (--defaults-extra-file). Password is never included.
 // throughSSH adds protocol compression to shrink bulk result traffic.
-func BuildMysqlDumpArgs(cfg ConnectionConfig, defaultsFile, resultFile string, throughSSH bool) []string {
+// Output goes to stdout (caller writes the file) so progress can be counted.
+func BuildMysqlDumpArgs(cfg ConnectionConfig, defaultsFile string, throughSSH bool) []string {
 	args := []string{"--defaults-extra-file=" + defaultsFile}
 	if sock := cfg.socketPath(); sock != "" {
 		args = append(args, "--socket="+sock)
@@ -135,10 +137,7 @@ func BuildMysqlDumpArgs(cfg ConnectionConfig, defaultsFile, resultFile string, t
 	if throughSSH {
 		args = append(args, "--compress")
 	}
-	args = append(args,
-		"--result-file="+resultFile,
-		cfg.Database,
-	)
+	args = append(args, cfg.Database)
 	return args
 }
 
@@ -171,6 +170,21 @@ func mysqlDumpConfigViaForward(cfg ConnectionConfig, fwd *LocalForward) Connecti
 	return out
 }
 
+// FormatDumpSize renders a byte count for backup progress: "512B", "1.2KB",
+// "3.0MB", "1.1GB".
+func FormatDumpSize(n int64) string {
+	if n < 1024 {
+		return fmt.Sprintf("%dB", n)
+	}
+	if n < 1024*1024 {
+		return fmt.Sprintf("%.1fKB", float64(n)/1024)
+	}
+	if n < 1024*1024*1024 {
+		return fmt.Sprintf("%.1fMB", float64(n)/(1024*1024))
+	}
+	return fmt.Sprintf("%.1fGB", float64(n)/(1024*1024*1024))
+}
+
 func optionFileValue(s string) string {
 	if !strings.ContainsAny(s, " \t#\"'=;\n") {
 		return s
@@ -187,7 +201,10 @@ func optionFileValue(s string) string {
 // `ssh host mysqldump … > dump.sql`, which avoids truncated dumps through a
 // localhost forward. Falls back to local mysqldump + port forward when the
 // remote binary is missing or MySQL is on a different internal host.
-func RunMysqlDump(bin string, cfg ConnectionConfig, resultFile string, conn *Connection) error {
+//
+// onBytes is called with the cumulative byte count as the dump streams (may
+// be nil). Progress is best-effort and may skip updates under load.
+func RunMysqlDump(bin string, cfg ConnectionConfig, resultFile string, conn *Connection, onBytes func(int64)) error {
 	if err := MysqlDumpGuard(cfg); err != nil {
 		return err
 	}
@@ -199,7 +216,7 @@ func RunMysqlDump(bin string, cfg ConnectionConfig, resultFile string, conn *Con
 
 	throughSSH := strings.TrimSpace(cfg.SSHHost) != ""
 	if throughSSH && MysqlHostOnSSHTarget(cfg.Host) && conn != nil {
-		if err := conn.runRemoteMysqlDump(resultFile); err == nil {
+		if err := conn.runRemoteMysqlDump(resultFile, onBytes); err == nil {
 			return nil
 		} else if !remoteDumpUnavailable(err) {
 			return err
@@ -246,13 +263,20 @@ func RunMysqlDump(bin string, cfg ConnectionConfig, resultFile string, conn *Con
 		return err
 	}
 
-	args := BuildMysqlDumpArgs(dumpCfg, defaultsPath, resultFile, throughSSH)
+	out, err := os.Create(resultFile)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	args := BuildMysqlDumpArgs(dumpCfg, defaultsPath, throughSSH)
 	if mysqlDumpSupportsColumnStatistics(bin) {
 		// Keep defaults-extra-file first; insert compatibility flag next.
 		args = append([]string{args[0], "--column-statistics=0"}, args[1:]...)
 	}
 	cmd := exec.Command(bin, args...)
 	var stderr bytes.Buffer
+	cmd.Stdout = &countingWriter{w: out, onBytes: onBytes}
 	cmd.Stderr = &stderr
 	if err := runMysqlDumpCmd(cmd); err != nil {
 		msg := strings.TrimSpace(stderr.String())
@@ -262,4 +286,22 @@ func RunMysqlDump(bin string, cfg ConnectionConfig, resultFile string, conn *Con
 		return fmt.Errorf("mysqldump: %s", msg)
 	}
 	return nil
+}
+
+// countingWriter counts bytes written and reports the running total.
+type countingWriter struct {
+	w       io.Writer
+	n       int64
+	onBytes func(int64)
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	if n > 0 {
+		c.n += int64(n)
+		if c.onBytes != nil {
+			c.onBytes(c.n)
+		}
+	}
+	return n, err
 }

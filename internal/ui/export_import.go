@@ -525,6 +525,7 @@ func (m *Model) execExportDump(tables []string) tea.Cmd {
 // ~/Downloads/<db>_YYYY-MM-DD.sql. Password goes in a 0600 defaults file, never
 // argv. When MySQL is on the SSH host, mysqldump runs remotely and streams
 // back over SSH (avoids truncated dumps through a localhost forward).
+// Live byte counts update the status bar while the dump runs.
 func (m *Model) exBackup() tea.Cmd {
 	if m.connection == nil {
 		m.schemaMsg = "not connected"
@@ -552,18 +553,54 @@ func (m *Model) exBackup() tea.Cmd {
 	}
 	filename := fmt.Sprintf("%s_%s.sql", fileLabel, time.Now().Format("2006-01-02"))
 	conn := m.connection
+	m.backupStarted = time.Now()
 	m.exportMsg = "Backing up…"
-	return func() tea.Msg {
+
+	progress := make(chan backupProgressMsg, 1)
+	done := make(chan backupDoneMsg, 1)
+	go func() {
 		dir, err := os.UserHomeDir()
 		if err != nil {
-			return backupDoneMsg{err: err}
+			done <- backupDoneMsg{err: err}
+			return
 		}
 		path := filepath.Join(dir, "Downloads", filename)
-		if err := db.RunMysqlDump(bin, cfg, path, conn); err != nil {
-			return backupDoneMsg{path: path, err: err}
+		var last int64
+		err = db.RunMysqlDump(bin, cfg, path, conn, func(n int64) {
+			last = n
+			select {
+			case progress <- backupProgressMsg{bytes: n, path: path}:
+			default: // drop if the UI hasn't consumed the previous tick yet
+			}
+		})
+		done <- backupDoneMsg{path: path, bytes: last, err: err}
+	}()
+	return waitForBackupProgress(progress, done)
+}
+
+func waitForBackupProgress(progress <-chan backupProgressMsg, done <-chan backupDoneMsg) tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case msg := <-done:
+			return msg
+		case msg := <-progress:
+			return backupProgressWrapper{msg: msg, progress: progress, done: done}
 		}
-		return backupDoneMsg{path: path}
 	}
+}
+
+// backupProgressStatus formats the live status-bar line during :backup.
+func backupProgressStatus(n int64, started time.Time) string {
+	size := db.FormatDumpSize(n)
+	if started.IsZero() {
+		return fmt.Sprintf("Backing up… %s", size)
+	}
+	elapsed := time.Since(started).Seconds()
+	if elapsed < 0.25 || n <= 0 {
+		return fmt.Sprintf("Backing up… %s", size)
+	}
+	bps := float64(n) / elapsed
+	return fmt.Sprintf("Backing up… %s · %s/s", size, db.FormatDumpSize(int64(bps)))
 }
 
 // dumpTableCmd returns a command that writes a single table to an open dump

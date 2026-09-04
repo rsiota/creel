@@ -83,6 +83,7 @@ commits, so it can come up empty).
   and stream stdout back (avoids truncated large dumps through a localhost
   forward). Otherwise prefer OpenSSH `ssh -L`, half-close the in-process proxy,
   pass `--max-allowed-packet=1G` / `--compress`, and use larger copy buffers.
+  Status bar shows a live byte count and transfer rate while the dump runs.
 - Results sort (`o` / header click / `:sort`): pagination no longer wraps the
   query in a derived table when unnecessary, so `ORDER BY` is honored on
   MySQL/MariaDB (where an inner `ORDER BY` without its own `LIMIT` is often
