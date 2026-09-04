@@ -14,11 +14,13 @@ commits, so it can come up empty).
 ### Added
 - `:backup` / `:mysqldump` — shell out to `mysqldump` (must be on PATH) for the
   current MySQL/MariaDB database, writing `~/Downloads/<db>_YYYY-MM-DD.sql`.
-  Password is passed via a 0600 defaults file, never argv. SSH-tunneled
-  connections open a short-lived `127.0.0.1` forward through Creel's existing
-  tunnel so local `mysqldump` can reach the remote server. MySQL 8 clients get
-  `--column-statistics=0` so dumps against MariaDB / older MySQL don't fail on
-  `COLUMN_STATISTICS`. SQLite and Postgres keep using `X`.
+  Password is passed via a 0600 defaults file, never argv. When MySQL lives on
+  the SSH host (localhost/127.0.0.1), `mysqldump` runs on the remote machine and
+  streams back over SSH — the same approach as a manual server-side dump, which
+  avoids truncated transfers through a localhost forward. Otherwise OpenSSH
+  `ssh -L` (or an in-process forward) is used with the local binary. MySQL 8
+  clients get `--column-statistics=0` so dumps against MariaDB / older MySQL
+  don't fail on `COLUMN_STATISTICS`. SQLite and Postgres keep using `X`.
 - Connection picker group tabs: when any connection has a `group`, a
   right-aligned tab strip above the filter prompt (named groups A–Z, then
   Ungrouped) replaces foldable headers. `[` / `]` (or click) switches groups;
@@ -77,6 +79,10 @@ commits, so it can come up empty).
 - Import prompt (`I`): Enter submits when the selected dump path is already
   complete. Accepting a file from the path dropdown used to leave that file as
   a completion match, so Enter re-accepted forever and never started the import.
+- `:backup` over SSH: when MySQL is on the SSH host, run `mysqldump` remotely
+  and stream stdout back (avoids truncated large dumps through a localhost
+  forward). Otherwise prefer OpenSSH `ssh -L`, half-close the in-process proxy,
+  pass `--max-allowed-packet=1G` / `--compress`, and use larger copy buffers.
 - Results sort (`o` / header click / `:sort`): pagination no longer wraps the
   query in a derived table when unnecessary, so `ORDER BY` is honored on
   MySQL/MariaDB (where an inner `ORDER BY` without its own `LIMIT` is often

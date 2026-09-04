@@ -86,6 +86,9 @@ func MysqlDumpGuard(cfg ConnectionConfig) error {
 
 // MysqlDumpDefaults is a my.cnf snippet with client user/password so the
 // password never appears on argv. Caller writes it to a 0600 temp file.
+// Do not put net_read_timeout / net_write_timeout here: mysqldump treats them
+// as unknown variables in the option file (even though the mysql CLI accepts
+// them). Long dumps rely on OpenSSH -L, --compress, and half-close proxying.
 func MysqlDumpDefaults(cfg ConnectionConfig) string {
 	var b strings.Builder
 	b.WriteString("[client]\n")
@@ -100,7 +103,8 @@ func MysqlDumpDefaults(cfg ConnectionConfig) string {
 
 // BuildMysqlDumpArgs is the mysqldump argv after the binary. defaultsFile must
 // be the first option (--defaults-extra-file). Password is never included.
-func BuildMysqlDumpArgs(cfg ConnectionConfig, defaultsFile, resultFile string) []string {
+// throughSSH adds protocol compression to shrink bulk result traffic.
+func BuildMysqlDumpArgs(cfg ConnectionConfig, defaultsFile, resultFile string, throughSSH bool) []string {
 	args := []string{"--defaults-extra-file=" + defaultsFile}
 	if sock := cfg.socketPath(); sock != "" {
 		args = append(args, "--socket="+sock)
@@ -126,6 +130,12 @@ func BuildMysqlDumpArgs(cfg ConnectionConfig, defaultsFile, resultFile string) [
 		"--single-transaction",
 		"--routines",
 		"--events",
+		"--max-allowed-packet=1073741824",
+	)
+	if throughSSH {
+		args = append(args, "--compress")
+	}
+	args = append(args,
 		"--result-file="+resultFile,
 		cfg.Database,
 	)
@@ -171,13 +181,32 @@ func optionFileValue(s string) string {
 }
 
 // RunMysqlDump writes cfg's database to resultFile using mysqldump.
-// For SSH-tunneled connections, pass a live *Connection so a localhost
-// forward can be opened through Creel's existing tunnel; without it, SSH
-// configs return an error.
+//
+// SSH + MySQL on the SSH host (localhost/127.0.0.1): run mysqldump on the
+// remote machine and stream stdout back — same path as a manual
+// `ssh host mysqldump … > dump.sql`, which avoids truncated dumps through a
+// localhost forward. Falls back to local mysqldump + port forward when the
+// remote binary is missing or MySQL is on a different internal host.
 func RunMysqlDump(bin string, cfg ConnectionConfig, resultFile string, conn *Connection) error {
 	if err := MysqlDumpGuard(cfg); err != nil {
 		return err
 	}
+
+	dir := filepath.Dir(resultFile)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+
+	throughSSH := strings.TrimSpace(cfg.SSHHost) != ""
+	if throughSSH && MysqlHostOnSSHTarget(cfg.Host) && conn != nil {
+		if err := conn.runRemoteMysqlDump(resultFile); err == nil {
+			return nil
+		} else if !remoteDumpUnavailable(err) {
+			return err
+		}
+		// Remote has no mysqldump — try local binary + forward below.
+	}
+
 	if bin == "" {
 		var err error
 		bin, err = FindMysqlDump()
@@ -187,7 +216,10 @@ func RunMysqlDump(bin string, cfg ConnectionConfig, resultFile string, conn *Con
 	}
 
 	dumpCfg := cfg
-	if strings.TrimSpace(cfg.SSHHost) != "" {
+	if throughSSH {
+		if conn == nil {
+			return fmt.Errorf(":backup needs an active SSH connection")
+		}
 		fwd, err := conn.startMysqlDumpForward()
 		if err != nil {
 			return err
@@ -196,10 +228,6 @@ func RunMysqlDump(bin string, cfg ConnectionConfig, resultFile string, conn *Con
 		dumpCfg = mysqlDumpConfigViaForward(cfg, fwd)
 	}
 
-	dir := filepath.Dir(resultFile)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
 	tmp, err := os.CreateTemp("", "creel-mysqldump-*.cnf")
 	if err != nil {
 		return err
@@ -218,7 +246,7 @@ func RunMysqlDump(bin string, cfg ConnectionConfig, resultFile string, conn *Con
 		return err
 	}
 
-	args := BuildMysqlDumpArgs(dumpCfg, defaultsPath, resultFile)
+	args := BuildMysqlDumpArgs(dumpCfg, defaultsPath, resultFile, throughSSH)
 	if mysqlDumpSupportsColumnStatistics(bin) {
 		// Keep defaults-extra-file first; insert compatibility flag next.
 		args = append([]string{args[0], "--column-statistics=0"}, args[1:]...)

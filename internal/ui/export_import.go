@@ -523,8 +523,8 @@ func (m *Model) execExportDump(tables []string) tea.Cmd {
 
 // exBackup shells out to mysqldump for the current MySQL database, writing
 // ~/Downloads/<db>_YYYY-MM-DD.sql. Password goes in a 0600 defaults file, never
-// argv. SSH connections open a short-lived 127.0.0.1 forward through Creel's
-// existing tunnel so local mysqldump can reach the remote server.
+// argv. When MySQL is on the SSH host, mysqldump runs remotely and streams
+// back over SSH (avoids truncated dumps through a localhost forward).
 func (m *Model) exBackup() tea.Cmd {
 	if m.connection == nil {
 		m.schemaMsg = "not connected"
@@ -535,10 +535,16 @@ func (m *Model) exBackup() tea.Cmd {
 		m.schemaMsg = err.Error()
 		return nil
 	}
-	bin, err := db.FindMysqlDump()
-	if err != nil {
-		m.schemaMsg = "mysqldump is not on PATH"
-		return nil
+	// Local mysqldump is only required when we cannot run it on the SSH host.
+	bin := ""
+	needLocal := strings.TrimSpace(cfg.SSHHost) == "" || !db.MysqlHostOnSSHTarget(cfg.Host)
+	if needLocal {
+		var err error
+		bin, err = db.FindMysqlDump()
+		if err != nil {
+			m.schemaMsg = "mysqldump is not on PATH"
+			return nil
+		}
 	}
 	fileLabel := filepath.Base(cfg.Database)
 	if fileLabel == "" {

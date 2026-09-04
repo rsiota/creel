@@ -70,6 +70,14 @@ func (t *SSHTunnel) DialContext(ctx context.Context, network, addr string) (net.
 	return t.client.Dial(network, addr)
 }
 
+// NewSession opens an SSH session on the bastion (e.g. to run remote mysqldump).
+func (t *SSHTunnel) NewSession() (*ssh.Session, error) {
+	if t == nil || t.client == nil {
+		return nil, fmt.Errorf("no active SSH tunnel")
+	}
+	return t.client.NewSession()
+}
+
 // Close closes the underlying SSH client connection and stops keepalives.
 func (t *SSHTunnel) Close() error {
 	if t == nil {

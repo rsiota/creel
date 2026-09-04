@@ -35,7 +35,7 @@ func TestBuildMysqlDumpArgsOmitsPassword(t *testing.T) {
 		Password: "s3cret",
 		SSLMode:  "require",
 	}
-	args := BuildMysqlDumpArgs(cfg, "/tmp/c.cnf", "/tmp/out.sql")
+	args := BuildMysqlDumpArgs(cfg, "/tmp/c.cnf", "/tmp/out.sql", false)
 	joined := strings.Join(args, " ")
 	if strings.Contains(joined, "s3cret") {
 		t.Fatalf("password leaked onto argv: %v", args)
@@ -51,6 +51,7 @@ func TestBuildMysqlDumpArgsOmitsPassword(t *testing.T) {
 		"--single-transaction",
 		"--routines",
 		"--events",
+		"--max-allowed-packet=1073741824",
 		"--result-file=/tmp/out.sql",
 		"shop",
 	}
@@ -60,6 +61,19 @@ func TestBuildMysqlDumpArgsOmitsPassword(t *testing.T) {
 			t.Errorf("missing %q in %v", w, args)
 		}
 	}
+	if strings.Contains(joined, "--compress") {
+		t.Fatalf("compress is SSH-only: %v", args)
+	}
+}
+
+func TestBuildMysqlDumpArgsSSHCompress(t *testing.T) {
+	args := BuildMysqlDumpArgs(ConnectionConfig{
+		Driver: DriverMySQL, Database: "shop", Host: "127.0.0.1", Port: 3306,
+	}, "/tmp/c.cnf", "/tmp/out.sql", true)
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--compress") {
+		t.Fatalf("SSH dumps should compress: %v", args)
+	}
 }
 
 func TestBuildMysqlDumpArgsSocket(t *testing.T) {
@@ -68,7 +82,7 @@ func TestBuildMysqlDumpArgsSocket(t *testing.T) {
 		Database: "app",
 		Socket:   "/tmp/mysql.sock",
 	}
-	args := BuildMysqlDumpArgs(cfg, "/tmp/c.cnf", "/tmp/out.sql")
+	args := BuildMysqlDumpArgs(cfg, "/tmp/c.cnf", "/tmp/out.sql", false)
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--socket=/tmp/mysql.sock") {
 		t.Fatalf("socket: %v", args)
@@ -197,7 +211,7 @@ func TestMysqlDumpConfigViaForward(t *testing.T) {
 	if got.SSLMode != "disable" {
 		t.Fatalf("ssl: %q", got.SSLMode)
 	}
-	args := BuildMysqlDumpArgs(got, "/tmp/c.cnf", "/tmp/out.sql")
+	args := BuildMysqlDumpArgs(got, "/tmp/c.cnf", "/tmp/out.sql", true)
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--host=127.0.0.1") || !strings.Contains(joined, "--port=54321") {
 		t.Fatalf("args: %v", args)

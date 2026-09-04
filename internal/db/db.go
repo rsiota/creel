@@ -503,8 +503,9 @@ func ConnectionFromConfig(cfg ConnectionConfig) *Connection {
 	return &Connection{config: cfg}
 }
 
-// startMysqlDumpForward opens a 127.0.0.1 proxy through the live MySQL SSH
-// tunnel so mysqldump can reach the remote server.
+// startMysqlDumpForward opens a 127.0.0.1 proxy so mysqldump can reach the
+// remote MySQL server. Prefers OpenSSH `ssh -L` (more reliable for large
+// dumps); falls back to Creel's in-process crypto/ssh tunnel.
 func (c *Connection) startMysqlDumpForward() (*LocalForward, error) {
 	if c == nil || c.db == nil {
 		return nil, fmt.Errorf(":backup needs an active SSH connection")
@@ -523,6 +524,9 @@ func (c *Connection) startMysqlDumpForward() (*LocalForward, error) {
 	port := c.config.Port
 	if port == 0 {
 		port = 3306
+	}
+	if fwd, err := startOpenSSHLocalForward(c.config, host, port); err == nil {
+		return fwd, nil
 	}
 	return m.tunnel.StartLocalForward(fmt.Sprintf("%s:%d", host, port))
 }

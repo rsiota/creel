@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os/exec"
 	"sync"
 )
 
-// LocalForward is a 127.0.0.1 TCP listener that proxies each accepted
-// connection through dial to remoteAddr. Used so an external tool like
-// mysqldump can reach a MySQL server that Creel only reaches via SSH.
+// LocalForward is a 127.0.0.1 endpoint that reaches a remote MySQL address
+// through SSH so tools like mysqldump can connect on localhost.
+//
+// Two backends:
+//   - in-process: ln accepts and dial proxies via crypto/ssh
+//   - OpenSSH:    cmd runs `ssh -L`; ln/dial are nil
 type LocalForward struct {
 	Host string
 	Port int
@@ -18,9 +22,12 @@ type LocalForward struct {
 	ln     net.Listener
 	dial   func(ctx context.Context, network, addr string) (net.Conn, error)
 	remote string
+	cmd    *exec.Cmd
+	// cmdExited is closed after cmd.Wait returns (OpenSSH backend only).
+	cmdExited <-chan struct{}
 
 	closeOnce sync.Once
-	done      chan struct{}
+	done      chan struct{} // closed when fully shut down
 }
 
 // StartLocalForward listens on 127.0.0.1:0 and forwards to remoteAddr via dial.
@@ -67,10 +74,6 @@ func (f *LocalForward) serve() {
 	for {
 		local, err := f.ln.Accept()
 		if err != nil {
-			select {
-			case <-f.done:
-			default:
-			}
 			return
 		}
 		go f.proxy(local)
@@ -86,28 +89,51 @@ func (f *LocalForward) proxy(local net.Conn) {
 	defer local.Close()
 	defer remote.Close()
 
-	done := make(chan struct{}, 2)
+	// Bidirectional copy with half-close and larger buffers. Waiting on only
+	// the first finished direction and then Close()'ing both used to truncate
+	// mysqldump mid-result. Half-close keeps the download side alive.
+	const bufSize = 256 << 10
+	done := make(chan struct{})
 	go func() {
-		_, _ = io.Copy(remote, local)
-		done <- struct{}{}
+		buf := make([]byte, bufSize)
+		_, _ = io.CopyBuffer(remote, local, buf)
+		closeWrite(remote)
+		close(done)
 	}()
-	go func() {
-		_, _ = io.Copy(local, remote)
-		done <- struct{}{}
-	}()
+	buf := make([]byte, bufSize)
+	_, _ = io.CopyBuffer(local, remote, buf)
+	closeWrite(local)
 	<-done
 }
 
-// Close stops accepting and closes the listener. In-flight proxies finish on
-// their own when either side hangs up.
+// closeWrite shuts down the write half of c when supported so the peer can
+// finish reading without tearing down the opposite direction.
+func closeWrite(c net.Conn) {
+	type closeWriter interface{ CloseWrite() error }
+	if cw, ok := c.(closeWriter); ok {
+		_ = cw.CloseWrite()
+	}
+}
+
+// Close stops the forward: closes the in-process listener and/or kills ssh -L.
 func (f *LocalForward) Close() error {
 	if f == nil {
 		return nil
 	}
 	var err error
 	f.closeOnce.Do(func() {
+		if f.cmd != nil && f.cmd.Process != nil {
+			_ = f.cmd.Process.Kill()
+			if f.cmdExited != nil {
+				<-f.cmdExited
+			} else {
+				_, _ = f.cmd.Process.Wait()
+			}
+		}
+		if f.ln != nil {
+			err = f.ln.Close()
+		}
 		close(f.done)
-		err = f.ln.Close()
 	})
 	return err
 }
