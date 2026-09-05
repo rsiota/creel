@@ -283,6 +283,135 @@ func (m *MySQL) TableSizes() ([]TableSize, error) {
 	return out, rows.Err()
 }
 
+// Locks returns MySQL/MariaDB sessions waiting on InnoDB locks.
+func (m *MySQL) Locks() ([]LockWait, error) {
+	waits, err := m.locksFromPerformanceSchema()
+	if err == nil {
+		return waits, nil
+	}
+	waits, err2 := m.locksFromInnoDBLockWaits()
+	if err2 == nil {
+		return waits, nil
+	}
+	return nil, fmt.Errorf("lock waits unavailable (%v; fallback: %v)", err, err2)
+}
+
+func (m *MySQL) locksFromPerformanceSchema() ([]LockWait, error) {
+	rows, err := m.db.Query(`
+SELECT
+  CAST(waiting.PROCESSLIST_ID AS CHAR),
+  COALESCE(waiting.PROCESSLIST_USER, ''),
+  COALESCE(waiting.PROCESSLIST_INFO, ''),
+  CAST(blocking.PROCESSLIST_ID AS CHAR),
+  COALESCE(blocking.PROCESSLIST_USER, ''),
+  COALESCE(blocking.PROCESSLIST_INFO, ''),
+  COALESCE(blocking.PROCESSLIST_STATE, ''),
+  CONCAT(COALESCE(wl.LOCK_TYPE, ''), ' ', COALESCE(wl.LOCK_MODE, '')),
+  CASE
+    WHEN wl.OBJECT_SCHEMA IS NULL OR wl.OBJECT_SCHEMA = '' THEN COALESCE(wl.OBJECT_NAME, '')
+    ELSE CONCAT(wl.OBJECT_SCHEMA, '.', wl.OBJECT_NAME)
+  END,
+  CASE
+    WHEN waiting.PROCESSLIST_TIME IS NULL THEN ''
+    ELSE CONCAT(waiting.PROCESSLIST_TIME, 's')
+  END
+FROM performance_schema.data_lock_waits AS w
+JOIN performance_schema.data_locks AS wl
+  ON wl.ENGINE_LOCK_ID = w.REQUESTING_ENGINE_LOCK_ID
+JOIN performance_schema.data_locks AS bl
+  ON bl.ENGINE_LOCK_ID = w.BLOCKING_ENGINE_LOCK_ID
+JOIN performance_schema.threads AS waiting
+  ON waiting.THREAD_ID = w.REQUESTING_THREAD_ID
+JOIN performance_schema.threads AS blocking
+  ON blocking.THREAD_ID = w.BLOCKING_THREAD_ID
+ORDER BY waiting.PROCESSLIST_TIME DESC, waiting.PROCESSLIST_ID`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanLockWaits(rows)
+}
+
+func (m *MySQL) locksFromInnoDBLockWaits() ([]LockWait, error) {
+	// MariaDB / older MySQL still expose INFORMATION_SCHEMA.INNODB_LOCK_WAITS.
+	rows, err := m.db.Query(`
+SELECT
+  CAST(r.trx_mysql_thread_id AS CHAR),
+  COALESCE(r.trx_query, ''),
+  CAST(b.trx_mysql_thread_id AS CHAR),
+  COALESCE(b.trx_query, ''),
+  COALESCE(b.trx_state, ''),
+  COALESCE(TIMESTAMPDIFF(SECOND, r.trx_wait_started, NOW()), 0)
+FROM information_schema.innodb_lock_waits AS w
+JOIN information_schema.innodb_trx AS b ON b.trx_id = w.blocking_trx_id
+JOIN information_schema.innodb_trx AS r ON r.trx_id = w.requesting_trx_id
+ORDER BY r.trx_wait_started`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []LockWait
+	seen := map[string]bool{}
+	for rows.Next() {
+		var waitingQuery, blockingQuery, blockingState string
+		var waitedSec int64
+		var w LockWait
+		if err := rows.Scan(
+			&w.WaitingPID, &waitingQuery,
+			&w.BlockingPID, &blockingQuery, &blockingState,
+			&waitedSec,
+		); err != nil {
+			return nil, err
+		}
+		w.WaitingQuery = waitingQuery
+		w.BlockingQuery = blockingQuery
+		w.BlockingState = blockingState
+		if waitedSec > 0 {
+			w.WaitDuration = fmt.Sprintf("%ds", waitedSec)
+		}
+		key := w.WaitingPID + "\x00" + w.BlockingPID
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}
+
+func scanLockWaits(rows *sql.Rows) ([]LockWait, error) {
+	var out []LockWait
+	seen := map[string]bool{}
+	for rows.Next() {
+		var w LockWait
+		if err := rows.Scan(
+			&w.WaitingPID, &w.WaitingUser, &w.WaitingQuery,
+			&w.BlockingPID, &w.BlockingUser, &w.BlockingQuery, &w.BlockingState,
+			&w.LockType, &w.Relation, &w.WaitDuration,
+		); err != nil {
+			return nil, err
+		}
+		key := w.WaitingPID + "\x00" + w.BlockingPID + "\x00" + w.Relation
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}
+
+// KillSession terminates a MySQL connection by thread id.
+func (m *MySQL) KillSession(pid string) error {
+	id, err := parseSessionPID(pid)
+	if err != nil {
+		return err
+	}
+	_, err = m.db.Exec(fmt.Sprintf("KILL %d", id))
+	return err
+}
+
 func (m *MySQL) TableSchema(table string) ([]Column, error) {
 	rows, err := m.db.Query(
 		`SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position`,

@@ -348,6 +348,87 @@ func (p *Postgres) TableSizes() ([]TableSize, error) {
 	return out, rows.Err()
 }
 
+// Locks returns Postgres sessions waiting on locks held by other backends.
+func (p *Postgres) Locks() ([]LockWait, error) {
+	rows, err := p.db.Query(`
+SELECT
+  blocked.pid::text,
+  COALESCE(blocked.usename::text, ''),
+  COALESCE(blocked.query, ''),
+  blocking.pid::text,
+  COALESCE(blocking.usename::text, ''),
+  COALESCE(blocking.query, ''),
+  COALESCE(blocking.state, ''),
+  COALESCE(bl.locktype, ''),
+  COALESCE(
+    NULLIF(n.nspname || '.' || c.relname, '.'),
+    COALESCE(c.relname, '')
+  ),
+  COALESCE(age(now(), blocked.query_start)::text, '')
+FROM pg_stat_activity AS blocked
+JOIN pg_locks AS bl
+  ON bl.pid = blocked.pid AND NOT bl.granted
+JOIN pg_locks AS hl
+  ON hl.locktype = bl.locktype
+ AND hl.database IS NOT DISTINCT FROM bl.database
+ AND hl.relation IS NOT DISTINCT FROM bl.relation
+ AND hl.page IS NOT DISTINCT FROM bl.page
+ AND hl.tuple IS NOT DISTINCT FROM bl.tuple
+ AND hl.virtualxid IS NOT DISTINCT FROM bl.virtualxid
+ AND hl.transactionid IS NOT DISTINCT FROM bl.transactionid
+ AND hl.classid IS NOT DISTINCT FROM bl.classid
+ AND hl.objid IS NOT DISTINCT FROM bl.objid
+ AND hl.objsubid IS NOT DISTINCT FROM bl.objsubid
+ AND hl.pid IS DISTINCT FROM bl.pid
+ AND hl.granted
+JOIN pg_stat_activity AS blocking
+  ON blocking.pid = hl.pid
+LEFT JOIN pg_class AS c ON c.oid = COALESCE(bl.relation, hl.relation)
+LEFT JOIN pg_namespace AS n ON n.oid = c.relnamespace
+WHERE blocked.pid <> pg_backend_pid()
+ORDER BY blocked.query_start NULLS LAST, blocked.pid, blocking.pid`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []LockWait
+	seen := map[string]bool{}
+	for rows.Next() {
+		var w LockWait
+		if err := rows.Scan(
+			&w.WaitingPID, &w.WaitingUser, &w.WaitingQuery,
+			&w.BlockingPID, &w.BlockingUser, &w.BlockingQuery, &w.BlockingState,
+			&w.LockType, &w.Relation, &w.WaitDuration,
+		); err != nil {
+			return nil, err
+		}
+		key := w.WaitingPID + "\x00" + w.BlockingPID + "\x00" + w.Relation + "\x00" + w.LockType
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}
+
+// KillSession terminates a Postgres backend by pid via pg_terminate_backend.
+func (p *Postgres) KillSession(pid string) error {
+	id, err := parseSessionPID(pid)
+	if err != nil {
+		return err
+	}
+	var ok bool
+	if err := p.db.QueryRow(`SELECT pg_terminate_backend($1)`, id).Scan(&ok); err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("could not terminate pid %d (gone, or not permitted)", id)
+	}
+	return nil
+}
+
 func (p *Postgres) TableSchema(table string) ([]Column, error) {
 	rows, err := p.db.Query(
 		`SELECT column_name, data_type FROM information_schema.columns

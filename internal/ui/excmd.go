@@ -2776,6 +2776,101 @@ func formatTableSizeRows(ts db.TableSize) string {
 	return s
 }
 
+// exLocks lists sessions waiting on locks held by other sessions (:locks /
+// :blocked). Opens the lookup overlay. Enter jumps to the locked relation when
+// it looks like a table name. Use :kill <pid> on a blocking pid to terminate it.
+func (m *Model) exLocks() tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	conn := m.connection
+	return func() tea.Msg {
+		waits, err := conn.DB().Locks()
+		if err != nil {
+			return lookupResultMsg{err: err}
+		}
+		cols := []db.Column{
+			{Name: "Waiter"},
+			{Name: "Blocked by"},
+			{Name: "Wait"},
+			{Name: "Relation"},
+			{Name: "Query"},
+		}
+		if len(waits) == 0 {
+			return lookupResultMsg{
+				title:  "Lock waits",
+				result: db.Result{Columns: cols},
+			}
+		}
+		rows := make([][]string, len(waits))
+		jumps := make([]string, len(waits))
+		for i, w := range waits {
+			rows[i] = []string{
+				db.FormatLockWaiter(w.WaitingPID, w.WaitingUser),
+				db.FormatLockBlocker(w.BlockingPID, w.BlockingUser, w.BlockingState),
+				w.WaitDuration,
+				w.Relation,
+				db.TruncateQuery(w.WaitingQuery, 72),
+			}
+			jumps[i] = lockJumpTable(w.Relation)
+		}
+		title := fmt.Sprintf("Lock waits (%d)", len(waits))
+		return lookupResultMsg{
+			title:  title,
+			result: db.Result{Columns: cols, Rows: rows},
+			jumps:  jumps,
+		}
+	}
+}
+
+// lockJumpTable returns a bare table name for Enter-to-open when relation is
+// "schema.table" or "table"; otherwise "".
+func lockJumpTable(relation string) string {
+	relation = strings.TrimSpace(relation)
+	if relation == "" {
+		return ""
+	}
+	if i := strings.LastIndex(relation, "."); i >= 0 {
+		relation = relation[i+1:]
+	}
+	if relation == "" || strings.ContainsAny(relation, " \t") {
+		return ""
+	}
+	return relation
+}
+
+// exKill terminates a database session by pid (:kill <pid>). Gated by
+// read-only mode and confirm_destructive unless forced (:kill!).
+func (m *Model) exKill(pid string, force bool) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if m.isReadOnly() {
+		m.schemaMsg = "read-only: kill disabled"
+		return nil
+	}
+	pid = strings.TrimSpace(pid)
+	if pid == "" {
+		m.schemaMsg = ":kill needs a session pid"
+		return nil
+	}
+	if !force && m.confirmDestructive() {
+		m.killConfirm = pid
+		return nil
+	}
+	return m.execKill(pid)
+}
+
+func (m *Model) execKill(pid string) tea.Cmd {
+	conn := m.connection
+	return func() tea.Msg {
+		err := conn.DB().KillSession(pid)
+		return killDoneMsg{pid: pid, err: err}
+	}
+}
+
 // exViews lists views in the lookup overlay (:views / :dv).
 func (m *Model) exViews() tea.Cmd {
 	if m.connection == nil {

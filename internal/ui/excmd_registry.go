@@ -848,6 +848,26 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exSizes() },
 		},
 		{
+			verbs:   []string{"locks", "blocked"},
+			desc:    "show lock waiters and blockers (MySQL/Postgres)",
+			usage:   ":locks",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exLocks() },
+		},
+		{
+			verbs:   []string{"kill"},
+			desc:    "terminate a session by pid (from :locks); :kill! skips confirm",
+			usage:   ":kill <pid>",
+			argKind: exArgRequired,
+			run: func(m *Model, args []string, force bool) tea.Cmd {
+				if len(args) == 0 {
+					m.schemaMsg = ":kill needs a session pid"
+					return nil
+				}
+				return m.exKill(args[0], force)
+			},
+		},
+		{
 			verbs:   []string{"views", "dv"},
 			desc:    "list views in the lookup overlay",
 			usage:   ":views",

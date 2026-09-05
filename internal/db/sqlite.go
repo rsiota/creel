@@ -171,6 +171,16 @@ func (s *SQLite) TableSizes() ([]TableSize, error) {
 	return out, nil
 }
 
+// Locks is unsupported on SQLite (no multi-session lock-wait catalog).
+func (s *SQLite) Locks() ([]LockWait, error) {
+	return nil, fmt.Errorf(":locks is not available for SQLite")
+}
+
+// KillSession is unsupported on SQLite.
+func (s *SQLite) KillSession(pid string) error {
+	return fmt.Errorf(":kill is not available for SQLite")
+}
+
 // sqliteTableDiskBytes maps table name to on-disk bytes via dbstat when available.
 func sqliteTableDiskBytes(db *sql.DB) map[string]int64 {
 	rows, err := db.Query(

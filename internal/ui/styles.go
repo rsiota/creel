@@ -556,17 +556,22 @@ func renderConfirmDialogBare(prompt string) string {
 }
 
 func renderConfirmDialogFooter(prompt string, showFooter bool) string {
-	primary := lipgloss.NewStyle().Foreground(colorPrimary)
+	// Fixed content width (dialog Width 46 minus border 2 and padding 3*2).
+	const contentW = 40
+	primary := lipgloss.NewStyle().Width(contentW).Align(lipgloss.Center).Foreground(colorPrimary)
+	muted := lipgloss.NewStyle().Width(contentW).Align(lipgloss.Center).Foreground(colorMuted)
 	parts := strings.SplitN(prompt, "\n", 2)
 	promptLines := []string{primary.Render(parts[0])}
 	if len(parts) > 1 {
-		promptLines = append(promptLines, mutedStyle.Render(parts[1]))
+		promptLines = append(promptLines, muted.Render(parts[1]))
 	}
 	lines := []string{lipgloss.JoinVertical(lipgloss.Center, promptLines...)}
 	if showFooter {
-		lines = append(lines, "",
-			lipgloss.NewStyle().Foreground(colorLabel).Render("y")+mutedStyle.Render(" confirm    ")+
-				lipgloss.NewStyle().Foreground(colorLabel).Render("n")+mutedStyle.Render(" cancel"))
+		footer := lipgloss.NewStyle().Width(contentW).Align(lipgloss.Center).Render(
+			lipgloss.NewStyle().Foreground(colorLabel).Render("y") + mutedStyle.Render(" confirm    ") +
+				lipgloss.NewStyle().Foreground(colorLabel).Render("n") + mutedStyle.Render(" cancel"),
+		)
+		lines = append(lines, "", footer)
 	}
 	return lipgloss.NewStyle().
 		Border(panelBorder()).

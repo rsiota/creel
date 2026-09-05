@@ -194,6 +194,7 @@ func (m *Model) resetWorkspaceForNewConnection() {
 	m.columnPicker.Hide()
 	m.discardConfirm = false
 	m.truncateConfirm = ""
+	m.killConfirm = ""
 	m.deleteRowsConfirmTable = ""
 	m.deleteRowsConfirmQuery = ""
 	m.deleteRowsConfirmCount = 0

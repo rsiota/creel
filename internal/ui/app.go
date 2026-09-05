@@ -207,6 +207,12 @@ type lookupResultMsg struct {
 	err    error
 }
 
+// killDoneMsg carries the result of an async :kill session termination.
+type killDoneMsg struct {
+	pid string
+	err error
+}
+
 // explorerLoadedMsg carries the explorer tree root (the focused row + its
 // first-level edges) produced by loadExplorer. root is nil on the empty/error
 // paths, in which case emptyMsg/err explains why. depth is the queryStack depth
@@ -508,6 +514,9 @@ type Model struct {
 
 	// Truncate confirmation dialog (non-empty table name while pending).
 	truncateConfirm string
+
+	// Kill-session confirmation dialog (non-empty pid while pending).
+	killConfirm string
 
 	// Drop-table confirmation dialog (non-empty table name while pending).
 	// Requires the user to type the table name exactly to proceed.
@@ -1769,6 +1778,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.lookupPanel.Show(msg.title, msg.result, msg.jumps)
 		return m, nil
+	case killDoneMsg:
+		if msg.err != nil {
+			m.schemaMsg = fmt.Sprintf("kill %s failed: %v", msg.pid, msg.err)
+		} else {
+			m.schemaMsg = fmt.Sprintf("killed session %s", msg.pid)
+		}
+		return m, nil
 	case explorerLoadedMsg:
 		// Only apply if the panel is still open (the user may have closed it
 		// while a load was in flight).
@@ -2996,6 +3012,20 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.execTruncate(table)
 		case "esc", "ctrl+c":
 			m.truncateConfirm = ""
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Kill-session confirmation is modal — enter/esc.
+	if m.killConfirm != "" {
+		switch msg.String() {
+		case "enter":
+			pid := m.killConfirm
+			m.killConfirm = ""
+			return m, m.execKill(pid)
+		case "esc", "ctrl+c":
+			m.killConfirm = ""
 			return m, nil
 		}
 		return m, nil
@@ -5210,6 +5240,17 @@ func (m Model) viewWorkspace() string {
 	// Overlay truncate confirmation dialog if visible
 	if m.truncateConfirm != "" {
 		prompt := fmt.Sprintf("Truncate table %s?\nAll rows will be permanently deleted.", m.truncateConfirm)
+		dialog := renderConfirmDialogBare(prompt)
+		dlgW := lipgloss.Width(dialog)
+		dlgH := lipgloss.Height(dialog)
+		dlgX := (m.width - dlgW) / 2
+		dlgY := (m.height - 1 - dlgH) / 2
+		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
+	// Overlay kill-session confirmation dialog if visible
+	if m.killConfirm != "" {
+		prompt := fmt.Sprintf("Kill session %s?\nActive queries on that connection will be aborted.", m.killConfirm)
 		dialog := renderConfirmDialogBare(prompt)
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)

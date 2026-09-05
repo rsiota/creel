@@ -83,9 +83,9 @@ Deferred — the runtime toggles are already covered by `:timing`/`:limit`/
 `:theme`; `:set` would mainly add `confirm_destructive`/`timeout` mirrors.
 
 ### Tier 4 — DBA / niche (#15)
-`:who`, `:locks`, `:kill <pid>` — session/lock inspection. Driver-specific;
-`:kill` is dangerous (`confirm_destructive`). **Demand-gated:** build only if
-users ask; don't speculatively.
+`:who`, `:locks`, `:kill <pid>` — session/lock inspection. **`:locks` /
+`:blocked` and `:kill` shipped** (MySQL/Postgres lookup overlay + confirm).
+`:who` (all sessions) remains demand-gated.
 
 ### Tech debt / docs
 - **Unify ERD routing.** Two routing systems now coexist: the legacy three-mode

@@ -11,7 +11,7 @@ import (
 
 // LookupPanel is a scrollable, read-only overlay that displays a titled table
 // of lookup results (a db.Result). It backs ":sizes", ":tables", ":refs",
-// ":uses", ":search", and related commands. The cursor moves among data rows
+// ":uses", ":locks", ":search", and related commands. The cursor moves among data rows
 // only (title and column header stay fixed); Enter opens the jump target for
 // the selected row when one was supplied (e.g. a table name from :sizes).
 type LookupPanel struct {

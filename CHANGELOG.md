@@ -12,6 +12,13 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- `:locks` / `:blocked` — show sessions waiting on locks held by other sessions
+  (MySQL InnoDB / PostgreSQL). Opens the lookup overlay with waiter → blocker,
+  wait age, relation, and a truncated waiting query. Enter jumps to the locked
+  table when known. SQLite reports unsupported.
+- `:kill <pid>` — terminate a session (Postgres `pg_terminate_backend`, MySQL
+  `KILL`). Confirm when `confirm_destructive` is on; `:kill!` skips confirm.
+  Disabled in read-only mode.
 - `:backup` / `:mysqldump` / `:pg_dump` — shell out to `mysqldump` or `pg_dump`
   (must be on PATH) for the current MySQL/MariaDB or PostgreSQL database,
   writing `~/Downloads/<db>_YYYY-MM-DD.sql`. Password is passed via a 0600

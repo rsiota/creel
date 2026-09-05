@@ -167,6 +167,14 @@ type DB interface {
 	// current schema/database. Row counts may be approximate (RowsApprox).
 	// DiskBytes is -1 when the driver cannot determine per-table size.
 	TableSizes() ([]TableSize, error)
+	// Locks returns sessions currently waiting on locks held by other sessions
+	// (waiter → blocker). Empty means nothing is blocked. SQLite returns an
+	// error: it has no multi-session lock-wait catalog.
+	Locks() ([]LockWait, error)
+	// KillSession terminates a backend/session by process/thread id (Postgres
+	// pid or MySQL connection id). SQLite returns an error. Dangerous; callers
+	// must gate with confirmations.
+	KillSession(pid string) error
 	// TableSchema returns the column names and types for a given table.
 	TableSchema(table string) ([]Column, error)
 	// TableSchemaInSchema is TableSchema for a table in the named schema
