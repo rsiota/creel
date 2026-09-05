@@ -12,21 +12,21 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
-- `:backup` / `:mysqldump` — shell out to `mysqldump` (must be on PATH) for the
-  current MySQL/MariaDB database, writing `~/Downloads/<db>_YYYY-MM-DD.sql`.
-  Password is passed via a 0600 defaults file, never argv. When MySQL lives on
-  the SSH host (localhost/127.0.0.1), `mysqldump` runs on the remote machine and
-  streams back over SSH — the same approach as a manual server-side dump, which
-  avoids truncated transfers through a localhost forward. Otherwise OpenSSH
-  `ssh -L` (or an in-process forward) is used with the local binary. MySQL 8
-  clients get `--column-statistics=0` so dumps against MariaDB / older MySQL
-  don't fail on `COLUMN_STATISTICS`. SQLite and Postgres keep using `X`.
-- `:restore` / `:mysqlload` — shell out to the `mysql` client to load a SQL dump
-  into the current MySQL/MariaDB database (`:restore <file>`). Same credential
-  and SSH strategy as `:backup`: remote `mysql` when the server is on the SSH
-  host, otherwise local `mysql` through a forward. Live status-bar byte count
-  while the file streams. Prefer this for large dumps; keep `I` / `:import` for
-  in-app progress and non-MySQL engines.
+- `:backup` / `:mysqldump` / `:pg_dump` — shell out to `mysqldump` or `pg_dump`
+  (must be on PATH) for the current MySQL/MariaDB or PostgreSQL database,
+  writing `~/Downloads/<db>_YYYY-MM-DD.sql`. Password is passed via a 0600
+  defaults file (MySQL) or `.pgpass` (Postgres), never argv. When the DB lives
+  on the SSH host (localhost/127.0.0.1), the dump tool runs on the remote
+  machine and streams back over SSH — the same approach as a manual server-side
+  dump, which avoids truncated transfers through a localhost forward. Otherwise
+  OpenSSH `ssh -L` (or an in-process forward) is used with the local binary.
+  MySQL 8 clients get `--column-statistics=0` so dumps against MariaDB / older
+  MySQL don't fail on `COLUMN_STATISTICS`. SQLite keeps using `X`.
+- `:restore` / `:mysqlload` / `:psqlload` — shell out to `mysql` or `psql` to
+  load a SQL dump into the current MySQL/MariaDB or PostgreSQL database
+  (`:restore <file>`). Same credential and SSH strategy as `:backup`. Live
+  status-bar byte count while the file streams. Prefer this for large dumps;
+  keep `I` / `:import` for in-app progress and SQLite.
 - Connection picker group tabs: when any connection has a `group`, a
   right-aligned tab strip above the filter prompt (named groups A–Z, then
   Ungrouped) replaces foldable headers. `[` / `]` (or click) switches groups;

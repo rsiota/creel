@@ -53,8 +53,57 @@ func TestExRestoreSQLite(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("expected nil")
 	}
-	if !strings.Contains(m.schemaMsg, "mysql") {
+	if !strings.Contains(m.schemaMsg, "mysql") && !strings.Contains(m.schemaMsg, "psql") {
 		t.Fatalf("schemaMsg = %q", m.schemaMsg)
+	}
+}
+
+func TestExRestorePostgresMissingPATH(t *testing.T) {
+	restore := db.SwapLookPathPsql(func(string) (string, error) {
+		return "", errors.New("not found")
+	})
+	t.Cleanup(restore)
+
+	dump := filepath.Join(t.TempDir(), "x.sql")
+	if err := os.WriteFile(dump, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := &Model{connection: db.ConnectionFromConfig(db.ConnectionConfig{
+		Driver: db.DriverPostgres, Database: "shop", Host: "127.0.0.1",
+	})}
+	cmd := m.runExCommand("psqlload " + dump)
+	if cmd != nil {
+		t.Fatal("expected nil")
+	}
+	if m.schemaMsg != "psql is not on PATH" {
+		t.Fatalf("schemaMsg = %q", m.schemaMsg)
+	}
+}
+
+func TestExRestorePostgresSSHSkipsLocalPATH(t *testing.T) {
+	restore := db.SwapLookPathPsql(func(string) (string, error) {
+		return "", errors.New("not found")
+	})
+	t.Cleanup(restore)
+
+	dump := filepath.Join(t.TempDir(), "x.sql")
+	if err := os.WriteFile(dump, []byte("SELECT 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := &Model{connection: db.ConnectionFromConfig(db.ConnectionConfig{
+		Driver: db.DriverPostgres, Database: "app", Host: "127.0.0.1",
+		SSHHost: "bastion",
+	})}
+	cmd := m.runExCommand("restore " + dump)
+	if cmd == nil {
+		t.Fatalf("expected async cmd, schemaMsg=%q", m.schemaMsg)
+	}
+	msg, ok := cmd().(restoreDoneMsg)
+	if !ok {
+		t.Fatalf("got %T", msg)
+	}
+	if msg.err == nil || !strings.Contains(msg.err.Error(), "SSH") {
+		t.Fatalf("want SSH/tunnel error without local PATH check, got %v", msg.err)
 	}
 }
 

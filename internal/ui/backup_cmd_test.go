@@ -38,21 +38,49 @@ func TestExBackupSQLite(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("expected nil cmd, got %v", cmd)
 	}
-	if !strings.Contains(m.schemaMsg, "mysqldump") {
+	if !strings.Contains(m.schemaMsg, "mysqldump") && !strings.Contains(m.schemaMsg, "pg_dump") {
 		t.Fatalf("schemaMsg = %q", m.schemaMsg)
 	}
 }
 
-func TestExBackupPostgres(t *testing.T) {
+func TestExBackupPostgresMissingPATH(t *testing.T) {
+	restore := db.SwapLookPathPgDump(func(string) (string, error) {
+		return "", errors.New("not found")
+	})
+	t.Cleanup(restore)
+
 	m := &Model{connection: db.ConnectionFromConfig(db.ConnectionConfig{
-		Driver: db.DriverPostgres, Database: "app",
+		Driver: db.DriverPostgres, Database: "app", Host: "127.0.0.1",
 	})}
-	cmd := m.runExCommand("mysqldump")
+	cmd := m.runExCommand("backup")
 	if cmd != nil {
 		t.Fatalf("expected nil cmd")
 	}
-	if !strings.Contains(m.schemaMsg, "mysqldump") {
+	if m.schemaMsg != "pg_dump is not on PATH" {
 		t.Fatalf("schemaMsg = %q", m.schemaMsg)
+	}
+}
+
+func TestExBackupPostgresSSHSkipsLocalPATH(t *testing.T) {
+	restore := db.SwapLookPathPgDump(func(string) (string, error) {
+		return "", errors.New("not found")
+	})
+	t.Cleanup(restore)
+
+	m := &Model{connection: db.ConnectionFromConfig(db.ConnectionConfig{
+		Driver: db.DriverPostgres, Database: "app", Host: "127.0.0.1",
+		SSHHost: "bastion",
+	})}
+	cmd := m.runExCommand("pg_dump")
+	if cmd == nil {
+		t.Fatalf("expected async cmd, schemaMsg=%q", m.schemaMsg)
+	}
+	msg, ok := cmd().(backupDoneMsg)
+	if !ok {
+		t.Fatalf("got %T", msg)
+	}
+	if msg.err == nil || !strings.Contains(msg.err.Error(), "SSH") {
+		t.Fatalf("want SSH/tunnel error without local PATH check, got %v", msg.err)
 	}
 }
 

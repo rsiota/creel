@@ -533,30 +533,50 @@ func (m *Model) execExportDump(tables []string) tea.Cmd {
 	}
 }
 
-// exBackup shells out to mysqldump for the current MySQL database, writing
-// ~/Downloads/<db>_YYYY-MM-DD.sql. Password goes in a 0600 defaults file, never
-// argv. When MySQL is on the SSH host, mysqldump runs remotely and streams
-// back over SSH (avoids truncated dumps through a localhost forward).
-// Live byte counts update the status bar while the dump runs.
+// exBackup shells out to mysqldump (MySQL) or pg_dump (PostgreSQL) for the
+// current database, writing ~/Downloads/<db>_YYYY-MM-DD.sql. Password goes in
+// a 0600 defaults/.pgpass file, never argv. When the DB is on the SSH host,
+// the dump tool runs remotely and streams back over SSH. Live byte counts
+// update the status bar while the dump runs.
 func (m *Model) exBackup() tea.Cmd {
 	if m.connection == nil {
 		m.schemaMsg = "not connected"
 		return nil
 	}
 	cfg := m.connection.Config()
-	if err := db.MysqlDumpGuard(cfg); err != nil {
-		m.schemaMsg = err.Error()
+	switch cfg.Driver {
+	case db.DriverMySQL:
+		if err := db.MysqlDumpGuard(cfg); err != nil {
+			m.schemaMsg = err.Error()
+			return nil
+		}
+	case db.DriverPostgres:
+		if err := db.PgDumpGuard(cfg); err != nil {
+			m.schemaMsg = err.Error()
+			return nil
+		}
+	default:
+		m.schemaMsg = ":backup uses mysqldump or pg_dump; use X for a SQL dump"
 		return nil
 	}
-	// Local mysqldump is only required when we cannot run it on the SSH host.
+	// Local CLI is only required when we cannot run it on the SSH host.
 	bin := ""
 	needLocal := strings.TrimSpace(cfg.SSHHost) == "" || !db.MysqlHostOnSSHTarget(cfg.Host)
 	if needLocal {
 		var err error
-		bin, err = db.FindMysqlDump()
-		if err != nil {
-			m.schemaMsg = "mysqldump is not on PATH"
-			return nil
+		switch cfg.Driver {
+		case db.DriverMySQL:
+			bin, err = db.FindMysqlDump()
+			if err != nil {
+				m.schemaMsg = "mysqldump is not on PATH"
+				return nil
+			}
+		case db.DriverPostgres:
+			bin, err = db.FindPgDump()
+			if err != nil {
+				m.schemaMsg = "pg_dump is not on PATH"
+				return nil
+			}
 		}
 	}
 	fileLabel := filepath.Base(cfg.Database)
@@ -565,6 +585,7 @@ func (m *Model) exBackup() tea.Cmd {
 	}
 	filename := fmt.Sprintf("%s_%s.sql", fileLabel, time.Now().Format("2006-01-02"))
 	conn := m.connection
+	driver := cfg.Driver
 	m.backupStarted = time.Now()
 	m.exportMsg = "Backing up…"
 
@@ -578,13 +599,19 @@ func (m *Model) exBackup() tea.Cmd {
 		}
 		path := filepath.Join(dir, filename)
 		var last int64
-		err = db.RunMysqlDump(bin, cfg, path, conn, func(n int64) {
+		onBytes := func(n int64) {
 			last = n
 			select {
 			case progress <- backupProgressMsg{bytes: n, path: path}:
 			default: // drop if the UI hasn't consumed the previous tick yet
 			}
-		})
+		}
+		switch driver {
+		case db.DriverMySQL:
+			err = db.RunMysqlDump(bin, cfg, path, conn, onBytes)
+		case db.DriverPostgres:
+			err = db.RunPgDump(bin, cfg, path, conn, onBytes)
+		}
 		done <- backupDoneMsg{path: path, bytes: last, err: err}
 	}()
 	return waitForBackupProgress(progress, done)
@@ -615,10 +642,11 @@ func backupProgressStatus(n int64, started time.Time) string {
 	return fmt.Sprintf("Backing up… %s · %s/s", size, db.FormatDumpSize(int64(bps)))
 }
 
-// exRestore shells out to the mysql client to load a SQL dump into the current
-// MySQL database. Password goes in a 0600 defaults file, never argv. When MySQL
-// is on the SSH host, mysql runs remotely and the dump streams over SSH stdin.
-// Live byte counts update the status bar while the restore runs.
+// exRestore shells out to the mysql client (MySQL) or psql (PostgreSQL) to
+// load a SQL dump into the current database. Password goes in a 0600
+// defaults/.pgpass file, never argv. When the DB is on the SSH host, the
+// client runs remotely and the dump streams over SSH stdin. Live byte counts
+// update the status bar while the restore runs.
 func (m *Model) exRestore(path string) tea.Cmd {
 	if m.connection == nil {
 		m.schemaMsg = "not connected"
@@ -629,8 +657,19 @@ func (m *Model) exRestore(path string) tea.Cmd {
 		return nil
 	}
 	cfg := m.connection.Config()
-	if err := db.MysqlRestoreGuard(cfg); err != nil {
-		m.schemaMsg = err.Error()
+	switch cfg.Driver {
+	case db.DriverMySQL:
+		if err := db.MysqlRestoreGuard(cfg); err != nil {
+			m.schemaMsg = err.Error()
+			return nil
+		}
+	case db.DriverPostgres:
+		if err := db.PgRestoreGuard(cfg); err != nil {
+			m.schemaMsg = err.Error()
+			return nil
+		}
+	default:
+		m.schemaMsg = ":restore uses mysql or psql; use I to import"
 		return nil
 	}
 	expanded, err := expandTilde(filepath.Clean(path))
@@ -645,18 +684,28 @@ func (m *Model) exRestore(path string) tea.Cmd {
 		m.schemaMsg = "path is a directory"
 		return nil
 	}
-	// Local mysql is only required when we cannot run it on the SSH host.
+	// Local client is only required when we cannot run it on the SSH host.
 	bin := ""
 	needLocal := strings.TrimSpace(cfg.SSHHost) == "" || !db.MysqlHostOnSSHTarget(cfg.Host)
 	if needLocal {
 		var err error
-		bin, err = db.FindMysql()
-		if err != nil {
-			m.schemaMsg = "mysql is not on PATH"
-			return nil
+		switch cfg.Driver {
+		case db.DriverMySQL:
+			bin, err = db.FindMysql()
+			if err != nil {
+				m.schemaMsg = "mysql is not on PATH"
+				return nil
+			}
+		case db.DriverPostgres:
+			bin, err = db.FindPsql()
+			if err != nil {
+				m.schemaMsg = "psql is not on PATH"
+				return nil
+			}
 		}
 	}
 	conn := m.connection
+	driver := cfg.Driver
 	m.restoreStarted = time.Now()
 	m.exportMsg = "Restoring…"
 
@@ -664,14 +713,21 @@ func (m *Model) exRestore(path string) tea.Cmd {
 	done := make(chan restoreDoneMsg, 1)
 	go func() {
 		var last int64
-		err := db.RunMysqlRestore(bin, cfg, expanded, conn, func(n int64) {
+		onBytes := func(n int64) {
 			last = n
 			select {
 			case progress <- restoreProgressMsg{bytes: n, path: expanded}:
 			default:
 			}
-		})
-		done <- restoreDoneMsg{path: expanded, bytes: last, err: err}
+		}
+		var runErr error
+		switch driver {
+		case db.DriverMySQL:
+			runErr = db.RunMysqlRestore(bin, cfg, expanded, conn, onBytes)
+		case db.DriverPostgres:
+			runErr = db.RunPgRestore(bin, cfg, expanded, conn, onBytes)
+		}
+		done <- restoreDoneMsg{path: expanded, bytes: last, err: runErr}
 	}()
 	return waitForRestoreProgress(progress, done)
 }

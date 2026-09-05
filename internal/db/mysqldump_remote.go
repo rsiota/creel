@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// MysqlHostOnSSHTarget reports whether MySQL is addressed as loopback on the
-// SSH host (typical VPS: SSH and MySQL on the same machine).
+// MysqlHostOnSSHTarget reports whether the database host is loopback on the
+// SSH machine (typical VPS: SSH and MySQL/Postgres on the same host).
 func MysqlHostOnSSHTarget(host string) bool {
 	h := strings.ToLower(strings.TrimSpace(host))
 	return h == "" || h == "localhost" || h == "127.0.0.1" || h == "::1"

@@ -503,32 +503,57 @@ func ConnectionFromConfig(cfg ConnectionConfig) *Connection {
 	return &Connection{config: cfg}
 }
 
-// startMysqlDumpForward opens a 127.0.0.1 proxy so mysqldump can reach the
-// remote MySQL server. Prefers OpenSSH `ssh -L` (more reliable for large
-// dumps); falls back to Creel's in-process crypto/ssh tunnel.
+// startMysqlDumpForward opens a 127.0.0.1 proxy so CLI dump/restore tools can
+// reach the remote MySQL or PostgreSQL server. Prefers OpenSSH `ssh -L` (more
+// reliable for large streams); falls back to Creel's in-process crypto/ssh tunnel.
 func (c *Connection) startMysqlDumpForward() (*LocalForward, error) {
 	if c == nil || c.db == nil {
 		return nil, fmt.Errorf(":backup needs an active SSH connection")
 	}
-	m, ok := c.db.(*MySQL)
-	if !ok {
-		return nil, fmt.Errorf(":backup SSH forward requires MySQL")
-	}
-	if m.tunnel == nil {
-		return nil, fmt.Errorf("no active SSH tunnel")
-	}
+	var tunnel *SSHTunnel
 	host := c.config.Host
 	if host == "" {
 		host = "localhost"
 	}
 	port := c.config.Port
-	if port == 0 {
-		port = 3306
+	switch c.db.(type) {
+	case *MySQL:
+		m := c.db.(*MySQL)
+		tunnel = m.tunnel
+		if port == 0 {
+			port = 3306
+		}
+	case *Postgres:
+		p := c.db.(*Postgres)
+		tunnel = p.tunnel
+		if port == 0 {
+			port = 5432
+		}
+	default:
+		return nil, fmt.Errorf(":backup SSH forward requires MySQL or PostgreSQL")
+	}
+	if tunnel == nil {
+		return nil, fmt.Errorf("no active SSH tunnel")
 	}
 	if fwd, err := startOpenSSHLocalForward(c.config, host, port); err == nil {
 		return fwd, nil
 	}
-	return m.tunnel.StartLocalForward(fmt.Sprintf("%s:%d", host, port))
+	return tunnel.StartLocalForward(fmt.Sprintf("%s:%d", host, port))
+}
+
+// sshTunnel returns the live SSH tunnel for MySQL/Postgres, or nil.
+func (c *Connection) sshTunnel() *SSHTunnel {
+	if c == nil || c.db == nil {
+		return nil
+	}
+	switch d := c.db.(type) {
+	case *MySQL:
+		return d.tunnel
+	case *Postgres:
+		return d.tunnel
+	default:
+		return nil
+	}
 }
 
 // UseDatabase switches the active database on the underlying driver and keeps
