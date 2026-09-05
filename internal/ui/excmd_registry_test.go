@@ -64,6 +64,7 @@ func TestExLookupResolvesKnownVerbs(t *testing.T) {
 		"bookmark", "import", "backup", "mysqldump", "pgdump", "pg_dump", "restore", "mysqlload", "psqlload", "pgload", "rerun", "watch", "tail", "theme", "icons",
 		"limit", "timing", "peek", "filter", "open", "o", "save",
 		"sizes", "locks", "blocked", "who", "sessions", "kill",
+		"explain", "plan", "diagnose", "diag",
 		"tabnew", "tabclose", "tabnext", "tabn", "tabprev", "tabp", "tabs", "diff",
 		"ai", "aifix", "fixsql", "aiexplain", "why",
 	}

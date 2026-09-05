@@ -82,6 +82,76 @@ func (m *Model) explainQueryOpts(forAI bool, focus string) tea.Cmd {
 	}
 }
 
+// exDiagnose runs EXPLAIN on the statement under the cursor and opens a
+// lookup overlay of rule-based findings (seq scans, filesorts, index hints).
+// Also caches the plan so :aiexplain can reuse it.
+func (m *Model) exDiagnose() tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	query := m.editor.StatementAtCursor()
+	if query == "" {
+		m.schemaMsg = "no statement under cursor"
+		return nil
+	}
+	query = strings.TrimRight(strings.TrimSpace(query), ";")
+	if query == "" {
+		m.schemaMsg = "no statement under cursor"
+		return nil
+	}
+	expanded, err := m.expandQueryParams(query)
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	query = expanded
+
+	driver := m.connection.Config().Driver
+	var explainStmt string
+	switch driver {
+	case db.DriverSQLite:
+		explainStmt = "EXPLAIN QUERY PLAN " + query
+	case db.DriverPostgres:
+		explainStmt = "EXPLAIN " + query
+	default:
+		explainStmt = "EXPLAIN " + query
+	}
+
+	conn := m.connection
+	ctx, cancel := m.queryContext()
+	return func() tea.Msg {
+		defer cancel()
+		result, err := conn.DB().ExecuteContext(ctx, explainStmt)
+		if err != nil {
+			return lookupResultMsg{err: fmt.Errorf("EXPLAIN: %w", err)}
+		}
+		planText := formatExplainPlan(result, driver)
+		findings := db.DiagnoseExplain(driver, result, func(table string) ([]db.Index, error) {
+			return conn.DB().Indexes(table)
+		})
+		cols := []db.Column{
+			{Name: "Sev"},
+			{Name: "Issue"},
+			{Name: "Table"},
+			{Name: "Hint"},
+		}
+		rows := make([][]string, len(findings))
+		jumps := make([]string, len(findings))
+		for i, f := range findings {
+			rows[i] = []string{f.Severity, f.Issue, f.Table, f.Hint}
+			jumps[i] = f.Table
+		}
+		return diagnoseResultMsg{
+			query:    query,
+			planText: planText,
+			title:    fmt.Sprintf("Diagnosis (%d)", len(findings)),
+			result:   db.Result{Columns: cols, Rows: rows},
+			jumps:    jumps,
+		}
+	}
+}
+
 // nextPage advances to the next page of results.
 func (m *Model) nextPage() tea.Cmd {
 	if m.lastQuery == "" {

@@ -197,6 +197,16 @@ type explainResultMsg struct {
 	focus  string // optional user focus for :aiexplain (e.g. "why is the join slow")
 }
 
+// diagnoseResultMsg carries rule-based EXPLAIN findings for the lookup overlay.
+type diagnoseResultMsg struct {
+	query    string
+	planText string
+	title    string
+	result   db.Result
+	jumps    []string
+	err      error
+}
+
 // lookupResultMsg carries a lookup panel's title and result table, produced
 // by async ex commands like ":refs" and ":uses". jumps is optional and
 // parallel to result.Rows: a non-empty entry makes that row Enter-jumpable.
@@ -1770,6 +1780,17 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.dispatchAIExplain(msg.query, planText, msg.focus)
 		}
 		m.explainPanel.Show(msg.result, driver)
+		return m, nil
+	case diagnoseResultMsg:
+		if msg.err != nil {
+			m.schemaMsg = fmt.Sprintf("diagnose failed: %v", msg.err)
+			return m, nil
+		}
+		if msg.query != "" && msg.planText != "" {
+			m.lastExplainSQL = msg.query
+			m.lastExplainText = msg.planText
+		}
+		m.lookupPanel.Show(msg.title, msg.result, msg.jumps)
 		return m, nil
 	case lookupResultMsg:
 		if msg.err != nil {

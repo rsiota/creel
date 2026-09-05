@@ -85,6 +85,8 @@ group). SQLite uses Connection + Options only.
 | `:locks`   | Show lock waiters → blockers (MySQL/Postgres); Enter opens relation |
 | `:who`     | List live sessions (MySQL/Postgres); pair with `:kill <pid>` |
 | `:kill <pid>` | Terminate a session (confirm; `:kill!` skips; not in read-only) |
+| `:diagnose` | Flag seq/full scans and index hints for the editor statement |
+| `g e` / `:explain` | Raw query plan overlay |
 | `I`        | Import SQL dump           |
 | `S`        | Cross-table search        |
 | `/`        | Filter tables             |

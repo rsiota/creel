@@ -55,6 +55,7 @@ implement the interface in a new file.
 - `locks.go` / `sessions.go` — `LockWait` / `SessionInfo` helpers; driver
   `Locks()` / `Sessions()` / `KillSession()` live in `mysql.go` / `postgres.go`
   / `sqlite.go`
+- `diagnose.go` — rule-based EXPLAIN diagnosis (`DiagnoseExplain`) for `:diagnose`
 - `local_forward.go` / `ssh_openssh_forward.go` — localhost TCP forward fallback
 - `ssh_tunnel.go` — SSH tunnel for remote MySQL and PostgreSQL
 

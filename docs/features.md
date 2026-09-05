@@ -273,6 +273,10 @@ erDiagram
   relation when known. `:who` / `:sessions` lists all live sessions (own
   connection marked `· you`). `:kill <pid>` terminates a session (confirm /
   `:kill!`; disabled in read-only).
+- **Explain diagnosis** — `:diagnose` / `:diag` runs EXPLAIN on the statement
+  under the cursor and lists rule-based findings (full/sequential scans,
+  filesort, missing-index hints) in the lookup overlay. Use `g e` for the raw
+  plan and `:aiexplain` / `:why` for a prose walkthrough of the same plan.
 
 ## Workflow
 

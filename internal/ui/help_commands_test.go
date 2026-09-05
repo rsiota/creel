@@ -48,7 +48,7 @@ func TestHelpListsExCommands(t *testing.T) {
 		all.WriteByte('\n')
 	}
 	body := all.String()
-	for _, want := range []string{":goto <table>", ":export", ":backup", ":restore", ":locks", ":who", ":refs", ":begin", ":param[!] [name] [value…]"} {
+	for _, want := range []string{":goto <table>", ":export", ":backup", ":restore", ":locks", ":who", ":diagnose", ":refs", ":begin", ":param[!] [name] [value…]"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("help Commands rows should list %q", want)
 		}

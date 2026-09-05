@@ -21,6 +21,10 @@ commits, so it can come up empty).
 - `:kill <pid>` — terminate a session (Postgres `pg_terminate_backend`, MySQL
   `KILL`). Confirm when `confirm_destructive` is on; `:kill!` skips confirm.
   Disabled in read-only mode.
+- `:diagnose` / `:diag` — run EXPLAIN on the statement under the cursor and list
+  rule-based findings (sequential/full table scans, filesort / temporary,
+  index hints) in the lookup overlay. Enter jumps to the table. Caches the plan
+  for `:aiexplain`. Complementary to `g e` (raw plan) and `:aiexplain` (prose).
 - `:backup` / `:mysqldump` / `:pg_dump` — shell out to `mysqldump` or `pg_dump`
   (must be on PATH) for the current MySQL/MariaDB or PostgreSQL database,
   writing `~/Downloads/<db>_YYYY-MM-DD.sql`. Password is passed via a 0600

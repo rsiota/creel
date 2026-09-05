@@ -461,6 +461,13 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.explainQuery() },
 		},
 		{
+			verbs:   []string{"diagnose", "diag"},
+			desc:    "flag sequential/full scans and index hints for the editor statement",
+			usage:   ":diagnose",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exDiagnose() },
+		},
+		{
 			verbs:   []string{"new"},
 			desc:    "clear the editor to an empty scratch buffer",
 			usage:   ":new",
