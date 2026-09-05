@@ -402,6 +402,52 @@ func scanLockWaits(rows *sql.Rows) ([]LockWait, error) {
 	return out, rows.Err()
 }
 
+// Sessions lists MySQL connections (information_schema.PROCESSLIST) for :who.
+func (m *MySQL) Sessions() ([]SessionInfo, error) {
+	rows, err := m.db.Query(`
+SELECT
+  CAST(p.ID AS CHAR),
+  COALESCE(p.USER, ''),
+  COALESCE(p.HOST, ''),
+  COALESCE(p.DB, ''),
+  CASE
+    WHEN p.COMMAND = 'Sleep' THEN 'Sleep'
+    WHEN p.STATE IS NULL OR p.STATE = '' THEN COALESCE(p.COMMAND, '')
+    ELSE CONCAT(COALESCE(p.COMMAND, ''), ' · ', p.STATE)
+  END,
+  CASE WHEN p.TIME IS NULL THEN '' ELSE CONCAT(p.TIME, 's') END,
+  COALESCE(p.INFO, ''),
+  (p.ID = CONNECTION_ID()),
+  (p.COMMAND <> 'Sleep' AND p.STATE IS NOT NULL AND p.STATE <> '' AND (
+     p.STATE LIKE 'Waiting%' OR p.STATE LIKE 'Locked%' OR p.STATE LIKE '%lock%'
+  ))
+FROM information_schema.PROCESSLIST AS p
+ORDER BY
+  CASE
+    WHEN p.ID = CONNECTION_ID() THEN 2
+    WHEN p.COMMAND = 'Sleep' THEN 3
+    ELSE 0
+  END,
+  p.TIME DESC,
+  p.ID`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []SessionInfo
+	for rows.Next() {
+		var s SessionInfo
+		if err := rows.Scan(
+			&s.PID, &s.User, &s.Host, &s.DB, &s.State, &s.Age, &s.Query, &s.Self, &s.Waiting,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 // KillSession terminates a MySQL connection by thread id.
 func (m *MySQL) KillSession(pid string) error {
 	id, err := parseSessionPID(pid)

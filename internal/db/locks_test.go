@@ -49,7 +49,19 @@ func TestSQLiteLocksUnsupported(t *testing.T) {
 	if _, err := s.Locks(); err == nil || !strings.Contains(err.Error(), "SQLite") {
 		t.Fatalf("got %v", err)
 	}
+	if _, err := s.Sessions(); err == nil || !strings.Contains(err.Error(), "SQLite") {
+		t.Fatalf("got %v", err)
+	}
 	if err := s.KillSession("1"); err == nil || !strings.Contains(err.Error(), "SQLite") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestFormatSessionPID(t *testing.T) {
+	if got := FormatSessionPID("12", false); got != "12" {
+		t.Fatalf("got %q", got)
+	}
+	if got := FormatSessionPID("12", true); got != "12 · you" {
+		t.Fatalf("got %q", got)
 	}
 }

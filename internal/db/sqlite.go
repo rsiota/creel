@@ -176,6 +176,11 @@ func (s *SQLite) Locks() ([]LockWait, error) {
 	return nil, fmt.Errorf(":locks is not available for SQLite")
 }
 
+// Sessions is unsupported on SQLite (single-writer; no process list).
+func (s *SQLite) Sessions() ([]SessionInfo, error) {
+	return nil, fmt.Errorf(":who is not available for SQLite")
+}
+
 // KillSession is unsupported on SQLite.
 func (s *SQLite) KillSession(pid string) error {
 	return fmt.Errorf(":kill is not available for SQLite")

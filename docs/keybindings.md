@@ -83,6 +83,7 @@ group). SQLite uses Connection + Options only.
 | `:backup`  | `mysqldump` / `pg_dump` to `~/Downloads` (MySQL/Postgres; works over SSH) |
 | `:restore <file>` | `mysql` / `psql` CLI load of a dump (MySQL/Postgres; works over SSH; prefer over `I` for large files) |
 | `:locks`   | Show lock waiters → blockers (MySQL/Postgres); Enter opens relation |
+| `:who`     | List live sessions (MySQL/Postgres); pair with `:kill <pid>` |
 | `:kill <pid>` | Terminate a session (confirm; `:kill!` skips; not in read-only) |
 | `I`        | Import SQL dump           |
 | `S`        | Cross-table search        |

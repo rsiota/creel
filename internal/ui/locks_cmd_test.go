@@ -44,6 +44,28 @@ func TestExLocksSQLite(t *testing.T) {
 	}
 }
 
+func TestExWhoNotConnected(t *testing.T) {
+	m := &Model{}
+	if cmd := m.runExCommand("who"); cmd != nil {
+		t.Fatal("expected nil")
+	}
+	if m.schemaMsg != "not connected" {
+		t.Fatalf("schemaMsg = %q", m.schemaMsg)
+	}
+}
+
+func TestExWhoSQLite(t *testing.T) {
+	m := &Model{connection: newSQLiteTestConn(t)}
+	cmd := m.runExCommand("sessions")
+	if cmd == nil {
+		t.Fatal("expected async cmd")
+	}
+	msg := cmd().(lookupResultMsg)
+	if msg.err == nil || !strings.Contains(msg.err.Error(), "SQLite") {
+		t.Fatalf("want SQLite error, got %v", msg.err)
+	}
+}
+
 func TestExKillReadOnly(t *testing.T) {
 	m := &Model{
 		connection:    db.ConnectionFromConfig(db.ConnectionConfig{Driver: db.DriverPostgres, Database: "x"}),

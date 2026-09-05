@@ -413,6 +413,48 @@ ORDER BY blocked.query_start NULLS LAST, blocked.pid, blocking.pid`)
 	return out, rows.Err()
 }
 
+// Sessions lists Postgres client backends (pg_stat_activity) for :who.
+func (p *Postgres) Sessions() ([]SessionInfo, error) {
+	rows, err := p.db.Query(`
+SELECT
+  a.pid::text,
+  COALESCE(a.usename::text, ''),
+  COALESCE(a.client_addr::text, ''),
+  COALESCE(a.datname::text, ''),
+  COALESCE(a.state, ''),
+  COALESCE(age(now(), COALESCE(a.xact_start, a.query_start, a.backend_start))::text, ''),
+  COALESCE(a.query, ''),
+  (a.pid = pg_backend_pid()),
+  (a.wait_event_type IS NOT NULL AND a.wait_event_type <> 'Activity')
+FROM pg_stat_activity AS a
+WHERE a.backend_type = 'client backend'
+ORDER BY
+  CASE
+    WHEN a.pid = pg_backend_pid() THEN 2
+    WHEN a.state = 'active' THEN 0
+    WHEN a.state = 'idle in transaction' THEN 1
+    ELSE 3
+  END,
+  a.query_start NULLS LAST,
+  a.pid`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []SessionInfo
+	for rows.Next() {
+		var s SessionInfo
+		if err := rows.Scan(
+			&s.PID, &s.User, &s.Host, &s.DB, &s.State, &s.Age, &s.Query, &s.Self, &s.Waiting,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 // KillSession terminates a Postgres backend by pid via pg_terminate_backend.
 func (p *Postgres) KillSession(pid string) error {
 	id, err := parseSessionPID(pid)

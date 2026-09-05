@@ -171,6 +171,9 @@ type DB interface {
 	// (waiter → blocker). Empty means nothing is blocked. SQLite returns an
 	// error: it has no multi-session lock-wait catalog.
 	Locks() ([]LockWait, error)
+	// Sessions returns live backends/connections for :who (pid, user, state,
+	// query, …). SQLite returns an error.
+	Sessions() ([]SessionInfo, error)
 	// KillSession terminates a backend/session by process/thread id (Postgres
 	// pid or MySQL connection id). SQLite returns an error. Dangerous; callers
 	// must gate with confirmations.

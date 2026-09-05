@@ -270,7 +270,8 @@ erDiagram
 - **Lock waits** — `:locks` / `:blocked` lists sessions waiting on locks held by
   other sessions (PostgreSQL `pg_locks` / MySQL InnoDB). The lookup overlay shows
   waiter → blocker, wait age, relation, and a truncated query; Enter opens the
-  relation when known. `:kill <pid>` terminates a blocker (confirm /
+  relation when known. `:who` / `:sessions` lists all live sessions (own
+  connection marked `· you`). `:kill <pid>` terminates a session (confirm /
   `:kill!`; disabled in read-only).
 
 ## Workflow

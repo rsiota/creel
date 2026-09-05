@@ -2840,6 +2840,55 @@ func lockJumpTable(relation string) string {
 	return relation
 }
 
+// exWho lists live database sessions (:who / :sessions) in the lookup overlay.
+// Use :kill <pid> on a pid from the list (not Creel's own "· you" row).
+func (m *Model) exWho() tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	conn := m.connection
+	return func() tea.Msg {
+		sessions, err := conn.DB().Sessions()
+		if err != nil {
+			return lookupResultMsg{err: err}
+		}
+		cols := []db.Column{
+			{Name: "PID"},
+			{Name: "User"},
+			{Name: "State"},
+			{Name: "Age"},
+			{Name: "Query"},
+		}
+		if len(sessions) == 0 {
+			return lookupResultMsg{
+				title:  "Sessions",
+				result: db.Result{Columns: cols},
+			}
+		}
+		rows := make([][]string, len(sessions))
+		for i, s := range sessions {
+			state := s.State
+			if s.Waiting && state != "" {
+				state = state + " · waiting"
+			} else if s.Waiting {
+				state = "waiting"
+			}
+			rows[i] = []string{
+				db.FormatSessionPID(s.PID, s.Self),
+				s.User,
+				state,
+				s.Age,
+				db.TruncateQuery(s.Query, 72),
+			}
+		}
+		return lookupResultMsg{
+			title:  fmt.Sprintf("Sessions (%d)", len(sessions)),
+			result: db.Result{Columns: cols, Rows: rows},
+		}
+	}
+}
+
 // exKill terminates a database session by pid (:kill <pid>). Gated by
 // read-only mode and confirm_destructive unless forced (:kill!).
 func (m *Model) exKill(pid string, force bool) tea.Cmd {

@@ -83,9 +83,8 @@ Deferred — the runtime toggles are already covered by `:timing`/`:limit`/
 `:theme`; `:set` would mainly add `confirm_destructive`/`timeout` mirrors.
 
 ### Tier 4 — DBA / niche (#15)
-`:who`, `:locks`, `:kill <pid>` — session/lock inspection. **`:locks` /
-`:blocked` and `:kill` shipped** (MySQL/Postgres lookup overlay + confirm).
-`:who` (all sessions) remains demand-gated.
+`:who`, `:locks`, `:kill <pid>` — session/lock inspection. **Shipped** for
+MySQL/Postgres (`:locks` / `:blocked`, `:who` / `:sessions`, `:kill`).
 
 ### Tech debt / docs
 - **Unify ERD routing.** Two routing systems now coexist: the legacy three-mode
@@ -193,7 +192,7 @@ or sequenced behind them.
   error. Keep `ctrl+e` as the default — do not auto-run DDL.
 
 **Demand-gated / skip**
-- `:who` / `:locks` / `:kill` — already demand-gated.
+- `:who` / `:locks` / `:kill` — shipped for MySQL/Postgres.
 - Macros, `:shell`, a second favorites system — already rejected.
 - More themes (~570 is enough).
 - SQL Server / Turso just to match sqlit’s comparison table.

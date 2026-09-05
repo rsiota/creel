@@ -16,6 +16,8 @@ commits, so it can come up empty).
   (MySQL InnoDB / PostgreSQL). Opens the lookup overlay with waiter → blocker,
   wait age, relation, and a truncated waiting query. Enter jumps to the locked
   table when known. SQLite reports unsupported.
+- `:who` / `:sessions` — list live backends/connections (pid, user, state, age,
+  query). Marks Creel's own connection as `· you`. Pair with `:kill <pid>`.
 - `:kill <pid>` — terminate a session (Postgres `pg_terminate_backend`, MySQL
   `KILL`). Confirm when `confirm_destructive` is on; `:kill!` skips confirm.
   Disabled in read-only mode.

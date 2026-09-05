@@ -51,6 +51,15 @@ func FormatLockBlocker(pid, user, state string) string {
 	return fmt.Sprintf("%s · %s", base, state)
 }
 
+// FormatSessionPID renders a :who pid cell, marking Creel's own connection.
+func FormatSessionPID(pid string, self bool) string {
+	pid = strings.TrimSpace(pid)
+	if self {
+		return pid + " · you"
+	}
+	return pid
+}
+
 func parseSessionPID(pid string) (int64, error) {
 	id, err := strconv.ParseInt(strings.TrimSpace(pid), 10, 64)
 	if err != nil || id <= 0 {

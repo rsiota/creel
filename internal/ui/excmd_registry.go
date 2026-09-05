@@ -855,8 +855,15 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exLocks() },
 		},
 		{
+			verbs:   []string{"who", "sessions"},
+			desc:    "list live database sessions (MySQL/Postgres); use :kill <pid>",
+			usage:   ":who",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exWho() },
+		},
+		{
 			verbs:   []string{"kill"},
-			desc:    "terminate a session by pid (from :locks); :kill! skips confirm",
+			desc:    "terminate a session by pid (from :who/:locks); :kill! skips confirm",
 			usage:   ":kill <pid>",
 			argKind: exArgRequired,
 			run: func(m *Model, args []string, force bool) tea.Cmd {

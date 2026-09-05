@@ -52,8 +52,9 @@ implement the interface in a new file.
 - `pgdump.go` / `pgdump_remote.go` — `:backup` via `pg_dump` (plain SQL);
   same remote-vs-forward strategy as MySQL
 - `pgrestore.go` / `pgrestore_remote.go` — `:restore` via `psql`; dump on stdin
-- `locks.go` — `LockWait` helpers; driver `Locks()` / `KillSession()` live in
-  `mysql.go` / `postgres.go` / `sqlite.go`
+- `locks.go` / `sessions.go` — `LockWait` / `SessionInfo` helpers; driver
+  `Locks()` / `Sessions()` / `KillSession()` live in `mysql.go` / `postgres.go`
+  / `sqlite.go`
 - `local_forward.go` / `ssh_openssh_forward.go` — localhost TCP forward fallback
 - `ssh_tunnel.go` — SSH tunnel for remote MySQL and PostgreSQL
 
