@@ -2,10 +2,12 @@ package ui
 
 import (
 	"errors"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/rsiota/creel/internal/db"
 )
 
@@ -61,7 +63,7 @@ func TestExBackupPostgresMissingPATH(t *testing.T) {
 	}
 }
 
-func TestExBackupPostgresSSHSkipsLocalPATH(t *testing.T) {
+func TestExBackupPostgresSSHLoadsPicker(t *testing.T) {
 	restore := db.SwapLookPathPgDump(func(string) (string, error) {
 		return "", errors.New("not found")
 	})
@@ -73,42 +75,42 @@ func TestExBackupPostgresSSHSkipsLocalPATH(t *testing.T) {
 	})}
 	cmd := m.runExCommand("pg_dump")
 	if cmd == nil {
-		t.Fatalf("expected async cmd, schemaMsg=%q", m.schemaMsg)
+		t.Fatalf("expected sizes cmd, schemaMsg=%q", m.schemaMsg)
 	}
-	msg, ok := cmd().(backupDoneMsg)
+	msg, ok := cmd().(backupPickerMsg)
 	if !ok {
 		t.Fatalf("got %T", msg)
 	}
-	if msg.err == nil || !strings.Contains(msg.err.Error(), "SSH") {
-		t.Fatalf("want SSH/tunnel error without local PATH check, got %v", msg.err)
+	// No live DB — picker msg should report not connected.
+	if msg.err == nil || !strings.Contains(msg.err.Error(), "not connected") {
+		t.Fatalf("want not connected, got %v", msg.err)
 	}
 }
 
-func TestExBackupSSHLocalMySQLSkipsLocalPATH(t *testing.T) {
+func TestExBackupSSHLocalMySQLLoadsPicker(t *testing.T) {
 	restore := db.SwapLookPathMysqlDump(func(string) (string, error) {
 		return "", errors.New("not found")
 	})
 	t.Cleanup(restore)
 
-	// MySQL on the SSH host: remote mysqldump, no local binary required.
 	m := &Model{connection: db.ConnectionFromConfig(db.ConnectionConfig{
 		Driver: db.DriverMySQL, Database: "app", Host: "127.0.0.1",
 		SSHHost: "bastion",
 	})}
 	cmd := m.runExCommand("backup")
 	if cmd == nil {
-		t.Fatalf("expected async cmd, schemaMsg=%q", m.schemaMsg)
+		t.Fatalf("expected sizes cmd, schemaMsg=%q", m.schemaMsg)
 	}
-	msg, ok := cmd().(backupDoneMsg)
+	msg, ok := cmd().(backupPickerMsg)
 	if !ok {
 		t.Fatalf("got %T", msg)
 	}
-	if msg.err == nil || !strings.Contains(msg.err.Error(), "SSH") {
-		t.Fatalf("want SSH/tunnel error without local PATH check, got %v", msg.err)
+	if msg.err == nil || !strings.Contains(msg.err.Error(), "not connected") {
+		t.Fatalf("want not connected, got %v", msg.err)
 	}
 }
 
-func TestExBackupSSHNeedsLiveTunnel(t *testing.T) {
+func TestExBackupSSHNeedsLiveTunnelStillOpensPickerPath(t *testing.T) {
 	restorePath := db.SwapLookPathMysqlDump(func(string) (string, error) {
 		return "/usr/bin/mysqldump", nil
 	})
@@ -120,17 +122,17 @@ func TestExBackupSSHNeedsLiveTunnel(t *testing.T) {
 	})}
 	cmd := m.runExCommand("backup")
 	if cmd == nil {
-		t.Fatal("expected async backup cmd")
+		t.Fatal("expected sizes/picker cmd")
 	}
-	if m.exportMsg != "Backing up…" {
-		t.Fatalf("exportMsg = %q", m.exportMsg)
-	}
-	msg, ok := cmd().(backupDoneMsg)
+	msg, ok := cmd().(backupPickerMsg)
 	if !ok {
 		t.Fatalf("got %T", msg)
 	}
-	if msg.err == nil || !strings.Contains(msg.err.Error(), "SSH") {
-		t.Fatalf("want SSH/tunnel error, got %v", msg.err)
+	if msg.bin != "/usr/bin/mysqldump" {
+		t.Fatalf("bin = %q", msg.bin)
+	}
+	if msg.err == nil || !strings.Contains(msg.err.Error(), "not connected") {
+		t.Fatalf("want not connected, got %v", msg.err)
 	}
 }
 
@@ -150,4 +152,59 @@ func TestExBackupMissingPATH(t *testing.T) {
 	if m.schemaMsg != "mysqldump is not on PATH" {
 		t.Fatalf("schemaMsg = %q", m.schemaMsg)
 	}
+}
+
+func TestExecNativeBackupFull(t *testing.T) {
+	restorePath := db.SwapLookPathMysqlDump(func(string) (string, error) {
+		return "/usr/bin/mysqldump", nil
+	})
+	t.Cleanup(restorePath)
+	restoreHelp := db.SwapRunMysqlDumpHelp(func(string) ([]byte, error) {
+		return []byte("no column stats"), nil
+	})
+	t.Cleanup(restoreHelp)
+	restoreRun := db.SwapRunMysqlDumpCmd(func(cmd *exec.Cmd) error {
+		_, _ = cmd.Stdout.Write([]byte("-- dump\n"))
+		return nil
+	})
+	t.Cleanup(restoreRun)
+
+	dir := t.TempDir()
+	restoreDL := SwapUserDownloadsDir(func() (string, error) { return dir, nil })
+	t.Cleanup(restoreDL)
+
+	m := &Model{connection: db.ConnectionFromConfig(db.ConnectionConfig{
+		Driver: db.DriverMySQL, Database: "shop", Host: "127.0.0.1",
+	})}
+	cmd := m.execNativeBackup("/usr/bin/mysqldump", db.DumpPlan{})
+	if cmd == nil {
+		t.Fatal("expected backup cmd")
+	}
+	if m.exportMsg != "Backing up…" {
+		t.Fatalf("exportMsg = %q", m.exportMsg)
+	}
+	msg := drainBackupCmd(t, cmd)
+	if msg.err != nil {
+		t.Fatal(msg.err)
+	}
+	if msg.bytes == 0 {
+		t.Fatal("expected dumped bytes")
+	}
+}
+
+func drainBackupCmd(t *testing.T, cmd tea.Cmd) backupDoneMsg {
+	t.Helper()
+	for i := 0; i < 20; i++ {
+		raw := cmd()
+		switch msg := raw.(type) {
+		case backupDoneMsg:
+			return msg
+		case backupProgressWrapper:
+			cmd = waitForBackupProgress(msg.progress, msg.done)
+		default:
+			t.Fatalf("unexpected msg %T", raw)
+		}
+	}
+	t.Fatal("backup did not finish")
+	return backupDoneMsg{}
 }

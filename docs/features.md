@@ -261,10 +261,12 @@ erDiagram
   pure-Go `mysqldump`-compatible exporter (`X`) that uses native CREATE TABLE
   DDL (MySQL `SHOW CREATE TABLE`, SQLite `sqlite_master`); result-set export
   via the `g X` dialog (format, columns, and whole-table/marked/page scope)
-  or instant CSV (`x`). `:backup` / `:mysqldump` / `:pg_dump` runs the native
+  or instant CSV (`x`). `:backup` / `:mysqldump` / `:pg_dump` opens a size-aware
+  table picker (rows, disk size, schema/data per table) then runs the native
   dump binary from PATH into `~/Downloads` (MySQL/MariaDB or PostgreSQL). When
   the DB is on the SSH host, the dump runs remotely and streams back; otherwise
-  a temporary localhost forward is used. `:restore` / `:mysqlload` / `:psqlload
+  a temporary localhost forward is used. Leaving every table on schema+data keeps
+  a full-database dump (including views). `:restore` / `:mysqlload` / `:psqlload
   <file>` is the inverse — `mysql` or `psql` loads a dump the same way. Use
   `I` / `:import` for in-app statement-by-statement import.
 - **Lock waits** — `:locks` / `:blocked` lists sessions waiting on locks held by

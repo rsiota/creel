@@ -41,7 +41,7 @@ func TestBuildPgDumpArgsOmitsPassword(t *testing.T) {
 		Driver: DriverPostgres, Database: "shop",
 		Host: "db.example", Port: 5433, Username: "root", Password: "s3cret",
 	}
-	args := BuildPgDumpArgs(cfg)
+	args := BuildPgDumpArgs(cfg, PgDumpOptions{})
 	joined := strings.Join(args, " ")
 	if strings.Contains(joined, "s3cret") {
 		t.Fatalf("password leaked onto argv: %v", args)
@@ -93,7 +93,7 @@ func TestRunPgDumpLocal(t *testing.T) {
 		Username: "u", Password: "s3cret-pg",
 	}
 	var progress []int64
-	if err := RunPgDump("/usr/bin/pg_dump", cfg, out, nil, func(n int64) {
+	if err := RunPgDump("/usr/bin/pg_dump", cfg, out, nil, DumpPlan{}, func(n int64) {
 		progress = append(progress, n)
 	}); err != nil {
 		t.Fatal(err)
@@ -121,7 +121,7 @@ func TestRunPgDumpMissingBinary(t *testing.T) {
 
 	err := RunPgDump("", ConnectionConfig{
 		Driver: DriverPostgres, Database: "shop", Host: "127.0.0.1",
-	}, filepath.Join(t.TempDir(), "x.sql"), nil, nil)
+	}, filepath.Join(t.TempDir(), "x.sql"), nil, DumpPlan{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "not on PATH") {
 		t.Fatalf("got %v", err)
 	}
@@ -144,7 +144,7 @@ func TestPgDumpConfigViaForward(t *testing.T) {
 func TestBuildRemotePgDumpCmd(t *testing.T) {
 	cmd := buildRemotePgDumpCmd(ConnectionConfig{
 		Database: "app", Username: "u", Password: "p", Host: "127.0.0.1", Port: 5432,
-	})
+	}, DumpPlan{})
 	for _, want := range []string{"pg_dump", "base64 -d", "PGPASSFILE", "command -v pg_dump", "--dbname=app"} {
 		if !strings.Contains(cmd, want) {
 			t.Errorf("missing %q in:\n%s", want, cmd)
@@ -170,7 +170,7 @@ func TestRunPgDumpCapturesStderr(t *testing.T) {
 
 	err := RunPgDump("/usr/bin/pg_dump", ConnectionConfig{
 		Driver: DriverPostgres, Database: "shop", Host: "127.0.0.1",
-	}, filepath.Join(t.TempDir(), "x.sql"), nil, nil)
+	}, filepath.Join(t.TempDir(), "x.sql"), nil, DumpPlan{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "permission denied") {
 		t.Fatalf("got %v", err)
 	}

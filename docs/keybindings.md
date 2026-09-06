@@ -80,7 +80,7 @@ group). SQLite uses Connection + Options only.
 | `D`        | Drop table                |
 | `N`        | New table (grid editor)   |
 | `X`        | Export database (portable SQL dump) |
-| `:backup`  | `mysqldump` / `pg_dump` to `~/Downloads` (MySQL/Postgres; works over SSH) |
+| `:backup`  | Size-aware `mysqldump` / `pg_dump` picker (schema/data per table) → `~/Downloads` |
 | `:restore <file>` | `mysql` / `psql` CLI load of a dump (MySQL/Postgres; works over SSH; prefer over `I` for large files) |
 | `:locks`   | Show lock waiters → blockers (MySQL/Postgres); Enter opens relation |
 | `:who`     | List live sessions (MySQL/Postgres); pair with `:kill <pid>` |

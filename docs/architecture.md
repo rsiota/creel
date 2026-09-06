@@ -44,13 +44,14 @@ implement the interface in a new file.
 - `statements.go` — top-level statement splitter (powers "run statement under cursor")
 - `dump.go` / `import.go` — pure-Go export and streaming SQL import (MySQL dumps
   use backslash string escapes, backticks, and `#` comments)
-- `mysqldump.go` / `mysqldump_remote.go` — `:backup` via `mysqldump`; when MySQL
-  is on the SSH host, run the dump remotely and stream stdout back; otherwise
-  local `mysqldump` through OpenSSH `ssh -L` or an in-process forward
+- `mysqldump.go` / `mysqldump_remote.go` / `dump_plan.go` — `:backup` via
+  `mysqldump` with optional per-table schema/data selection; when MySQL is on
+  the SSH host, run the dump remotely and stream stdout back; otherwise local
+  `mysqldump` through OpenSSH `ssh -L` or an in-process forward
 - `mysqlrestore.go` / `mysqlrestore_remote.go` — `:restore` via the `mysql`
   client; same remote-vs-forward strategy, dump streamed on stdin
 - `pgdump.go` / `pgdump_remote.go` — `:backup` via `pg_dump` (plain SQL);
-  same remote-vs-forward strategy as MySQL
+  same selective plan and remote-vs-forward strategy as MySQL
 - `pgrestore.go` / `pgrestore_remote.go` — `:restore` via `psql`; dump on stdin
 - `locks.go` / `sessions.go` — `LockWait` / `SessionInfo` helpers; driver
   `Locks()` / `Sessions()` / `KillSession()` live in `mysql.go` / `postgres.go`

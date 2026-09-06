@@ -3,6 +3,7 @@ package db
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -128,9 +129,16 @@ func pgClientEnv(cfg ConnectionConfig, passFile string) []string {
 	return out
 }
 
+// PgDumpOptions controls selective pg_dump invocation.
+type PgDumpOptions struct {
+	Tables       []string // empty = whole database; each becomes --table=
+	SchemaOnly   bool
+	DataOnly     bool
+}
+
 // BuildPgDumpArgs is the pg_dump argv after the binary. Password is never
 // included (use PGPASSFILE). Output goes to stdout for progress counting.
-func BuildPgDumpArgs(cfg ConnectionConfig) []string {
+func BuildPgDumpArgs(cfg ConnectionConfig, opt PgDumpOptions) []string {
 	args := []string{"--no-password", "--format=plain"}
 	if sock := cfg.socketPath(); sock != "" {
 		args = append(args, "--host="+sock)
@@ -147,6 +155,15 @@ func BuildPgDumpArgs(cfg ConnectionConfig) []string {
 	}
 	if cfg.Username != "" {
 		args = append(args, "--username="+cfg.Username)
+	}
+	if opt.SchemaOnly {
+		args = append(args, "--schema-only")
+	}
+	if opt.DataOnly {
+		args = append(args, "--data-only")
+	}
+	for _, t := range opt.Tables {
+		args = append(args, "--table="+t)
 	}
 	args = append(args, "--dbname="+cfg.Database)
 	return args
@@ -167,15 +184,21 @@ func pgDumpConfigViaForward(cfg ConnectionConfig, fwd *LocalForward) ConnectionC
 
 // RunPgDump writes cfg's database to resultFile using pg_dump.
 //
+// plan selects tables and schema/data. A full plan dumps the whole database.
+// A selective plan may run pg_dump twice (schema pass, then data pass).
+//
 // SSH + Postgres on the SSH host (localhost/127.0.0.1): run pg_dump on the
 // remote machine and stream stdout back. Falls back to local pg_dump + port
 // forward when the remote binary is missing or Postgres is on another host.
 //
 // onBytes is called with the cumulative byte count as the dump streams (may
 // be nil).
-func RunPgDump(bin string, cfg ConnectionConfig, resultFile string, conn *Connection, onBytes func(int64)) error {
+func RunPgDump(bin string, cfg ConnectionConfig, resultFile string, conn *Connection, plan DumpPlan, onBytes func(int64)) error {
 	if err := PgDumpGuard(cfg); err != nil {
 		return err
+	}
+	if !plan.HasContent() {
+		return fmt.Errorf("nothing selected to backup")
 	}
 
 	dir := filepath.Dir(resultFile)
@@ -185,7 +208,7 @@ func RunPgDump(bin string, cfg ConnectionConfig, resultFile string, conn *Connec
 
 	throughSSH := strings.TrimSpace(cfg.SSHHost) != ""
 	if throughSSH && MysqlHostOnSSHTarget(cfg.Host) && conn != nil {
-		if err := conn.runRemotePgDump(resultFile, onBytes); err == nil {
+		if err := conn.runRemotePgDump(resultFile, plan, onBytes); err == nil {
 			return nil
 		} else if !remotePgDumpUnavailable(err) {
 			return err
@@ -225,11 +248,38 @@ func RunPgDump(bin string, cfg ConnectionConfig, resultFile string, conn *Connec
 	}
 	defer out.Close()
 
-	args := BuildPgDumpArgs(dumpCfg)
+	cw := &countingWriter{w: out, onBytes: onBytes}
+	for _, opt := range pgDumpPasses(plan) {
+		if err := runPgDumpOnce(bin, dumpCfg, passFile, opt, cw); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// pgDumpPasses builds one or two pg_dump invocations for plan.
+func pgDumpPasses(plan DumpPlan) []PgDumpOptions {
+	if plan.IsFull() {
+		return []PgDumpOptions{{}}
+	}
+	schema := plan.SchemaTables()
+	data := plan.DataTables()
+	var passes []PgDumpOptions
+	if len(schema) > 0 {
+		passes = append(passes, PgDumpOptions{Tables: schema, SchemaOnly: true})
+	}
+	if len(data) > 0 {
+		passes = append(passes, PgDumpOptions{Tables: data, DataOnly: true})
+	}
+	return passes
+}
+
+func runPgDumpOnce(bin string, cfg ConnectionConfig, passFile string, opt PgDumpOptions, stdout io.Writer) error {
+	args := BuildPgDumpArgs(cfg, opt)
 	cmd := exec.Command(bin, args...)
-	cmd.Env = pgClientEnv(dumpCfg, passFile)
+	cmd.Env = pgClientEnv(cfg, passFile)
 	var stderr bytes.Buffer
-	cmd.Stdout = &countingWriter{w: out, onBytes: onBytes}
+	cmd.Stdout = stdout
 	cmd.Stderr = &stderr
 	if err := runPgDumpCmd(cmd); err != nil {
 		msg := strings.TrimSpace(stderr.String())

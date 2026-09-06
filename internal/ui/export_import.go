@@ -533,11 +533,10 @@ func (m *Model) execExportDump(tables []string) tea.Cmd {
 	}
 }
 
-// exBackup shells out to mysqldump (MySQL) or pg_dump (PostgreSQL) for the
-// current database, writing ~/Downloads/<db>_YYYY-MM-DD.sql. Password goes in
-// a 0600 defaults/.pgpass file, never argv. When the DB is on the SSH host,
-// the dump tool runs remotely and streams back over SSH. Live byte counts
-// update the status bar while the dump runs.
+// exBackup opens a size-aware table picker, then shells out to mysqldump
+// (MySQL) or pg_dump (PostgreSQL). Password goes in a 0600 defaults/.pgpass
+// file, never argv. When the DB is on the SSH host, the dump tool runs
+// remotely and streams back over SSH.
 func (m *Model) exBackup() tea.Cmd {
 	if m.connection == nil {
 		m.schemaMsg = "not connected"
@@ -579,6 +578,31 @@ func (m *Model) exBackup() tea.Cmd {
 			}
 		}
 	}
+	conn := m.connection
+	return func() tea.Msg {
+		database := conn.DB()
+		if database == nil {
+			return backupPickerMsg{err: fmt.Errorf("not connected"), bin: bin}
+		}
+		sizes, err := database.TableSizes()
+		if err != nil {
+			return backupPickerMsg{err: err, bin: bin}
+		}
+		return backupPickerMsg{sizes: sizes, bin: bin}
+	}
+}
+
+// execNativeBackup runs mysqldump/pg_dump for plan into ~/Downloads.
+func (m *Model) execNativeBackup(bin string, plan db.DumpPlan) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if !plan.HasContent() {
+		m.schemaMsg = "nothing selected to backup"
+		return nil
+	}
+	cfg := m.connection.Config()
 	fileLabel := filepath.Base(cfg.Database)
 	if fileLabel == "" {
 		fileLabel = "database"
@@ -608,9 +632,9 @@ func (m *Model) exBackup() tea.Cmd {
 		}
 		switch driver {
 		case db.DriverMySQL:
-			err = db.RunMysqlDump(bin, cfg, path, conn, onBytes)
+			err = db.RunMysqlDump(bin, cfg, path, conn, plan, onBytes)
 		case db.DriverPostgres:
-			err = db.RunPgDump(bin, cfg, path, conn, onBytes)
+			err = db.RunPgDump(bin, cfg, path, conn, plan, onBytes)
 		}
 		done <- backupDoneMsg{path: path, bytes: last, err: err}
 	}()

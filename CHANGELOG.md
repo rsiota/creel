@@ -27,14 +27,17 @@ commits, so it can come up empty).
   for `:aiexplain`. Complementary to `g e` (raw plan) and `:aiexplain` (prose).
 - `:backup` / `:mysqldump` / `:pg_dump` — shell out to `mysqldump` or `pg_dump`
   (must be on PATH) for the current MySQL/MariaDB or PostgreSQL database,
-  writing `~/Downloads/<db>_YYYY-MM-DD.sql`. Password is passed via a 0600
-  defaults file (MySQL) or `.pgpass` (Postgres), never argv. When the DB lives
-  on the SSH host (localhost/127.0.0.1), the dump tool runs on the remote
-  machine and streams back over SSH — the same approach as a manual server-side
-  dump, which avoids truncated transfers through a localhost forward. Otherwise
-  OpenSSH `ssh -L` (or an in-process forward) is used with the local binary.
-  MySQL 8 clients get `--column-statistics=0` so dumps against MariaDB / older
-  MySQL don't fail on `COLUMN_STATISTICS`. SQLite keeps using `X`.
+  writing `~/Downloads/<db>_YYYY-MM-DD.sql`. Opens a size-aware table picker
+  (rows, disk size, schema/data per table; `s`/`d` toggle, `o` schema-only all).
+  Leaving every table on schema+data keeps a full-database dump. Selective
+  plans may run two dump passes (schema, then data) into one file. Password is
+  passed via a 0600 defaults file (MySQL) or `.pgpass` (Postgres), never argv.
+  When the DB lives on the SSH host (localhost/127.0.0.1), the dump tool runs
+  on the remote machine and streams back over SSH — the same approach as a
+  manual server-side dump, which avoids truncated transfers through a localhost
+  forward. Otherwise OpenSSH `ssh -L` (or an in-process forward) is used with
+  the local binary. MySQL 8 clients get `--column-statistics=0` so dumps against
+  MariaDB / older MySQL don't fail on `COLUMN_STATISTICS`. SQLite keeps using `X`.
 - `:restore` / `:mysqlload` / `:psqlload` — shell out to `mysql` or `psql` to
   load a SQL dump into the current MySQL/MariaDB or PostgreSQL database
   (`:restore <file>`). Same credential and SSH strategy as `:backup`. Live

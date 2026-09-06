@@ -184,6 +184,21 @@ func registry() []Section {
 			},
 		},
 		{
+			Title:  "Backup Picker",
+			Source: "app.go backup_picker.go",
+			Items: []Binding{
+				{"j/k", []string{"j", "k"}, "move", "j/k"},
+				{"space", []string{" "}, "include / omit table", "space"},
+				{"s", []string{"s"}, "toggle schema", "s"},
+				{"d", []string{"d"}, "toggle data", "d"},
+				{"a", []string{"a"}, "all schema+data", "a"},
+				{"n", []string{"n"}, "select none", "n"},
+				{"o", []string{"o"}, "schema only (all)", "o"},
+				{"enter", []string{"enter"}, "backup", "enter"},
+				{"esc", []string{"esc"}, "cancel", "esc"},
+			},
+		},
+		{
 			Title:  "Export Dialog",
 			Source: "app.go export_overlay.go",
 			Items: []Binding{

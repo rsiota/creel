@@ -23,7 +23,7 @@ func TestBuildRemoteMysqlDumpScript(t *testing.T) {
 		Password: "p'ass",
 		Host:     "127.0.0.1",
 		Port:     3306,
-	})
+	}, DumpPlan{})
 	for _, want := range []string{
 		"mysqldump --defaults-extra-file=",
 		"--host=127.0.0.1",

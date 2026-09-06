@@ -808,6 +808,25 @@ func (m *Model) dismissOverlayOnOutsideClick(msg tea.MouseMsg) bool {
 		}
 		return false
 	}
+	if m.backupPicker.IsVisible() {
+		bpw := 78
+		if bpw > m.width-4 {
+			bpw = m.width - 4
+		}
+		if bpw < 48 {
+			bpw = 48
+		}
+		bph := ph
+		if bph < 16 {
+			bph = 16
+		}
+		bpx, bpy, _, _ := centeredRect(bpw, bph)
+		if outside(bpx, bpy, bpw, bph) {
+			m.backupPicker.Hide()
+			return true
+		}
+		return false
+	}
 
 	return false
 }

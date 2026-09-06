@@ -272,6 +272,13 @@ type backupDoneMsg struct {
 	err   error
 }
 
+// backupPickerMsg carries table sizes for the :backup selection overlay.
+type backupPickerMsg struct {
+	sizes []db.TableSize
+	bin   string
+	err   error
+}
+
 // backupProgressMsg carries live byte-count updates during :backup.
 type backupProgressMsg struct {
 	bytes int64
@@ -405,6 +412,7 @@ type Model struct {
 	filterPicker        FilterPicker
 	columnPicker        ColumnPicker
 	exportPicker        ExportPicker
+	backupPicker        BackupPicker
 	exportOverlay       ExportOverlay
 	themePicker         ThemePicker
 	providerPicker      ProviderPicker
@@ -766,6 +774,7 @@ func NewModel(cfg *config.Config) Model {
 		filterPicker:    NewFilterPicker(),
 		columnPicker:    NewColumnPicker(),
 		exportPicker:    NewExportPicker(),
+		backupPicker:    NewBackupPicker(),
 		exportOverlay:   NewExportOverlay(),
 		themePicker:     NewThemePicker(),
 		providerPicker:  NewProviderPicker(),
@@ -1701,6 +1710,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case backupProgressWrapper:
 		m.exportMsg = backupProgressStatus(msg.msg.bytes, m.backupStarted)
 		return m, waitForBackupProgress(msg.progress, msg.done)
+	case backupPickerMsg:
+		if msg.err != nil {
+			m.schemaMsg = msg.err.Error()
+			return m, nil
+		}
+		m.backupPicker.Show(msg.sizes, m.currentTable(), msg.bin)
+		return m, nil
 	case backupDoneMsg:
 		if msg.err != nil {
 			m.exportMsg = fmt.Sprintf("backup failed: %v", msg.err)
@@ -2606,6 +2622,48 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "down", "j":
 			m.exportPicker.CursorDown()
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Backup picker (:backup) is modal — schema/data per table.
+	if m.backupPicker.IsVisible() {
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.backupPicker.Hide()
+			return m, nil
+		case "enter":
+			plan := m.backupPicker.DumpPlan()
+			if !plan.HasContent() {
+				return m, nil
+			}
+			bin := m.backupPicker.Bin()
+			m.backupPicker.Hide()
+			return m, m.execNativeBackup(bin, plan)
+		case " ":
+			m.backupPicker.ToggleInclude()
+			return m, nil
+		case "s":
+			m.backupPicker.ToggleSchema()
+			return m, nil
+		case "d":
+			m.backupPicker.ToggleData()
+			return m, nil
+		case "a":
+			m.backupPicker.SelectAll()
+			return m, nil
+		case "n":
+			m.backupPicker.SelectNone()
+			return m, nil
+		case "o":
+			m.backupPicker.SchemaOnlyAll()
+			return m, nil
+		case "up", "k":
+			m.backupPicker.CursorUp()
+			return m, nil
+		case "down", "j":
+			m.backupPicker.CursorDown()
 			return m, nil
 		}
 		return m, nil
@@ -5449,6 +5507,31 @@ func (m Model) viewWorkspace() string {
 		panelX := (m.width - panelW) / 2
 		panelY := (m.height - 1 - panelH) / 2
 		view = placeOverlay(view, exportPanel, panelX, panelY)
+	}
+
+	// Overlay backup picker (:backup) if visible — wider for size columns.
+	if m.backupPicker.IsVisible() {
+		pw := 78
+		if pw > m.width-4 {
+			pw = m.width - 4
+		}
+		if pw < 48 {
+			pw = 48
+		}
+		_, ph := popupDim()
+		if ph < 16 {
+			ph = 16
+		}
+		if ph > m.height-2 {
+			ph = m.height - 2
+		}
+		m.backupPicker.SetSize(pw, ph)
+		backupPanel := m.backupPicker.View()
+		panelW := lipgloss.Width(backupPanel)
+		panelH := lipgloss.Height(backupPanel)
+		panelX := (m.width - panelW) / 2
+		panelY := (m.height - 1 - panelH) / 2
+		view = placeOverlay(view, backupPanel, panelX, panelY)
 	}
 
 	// Overlay export dialog (g X) if visible

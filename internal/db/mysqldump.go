@@ -102,11 +102,30 @@ func MysqlDumpDefaults(cfg ConnectionConfig) string {
 	return b.String()
 }
 
+// MysqlDumpOptions controls selective mysqldump invocation.
+type MysqlDumpOptions struct {
+	ThroughSSH   bool
+	Tables       []string // empty = whole database
+	NoData       bool     // schema only
+	NoCreateInfo bool     // data only
+	Routines     bool     // --routines (stored procs/functions)
+	Events       bool     // --events
+}
+
+// FullMysqlDumpOptions is the historical whole-database dump.
+func FullMysqlDumpOptions(throughSSH bool) MysqlDumpOptions {
+	return MysqlDumpOptions{
+		ThroughSSH: throughSSH,
+		Routines:   true,
+		Events:     true,
+	}
+}
+
 // BuildMysqlDumpArgs is the mysqldump argv after the binary. defaultsFile must
 // be the first option (--defaults-extra-file). Password is never included.
-// throughSSH adds protocol compression to shrink bulk result traffic.
+// ThroughSSH adds protocol compression to shrink bulk result traffic.
 // Output goes to stdout (caller writes the file) so progress can be counted.
-func BuildMysqlDumpArgs(cfg ConnectionConfig, defaultsFile string, throughSSH bool) []string {
+func BuildMysqlDumpArgs(cfg ConnectionConfig, defaultsFile string, opt MysqlDumpOptions) []string {
 	args := []string{"--defaults-extra-file=" + defaultsFile}
 	if sock := cfg.socketPath(); sock != "" {
 		args = append(args, "--socket="+sock)
@@ -128,16 +147,25 @@ func BuildMysqlDumpArgs(cfg ConnectionConfig, defaultsFile string, throughSSH bo
 	if ssl := mysqlDumpSSLMode(cfg.SSLMode); ssl != "" {
 		args = append(args, "--ssl-mode="+ssl)
 	}
-	args = append(args,
-		"--single-transaction",
-		"--routines",
-		"--events",
-		"--max-allowed-packet=1073741824",
-	)
-	if throughSSH {
+	args = append(args, "--single-transaction")
+	if opt.Routines {
+		args = append(args, "--routines")
+	}
+	if opt.Events {
+		args = append(args, "--events")
+	}
+	args = append(args, "--max-allowed-packet=1073741824")
+	if opt.NoData {
+		args = append(args, "--no-data")
+	}
+	if opt.NoCreateInfo {
+		args = append(args, "--no-create-info")
+	}
+	if opt.ThroughSSH {
 		args = append(args, "--compress")
 	}
 	args = append(args, cfg.Database)
+	args = append(args, opt.Tables...)
 	return args
 }
 
@@ -196,6 +224,10 @@ func optionFileValue(s string) string {
 
 // RunMysqlDump writes cfg's database to resultFile using mysqldump.
 //
+// plan selects tables and schema/data. A full plan (Tables == nil) dumps the
+// whole database. A selective plan may run mysqldump twice (schema pass, then
+// data pass) into one file.
+//
 // SSH + MySQL on the SSH host (localhost/127.0.0.1): run mysqldump on the
 // remote machine and stream stdout back — same path as a manual
 // `ssh host mysqldump … > dump.sql`, which avoids truncated dumps through a
@@ -204,9 +236,12 @@ func optionFileValue(s string) string {
 //
 // onBytes is called with the cumulative byte count as the dump streams (may
 // be nil). Progress is best-effort and may skip updates under load.
-func RunMysqlDump(bin string, cfg ConnectionConfig, resultFile string, conn *Connection, onBytes func(int64)) error {
+func RunMysqlDump(bin string, cfg ConnectionConfig, resultFile string, conn *Connection, plan DumpPlan, onBytes func(int64)) error {
 	if err := MysqlDumpGuard(cfg); err != nil {
 		return err
+	}
+	if !plan.HasContent() {
+		return fmt.Errorf("nothing selected to backup")
 	}
 
 	dir := filepath.Dir(resultFile)
@@ -216,7 +251,7 @@ func RunMysqlDump(bin string, cfg ConnectionConfig, resultFile string, conn *Con
 
 	throughSSH := strings.TrimSpace(cfg.SSHHost) != ""
 	if throughSSH && MysqlHostOnSSHTarget(cfg.Host) && conn != nil {
-		if err := conn.runRemoteMysqlDump(resultFile, onBytes); err == nil {
+		if err := conn.runRemoteMysqlDump(resultFile, plan, onBytes); err == nil {
 			return nil
 		} else if !remoteDumpUnavailable(err) {
 			return err
@@ -269,14 +304,51 @@ func RunMysqlDump(bin string, cfg ConnectionConfig, resultFile string, conn *Con
 	}
 	defer out.Close()
 
-	args := BuildMysqlDumpArgs(dumpCfg, defaultsPath, throughSSH)
+	cw := &countingWriter{w: out, onBytes: onBytes}
+	for _, opt := range mysqlDumpPasses(plan, throughSSH) {
+		if err := runMysqlDumpOnce(bin, dumpCfg, defaultsPath, opt, cw); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// mysqlDumpPasses builds one or two mysqldump invocations for plan.
+func mysqlDumpPasses(plan DumpPlan, throughSSH bool) []MysqlDumpOptions {
+	if plan.IsFull() {
+		return []MysqlDumpOptions{FullMysqlDumpOptions(throughSSH)}
+	}
+	schema := plan.SchemaTables()
+	data := plan.DataTables()
+	var passes []MysqlDumpOptions
+	if len(schema) > 0 {
+		passes = append(passes, MysqlDumpOptions{
+			ThroughSSH: throughSSH,
+			Tables:     schema,
+			NoData:     true,
+			Routines:   true,
+			Events:     true,
+		})
+	}
+	if len(data) > 0 {
+		passes = append(passes, MysqlDumpOptions{
+			ThroughSSH:   throughSSH,
+			Tables:       data,
+			NoCreateInfo: true,
+		})
+	}
+	return passes
+}
+
+func runMysqlDumpOnce(bin string, cfg ConnectionConfig, defaultsPath string, opt MysqlDumpOptions, stdout io.Writer) error {
+	args := BuildMysqlDumpArgs(cfg, defaultsPath, opt)
 	if mysqlDumpSupportsColumnStatistics(bin) {
 		// Keep defaults-extra-file first; insert compatibility flag next.
 		args = append([]string{args[0], "--column-statistics=0"}, args[1:]...)
 	}
 	cmd := exec.Command(bin, args...)
 	var stderr bytes.Buffer
-	cmd.Stdout = &countingWriter{w: out, onBytes: onBytes}
+	cmd.Stdout = stdout
 	cmd.Stderr = &stderr
 	if err := runMysqlDumpCmd(cmd); err != nil {
 		msg := strings.TrimSpace(stderr.String())
