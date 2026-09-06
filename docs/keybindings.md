@@ -21,10 +21,11 @@ test keeps the documentation in sync with what's actually wired.
 | `ctrl+o`        | Toggle record inspector         |
 | `ctrl+h/j/k/l`  | Move focus between panels       |
 | `alt+h/j/k/l`   | Resize focused pane (also `ctrl+alt+…`) |
+| `alt+b` / `alt+e` | Toggle sidebar / query editor         |
 | `tab` / `shift+tab` | Cycle focus (skips tab bar) |
 | `ctrl+d` / `ctrl+u` | Next / previous page        |
 | `ctrl+p`        | Jump-anywhere palette           |
-| `:`             | Ex command line (`:q`, `:param`, `:goto`, …) |
+| `:`             | Ex command line (`:q`, `:param`, `:goto`, `:sizes`, `:zen`, …) |
 | `g c`           | Theme picker (live preview)     |
 | `?`             | Toggle help                     |
 | `q` / `ctrl+q`  | Quit (not while editing)        |
@@ -82,10 +83,12 @@ group). SQLite uses Connection + Options only.
 | `X`        | Export database (portable SQL dump) |
 | `:backup`  | Size-aware `mysqldump` / `pg_dump` picker (schema/data per table) → `~/Downloads` |
 | `:restore <file>` | `mysql` / `psql` CLI load of a dump (MySQL/Postgres; works over SSH; prefer over `I` for large files) |
+| `:sizes`   | Table row counts and disk sizes (largest first; Enter opens table) |
 | `:locks`   | Show lock waiters → blockers (MySQL/Postgres); Enter opens relation |
 | `:who`     | List live sessions (MySQL/Postgres); pair with `:kill <pid>` |
 | `:kill <pid>` | Terminate a session (confirm; `:kill!` skips; not in read-only) |
 | `:diagnose` | Flag seq/full scans and index hints for the editor statement |
+| `:zen`     | Results-only layout (`:zen off` restores) |
 | `g e` / `:explain` | Raw query plan overlay |
 | `I`        | Import SQL dump           |
 | `S`        | Cross-table search        |
@@ -211,3 +214,55 @@ Status bar shows `NORMAL` / `INSERT` / `SEARCH` / `V-LINE` while the editor is f
 | `m`        | Toggle Mermaid source                           |
 | `y` / `s`  | Copy / save Mermaid source                      |
 | `esc` / `q`| Close                                           |
+
+## Backup picker (`:backup`)
+
+Opens before a native `mysqldump` / `pg_dump`. Tables are sorted largest-first
+(same size data as `:sizes`). Leaving every table on schema+data keeps a
+full-database dump.
+
+| Key        | Action                                          |
+| ---------- | ----------------------------------------------- |
+| `j/k`      | Move                                            |
+| `g` / `G`  | Top / bottom                                    |
+| `space`    | Include / omit table (schema+data)              |
+| `s` / `d`  | Toggle schema / data on the cursor row          |
+| `a` / `n`  | All schema+data / none                          |
+| `o`        | Schema only for every table                     |
+| `enter`    | Run backup                                      |
+| `esc`      | Cancel                                          |
+
+## Lookup panel (`:sizes`, `:locks`, `:who`, `:diagnose`, …)
+
+Shared overlay for catalog and ops lookups. Enter jumps when a table target
+is available.
+
+| Key        | Action                                          |
+| ---------- | ----------------------------------------------- |
+| `j/k`      | Move                                            |
+| `g` / `G`  | Top / bottom                                    |
+| `ctrl+d` / `ctrl+u` | Page down / up                           |
+| `enter`    | Open table (when jumpable)                      |
+| `esc`      | Close                                           |
+
+## Filter picker (`g f`)
+
+| Key        | Action                                          |
+| ---------- | ----------------------------------------------- |
+| type       | Fuzzy-filter values                             |
+| `j/k`      | Move                                            |
+| `space`    | Toggle value                                    |
+| `a` / `n`  | Select all / none                               |
+| `enter`    | Apply filter                                    |
+| `esc`      | Cancel                                          |
+
+## Column visibility (`v`)
+
+| Key        | Action                                          |
+| ---------- | ----------------------------------------------- |
+| type       | Fuzzy-filter columns                            |
+| `j/k`      | Move                                            |
+| `space`    | Toggle visibility                               |
+| `a` / `n`  | Show all / hide all (keeps one)                 |
+| `enter`    | Apply                                           |
+| `esc`      | Cancel                                          |

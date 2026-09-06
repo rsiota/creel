@@ -232,7 +232,18 @@ erDiagram
 ### EXPLAIN, search, statistics
 
 - **EXPLAIN plans** — driver-aware rendering (`g e`) of query plans.
+- **Explain diagnosis** — `:diagnose` / `:diag` runs EXPLAIN on the statement
+  under the cursor and lists rule-based findings (full/sequential scans,
+  filesort, missing-index hints) in the lookup overlay. Use `g e` for the raw
+  plan and `:aiexplain` / `:why` for a prose walkthrough of the same plan.
 - **Cross-table search** (`S`) and **column statistics** (`g s`).
+- **Table sizes** (`:sizes`) — base tables with approximate row counts and
+  on-disk size, largest first. Enter opens the table. The same size data feeds
+  the `:backup` picker.
+- **Catalog lookups** — `:tables` lists base tables; `:peek [table]` shows a
+  one-glance summary (rows, columns, indexes); `:refs [table]` lists inbound
+  foreign keys (with per-referrer counts when a row is focused); `:uses [table]`
+  finds objects that mention the table in their definition.
 
 ## Editing
 
@@ -275,10 +286,6 @@ erDiagram
   relation when known. `:who` / `:sessions` lists all live sessions (own
   connection marked `· you`). `:kill <pid>` terminates a session (confirm /
   `:kill!`; disabled in read-only).
-- **Explain diagnosis** — `:diagnose` / `:diag` runs EXPLAIN on the statement
-  under the cursor and lists rule-based findings (full/sequential scans,
-  filesort, missing-index hints) in the lookup overlay. Use `g e` for the raw
-  plan and `:aiexplain` / `:why` for a prose walkthrough of the same plan.
 
 ## Workflow
 
@@ -298,6 +305,11 @@ erDiagram
   precedence on first connect. Column widths and ERD card positions restore
   even when the tabs themselves are blank. `:session clear` wipes the saved
   snapshot, `:session save` snapshots now.
+- **Layout** — `:zen` / `:zen off` toggles a results-only layout (hides
+  sidebar, editor, tabs, and side panels). `alt+b` / `alt+e` toggle the table
+  sidebar and query editor; `:sidebar`, `:editor`, `:inspector`, and
+  `:assistant` do the same for their panels. Split sizes and visibility restore
+  from the session.
 - **Command palette** (`Ctrl+P`) — fuzzy jump-anywhere: keybindings, tables,
   bookmarks, and themes. Enter opens a table, loads a bookmark, applies a
   theme, or replays a binding. History stays on `Ctrl+Y`. Full **help

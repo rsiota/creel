@@ -6,9 +6,10 @@ is a quickstart; the pages below are the reference.
 ## Guides
 
 - [**Features**](features.md) — what creel can do, with the full detail on the
-  relationship explorer (`g r`) and static ERD (`g R`).
-- [**Keybindings**](keybindings.md) — every key in every panel. (Also available
-  in-app with `?`.)
+  relationship explorer (`g r`), static ERD (`g R`), selective `:backup`, and
+  session ops (`:locks` / `:who` / `:diagnose`).
+- [**Keybindings**](keybindings.md) — every key in every panel (including the
+  `:backup` picker and lookup overlays). Also available in-app with `?`.
 - [**Configuration**](configuration.md) — `config.yaml` reference: connections,
   secret/keychain storage, read-only mode, connection groups, the AI assistant,
   settings, and themes.

@@ -53,7 +53,8 @@ Linux, macOS, and Windows binaries are on the [latest release](https://github.co
 - Results grid — sort, filter, search, hide columns, follow foreign keys (`g d`), soft FK cell tint, chart columns (`M` + `:bar` / `:line` / `:scatter` / `:hist` / `:freq`).
 - Relationship explorer (`g r`) — browse a row's inbound/outbound FK graph like a folder.
 - Static ERD (`g R`) — graphical entity-relationship diagram; exportable as Mermaid.
-- EXPLAIN plans (`g e`), cross-table search (`S`), column statistics (`g s`).
+- EXPLAIN plans (`g e`), diagnosis (`:diagnose`), cross-table search (`S`), column statistics (`g s`), table sizes (`:sizes`).
+- Session ops — `:locks` / `:who` / `:kill` for blocked and live sessions (MySQL/Postgres).
 
 <p align="center">
   <img src="docs/images/creel-erd.png" alt="creel static ERD of the demo database" width="760">
@@ -63,7 +64,7 @@ Linux, macOS, and Windows binaries are on the [latest release](https://github.co
 
 - Inline editing — edit cells, insert/clone rows, paste from clipboard.
 - Schema editing — add columns, rename/drop/truncate tables, table designer (`N`), structure view (`d`).
-- Import / export — streaming SQL dump importer (`I`), `mysqldump`-compatible exporter (`X`), `:backup` / `:restore` via native `mysqldump`/`mysql` and `pg_dump`/`psql` (including over SSH), CSV/result export.
+- Import / export — streaming SQL dump importer (`I`), portable SQL exporter (`X`), size-aware `:backup` (pick schema/data per table via `mysqldump`/`pg_dump`, including over SSH), `:restore`, CSV/result export.
 
 **Workflow**
 
@@ -73,6 +74,7 @@ Linux, macOS, and Windows binaries are on the [latest release](https://github.co
 - Session restore — reopen a connection to find your tabs and buffers as you left them.
 - Record inspector — side panel form view tracking the results cursor.
 - Command palette (`Ctrl+P`) — jump to tables, bookmarks, themes, or replay keybindings; help overlay (`?`).
+- Layout — `:zen` for results-only; `alt+b` / `alt+e` toggle sidebar and editor.
 - AI assistant (`Ctrl+F`) — natural-language to SQL via any OpenAI-compatible endpoint; `:aifix` rewrites the last failed query; `:aiexplain` / `:why` explains a query with its EXPLAIN plan.
 
 **Run anywhere** — large result sets are paged for speed and low memory, and a CLI mode (`-e`, `-e -` from stdin, `-format`) runs a query and prints results without the TUI (failures exit `1`).

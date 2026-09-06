@@ -127,13 +127,14 @@ subsystem:
 
 **Search & lookup**
 - `cross_search_panel.go` / `cross_search_ops.go` — cross-table search (`S`)
-- `lookup_panel.go`
+- `lookup_panel.go` — shared overlay for `:sizes`, `:tables`, `:refs`, `:uses`,
+  `:locks`, `:who`, `:diagnose`, and related commands
 
 **History, bookmarks, explain**
 - `history_panel.go`, `bookmark_panel.go`, `explain_panel.go`
 
 **Export / import**
-- `export_import.go`, `export_picker.go`, `export_overlay.go`, `export_format.go`, `import_prompt.go`
+- `export_import.go`, `export_picker.go`, `backup_picker.go`, `export_overlay.go`, `export_format.go`, `import_prompt.go`
 
 **AI assistant**
 - `assistant.go` — the assistant panel
