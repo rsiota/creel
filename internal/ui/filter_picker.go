@@ -82,10 +82,13 @@ func (p FilterPicker) IsVisible() bool { return p.visible }
 // filtering returns true when the user is actively typing a filter.
 func (p FilterPicker) filtering() bool { return p.filter != "" }
 
-// SetSize sets the dimensions of the picker.
+// SetSize sets the dimensions of the picker and re-clamps scroll so j/k uses
+// the real viewport. Must be called from Update/layout — View is a value
+// receiver and cannot persist size.
 func (p *FilterPicker) SetSize(width, height int) {
 	p.width = width
 	p.height = height
+	p.adjustScroll()
 }
 
 // Column returns the column being filtered.
@@ -163,16 +166,25 @@ func (p *FilterPicker) CursorDown() {
 	}
 }
 
-func (p *FilterPicker) adjustScroll() {
-	maxVisible := p.height - 6
-	if maxVisible < 1 {
-		maxVisible = 1
+func (p FilterPicker) maxVisible() int {
+	// Outer height includes border; body = filter prompt + value rows.
+	mv := p.height - 3 // border(2) + prompt(1)
+	if mv < 1 {
+		mv = 1
 	}
+	return mv
+}
+
+func (p *FilterPicker) adjustScroll() {
+	maxVisible := p.maxVisible()
 	if p.cursor < p.scrollRow {
 		p.scrollRow = p.cursor
 	}
 	if p.cursor >= p.scrollRow+maxVisible {
 		p.scrollRow = p.cursor - maxVisible + 1
+	}
+	if p.scrollRow < 0 {
+		p.scrollRow = 0
 	}
 }
 
@@ -254,10 +266,7 @@ func (p FilterPicker) View() string {
 
 	items := p.filteredValues()
 
-	maxVisible := p.height - 3 // border(2) + prompt(1)
-	if maxVisible < 1 {
-		maxVisible = 1
-	}
+	maxVisible := p.maxVisible()
 
 	end := p.scrollRow + maxVisible
 	if end > len(items) {

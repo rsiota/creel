@@ -61,10 +61,13 @@ func (p *ColumnPicker) Hide() {
 // IsVisible returns whether the picker is shown.
 func (p ColumnPicker) IsVisible() bool { return p.visible }
 
-// SetSize sets the dimensions of the picker.
+// SetSize sets the dimensions of the picker and re-clamps scroll so j/k uses
+// the real viewport. Must be called from Update/layout — View is a value
+// receiver and cannot persist size.
 func (p *ColumnPicker) SetSize(width, height int) {
 	p.width = width
 	p.height = height
+	p.adjustScroll()
 }
 
 // HiddenColumns returns the names of unchecked (hidden) columns, in their
@@ -125,16 +128,24 @@ func (p *ColumnPicker) CursorDown() {
 }
 
 func (p *ColumnPicker) adjustScroll() {
-	maxVisible := p.height - 6
-	if maxVisible < 1 {
-		maxVisible = 1
-	}
+	maxVisible := p.maxVisible()
 	if p.cursor < p.scrollRow {
 		p.scrollRow = p.cursor
 	}
 	if p.cursor >= p.scrollRow+maxVisible {
 		p.scrollRow = p.cursor - maxVisible + 1
 	}
+	if p.scrollRow < 0 {
+		p.scrollRow = 0
+	}
+}
+
+func (p ColumnPicker) maxVisible() int {
+	mv := p.height - 5 // border(2) + prompt(1) + spacer(1) + footer(1)
+	if mv < 1 {
+		mv = 1
+	}
+	return mv
 }
 
 // FilterAddChar appends a character to the fuzzy filter.
@@ -220,10 +231,7 @@ func (p ColumnPicker) View() string {
 
 	items := p.filteredItems()
 
-	maxVisible := p.height - 5 // border(2) + prompt(1) + spacer(1) + footer(1)
-	if maxVisible < 1 {
-		maxVisible = 1
-	}
+	maxVisible := p.maxVisible()
 
 	end := p.scrollRow + maxVisible
 	if end > len(items) {

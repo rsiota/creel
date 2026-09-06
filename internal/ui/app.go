@@ -1022,6 +1022,7 @@ func (m *Model) toggleHistory() {
 		m.history.SetEntries(entries)
 	}
 	m.history.Toggle()
+	m.layoutWorkspace()
 }
 
 // toggleBookmarks opens/closes the bookmarks panel, loading entries for the
@@ -1038,6 +1039,7 @@ func (m *Model) toggleBookmarks() {
 		m.bookmarks.SetEntries(entries)
 	}
 	m.bookmarks.Toggle()
+	m.layoutWorkspace()
 }
 
 // paletteJumpSrc collects tables and bookmarks for the jump-anywhere palette.
@@ -1653,6 +1655,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.filterPicker.SetValues(msg.values, preSelected)
+			pw, ph := popupDim()
+			m.filterPicker.SetSize(pw, ph)
 		}
 		return m, nil
 
@@ -3943,6 +3947,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.results.NumRows(),
 					m.totalRows, m.totalRowsSet,
 				)
+				m.layoutWorkspace()
 			}
 			return m, nil
 		}
@@ -4466,6 +4471,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "X":
 			m.sidebarPendingG = false
 			m.exportPicker.Show(m.tables, m.currentTable())
+			m.layoutWorkspace()
 			return m, nil
 		case "I":
 			m.sidebarPendingG = false
@@ -4475,6 +4481,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebarPendingG = false
 			if m.connection != nil && len(m.tables) > 0 {
 				m.crossSearch.Show()
+				m.layoutWorkspace()
 				return m, m.editor.Focus()
 			}
 		}
@@ -5531,14 +5538,7 @@ func (m Model) viewWorkspace() string {
 
 	// Overlay export dialog (g X) if visible
 	if m.exportOverlay.IsVisible() {
-		pw := 72
-		if pw > m.width-4 {
-			pw = m.width - 4
-		}
-		ph := m.height - 2
-		if ph > 26 {
-			ph = 26
-		}
+		pw, ph := exportOverlayDim(m.width, m.height)
 		m.exportOverlay.SetSize(pw, ph)
 		exportPanel := m.exportOverlay.View()
 		panelW := lipgloss.Width(exportPanel)

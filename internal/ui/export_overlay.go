@@ -155,10 +155,13 @@ func (o *ExportOverlay) Hide() { o.visible = false }
 // IsVisible reports whether the overlay is shown.
 func (o ExportOverlay) IsVisible() bool { return o.visible }
 
-// SetSize sets the rendering dimensions.
+// SetSize sets the rendering dimensions and re-clamps scroll so j/k uses the
+// real viewport. Must be called from Update/layout — View is a value receiver
+// and cannot persist size.
 func (o *ExportOverlay) SetSize(width, height int) {
 	o.width = width
 	o.height = height
+	o.adjustScroll()
 }
 
 // CursorUp moves the cursor up, clamped at the first entry.
@@ -295,7 +298,7 @@ func (o ExportOverlay) maxVisibleRows() int {
 // adjustScroll keeps the cursor entry visible within the scrolling window.
 func (o *ExportOverlay) adjustScroll() {
 	maxRows := o.maxVisibleRows()
-	if maxRows < 1 {
+	if maxRows < 1 || len(o.entries) == 0 || o.cursor < 0 || o.cursor >= len(o.entries) {
 		o.scrollRow = 0
 		return
 	}
@@ -305,6 +308,9 @@ func (o *ExportOverlay) adjustScroll() {
 	}
 	if curDisplay >= o.scrollRow+maxRows {
 		o.scrollRow = curDisplay - maxRows + 1
+	}
+	if o.scrollRow < 0 {
+		o.scrollRow = 0
 	}
 }
 

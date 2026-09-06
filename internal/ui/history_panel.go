@@ -92,10 +92,13 @@ func (h HistoryPanel) IsVisible() bool {
 	return h.visible
 }
 
-// SetSize sets the dimensions of the panel.
+// SetSize sets the dimensions of the panel and re-clamps scroll so j/k uses
+// the real viewport. Must be called from Update/layout — View is a value
+// receiver and cannot persist size.
 func (h *HistoryPanel) SetSize(width, height int) {
 	h.width = width
 	h.height = height
+	h.adjustScroll()
 }
 
 // SelectedQuery returns the query at the cursor, or empty string if none.
@@ -168,16 +171,24 @@ func (h *HistoryPanel) CursorDown() {
 }
 
 func (h *HistoryPanel) adjustScroll() {
-	maxVisible := h.height - 3 // filter prompt + 2 borders
-	if maxVisible < 1 {
-		maxVisible = 1
-	}
+	maxVisible := h.maxVisible()
 	if h.cursor < h.scrollRow {
 		h.scrollRow = h.cursor
 	}
 	if h.cursor >= h.scrollRow+maxVisible {
 		h.scrollRow = h.cursor - maxVisible + 1
 	}
+	if h.scrollRow < 0 {
+		h.scrollRow = 0
+	}
+}
+
+func (h HistoryPanel) maxVisible() int {
+	mv := h.height - 3 // filter prompt + 2 borders
+	if mv < 1 {
+		mv = 1
+	}
+	return mv
 }
 
 // View renders the history panel.
@@ -188,13 +199,7 @@ func (h HistoryPanel) View() string {
 
 	entries := h.filteredEntries()
 
-	// Reserve rows for the filter prompt and the borders.
-	avail := h.height - 3
-	if avail < 1 {
-		avail = 1
-	}
-
-	maxVisible := avail
+	maxVisible := h.maxVisible()
 	end := h.scrollRow + maxVisible
 	if end > len(entries) {
 		end = len(entries)

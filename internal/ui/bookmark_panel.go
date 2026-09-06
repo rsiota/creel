@@ -71,10 +71,13 @@ func (b BookmarkPanel) IsVisible() bool {
 	return b.visible
 }
 
-// SetSize sets the dimensions of the panel.
+// SetSize sets the dimensions of the panel and re-clamps scroll so j/k uses
+// the real viewport. Must be called from Update/layout — View is a value
+// receiver and cannot persist size.
 func (b *BookmarkPanel) SetSize(width, height int) {
 	b.width = width
 	b.height = height
+	b.adjustScroll()
 }
 
 // SelectedQuery returns the query at the cursor, or empty string if none.
@@ -141,16 +144,24 @@ func (b *BookmarkPanel) CursorDown() {
 }
 
 func (b *BookmarkPanel) adjustScroll() {
-	maxVisible := b.height - 3
-	if maxVisible < 1 {
-		maxVisible = 1
-	}
+	maxVisible := b.maxVisible()
 	if b.cursor < b.scrollRow {
 		b.scrollRow = b.cursor
 	}
 	if b.cursor >= b.scrollRow+maxVisible {
 		b.scrollRow = b.cursor - maxVisible + 1
 	}
+	if b.scrollRow < 0 {
+		b.scrollRow = 0
+	}
+}
+
+func (b BookmarkPanel) maxVisible() int {
+	mv := b.height - 3
+	if mv < 1 {
+		mv = 1
+	}
+	return mv
 }
 
 // View renders the bookmark panel.
@@ -161,13 +172,7 @@ func (b BookmarkPanel) View() string {
 
 	entries := b.filteredEntries()
 
-	// Reserve one row for the filter prompt (always visible).
-	avail := b.height - 3
-	if avail < 1 {
-		avail = 1
-	}
-
-	maxVisible := avail
+	maxVisible := b.maxVisible()
 	end := b.scrollRow + maxVisible
 	if end > len(entries) {
 		end = len(entries)

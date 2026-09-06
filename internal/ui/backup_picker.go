@@ -80,6 +80,22 @@ func backupPickerDim(termW, termH int) (w, h int) {
 	return w, h
 }
 
+// exportOverlayDim returns outer dimensions for the g X export dialog.
+func exportOverlayDim(termW, termH int) (w, h int) {
+	w = 72
+	if termW > 0 && w > termW-4 {
+		w = termW - 4
+	}
+	h = termH - 2
+	if h > 26 {
+		h = 26
+	}
+	if h < 10 {
+		h = 10
+	}
+	return w, h
+}
+
 // Hide clears state and hides the picker.
 func (p *BackupPicker) Hide() {
 	p.items = nil

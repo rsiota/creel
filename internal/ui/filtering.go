@@ -160,6 +160,7 @@ func (m *Model) openColumnPicker() {
 		hidden[name] = true
 	}
 	m.columnPicker.Show(m.results.columns, hidden)
+	m.layoutWorkspace()
 }
 
 // applyColumnVisibility commits the picker's selection to the results table
@@ -185,6 +186,7 @@ func (m *Model) openFilterPicker() tea.Cmd {
 	src := m.filterBaseSQL()
 	col := m.quoteSortCol(colName)
 	m.filterPicker.Show(colName)
+	m.layoutWorkspace()
 
 	conn := m.connection
 	return func() tea.Msg {

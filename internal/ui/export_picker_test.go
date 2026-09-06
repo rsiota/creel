@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/rsiota/creel/internal/db"
@@ -98,5 +99,26 @@ func TestExportPicker_CursorNavigation(t *testing.T) {
 	p.CursorUp() // past the start — should clamp
 	if p.cursor != 0 {
 		t.Fatalf("expected cursor clamped at 0, got %d", p.cursor)
+	}
+}
+
+func TestExportPickerScrollStaysUntilViewportEdge(t *testing.T) {
+	tables := make([]string, 30)
+	for i := range tables {
+		tables[i] = fmt.Sprintf("t%02d", i)
+	}
+	p := NewExportPicker()
+	p.Show(tables, "")
+	p.SetSize(71, 19) // maxVisible = 19-4 = 15
+
+	for i := 0; i < 14; i++ {
+		p.CursorDown()
+	}
+	if p.cursor != 14 || p.scrollRow != 0 {
+		t.Fatalf("within viewport: cursor=%d scroll=%d", p.cursor, p.scrollRow)
+	}
+	p.CursorDown()
+	if p.cursor != 15 || p.scrollRow != 1 {
+		t.Fatalf("past bottom: cursor=%d scroll=%d", p.cursor, p.scrollRow)
 	}
 }

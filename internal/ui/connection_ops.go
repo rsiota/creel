@@ -441,6 +441,7 @@ func (m *Model) openDatabasePicker(mustChoose bool) tea.Cmd {
 		return nil
 	}
 	m.dbPicker.Show(dbs, mustChoose)
+	m.layoutWorkspace()
 	return nil
 }
 

@@ -1,6 +1,9 @@
 package ui
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 // TestFilterPickerToggleSelectsHighlightedValue guards against the stale-sort
 // bug where the cursor's displayed position (sorted by score) disagreed with
@@ -85,5 +88,30 @@ func TestFilterPickerCursorDownThenToggleSelectsSecondItem(t *testing.T) {
 	selected := p.SelectedValues()
 	if len(selected) != 1 || selected[0] != second {
 		t.Errorf("expected %q selected, got %v", second, selected)
+	}
+}
+
+func TestFilterPickerScrollStaysUntilViewportEdge(t *testing.T) {
+	p := NewFilterPicker()
+	p.Show("id")
+	values := make([]string, 30)
+	for i := range values {
+		values[i] = fmt.Sprintf("v%02d", i)
+	}
+	p.SetValues(values, nil)
+	p.SetSize(71, 19) // maxVisible = 19-3 = 16
+
+	if p.cursor != 0 || p.scrollRow != 0 {
+		t.Fatalf("start cursor=%d scroll=%d", p.cursor, p.scrollRow)
+	}
+	for i := 0; i < 15; i++ {
+		p.CursorDown()
+	}
+	if p.cursor != 15 || p.scrollRow != 0 {
+		t.Fatalf("within viewport: cursor=%d scroll=%d", p.cursor, p.scrollRow)
+	}
+	p.CursorDown()
+	if p.cursor != 16 || p.scrollRow != 1 {
+		t.Fatalf("past bottom: cursor=%d scroll=%d", p.cursor, p.scrollRow)
 	}
 }

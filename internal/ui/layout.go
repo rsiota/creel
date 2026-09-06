@@ -622,4 +622,26 @@ func (m *Model) layoutWorkspace() {
 	// j/k scroll uses the real viewport height (not maxVisible=1).
 	bw, bh := backupPickerDim(m.width, m.height)
 	m.backupPicker.SetSize(bw, bh)
+
+	// PopupDim overlays (filter / column / export table picker). View is a
+	// value receiver, so size must be set here for scroll to match paint.
+	pw, ph := popupDim()
+	m.filterPicker.SetSize(pw, ph)
+	m.columnPicker.SetSize(pw, ph)
+	m.exportPicker.SetSize(pw, ph)
+
+	// Export dialog (g X) uses a wider, taller overlay.
+	ew, eh := exportOverlayDim(m.width, m.height)
+	m.exportOverlay.SetSize(ew, eh)
+
+	// History / bookmarks / cross-search: 65% centered panels.
+	mw := m.width * 65 / 100
+	mh := (m.height - 1) * 65 / 100
+	m.history.SetSize(mw, mh)
+	m.bookmarks.SetSize(mw, mh)
+	m.crossSearch.SetSize(mw, mh)
+
+	// Database picker shares the connection-form shell.
+	dpw, dph := popupOuterSize(m.height)
+	m.dbPicker.SetSize(dpw, dph)
 }

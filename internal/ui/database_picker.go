@@ -85,10 +85,13 @@ func (p *DatabasePicker) StopFiltering() {
 	p.scrollRow = 0
 }
 
-// SetSize sets the dimensions of the picker.
+// SetSize sets the dimensions of the picker and re-clamps scroll so j/k uses
+// the real viewport. Must be called from Update/layout — View is a value
+// receiver and cannot persist size.
 func (p *DatabasePicker) SetSize(width, height int) {
 	p.width = width
 	p.height = height
+	p.adjustScroll()
 }
 
 // filteredDatabases returns the fuzzy-filtered, sorted list of databases.

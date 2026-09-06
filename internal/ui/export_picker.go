@@ -60,10 +60,13 @@ func (p *ExportPicker) Hide() {
 // IsVisible reports whether the picker is shown.
 func (p ExportPicker) IsVisible() bool { return p.visible }
 
-// SetSize sets the rendering dimensions for the picker panel.
+// SetSize sets the rendering dimensions for the picker panel and re-clamps
+// scroll so j/k uses the real viewport. Must be called from Update/layout —
+// View is a value receiver and cannot persist size.
 func (p *ExportPicker) SetSize(width, height int) {
 	p.width = width
 	p.height = height
+	p.adjustScroll()
 }
 
 // CursorUp moves the cursor up by one.

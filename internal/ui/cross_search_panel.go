@@ -106,10 +106,13 @@ func (c CrossSearchPanel) SelectedResult() *SearchResult {
 	return &c.results[c.cursor]
 }
 
-// SetSize sets the dimensions of the panel.
+// SetSize sets the dimensions of the panel and re-clamps scroll so j/k uses
+// the real viewport. Must be called from Update/layout — View is a value
+// receiver and cannot persist size.
 func (c *CrossSearchPanel) SetSize(width, height int) {
 	c.width = width
 	c.height = height
+	c.adjustScroll()
 }
 
 // CursorUp moves the selection up.
@@ -129,16 +132,24 @@ func (c *CrossSearchPanel) CursorDown() {
 }
 
 func (c *CrossSearchPanel) adjustScroll() {
-	maxVisible := c.height - 4
-	if maxVisible < 1 {
-		maxVisible = 1
-	}
+	maxVisible := c.maxVisible()
 	if c.cursor < c.scrollRow {
 		c.scrollRow = c.cursor
 	}
 	if c.cursor >= c.scrollRow+maxVisible {
 		c.scrollRow = c.cursor - maxVisible + 1
 	}
+	if c.scrollRow < 0 {
+		c.scrollRow = 0
+	}
+}
+
+func (c CrossSearchPanel) maxVisible() int {
+	mv := c.height - 4
+	if mv < 1 {
+		mv = 1
+	}
+	return mv
 }
 
 // View renders the cross-search panel.
@@ -162,10 +173,7 @@ func (c CrossSearchPanel) View() string {
 		}
 	}
 
-	avail := c.height - 4
-	if avail < 1 {
-		avail = 1
-	}
+	avail := c.maxVisible()
 
 	maxVisible := avail
 	end := c.scrollRow + maxVisible
