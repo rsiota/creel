@@ -11,6 +11,12 @@ commits, so it can come up empty).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-06
+
+Ops and layout: selective `:backup` / `:restore`, session diagnostics, `:zen`,
+redesigned connection form, inspector FK navigation, and help overlay cursor
+scroll.
+
 ### Added
 - `:locks` / `:blocked` — show sessions waiting on locks held by other sessions
   (MySQL InnoDB / PostgreSQL). Opens the lookup overlay with waiter → blocker,
@@ -66,6 +72,9 @@ commits, so it can come up empty).
   Bookmarks, Themes) before keybindings with right-aligned section labels; `?`
   help opens a Getting Started tab; connections screen shows `ctrl+p · ? · :`
   hints when no saved connections exist.
+- Help (`?`) uses the same edge-scroll cursor as overlay pickers: `j`/`k` move
+  a line cursor and only scroll at the viewport edges. The cursor highlights
+  the first character of the line (not a full-row bar).
 - Query editor shows vim mode on the status bar (`NORMAL`, `INSERT`, `SEARCH`,
   `V-LINE`) when the editor is focused.
 - Read-only cell popup (`E`) supports `/` search with `n`/`N`; `esc` dismisses
@@ -77,6 +86,9 @@ commits, so it can come up empty).
   insert modes, motions, delete, yank/paste, undo, and in-buffer search. Starts
   in insert; `esc` leaves insert, `esc` again (or `q` in normal) closes without
   saving; `ctrl+s` stages and closes.
+- Row inspector: show FK targets; `g d` follows the foreign key; `u` / `g b`
+  go back. Mouse wheel scrolls inspector fields; field focus stays in sync with
+  the results grid column.
 - `:diff [a] [b]` — compare the loaded result pages of two tabs. Match by
   primary key when both tabs share the same source table and PK columns;
   otherwise by row index. Overlay shows adds / removes / changes; `a` toggles
@@ -98,6 +110,10 @@ commits, so it can come up empty).
   fields stay neutral so light themes stay readable.
 
 ### Fixed
+- Overlay pickers (`:backup`, `:sizes`, filter/column/export, history,
+  bookmarks, DB picker, cross-search): persist panel size on the model so `j`/`k`
+  edge-scroll uses the real viewport height (value-receiver `View` used to leave
+  height at 0 and scroll every keypress).
 - Export / `:backup` unit tests no longer write into the real `~/Downloads`
   folder (`creel_test_unit.json`, `creel_users_*.csv`, etc.); they use a temp
   directory instead.
@@ -109,10 +125,15 @@ commits, so it can come up empty).
   forward). Otherwise prefer OpenSSH `ssh -L`, half-close the in-process proxy,
   pass `--max-allowed-packet=1G` / `--compress`, and use larger copy buffers.
   Status bar shows a live byte count and transfer rate while the dump runs.
+- `:restore` reloads the table list after a successful load.
 - Results sort (`o` / header click / `:sort`): pagination no longer wraps the
   query in a derived table when unnecessary, so `ORDER BY` is honored on
   MySQL/MariaDB (where an inner `ORDER BY` without its own `LIMIT` is often
   ignored). Sort columns are driver-quoted in the generated SQL.
+- Inspector: stop edit-buffer leakage across fields; keep results cursor in
+  sync for read-only grids.
+- Lookup Enter selects the matching sidebar table when jumping to a table.
+- Connection group tabs stay visible while filtering.
 
 ## [0.4.0] - 2026-08-30
 
@@ -303,7 +324,8 @@ First public release. creel succeeds `gsql` (the project was renamed) and migrat
 - **Read-only mode** for safely pointing at production.
 - **Session restore**, per-connection query history & bookmarks, EXPLAIN plans, and ~570 themes.
 
-[Unreleased]: https://github.com/rsiota/creel/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/rsiota/creel/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/rsiota/creel/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/rsiota/creel/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/rsiota/creel/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/rsiota/creel/compare/v0.2.0...v0.3.0
