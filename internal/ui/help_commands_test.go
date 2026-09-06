@@ -229,48 +229,101 @@ func TestHelpTabClickSwitchesPage(t *testing.T) {
 // huge sentinel (1<<30) that was only clamped at render time, so any
 // up-scroll / j / k afterward computed (sentinel ± 1) and was re-clamped to
 // the same bottom line — scrolling looked frozen until the offset climbed
-// back into range. The offset is now clamped on write, so G lands on the real
-// max and scrolling resumes immediately (and the reverse — scrolling to the
-// bottom, then up — works too).
+// back into range. The offset is now clamped on write, and G places the line
+// cursor on the last row so k moves the cursor (and scrolls at the edge).
 func TestHelpScrollAfterG(t *testing.T) {
 	h := NewHelpPanel()
 	h.Show()
 	h.SetSize(120, 40)
 	h.page = helpPageKeys
 	h.keysOff = 0
+	h.keysCur = 0
 
 	maxOff := h.maxOff()
 	if maxOff <= 0 {
 		t.Fatalf("Keys page should scroll at 120x40 (maxOff=%d)", maxOff)
 	}
+	n := h.pageLineCount()
 	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
 
-	// G lands exactly on the bottom — not a sentinel past the end.
+	// G lands on the last line with the viewport scrolled to the bottom.
 	h.HandleKey(key("G"))
 	if off := h.curOff(); off != maxOff {
 		t.Errorf("after G: offset=%d, want maxOff=%d", off, maxOff)
 	}
-	// Up-scroll immediately after G must move (the bug: it was a no-op).
+	if cur := h.curCursor(); cur != n-1 {
+		t.Errorf("after G: cursor=%d, want %d", cur, n-1)
+	}
+	// k moves the cursor up within the viewport; offset stays put until the
+	// cursor hits the top edge.
 	h.HandleKey(key("k"))
-	if off := h.curOff(); off >= maxOff {
-		t.Errorf("after G then k: offset=%d, want < maxOff=%d (up-scroll frozen after G)", off, maxOff)
+	if cur := h.curCursor(); cur != n-2 {
+		t.Errorf("after G then k: cursor=%d, want %d", cur, n-2)
+	}
+	if off := h.curOff(); off != maxOff {
+		t.Errorf("after G then k: offset=%d, want still maxOff=%d", off, maxOff)
 	}
 
-	// The reverse: scroll to the bottom with PgDn, then up must still move.
-	h.HandleKey(key("G")) // reset to bottom
+	// Hammering past the end keeps cursor and offset clamped.
+	h.HandleKey(key("G"))
 	for i := 0; i < 20; i++ {
-		h.HandleKey(tea.KeyMsg{Type: tea.KeyPgDown}) // hammered past the end
+		h.HandleKey(tea.KeyMsg{Type: tea.KeyPgDown})
 	}
 	if off := h.curOff(); off != maxOff {
 		t.Errorf("after scrolling past bottom: offset=%d, want clamped to maxOff=%d", off, maxOff)
 	}
+	if cur := h.curCursor(); cur != n-1 {
+		t.Errorf("after scrolling past bottom: cursor=%d, want %d", cur, n-1)
+	}
 	h.HandleKey(key("k"))
-	if off := h.curOff(); off >= maxOff {
-		t.Errorf("after bottom then k: offset=%d, want < maxOff=%d (up-scroll frozen at bottom)", off, maxOff)
+	if cur := h.curCursor(); cur != n-2 {
+		t.Errorf("after bottom then k: cursor=%d, want %d", cur, n-2)
 	}
 }
 
-// On a page short enough to fit without scrolling, G is a no-op at offset 0.
+func TestHelpCursorScrollsAtViewportEdge(t *testing.T) {
+	h := NewHelpPanel()
+	h.Show()
+	h.SetSize(120, 40)
+	h.page = helpPageKeys
+	vp := h.scrollPage()
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+
+	for i := 0; i < vp-1; i++ {
+		h.HandleKey(key("j"))
+	}
+	if h.curCursor() != vp-1 || h.curOff() != 0 {
+		t.Fatalf("within viewport: cursor=%d off=%d", h.curCursor(), h.curOff())
+	}
+	h.HandleKey(key("j"))
+	if h.curCursor() != vp || h.curOff() != 1 {
+		t.Fatalf("past bottom edge: cursor=%d off=%d", h.curCursor(), h.curOff())
+	}
+}
+
+func TestHelpCursorFirstCharHighlight(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	applyPalette(defaultPalette)
+
+	// Unpadded style — shared titleStyle has Padding(0,1); splitting the first
+	// rune under that style would render as "G lobal".
+	row := helpRow{{text: "Global", style: lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)}}
+	got := renderHelpRow(row, nil, false, true)
+	plain := stripAnsi(got)
+	if plain != "Global" {
+		t.Fatalf("cursor row = %q, want Global (no padding between first char and rest)", plain)
+	}
+	if !strings.Contains(got, "\x1b[") {
+		t.Fatalf("expected ANSI cursor styling: %q", got)
+	}
+	noCursor := renderHelpRow(row, nil, false, false)
+	if stripAnsi(noCursor) != "Global" {
+		t.Fatalf("plain row = %q", stripAnsi(noCursor))
+	}
+}
+
+// On a page short enough to fit without scrolling, G keeps offset 0 and
+// places the cursor on the last line.
 func TestHelpGOnPageThatFits(t *testing.T) {
 	h := NewHelpPanel()
 	h.Show()
@@ -282,6 +335,10 @@ func TestHelpGOnPageThatFits(t *testing.T) {
 	h.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	if off := h.curOff(); off != 0 {
 		t.Errorf("G on a page that fits: offset=%d, want 0", off)
+	}
+	n := h.pageLineCount()
+	if cur := h.curCursor(); n > 0 && cur != n-1 {
+		t.Errorf("G on a page that fits: cursor=%d, want %d", cur, n-1)
 	}
 }
 
@@ -311,20 +368,33 @@ func TestHelpScrollClampMatchesRender(t *testing.T) {
 	}
 	m.help.page = helpPageKeys
 	m.help.keysOff = 0
+	m.help.keysCur = 0
 	// The persisted panel must know its size, so Update's maxOff matches View's.
 	if m.help.height == 0 {
 		t.Error("help panel height not persisted after resize (SetSize only hit a view copy)")
 	}
 
-	// Hold j well past the bottom, then a single k must move the viewport.
-	for i := 0; i < 300; i++ {
+	// Hold j well past the bottom. Offset/cursor must clamp (no burn-through),
+	// and a single k must move the line cursor — not require many presses to
+	// crawl back from an overshot offset. (Viewport text may be unchanged after
+	// stripAnsi because only the first-char cursor moves within the same page.)
+	n := m.help.pageLineCount()
+	if n == 0 {
+		t.Fatal("Keys page empty")
+	}
+	for i := 0; i < n+50; i++ {
 		step(key("j"))
 	}
-	viewAtBottom := stripAnsi(m.View())
+	if cur := m.help.curCursor(); cur != n-1 {
+		t.Errorf("after holding j: cursor=%d, want last line %d", cur, n-1)
+	}
+	if off := m.help.curOff(); off != m.help.maxOff() {
+		t.Errorf("after holding j: offset=%d, want maxOff=%d (overshot / not clamped)", off, m.help.maxOff())
+	}
+	curAtBottom := m.help.curCursor()
 	step(key("k"))
-	viewAfterK := stripAnsi(m.View())
-	if viewAtBottom == viewAfterK {
-		t.Error("view did not change after holding j past the bottom then pressing k once (scroll burn-through)")
+	if cur := m.help.curCursor(); cur != curAtBottom-1 {
+		t.Errorf("after one k from bottom: cursor=%d, want %d (scroll burn-through)", cur, curAtBottom-1)
 	}
 }
 

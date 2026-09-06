@@ -3,6 +3,7 @@ package ui
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -17,9 +18,12 @@ import (
 //   - Commands — every ":" command (exCommands()), one per line at full width
 //     with descriptions wrapped, so nothing is truncated.
 //
-// Both pages scroll vertically (↑/↓ or j/k, PgUp/PgDn, g/G). Tab / shift+tab
-// switch pages; ? / q / esc close it (unmapped keys leave it open so mouse
-// overscroll noise cannot dismiss it).
+// Both pages scroll vertically (↑/↓ or j/k, PgUp/PgDn, g/G). j/k move a line
+// cursor within the viewport; the content only scrolls when the cursor hits
+// the top or bottom edge. The cursor is drawn on the first character of the
+// line (not a full-row highlight). Tab / shift+tab switch pages; ? / q / esc
+// close it (unmapped keys leave it open so mouse overscroll noise cannot
+// dismiss it).
 //
 // Search (/): typing `/query` live-highlights matches on the current page and
 // scrolls the first match into view; n / N cycle matches; esc clears. Scrolling
@@ -31,6 +35,9 @@ type HelpPanel struct {
 	startOff int // scroll offset (lines) for the Getting Started page
 	keysOff int // scroll offset (lines) for the Keys page
 	cmdsOff int // scroll offset (lines) for the Commands page
+	startCur int // cursor line on the Getting Started page
+	keysCur  int // cursor line on the Keys page
+	cmdsCur  int // cursor line on the Commands page
 	width   int
 	height  int
 
@@ -73,6 +80,9 @@ func (h *HelpPanel) Show() {
 	h.startOff = 0
 	h.keysOff = 0
 	h.cmdsOff = 0
+	h.startCur = 0
+	h.keysCur = 0
+	h.cmdsCur = 0
 	h.clearSearch()
 }
 
@@ -83,10 +93,13 @@ func (h *HelpPanel) Hide() { h.visible = false }
 func (h HelpPanel) IsVisible() bool { return h.visible }
 
 // SetSize stores the terminal dimensions for sizing/scrolling the overlay,
-// clamping the current page's offset so a shrink can't leave it past the end.
+// clamping the current page's offset and cursor so a shrink can't leave them
+// past the end.
 func (h *HelpPanel) SetSize(width, height int) {
 	h.width = width
 	h.height = height
+	h.clampCursor()
+	h.adjustScrollToCursor()
 }
 
 // Typing reports whether the / search prompt has focus (so the caller can keep
@@ -167,22 +180,29 @@ func (h *HelpPanel) HandleKey(msg tea.KeyMsg) bool {
 		}
 		return true
 	case "j", "down":
-		h.setCurOff(h.curOff() + 1)
+		h.moveCursor(1)
 		return true
 	case "k", "up":
-		h.setCurOff(h.curOff() - 1)
+		h.moveCursor(-1)
 		return true
 	case "pgdown", "ctrl+d", " ", "f":
-		h.setCurOff(h.curOff() + h.scrollPage())
+		h.moveCursor(h.scrollPage())
 		return true
 	case "pgup", "ctrl+u", "b":
-		h.setCurOff(h.curOff() - h.scrollPage())
+		h.moveCursor(-h.scrollPage())
 		return true
 	case "g":
+		h.setCurCursor(0)
 		h.setCurOff(0)
 		return true
 	case "G":
-		h.setCurOff(h.maxOff()) // jump to the bottom
+		n := h.pageLineCount()
+		if n > 0 {
+			h.setCurCursor(n - 1)
+		} else {
+			h.setCurCursor(0)
+		}
+		h.adjustScrollToCursor()
 		return true
 	}
 	// Unknown key: keep help open (do not dismiss).
@@ -224,13 +244,72 @@ func (h *HelpPanel) setCurOff(v int) {
 	}
 }
 
+func (h HelpPanel) curCursor() int {
+	switch h.page {
+	case helpPageCommands:
+		return h.cmdsCur
+	case helpPageKeys:
+		return h.keysCur
+	default:
+		return h.startCur
+	}
+}
+
+func (h *HelpPanel) setCurCursor(v int) {
+	if v < 0 {
+		v = 0
+	}
+	if n := h.pageLineCount(); n > 0 && v >= n {
+		v = n - 1
+	} else if n == 0 {
+		v = 0
+	}
+	switch h.page {
+	case helpPageCommands:
+		h.cmdsCur = v
+	case helpPageKeys:
+		h.keysCur = v
+	default:
+		h.startCur = v
+	}
+}
+
+func (h HelpPanel) pageLineCount() int {
+	return len(h.pageRows(helpContentWidth(h.width)))
+}
+
+func (h *HelpPanel) clampCursor() {
+	h.setCurCursor(h.curCursor())
+}
+
+// moveCursor moves the line cursor by delta and scrolls only when it leaves
+// the viewport (same edge-scroll model as :sizes / :backup).
+func (h *HelpPanel) moveCursor(delta int) {
+	h.setCurCursor(h.curCursor() + delta)
+	h.adjustScrollToCursor()
+}
+
+// adjustScrollToCursor keeps the cursor line inside the visible viewport.
+func (h *HelpPanel) adjustScrollToCursor() {
+	vp := h.scrollPage()
+	cur := h.curCursor()
+	off := h.curOff()
+	if cur < off {
+		h.setCurOff(cur)
+		return
+	}
+	if cur >= off+vp {
+		h.setCurOff(cur - vp + 1)
+	}
+}
+
 // maxOff is the largest valid scroll offset for the active page: the page's
 // line count minus the viewport height. pageLines depends on the (width-
 // derived) content width, so this mirrors View's clamping and lets the scroll
 // and jump handlers keep the stored offset in range rather than deferring it
 // to render time.
 func (h HelpPanel) maxOff() int {
-	off := len(h.pageRows(helpContentWidth(h.width))) - h.scrollPage()
+	off := h.pageLineCount() - h.scrollPage()
 	if off < 0 {
 		return 0
 	}
@@ -246,11 +325,19 @@ func (h HelpPanel) scrollPage() int {
 	return v
 }
 
-// ScrollBy moves the active page's viewport by delta lines (negative = up).
-// The offset is clamped at render time, so callers (e.g. the mouse wheel) can
-// pass unbounded deltas. Used by mouse-wheel scrolling.
+// ScrollBy moves the active page's viewport by delta lines (negative = up)
+// and keeps the line cursor inside the new viewport. Used by mouse-wheel
+// scrolling.
 func (h *HelpPanel) ScrollBy(delta int) {
 	h.setCurOff(h.curOff() + delta)
+	off := h.curOff()
+	vp := h.scrollPage()
+	cur := h.curCursor()
+	if cur < off {
+		h.setCurCursor(off)
+	} else if last := off + vp - 1; cur > last {
+		h.setCurCursor(last)
+	}
 }
 
 // rebuildMatchRe compiles the active query into a case-insensitive regex. An
@@ -353,13 +440,14 @@ func (h *HelpPanel) advanceMatch(dir int) {
 }
 
 // scrollToCurrentMatch scrolls the active page so the current match is in the
-// upper third of the viewport (a little context above, most below). No-op when
-// there is no match.
+// upper third of the viewport (a little context above, most below) and places
+// the line cursor on that match. No-op when there is no match.
 func (h *HelpPanel) scrollToCurrentMatch() {
 	target := h.currentMatchLine()
 	if target < 0 {
 		return
 	}
+	h.setCurCursor(target)
 	vp := h.scrollPage()
 	off := target - vp/3
 	if off < 0 {
@@ -398,8 +486,9 @@ func (h HelpPanel) View() string {
 	}
 
 	var bodyVisible []string
+	cursor := h.curCursor()
 	for i := off; i < end; i++ {
-		bodyVisible = append(bodyVisible, renderHelpRow(rows[i], h.matchRe, i == curMatch))
+		bodyVisible = append(bodyVisible, renderHelpRow(rows[i], h.matchRe, i == curMatch, i == cursor))
 	}
 	for len(bodyVisible) < viewportH {
 		bodyVisible = append(bodyVisible, "")
@@ -596,15 +685,38 @@ func helpSearchStyles() (match, curMatch lipgloss.Style) {
 		lipgloss.NewStyle().Background(colorPrimary).Foreground(colorBg).Bold(true)
 }
 
-// renderHelpRow renders a row, optionally highlighting query matches. With no
-// regex it renders each segment in its own style. When searching, each matched
-// substring gets a background (subtle for non-current matches, strong for the
-// current match); the rest of the line keeps its normal styling.
-func renderHelpRow(row helpRow, re *regexp.Regexp, isCurrent bool) string {
+// renderHelpRow renders a row, optionally highlighting query matches and a
+// one-character line cursor. With no regex it renders each segment in its own
+// style. When searching, each matched substring gets a background (subtle for
+// non-current matches, strong for the current match); the rest of the line
+// keeps its normal styling. When isCursor, only the first character is painted
+// with the primary selection colours — not the whole row.
+func renderHelpRow(row helpRow, re *regexp.Regexp, isCurrent, isCursor bool) string {
 	match, curMatch := helpSearchStyles()
+	// Inline so a one-cell cursor doesn't pick up lipgloss block padding
+	// (which would insert a space after the character and break "Global" → "G lobal").
+	cursorStyle := lipgloss.NewStyle().Background(colorPrimary).Foreground(colorBg).Inline(true)
 	var b strings.Builder
+	appliedCursor := !isCursor
 	for _, seg := range row {
+		if !appliedCursor && seg.text != "" {
+			r, size := utf8.DecodeRuneInString(seg.text)
+			if r == utf8.RuneError && size == 1 {
+				size = 1
+			}
+			b.WriteString(cursorStyle.Render(string(r)))
+			rest := seg.text[size:]
+			if rest != "" {
+				b.WriteString(renderHelpSegment(helpSegment{text: rest, style: seg.style}, re, isCurrent, match, curMatch))
+			}
+			appliedCursor = true
+			continue
+		}
 		b.WriteString(renderHelpSegment(seg, re, isCurrent, match, curMatch))
+	}
+	if !appliedCursor {
+		// Blank / separator line: still show a one-cell cursor.
+		b.WriteString(cursorStyle.Render(" "))
 	}
 	return b.String()
 }
@@ -645,9 +757,12 @@ func renderHelpSegment(seg helpSegment, re *regexp.Regexp, isCurrent bool, match
 // query, and the three main discovery surfaces (Ctrl+P, ?, :).
 func renderGettingStartedRows(contentW int) []helpRow {
 	_ = contentW
+	// Unpadded styles: renderHelpRow may style the first rune separately for the
+	// cursor, and Padding on a shared style would insert spaces around the rest.
 	fgStyle := lipgloss.NewStyle().Foreground(colorFg)
 	labelStyle := lipgloss.NewStyle().Foreground(colorLabel)
 	mutedStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	secTitleStyle := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
 	plain := lipgloss.NewStyle()
 
 	type entry struct {
@@ -708,7 +823,7 @@ func renderGettingStartedRows(contentW int) []helpRow {
 	const gap = 4
 	var out []helpRow
 	for _, sec := range sections {
-		out = append(out, helpRow{{text: sec.title, style: titleStyle}})
+		out = append(out, helpRow{{text: sec.title, style: secTitleStyle}})
 		for _, ln := range sec.lines {
 			out = append(out, helpRow{{text: "  " + ln, style: fgStyle}})
 		}
@@ -749,10 +864,12 @@ func renderKeysRows(contentW int) []helpRow {
 	}
 	labelStyle := lipgloss.NewStyle().Foreground(colorLabel)
 	fgStyle := lipgloss.NewStyle().Foreground(colorFg)
+	// Unpadded: cursor splits the first rune; Padding would gap "G" + " lobal".
+	secTitleStyle := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
 	plain := lipgloss.NewStyle()
 	var out []helpRow
 	for _, s := range sections {
-		out = append(out, helpRow{{text: s.Title, style: titleStyle}})
+		out = append(out, helpRow{{text: s.Title, style: secTitleStyle}})
 		for _, bd := range s.Items {
 			key := bd.Display + strings.Repeat(" ", max(0, keyW-runeLen(bd.Display)))
 			desc := truncateRunes(bd.Desc, descW)

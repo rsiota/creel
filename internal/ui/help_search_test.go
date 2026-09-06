@@ -226,12 +226,12 @@ func TestHelpRenderHighlightPreservesText(t *testing.T) {
 	row := helpRow{{text: "export to CSV", style: lipgloss.NewStyle().Foreground(colorFg)}}
 	re := regexp.MustCompile("(?i)export")
 
-	if got := stripAnsi(renderHelpRow(row, re, false)); !strings.Contains(got, "export to CSV") {
+	if got := stripAnsi(renderHelpRow(row, re, false, false)); !strings.Contains(got, "export to CSV") {
 		t.Errorf("highlight lost text: %q", got)
 	}
 	// The current match does NOT paint the rest of the line: visible width is
 	// just the text's (13), not padded out to fill the row.
-	cur := renderHelpRow(row, re, true)
+	cur := renderHelpRow(row, re, true, false)
 	if w := lipgloss.Width(cur); w != 13 {
 		t.Errorf("current-match line width=%d, want 13 (no full-line bar)", w)
 	}

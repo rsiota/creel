@@ -356,7 +356,7 @@ func registry() []Section {
 			Source: "help.go",
 			Items: []Binding{
 				{"tab", []string{"tab"}, "switch page", "tab"},
-				{"j/k", []string{"j", "k", "up", "down"}, "scroll", "j/k"},
+				{"j/k", []string{"j", "k", "up", "down"}, "move cursor", "j/k"},
 				{"/", []string{"/"}, "search", "/"},
 				{"n / N", []string{"n", "N"}, "next / prev match", "n/N"},
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
