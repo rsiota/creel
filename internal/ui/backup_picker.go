@@ -37,8 +37,11 @@ func NewBackupPicker() BackupPicker {
 }
 
 // Show populates the picker from table sizes (largest-first), marks schema+data
-// for every table, and positions the cursor on selectedTable when present.
-func (p *BackupPicker) Show(sizes []db.TableSize, selectedTable, bin string) {
+// for every table, and places the cursor on the first (largest) row so the
+// viewport starts at the top. Call SetSize after Show (from Update/layout, not
+// View) so j/k scrolling uses the real viewport height — View is a value
+// receiver and cannot persist size.
+func (p *BackupPicker) Show(sizes []db.TableSize, bin string) {
 	sorted := append([]db.TableSize(nil), sizes...)
 	sortTableSizes(sorted)
 	p.items = make([]backupItem, len(sorted))
@@ -53,16 +56,28 @@ func (p *BackupPicker) Show(sizes []db.TableSize, selectedTable, bin string) {
 		}
 	}
 	p.cursor = 0
-	for i, item := range p.items {
-		if item.name == selectedTable {
-			p.cursor = i
-			break
-		}
-	}
 	p.scrollRow = 0
 	p.bin = bin
 	p.visible = true
-	p.adjustScroll()
+}
+
+// backupPickerDim returns outer panel width/height for the :backup overlay.
+func backupPickerDim(termW, termH int) (w, h int) {
+	w = 78
+	if termW > 0 && w > termW-4 {
+		w = termW - 4
+	}
+	if w < 48 {
+		w = 48
+	}
+	_, h = popupDim()
+	if h < 16 {
+		h = 16
+	}
+	if termH > 0 && h > termH-2 {
+		h = termH - 2
+	}
+	return w, h
 }
 
 // Hide clears state and hides the picker.
@@ -80,10 +95,13 @@ func (p BackupPicker) IsVisible() bool { return p.visible }
 // Bin returns the resolved local dump binary (may be empty for remote dumps).
 func (p BackupPicker) Bin() string { return p.bin }
 
-// SetSize sets the rendering dimensions for the picker panel.
+// SetSize sets the rendering dimensions for the picker panel and re-clamps
+// scroll so the cursor stays in the viewport after a real size is applied
+// (Show may run before layout has set height).
 func (p *BackupPicker) SetSize(width, height int) {
 	p.width = width
 	p.height = height
+	p.adjustScroll()
 }
 
 // CursorUp moves the cursor up by one.
@@ -99,6 +117,23 @@ func (p *BackupPicker) CursorDown() {
 	if p.cursor < len(p.items)-1 {
 		p.cursor++
 	}
+	p.adjustScroll()
+}
+
+// CursorTop moves to the first row (g), matching :sizes.
+func (p *BackupPicker) CursorTop() {
+	p.cursor = 0
+	p.scrollRow = 0
+}
+
+// CursorBottom moves to the last row (G), matching :sizes.
+func (p *BackupPicker) CursorBottom() {
+	if len(p.items) == 0 {
+		p.cursor = 0
+		p.scrollRow = 0
+		return
+	}
+	p.cursor = len(p.items) - 1
 	p.adjustScroll()
 }
 
@@ -294,7 +329,8 @@ func backupPickerHeader(width int) string {
 	if len(line) > width {
 		line = line[:width]
 	}
-	return mutedStyle.Render(line)
+	// Match :sizes column header: primary + bold.
+	return lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(line)
 }
 
 func (p BackupPicker) renderRow(i, width int) string {
@@ -310,29 +346,39 @@ func (p BackupPicker) renderRow(i, width int) string {
 	sch := backupCheckMark(item.schema)
 	dat := backupCheckMark(item.data)
 
+	gutter := " "
+	if i == p.cursor {
+		gutter = "❯"
+	}
 	line := fmt.Sprintf("%s %-*s %*s %*s %-*s %-*s",
-		cursorGutter(i == p.cursor),
+		gutter,
 		nameW, name,
 		rowsW, rows,
 		sizeW, size,
 		schW, sch,
 		datW, dat,
 	)
-	if lipgloss.Width(line) > width {
-		line = truncateWidth(line, width)
-	}
-	style := lipgloss.NewStyle()
+	line = padBackupRow(ansi.Strip(line), width)
+
+	// Match :sizes / palette: primary background, contrasting fg.
 	if i == p.cursor {
-		style = style.Foreground(colorFg).Background(colorPrimary)
+		return lipgloss.NewStyle().
+			Background(colorPrimary).
+			Foreground(colorBg).
+			Render(line)
 	}
-	return style.Width(width).Render(line)
+	return lipgloss.NewStyle().Foreground(colorFg).Render(line)
 }
 
-func cursorGutter(selected bool) string {
-	if selected {
-		return lipgloss.NewStyle().Foreground(colorFg).Render("❯")
+func padBackupRow(s string, width int) string {
+	w := lipgloss.Width(s)
+	if w < width {
+		return s + strings.Repeat(" ", width-w)
 	}
-	return " "
+	if w > width {
+		return truncateWidth(s, width)
+	}
+	return s
 }
 
 func backupCheckMark(on bool) string {

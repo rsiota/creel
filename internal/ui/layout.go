@@ -617,4 +617,9 @@ func (m *Model) layoutWorkspace() {
 	overlayH := (m.height - 1) * 70 / 100
 	m.explainPanel.SetSize(overlayW, overlayH)
 	m.lookupPanel.SetSize(overlayW, overlayH)
+
+	// Backup picker: same constraint as View overlay. Size must persist so
+	// j/k scroll uses the real viewport height (not maxVisible=1).
+	bw, bh := backupPickerDim(m.width, m.height)
+	m.backupPicker.SetSize(bw, bh)
 }

@@ -188,6 +188,7 @@ func registry() []Section {
 			Source: "app.go backup_picker.go",
 			Items: []Binding{
 				{"j/k", []string{"j", "k"}, "move", "j/k"},
+				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
 				{"space", []string{" "}, "include / omit table", "space"},
 				{"s", []string{"s"}, "toggle schema", "s"},
 				{"d", []string{"d"}, "toggle data", "d"},

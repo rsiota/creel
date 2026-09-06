@@ -1715,7 +1715,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.schemaMsg = msg.err.Error()
 			return m, nil
 		}
-		m.backupPicker.Show(msg.sizes, m.currentTable(), msg.bin)
+		m.backupPicker.Show(msg.sizes, msg.bin)
+		bw, bh := backupPickerDim(m.width, m.height)
+		m.backupPicker.SetSize(bw, bh)
 		return m, nil
 	case backupDoneMsg:
 		if msg.err != nil {
@@ -2664,6 +2666,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "down", "j":
 			m.backupPicker.CursorDown()
+			return m, nil
+		case "g":
+			m.backupPicker.CursorTop()
+			return m, nil
+		case "G":
+			m.backupPicker.CursorBottom()
 			return m, nil
 		}
 		return m, nil
@@ -5511,20 +5519,7 @@ func (m Model) viewWorkspace() string {
 
 	// Overlay backup picker (:backup) if visible — wider for size columns.
 	if m.backupPicker.IsVisible() {
-		pw := 78
-		if pw > m.width-4 {
-			pw = m.width - 4
-		}
-		if pw < 48 {
-			pw = 48
-		}
-		_, ph := popupDim()
-		if ph < 16 {
-			ph = 16
-		}
-		if ph > m.height-2 {
-			ph = m.height - 2
-		}
+		pw, ph := backupPickerDim(m.width, m.height)
 		m.backupPicker.SetSize(pw, ph)
 		backupPanel := m.backupPicker.View()
 		panelW := lipgloss.Width(backupPanel)
