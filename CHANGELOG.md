@@ -19,6 +19,8 @@ commits, so it can come up empty).
   slots (`muted`, `fg`, `primary`, `search`, …) on top of the active theme.
   Overrides persist in config and stay applied when switching themes (`:theme`
   / `g c`).
+- `:colors` — lookup overlay listing every semantic slot's effective hex after
+  theme + overrides, with a `theme` / `override` source column.
 
 ### Fixed
 - `:` command line: Enter accepts the highlighted completion when browsing

@@ -225,7 +225,8 @@ for theme attribution.
 
 If a theme is almost right but one slot is hard to read, patch it with
 `theme_overrides` in config or `:color muted #a0a0a0` (see the settings table).
-`:color` with no args lists overrides; `:color muted default` clears one.
+`:colors` opens a table of every effective slot (after overrides);
+`:color` with no args lists overrides only; `:color muted default` clears one.
 Overrides stay applied when you switch themes.
 
 You can also change most settings from inside the app with `:set`:
@@ -239,8 +240,10 @@ You can also change most settings from inside the app with `:set`:
 :set status_hints off
 :color muted #a0a0a0
 :color muted default
+:colors
 ```
 
 Bare `:set` lists current values; `:set <option>` shows one. Changes apply
 immediately and are written back to `config.yaml` (same persistence as `:theme`
-and `:icons`). `:color` lists / sets / clears `theme_overrides` the same way.
+and `:icons`). `:color` lists / sets / clears `theme_overrides`; `:colors`
+shows the full effective palette.

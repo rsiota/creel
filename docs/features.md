@@ -313,8 +313,9 @@ erDiagram
 - **Themes** — `g c` opens a live-preview theme picker; `:theme <name>` switches
   without the picker. If a theme is almost right but one slot is hard to read,
   patch it with `:color muted #a0a0a0` (or `theme_overrides` in config).
-  `:color` lists overrides; `:color muted default` clears one. Overrides stay
-  applied when you switch themes. See
+  `:colors` lists every effective slot; `:color` lists / sets / clears
+  overrides (`:color muted default` clears one). Overrides stay applied when
+  you switch themes. See
   [Configuration → Settings](configuration.md#settings).
 - **Command palette** (`Ctrl+P`) — fuzzy jump-anywhere: keybindings, tables,
   bookmarks, and themes. Enter opens a table, loads a bookmark, applies a

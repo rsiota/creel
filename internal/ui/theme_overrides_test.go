@@ -109,6 +109,61 @@ func TestExColorListAndShow(t *testing.T) {
 	}
 }
 
+func TestExColorsOverlay(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	cfg := &config.Config{Settings: config.Settings{
+		Theme: "nord",
+		ThemeOverrides: map[string]string{
+			"muted": "#abcdef",
+		},
+	}}
+	m := NewModel(cfg)
+	m.runExCommand("colors")
+	if !m.lookupPanel.IsVisible() {
+		t.Fatal(":colors should open the lookup overlay")
+	}
+	if !strings.Contains(m.lookupPanel.title, "nord") {
+		t.Errorf("title = %q, want nord", m.lookupPanel.title)
+	}
+	if got := len(m.lookupPanel.result.Rows); got != len(themeOverrideSlots) {
+		t.Fatalf("rows = %d, want %d slots", got, len(themeOverrideSlots))
+	}
+	foundMuted := false
+	foundFK := false
+	for _, row := range m.lookupPanel.result.Rows {
+		if len(row) < 3 {
+			t.Fatalf("row too short: %v", row)
+		}
+		if len(row[1]) != 7 || row[1][0] != '#' {
+			t.Errorf("slot %q colour %q should be #rrggbb for column alignment", row[0], row[1])
+		}
+		if row[0] == "muted" {
+			foundMuted = true
+			if row[1] != "#abcdef" {
+				t.Errorf("muted colour = %q, want #abcdef", row[1])
+			}
+			if row[2] != "override" {
+				t.Errorf("muted source = %q, want override", row[2])
+			}
+		}
+		if row[0] == "primary" && row[2] != "theme" {
+			t.Errorf("primary source = %q, want theme", row[2])
+		}
+		if row[0] == "fk" {
+			foundFK = true
+			if row[2] != "derived" {
+				t.Errorf("fk source = %q, want derived (empty palette slot)", row[2])
+			}
+		}
+	}
+	if !foundMuted {
+		t.Fatal("muted row missing")
+	}
+	if !foundFK {
+		t.Fatal("fk row missing")
+	}
+}
+
 func TestNewModelAppliesThemeOverrides(t *testing.T) {
 	defer applyPalette(defaultPalette)
 	cfg := &config.Config{Settings: config.Settings{

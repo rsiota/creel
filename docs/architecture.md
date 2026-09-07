@@ -149,7 +149,7 @@ subsystem:
 
 **Themes & icons**
 - `themes.go` / `themes_generated.go` (codegen from iTerm2-Color-Schemes) /
-  `theme_picker.go` / `theme_overrides.go` (`theme_overrides` / `:color`)
+  `theme_picker.go` / `theme_overrides.go` (`theme_overrides` / `:color` / `:colors`)
 - `icons.go` — unicode/nerdfont glyph sets
 
 **Session & misc**

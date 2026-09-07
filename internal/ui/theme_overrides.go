@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/rsiota/creel/internal/db"
 )
 
 // themeOverrideSlots lists the semantic palette keys users can override via
@@ -220,6 +222,74 @@ func applyTheme(name string, overrides map[string]string) {
 // applyActiveTheme reapplies the model's configured theme plus overrides.
 func (m *Model) applyActiveTheme() {
 	applyTheme(m.settings.Theme, m.settings.ThemeOverrides)
+}
+
+// effectivePalette returns the active theme's palette with overrides applied.
+func (m *Model) effectivePalette() colorPalette {
+	return withThemeOverrides(paletteForTheme(m.settings.Theme), m.settings.ThemeOverrides)
+}
+
+// exColors opens a lookup overlay listing every semantic slot's effective
+// colour after theme + overrides (:colors). Read-only — use :color to change.
+func (m *Model) exColors() tea.Cmd {
+	theme := m.settings.Theme
+	if theme == "" {
+		theme = defaultThemeName
+	}
+	eff := m.effectivePalette()
+	rows := make([][]string, 0, len(themeOverrideSlots))
+	for _, slot := range themeOverrideSlots {
+		hex, source := colorsDisplaySlot(eff, m.settings.ThemeOverrides, slot)
+		rows = append(rows, []string{slot, hex, source})
+	}
+	m.lookupPanel.Show(
+		fmt.Sprintf("Colours — %s", theme),
+		db.Result{
+			Columns: []db.Column{{Name: "Slot"}, {Name: "Colour"}, {Name: "Source"}},
+			Rows:    rows,
+		},
+		nil,
+	)
+	m.schemaMsg = fmt.Sprintf("%d colour slots (%s)", len(rows), theme)
+	return nil
+}
+
+// colorsDisplaySlot returns the hex and source label for one :colors row.
+// Empty optional slots (e.g. fk) use the same derivation as applyPalette so the
+// colour column stays a uniform #rrggbb width instead of a lone "—".
+func colorsDisplaySlot(p colorPalette, overrides map[string]string, slot string) (hex, source string) {
+	if _, overridden := themeOverrideValue(overrides, slot); overridden {
+		source = "override"
+	} else {
+		source = "theme"
+	}
+	c, ok := paletteSlot(p, slot)
+	raw := string(c)
+	if ok && raw != "" {
+		return normalizeDisplayHex(raw), source
+	}
+	switch normalizeThemeSlot(slot) {
+	case "fk":
+		// Match applyPalette: soft primary→bg tint when the theme omits fk.
+		return normalizeDisplayHex(string(mixColors(p.primary, p.bg, 0.30))), "derived"
+	default:
+		return "#------", source
+	}
+}
+
+// normalizeDisplayHex forces a #rrggbb form so :colors columns align.
+func normalizeDisplayHex(s string) string {
+	if c, ok := parseHexColor(s); ok {
+		return string(c)
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "#------"
+	}
+	if !strings.HasPrefix(s, "#") {
+		s = "#" + s
+	}
+	return s
 }
 
 // formatThemeOverrides summarises active overrides for status / :color.
