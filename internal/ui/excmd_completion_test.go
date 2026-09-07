@@ -879,3 +879,60 @@ func TestExCompletionEnterSelectsHighlightedRow(t *testing.T) {
 		t.Errorf("Enter -> input=%q, want goto users", m.ex.input)
 	}
 }
+
+// Empty partial after a trailing space (browsing the popup) used to run the
+// command; Enter should accept the highlighted row like Tab — important for
+// :theme / :set where you often open the list then pick with ↑/↓.
+func TestExCompletionEnterAcceptsEmptyPartialArg(t *testing.T) {
+	m := NewModel(&config.Config{})
+	m.ex.Open()
+	m.ex.input = "set "
+	m.recomputeExCompletion()
+	if len(m.ex.comp) == 0 {
+		t.Fatal("expected setting-name candidates after :set ")
+	}
+	want := m.ex.selectedCompItem().candidate
+	if want == "" {
+		t.Fatal("expected a highlighted setting candidate")
+	}
+	if !m.exEnterShouldComplete() {
+		t.Fatal("Enter should complete when browsing :set args")
+	}
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.ex.IsVisible() {
+		t.Fatal("Enter should complete in-place, not close")
+	}
+	if m.ex.input != "set "+want {
+		t.Errorf("Enter -> input=%q, want set %s", m.ex.input, want)
+	}
+}
+
+func TestExCompletionEnterAcceptsEmptyPartialTheme(t *testing.T) {
+	m := NewModel(&config.Config{})
+	m.ex.Open()
+	m.ex.input = "theme "
+	m.recomputeExCompletion()
+	if len(m.ex.comp) == 0 {
+		t.Fatal("expected theme candidates after :theme ")
+	}
+	// Move off the first row so we prove Enter uses the highlight, not argv.
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyDown})
+	want := m.ex.selectedCompItem().candidate
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.ex.input != "theme "+want {
+		t.Errorf("Enter -> input=%q, want theme %s", m.ex.input, want)
+	}
+	if !m.ex.IsVisible() {
+		t.Fatal("first Enter should only complete, not run :theme")
+	}
+}
+
+func TestExCompletionEnterRunsExactSetOption(t *testing.T) {
+	m := NewModel(&config.Config{})
+	m.ex.Open()
+	m.ex.input = "set status_hints"
+	m.recomputeExCompletion()
+	if m.exEnterShouldComplete() {
+		t.Error("exact :set option should run on Enter, not complete")
+	}
+}

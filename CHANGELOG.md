@@ -16,6 +16,11 @@ commits, so it can come up empty).
   context keybinding strip on the status bar. Defaults on; left-side `? help`
   and first-run jump hints stay visible when off.
 
+### Fixed
+- `:` command line: Enter accepts the highlighted completion when browsing
+  argument lists after a trailing space (e.g. `:theme `, `:set `), matching
+  Tab. Exact tokens still run on Enter.
+
 ## [0.5.0] - 2026-09-06
 
 Ops and layout: selective `:backup` / `:restore`, session diagnostics, `:zen`,

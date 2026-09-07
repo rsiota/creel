@@ -132,7 +132,8 @@ func (m *Model) applyExSelection() {
 
 // exEnterShouldComplete reports whether Enter should accept the highlighted
 // popup row instead of running the current input. Valid command aliases (e.g.
-// ":w") still run immediately; partial verbs and partial argument tokens
+// ":w") still run immediately; partial verbs, partial argument tokens, and
+// browsing a list after a trailing space (empty partial — same as Tab)
 // complete first so a second Enter executes the finished line.
 func (m *Model) exEnterShouldComplete() bool {
 	if len(m.ex.comp) == 0 || strings.TrimSpace(m.ex.input) == "" {
@@ -142,10 +143,17 @@ func (m *Model) exEnterShouldComplete() bool {
 		verb, _ := verbPrefix(m.ex.input)
 		rest := strings.TrimLeft(m.ex.input[len(verb):], " \t")
 		_, partial := splitArgsPartial(rest)
-		if partial == "" {
+		cand := m.ex.selectedCompItem().candidate
+		if cand == "" {
 			return false
 		}
-		return !strings.EqualFold(partial, m.ex.selectedCompItem().candidate)
+		// Empty partial: cursor sits after a space with the popup open
+		// (`:theme `, `:set `, `:e ~/Downloads/`). Accept the highlighted row
+		// instead of running the unfinished line — same as Tab.
+		if partial == "" {
+			return true
+		}
+		return !strings.EqualFold(partial, cand)
 	}
 	verb, hasSpace := verbPrefix(m.ex.input)
 	if hasSpace {
