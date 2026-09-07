@@ -25,7 +25,7 @@ Inspired by [sqlit](https://github.com/Maxteabag/sqlit) (Python/Textual), `creel
 ## Quickstart
 
 ```sh
-brew install rsiota/creel/creel        # or: go install github.com/rsiota/creel/cmd/creel@latest
+brew install rsiota/creel/creel        # or: scoop / AUR creel-bin / go install — see Install below
 creel                                  # press Enter on "Try the demo database", or n to add a connection
 ```
 
@@ -115,6 +115,20 @@ Download the archive for your OS from the [latest release](https://github.com/rs
 
 ```sh
 brew install rsiota/creel/creel
+```
+
+**Scoop** (Windows):
+
+```powershell
+scoop bucket add creel https://github.com/rsiota/scoop-creel
+scoop install creel
+```
+
+**AUR** (Arch, prebuilt binary — once published to the AUR):
+
+```sh
+yay -S creel-bin
+# or: makepkg -si inside packaging/aur/creel-bin from this repo
 ```
 
 **go install**:

@@ -261,6 +261,8 @@ at a time so each can be checked before the next starts.
 - Unify the two ERD routing systems onto the dynamic polyline router.
 - Discoverability content (short asciinema of `g r` → insert-related → ERD
   path → `i` JOIN) and broader packaging (scoop / nix / AUR).
+  ✅ Scoop + AUR `-bin` DONE (`packaging/`, `rsiota/scoop-creel`; Nix deferred;
+  AUR publish still needs a one-time push to `aur.archlinux.org`).
 
 **Still skip**
 - Macros, `:shell`, second favorites, more themes, SQL Server/Turso for the

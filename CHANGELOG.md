@@ -12,6 +12,10 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- Scoop bucket ([rsiota/scoop-creel](https://github.com/rsiota/scoop-creel)) and
+  AUR `creel-bin` packaging (`packaging/`, `scripts/update-packaging.sh`) —
+  Windows `scoop install creel` and Arch prebuilt binary installs from GitHub
+  Release assets (same bump flow as the Homebrew tap).
 - `status_hints` setting / `:set status_hints on|off` — toggle the right-aligned
   context keybinding strip on the status bar. Defaults on; left-side `? help`
   and first-run jump hints stay visible when off.

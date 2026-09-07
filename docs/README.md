@@ -25,3 +25,8 @@ is a quickstart; the pages below are the reference.
   commands, keybindings, and the palette into one action layer.
 - [**TUI mouse handling**](tui-mouse.md) — notes on Bubble Tea mouse-event
   routing and capture.
+
+## Packaging
+
+- [**Scoop + AUR**](../packaging/README.md) — Windows Scoop bucket and Arch
+  `creel-bin`; bump with `scripts/update-packaging.sh` after each release.

@@ -1,0 +1,21 @@
+# Maintainer: Ruben Siota Perez <rsiota@gmail.com>
+# Prebuilt binary package. Source builds can use `go install` or a future `creel` PKGBUILD.
+pkgname=creel-bin
+pkgver=0.5.0
+pkgrel=1
+pkgdesc='Fast, vim-driven SQL TUI for SQLite, MySQL, and PostgreSQL'
+arch=('x86_64' 'aarch64')
+url='https://github.com/rsiota/creel'
+license=('MIT')
+provides=('creel')
+conflicts=('creel')
+source_x86_64=("https://github.com/rsiota/creel/releases/download/v${pkgver}/creel_${pkgver}_Linux_x86_64.tar.gz")
+source_aarch64=("https://github.com/rsiota/creel/releases/download/v${pkgver}/creel_${pkgver}_Linux_arm64.tar.gz")
+sha256sums_x86_64=('67a142b2456ca08d2e73ba3f5c23c1932e476a8e660d43fd72236efe90389c66')
+sha256sums_aarch64=('1ccd552f66ac81a52fa7fce710e28e47841af9622caea8d78af9baefb7bd086f')
+
+package() {
+  install -Dm755 creel "${pkgdir}/usr/bin/creel"
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 README.md "${pkgdir}/usr/share/doc/creel/README.md"
+}

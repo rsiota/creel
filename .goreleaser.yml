@@ -5,11 +5,13 @@
 # Builds cross-platform binaries and publishes a GitHub Release with checksums
 # and a changelog.
 #
-# The Homebrew tap is maintained separately. GoReleaser deprecated the `brews`
-# publisher (in favour of macOS-only `homebrew_casks`), so the existing tap
-# formula at rsiota/homebrew-creel is kept as-is rather than auto-managed here.
-# To point it at a new release, update its `url`/`sha256` to the matching
-# assets in the GitHub Release.
+# Package managers are maintained separately from this config:
+# - Homebrew tap: rsiota/homebrew-creel (GoReleaser deprecated `brews` in favour
+#   of macOS-only `homebrew_casks`)
+# - Scoop bucket: rsiota/scoop-creel (GoReleaser's Scoop publisher is Pro-only)
+# - AUR creel-bin: packaging/aur/creel-bin (push to aur.archlinux.org)
+# After each tag, run ./scripts/update-packaging.sh and sync the tap/bucket/AUR
+# (see packaging/README.md).
 
 version: 2
 
