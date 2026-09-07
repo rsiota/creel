@@ -148,7 +148,8 @@ subsystem:
 - `excmd.go` / `excmd_registry.go` — `:` Ex command line
 
 **Themes & icons**
-- `themes.go` / `themes_generated.go` (codegen from iTerm2-Color-Schemes) / `theme_picker.go`
+- `themes.go` / `themes_generated.go` (codegen from iTerm2-Color-Schemes) /
+  `theme_picker.go` / `theme_overrides.go` (`theme_overrides` / `:color`)
 - `icons.go` — unicode/nerdfont glyph sets
 
 **Session & misc**

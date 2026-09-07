@@ -310,6 +310,12 @@ erDiagram
   sidebar and query editor; `:sidebar`, `:editor`, `:inspector`, and
   `:assistant` do the same for their panels. Split sizes and visibility restore
   from the session.
+- **Themes** — `g c` opens a live-preview theme picker; `:theme <name>` switches
+  without the picker. If a theme is almost right but one slot is hard to read,
+  patch it with `:color muted #a0a0a0` (or `theme_overrides` in config).
+  `:color` lists overrides; `:color muted default` clears one. Overrides stay
+  applied when you switch themes. See
+  [Configuration → Settings](configuration.md#settings).
 - **Command palette** (`Ctrl+P`) — fuzzy jump-anywhere: keybindings, tables,
   bookmarks, and themes. Enter opens a table, loads a bookmark, applies a
   theme, or replays a binding. History stays on `Ctrl+Y`. Full **help
