@@ -63,6 +63,74 @@ func TestExSetConfirmDestructive(t *testing.T) {
 	}
 }
 
+func TestExSetStatusHints(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	cfg := &config.Config{}
+	m := NewModel(cfg)
+	m.width = 160
+	m.state = stateWorkspace
+	m.focus = FocusResults
+
+	if !m.statusHintsEnabled() {
+		t.Fatal("status_hints should default on")
+	}
+	hints := m.hintList()
+	if len(hints) == 0 {
+		t.Fatal("expected Results hints")
+	}
+	// Prefer a token that won't appear in "? help" or "status_hints=off".
+	needle := ""
+	for _, h := range hints {
+		for _, part := range strings.Split(h, "/") {
+			if len(part) >= 2 && part != "help" && !strings.Contains(part, "hint") {
+				needle = part
+				break
+			}
+		}
+		if needle != "" {
+			break
+		}
+	}
+	if needle == "" {
+		t.Fatalf("no distinctive hint in %v", hints)
+	}
+	barOn := stripAnsi(m.statusBar("c"))
+	if !strings.Contains(barOn, needle) {
+		t.Fatalf("status bar missing hint %q from %v: %q", needle, hints, barOn)
+	}
+
+	m.runExCommand("set status_hints off")
+	if cfg.Settings.StatusHints == nil || *cfg.Settings.StatusHints {
+		t.Error("status_hints should be false")
+	}
+	if m.statusHintsEnabled() {
+		t.Error("statusHintsEnabled should be false after off")
+	}
+	m.schemaMsg = "" // avoid "status_hints=off" matching the needle
+	barOff := stripAnsi(m.statusBar("c"))
+	if strings.Contains(barOff, needle) {
+		t.Errorf("context hint %q should be hidden: %q", needle, barOff)
+	}
+	if !strings.Contains(barOff, "?") || !strings.Contains(barOff, "help") {
+		t.Errorf("? help should remain: %q", barOff)
+	}
+
+	m.runExCommand("set hints on")
+	if cfg.Settings.StatusHints != nil {
+		t.Error("on should clear status_hints pointer (default)")
+	}
+	if !m.statusHintsEnabled() {
+		t.Error("statusHintsEnabled should be true after on")
+	}
+
+	m.runExCommand("set status_hints off")
+	m.runExCommand("set status_hints default")
+	if cfg.Settings.StatusHints != nil {
+		t.Error("default should clear status_hints pointer")
+	}
+}
+
 func TestExSetPageSize(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 

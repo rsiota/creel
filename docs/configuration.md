@@ -191,6 +191,7 @@ optional and fall back to defaults when omitted:
 | `transparent_background` | false | By default creel fills the app background with the theme's bg colour (required for light themes to be readable). Set `true` to leave it unpainted so the terminal's own background / transparency shows through — at the cost of light themes looking wrong. |
 | `confirm_destructive` | true | Destructive actions (drop table/database, truncate, delete rows, discard edits, drop column, delete provider/connection, clear history/bookmarks) prompt for confirmation. Set `false` to skip the prompts and run each action immediately. |
 | `inspector_open` | false | Show the row inspector when entering a workspace (after connect / database select). Toggle anytime with `ctrl+o`; `:set inspector_open on` opens it immediately and persists. |
+| `status_hints` | true | Show the right-aligned context keybinding strip on the status bar (`j/k`, `enter`, …). Set `false` to hide it; left-side chrome (`? help`, first-run jump hints) stays. |
 
 ```yaml
 settings:
@@ -201,6 +202,7 @@ settings:
   icons: nerdfont
   confirm_destructive: false
   inspector_open: true
+  status_hints: false
 ```
 
 `query_timeout` accepts values like `30s`, `2m`, `1h30m`, or a bare number of
@@ -225,6 +227,7 @@ You can also change most settings from inside the app with `:set`:
 :set query_timeout 2m
 :set confirm_destructive off
 :set inspector_open on
+:set status_hints off
 ```
 
 Bare `:set` lists current values; `:set <option>` shows one. Changes apply

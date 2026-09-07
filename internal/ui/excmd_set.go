@@ -46,7 +46,7 @@ var allSettingSpecs = []settingSpec{
 		key:     "confirm_destructive",
 		aliases: []string{"confirm", "confirm-destructive", "confirmdestructive"},
 		describe: func(m Model) string {
-			return "confirm_destructive=" + formatConfirmDestructive(m.settings.ConfirmDestructive)
+			return "confirm_destructive=" + formatDefaultOnBool(m.settings.ConfirmDestructive)
 		},
 		apply: func(m *Model, value string) tea.Cmd {
 			switch strings.ToLower(strings.TrimSpace(value)) {
@@ -196,6 +196,40 @@ var allSettingSpecs = []settingSpec{
 		},
 		complete: completeBoolValues,
 	},
+	{
+		key:     "status_hints",
+		aliases: []string{"hints", "status-hints", "statushints", "show_hints"},
+		describe: func(m Model) string {
+			return "status_hints=" + formatDefaultOnBool(m.settings.StatusHints)
+		},
+		apply: func(m *Model, value string) tea.Cmd {
+			switch strings.ToLower(strings.TrimSpace(value)) {
+			case "default":
+				m.settings.StatusHints = nil
+				m.saveSettings()
+				m.schemaMsg = "status_hints=default (on)"
+				return nil
+			}
+			on, ok := parseSettingBool(value)
+			if !ok {
+				m.schemaMsg = ":set status_hints needs on, off, or default"
+				return nil
+			}
+			if on {
+				m.settings.StatusHints = nil
+				m.schemaMsg = "status_hints=on"
+			} else {
+				v := false
+				m.settings.StatusHints = &v
+				m.schemaMsg = "status_hints=off"
+			}
+			m.saveSettings()
+			return nil
+		},
+		complete: func(_ *Model) []string {
+			return []string{"on", "off", "default"}
+		},
+	},
 }
 
 func lookupSetting(name string) *settingSpec {
@@ -287,7 +321,7 @@ func formatSettingBool(name string, on bool) string {
 	return name + "=off"
 }
 
-func formatConfirmDestructive(v *bool) string {
+func formatDefaultOnBool(v *bool) string {
 	if v == nil {
 		return "on (default)"
 	}

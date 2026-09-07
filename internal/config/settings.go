@@ -22,7 +22,7 @@ const (
 // config file. Zero values fall back to the defaults above (see Effective).
 //
 // Currently wired: page_size, query_timeout, default_driver, theme,
-// transparent_background, confirm_destructive, inspector_open.
+// transparent_background, confirm_destructive, inspector_open, status_hints.
 // Reserved for follow-ups (not yet applied): cursor_style — the struct is
 // designed so adding fields is the only change needed here.
 type Settings struct {
@@ -68,6 +68,13 @@ type Settings struct {
 	// behaviour — closed until ctrl+o. Left unsanitized like
 	// TransparentBackground so the default stays off without writing the key.
 	InspectorOpen bool `yaml:"inspector_open,omitempty"`
+
+	// StatusHints shows the right-aligned context keybinding strip on the
+	// status bar (j/k, enter, …). nil (the default) and true keep the strip;
+	// false hides it. Left-side chrome (`? help`, first-run jump hints) stays.
+	// Pointer so the discoverability-friendly default (on) differs from bool's
+	// zero value.
+	StatusHints *bool `yaml:"status_hints,omitempty"`
 }
 
 // Effective returns a copy of s with zero-values replaced by the defaults, so

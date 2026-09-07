@@ -228,6 +228,16 @@ func (m Model) statusMessage() string {
 	return ""
 }
 
+// statusHintsEnabled reports whether the right-aligned context keybinding
+// strip should appear on the status bar. Defaults to true when
+// settings.status_hints is unset.
+func (m Model) statusHintsEnabled() bool {
+	if m.settings.StatusHints == nil {
+		return true
+	}
+	return *m.settings.StatusHints
+}
+
 // statusBar renders the single-line status bar shown at the bottom of the
 // workspace. It carries contextual info (connection, database, table, result
 // dimensions, transient messages) plus a single "?" hint for the help overlay.
@@ -323,10 +333,10 @@ func (m Model) statusBar(connName string) string {
 
 	left := strings.Join(parts, sep)
 
-	// Right-align context keybinding hints.
+	// Right-align context keybinding hints (opt-out via status_hints: false).
 	// The caller prepends a single space, so effective width is m.width-1.
 	hints := m.hintList()
-	if len(hints) > 0 {
+	if m.statusHintsEnabled() && len(hints) > 0 {
 		flashActive := m.hintFlash != "" && time.Since(m.hintFlashAt) < hintFlashDuration
 		keyStyle := sbMuted
 		flashStyle := sbHintFlash

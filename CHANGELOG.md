@@ -11,6 +11,11 @@ commits, so it can come up empty).
 
 ## [Unreleased]
 
+### Added
+- `status_hints` setting / `:set status_hints on|off` — toggle the right-aligned
+  context keybinding strip on the status bar. Defaults on; left-side `? help`
+  and first-run jump hints stay visible when off.
+
 ## [0.5.0] - 2026-09-06
 
 Ops and layout: selective `:backup` / `:restore`, session diagnostics, `:zen`,
