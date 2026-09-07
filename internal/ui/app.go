@@ -1898,18 +1898,14 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		default:
-			// Drop the generated SQL into the editor for review. The user runs
-			// it explicitly (ctrl+e) — neither :ai nor the panel auto-executes,
-			// so a misunderstood request can't mutate data behind the user's back.
-			m.editor.SetValue(msg.sql)
-			m.focus = FocusEditor
-			m.applyFocus()
+			// :ai / :aifix — editor or AI scratch tab (ai_dry_run).
+			kind := "ai"
 			if q == aiFixQuestion {
-				m.aiMsg = "AI fixed query — review then ctrl+e to run"
-			} else {
-				m.aiMsg = fmt.Sprintf("AI generated query for %q — review then ctrl+e to run", q)
+				kind = "fix"
+			} else if q != "" {
+				kind = q
 			}
-			return m, nil
+			return m, m.deliverGeneratedSQL(msg.sql, kind)
 		}
 
 	case submitAssistantMsg:
@@ -1924,17 +1920,14 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.sendAssistant(msg.question)
 
 	case applyAssistantSQLMsg:
-		// Apply the latest assistant SQL to the editor for review/run.
+		// Apply the latest assistant SQL — editor review, or AI scratch when
+		// ai_dry_run is on.
 		sql := m.assistant.LatestSQL()
 		if sql == "" {
 			m.aiMsg = "no SQL to apply yet"
 			return m, nil
 		}
-		m.editor.SetValue(sql)
-		m.focus = FocusEditor
-		m.applyFocus()
-		m.aiMsg = "applied AI query — ctrl+e to run"
-		return m, nil
+		return m, m.deliverGeneratedSQL(sql, "apply")
 
 	case closeAssistantMsg:
 		m.assistant.Hide()

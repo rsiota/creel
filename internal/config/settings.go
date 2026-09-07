@@ -23,7 +23,7 @@ const (
 //
 // Currently wired: page_size, query_timeout, default_driver, theme,
 // theme_overrides, transparent_background, confirm_destructive,
-// inspector_open, status_hints.
+// inspector_open, status_hints, ai_dry_run.
 // Reserved for follow-ups (not yet applied): cursor_style — the struct is
 // designed so adding fields is the only change needed here.
 type Settings struct {
@@ -82,6 +82,12 @@ type Settings struct {
 	// #rgb / #rrggbb. Derived washes recompute from the patched palette.
 	// Empty / omitted means no overrides. See :color and docs/configuration.md.
 	ThemeOverrides map[string]string `yaml:"theme_overrides,omitempty"`
+
+	// AIDryRun opens AI-generated SQL in a new "AI scratch" tab and auto-runs
+	// it when the statement is read-only (SELECT / SHOW / EXPLAIN / …). Writes
+	// and DDL still land in the tab for review — never auto-run. Default off
+	// so Apply / :ai keep the classic "editor + ctrl+e" flow.
+	AIDryRun bool `yaml:"ai_dry_run,omitempty"`
 }
 
 // Effective returns a copy of s with zero-values replaced by the defaults, so

@@ -230,6 +230,25 @@ var allSettingSpecs = []settingSpec{
 			return []string{"on", "off", "default"}
 		},
 	},
+	{
+		key:     "ai_dry_run",
+		aliases: []string{"aidryrun", "ai-dry-run", "dry_run", "dryrun"},
+		describe: func(m Model) string {
+			return formatSettingBool("ai_dry_run", m.settings.AIDryRun)
+		},
+		apply: func(m *Model, value string) tea.Cmd {
+			on, ok := parseSettingBool(value)
+			if !ok {
+				m.schemaMsg = ":set ai_dry_run needs on or off"
+				return nil
+			}
+			m.settings.AIDryRun = on
+			m.saveSettings()
+			m.schemaMsg = formatSettingBool("ai_dry_run", on)
+			return nil
+		},
+		complete: completeBoolValues,
+	},
 }
 
 func lookupSetting(name string) *settingSpec {

@@ -21,6 +21,10 @@ commits, so it can come up empty).
   / `g c`).
 - `:colors` — lookup overlay listing every semantic slot's effective hex after
   theme + overrides, with a `theme` / `override` source column.
+- `ai_dry_run` / `:set ai_dry_run on` — `:ai`, panel Apply, and `:aifix` open a
+  new **AI scratch** tab (previous editor kept) and auto-run read-only SQL
+  (`SELECT` / `SHOW` / `EXPLAIN` / …). Writes and DDL still require `ctrl+e`.
+  Default off preserves review-then-run.
 
 ### Fixed
 - `:` command line: Enter accepts the highlighted completion when browsing

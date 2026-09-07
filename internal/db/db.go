@@ -719,6 +719,12 @@ func rejectWriteIfReadOnly(cfg ConnectionConfig, q string) error {
 	return nil
 }
 
+// IsWriteQuery reports whether q modifies data or schema. Used by read-only
+// mode and by AI scratch-tab dry-run (which auto-runs only non-writes).
+func IsWriteQuery(q string) bool {
+	return isWriteQuery(q)
+}
+
 // isWriteQuery reports whether q modifies data or schema. It inspects the
 // leading keyword(s) of the statement, skipping SQL comments, whitespace, and
 // parentheses. WITH ... (CTE) statements are classified by scanning for a

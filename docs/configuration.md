@@ -137,11 +137,17 @@ Ollama, LM Studio, …). The schema sent to the model is the current results
 named in the question — not the first 100 tables of the database. After a
 query fails, `:aifix` (alias `:fixsql`) sends the failed statement and driver
 error to the same provider and drops a corrected candidate into the editor
-for review — it never auto-runs. `:aiexplain` (alias `:why`) explains the
+for review — it never auto-runs by default. `:aiexplain` (alias `:why`) explains the
 statement under the cursor (or the last explained SQL), attaching the
 EXPLAIN / EXPLAIN QUERY PLAN output, and streams a prose reply into the
 assistant panel — also never auto-run. Optional focus text narrows the
 question (`:aiexplain why is the join slow`).
+
+With `ai_dry_run: true` (or `:set ai_dry_run on`), `:ai` / panel Apply /
+`:aifix` open a new **AI scratch** tab instead of overwriting the current
+editor, then auto-run the SQL when it is read-only (`SELECT` / `SHOW` /
+`EXPLAIN` / …). Writes and DDL still land in the tab for review — they are
+never auto-run.
 
 Configure it **in-app** from the assistant panel:
 
@@ -193,6 +199,7 @@ optional and fall back to defaults when omitted:
 | `confirm_destructive` | true | Destructive actions (drop table/database, truncate, delete rows, discard edits, drop column, delete provider/connection, clear history/bookmarks) prompt for confirmation. Set `false` to skip the prompts and run each action immediately. |
 | `inspector_open` | false | Show the row inspector when entering a workspace (after connect / database select). Toggle anytime with `ctrl+o`; `:set inspector_open on` opens it immediately and persists. |
 | `status_hints` | true | Show the right-aligned context keybinding strip on the status bar (`j/k`, `enter`, …). Set `false` to hide it; left-side chrome (`? help`, first-run jump hints) stays. |
+| `ai_dry_run` | false | When on, `:ai` / panel Apply / `:aifix` open a new **AI scratch** tab (previous editor buffer kept) and auto-run the SQL if it is read-only (`SELECT` / `SHOW` / `EXPLAIN` / …). Writes and DDL still land in the tab for review — never auto-run. Default off keeps the classic “fill editor, then `ctrl+e`” flow. |
 
 ```yaml
 settings:
@@ -207,6 +214,7 @@ settings:
   confirm_destructive: false
   inspector_open: true
   status_hints: false
+  ai_dry_run: true
 ```
 
 `query_timeout` accepts values like `30s`, `2m`, `1h30m`, or a bare number of
@@ -238,6 +246,7 @@ You can also change most settings from inside the app with `:set`:
 :set confirm_destructive off
 :set inspector_open on
 :set status_hints off
+:set ai_dry_run on
 :color muted #a0a0a0
 :color muted default
 :colors

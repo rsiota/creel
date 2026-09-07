@@ -283,6 +283,56 @@ func aiAuthHint(err error) string {
 	return ""
 }
 
+// deliverGeneratedSQL places AI-produced SQL for the user. With ai_dry_run off
+// (default), it fills the current editor for review + ctrl+e. With ai_dry_run
+// on, it opens a new "AI scratch" tab (preserving the previous buffer), then
+// auto-runs only when the statement is not a write/DDL.
+func (m *Model) deliverGeneratedSQL(sql, kind string) tea.Cmd {
+	sql = strings.TrimSpace(sql)
+	if sql == "" {
+		m.aiMsg = "AI reply had no SQL"
+		return nil
+	}
+	if !m.settings.AIDryRun {
+		m.editor.SetValue(sql)
+		m.focus = FocusEditor
+		m.applyFocus()
+		switch kind {
+		case "fix":
+			m.aiMsg = "AI fixed query — review then ctrl+e to run"
+		case "apply":
+			m.aiMsg = "applied AI query — ctrl+e to run"
+		default:
+			m.aiMsg = fmt.Sprintf("AI generated query for %q — review then ctrl+e to run", kind)
+		}
+		return nil
+	}
+
+	title := "AI scratch"
+	if kind == "fix" {
+		title = "AI fix"
+	}
+	m.addTab(title, sql)
+	m.focus = FocusEditor
+	m.applyFocus()
+	if db.IsWriteQuery(sql) {
+		// Don't pretend the write already ran: clear LastQuery so the tab
+		// shows as dirty until the user explicitly ctrl+e.
+		if tab := m.activeTab(); tab != nil {
+			tab.LastQuery = ""
+		}
+		m.lastQuery = ""
+		m.aiMsg = "AI scratch — write/DDL not auto-run; review then ctrl+e"
+		return nil
+	}
+	if m.connection == nil {
+		m.aiMsg = "AI scratch — no connection; review then ctrl+e"
+		return nil
+	}
+	m.aiMsg = "AI scratch — running…"
+	return m.executeQuery()
+}
+
 // exAI dispatches the asynchronous natural-language-to-SQL request for the
 // ":ai" ex-command. The generated SQL is routed to the editor for review.
 func (m *Model) exAI(question string) tea.Cmd {

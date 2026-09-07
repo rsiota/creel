@@ -190,6 +190,8 @@ or sequenced behind them.
 - Restrict schema context to the focused table + FK neighbourhood — shipped.
 - Optional: run generated SQL in a scratch tab (read-only) and iterate on the
   error. Keep `ctrl+e` as the default — do not auto-run DDL.
+  ✅ DONE (`ai_dry_run` / `:set ai_dry_run on`: new AI scratch tab; auto-run
+  non-writes only).
 
 **Demand-gated / skip**
 - `:who` / `:locks` / `:kill` — shipped for MySQL/Postgres.
