@@ -37,6 +37,9 @@ type ThemePicker struct {
 	// appliedAtOpen is the theme key active when Show was called, so esc can
 	// revert a live-previewed change. Empty means the default theme.
 	appliedAtOpen string
+	// overrides are the user's theme_overrides at open time; live preview and
+	// esc-revert keep them so contrast tweaks survive theme browsing.
+	overrides map[string]string
 }
 
 // NewThemePicker returns a theme picker over the available theme keys.
@@ -46,13 +49,15 @@ func NewThemePicker() ThemePicker {
 
 // Show reveals the picker with the cursor on the active theme, filter cleared.
 // An empty activeTheme is treated as the default theme. The value is recorded
-// so esc can revert a live preview.
-func (p *ThemePicker) Show(activeTheme string) {
+// so esc can revert a live preview. overrides (may be nil) stay applied while
+// previewing so :color tweaks remain visible across themes.
+func (p *ThemePicker) Show(activeTheme string, overrides map[string]string) {
 	p.visible = true
 	if activeTheme == "" {
 		activeTheme = defaultThemeName
 	}
 	p.appliedAtOpen = activeTheme
+	p.overrides = overrides
 	p.filter = ""
 	p.cursor = 0
 	p.scrollRow = 0
@@ -63,6 +68,14 @@ func (p *ThemePicker) Show(activeTheme string) {
 		}
 	}
 	p.adjustScroll()
+}
+
+// preview applies the selected theme with the picker's stored overrides.
+func (p ThemePicker) preview(name string) {
+	if name == "" {
+		return
+	}
+	applyTheme(name, p.overrides)
 }
 
 // Hide hides the picker without changing the active palette.
@@ -111,7 +124,7 @@ func (p *ThemePicker) Up() {
 		p.cursor--
 	}
 	p.adjustScroll()
-	applyPalette(paletteForTheme(p.Selected()))
+	p.preview(p.Selected())
 }
 
 // Down moves the cursor down and live-applies the newly selected palette.
@@ -120,7 +133,7 @@ func (p *ThemePicker) Down() {
 		p.cursor++
 	}
 	p.adjustScroll()
-	applyPalette(paletteForTheme(p.Selected()))
+	p.preview(p.Selected())
 }
 
 // FilterAddChar appends ch to the filter, resets the cursor to the top match,
@@ -130,7 +143,7 @@ func (p *ThemePicker) FilterAddChar(ch string) {
 	p.cursor = 0
 	p.scrollRow = 0
 	if items := p.filteredItems(); len(items) > 0 {
-		applyPalette(paletteForTheme(items[0]))
+		p.preview(items[0])
 	}
 }
 
@@ -144,7 +157,7 @@ func (p *ThemePicker) FilterBackspace() {
 	p.cursor = 0
 	p.scrollRow = 0
 	if items := p.filteredItems(); len(items) > 0 {
-		applyPalette(paletteForTheme(items[0]))
+		p.preview(items[0])
 	}
 }
 

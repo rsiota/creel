@@ -12,7 +12,7 @@ import (
 // Show positions the cursor on the active theme, treating empty as the default.
 func TestThemePickerShowCursor(t *testing.T) {
 	p := NewThemePicker()
-	p.Show("")
+	p.Show("", nil)
 	if !p.IsVisible() {
 		t.Fatal("picker should be visible after Show")
 	}
@@ -23,7 +23,7 @@ func TestThemePickerShowCursor(t *testing.T) {
 		t.Errorf("cursor = %q, want default %q", p.Selected(), defaultThemeName)
 	}
 
-	p.Show("nord")
+	p.Show("nord", nil)
 	if p.AppliedAtOpen() != "nord" {
 		t.Errorf("AppliedAtOpen = %q, want nord", p.AppliedAtOpen())
 	}
@@ -39,7 +39,7 @@ func TestThemePickerLivePreview(t *testing.T) {
 	applyPalette(defaultPalette)
 
 	p := NewThemePicker()
-	p.Show("tokyo-night") // cursor on tokyo-night; Show does not re-apply
+	p.Show("tokyo-night", nil) // cursor on tokyo-night; Show does not re-apply
 
 	p.Down() // -> gruvbox
 	if p.Selected() != "gruvbox" {
@@ -73,7 +73,7 @@ func TestThemePickerCommit(t *testing.T) {
 	defer applyPalette(defaultPalette)
 
 	p := NewThemePicker()
-	p.Show("tokyo-night")
+	p.Show("tokyo-night", nil)
 	p.Down() // gruvbox
 	name := p.Commit()
 	if name != "gruvbox" {
@@ -93,7 +93,7 @@ func TestThemePickerHideDoesNotApply(t *testing.T) {
 	applyPalette(defaultPalette)
 
 	p := NewThemePicker()
-	p.Show("tokyo-night")
+	p.Show("tokyo-night", nil)
 	p.Hide()
 	if p.IsVisible() {
 		t.Error("picker should be hidden after Hide")
@@ -109,7 +109,7 @@ func TestThemePickerView(t *testing.T) {
 	if got := p.View(); got != "" {
 		t.Errorf("hidden View = %q, want empty", got)
 	}
-	p.Show("tokyo-night")
+	p.Show("tokyo-night", nil)
 	got := p.View()
 	if got == "" {
 		t.Fatal("visible View should be non-empty")
@@ -159,7 +159,7 @@ func TestThemePickerScroll(t *testing.T) {
 	applyPalette(defaultPalette)
 
 	p := NewThemePicker()
-	p.Show("tokyo-night")
+	p.Show("tokyo-night", nil)
 	_, popupH := popupDim()
 	maxVisible := popupH - 3 // 2 border + 1 prompt row
 
@@ -188,7 +188,7 @@ func TestThemePickerFilter(t *testing.T) {
 	applyPalette(defaultPalette)
 
 	p := NewThemePicker()
-	p.Show("tokyo-night")
+	p.Show("tokyo-night", nil)
 
 	// "drac" should narrow to Dracula (at least).
 	p.FilterAddChar("d")

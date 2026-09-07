@@ -1023,6 +1023,16 @@ func exCommands() []exCmdSpec {
 			complete: completeTheme,
 		},
 		{
+			verbs:   []string{"color", "colours"},
+			desc:    "override a theme colour slot (or list overrides)",
+			usage:   ":color [slot] [hex|default]",
+			argKind: exArgText,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				return m.exColor(args)
+			},
+			complete: completeColor,
+		},
+		{
 			verbs:   []string{"icons"},
 			desc:    "switch the tree expand/collapse glyph set",
 			usage:   ":icons <unicode|nerdfont>",

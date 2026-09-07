@@ -3404,7 +3404,7 @@ func (m *Model) exTheme(name string) tea.Cmd {
 		m.config.Settings.Theme = resolved
 		_ = m.config.Save()
 	}
-	applyPalette(paletteForTheme(resolved))
+	applyTheme(resolved, m.settings.ThemeOverrides)
 	m.schemaMsg = "theme: " + resolved
 	return nil
 }

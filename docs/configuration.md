@@ -187,6 +187,7 @@ optional and fall back to defaults when omitted:
 | `query_timeout`  | 30s          | Per-query deadline (friendly form: `2m`, `1h30m`, or a bare seconds int). `off` / `none` (or a negative value) disables the deadline entirely — `esc` still cancels |
 | `default_driver` | sqlite       | Driver pre-filled in the add-connection form                             |
 | `theme`          | tokyo-night  | Palette: `tokyo-night`, `gruvbox`, `nord`, `catppuccin`, `light` + ~565 auto-derived from iTerm2-Color-Schemes (dracula, solarized, …). Unknown → default |
+| `theme_overrides` | _(none)_ | Patch named semantic colour slots on top of `theme` (e.g. `muted: "#a0a0a0"`). Keys: `primary`, `accent`, `success`, `mark`, `search`, `search_match`, `visual`, `cursor_row`, `edit`, `warn`, `err`, `muted`, `label`, `border`, `border_unfocused`, `bg`, `stripe`, `fg`, `highlight`, `status_bar_bg`, `fk`. Values are `#rgb` / `#rrggbb` (or 6-digit without `#`). Derived washes recompute from the patched palette. Live edits via `:color [slot] [hex|default]`. |
 | `icons`          | unicode      | Glyph set for tree expand/collapse markers (sidebar, relationship explorer). `unicode` uses portable triangles (▾/▸); `nerdfont` uses Nerd Font angle chevrons (U+F107/U+F105) — open, rotationally-symmetric like treemacs, but only renders correctly in a terminal running a Nerd Font. Unknown → default |
 | `transparent_background` | false | By default creel fills the app background with the theme's bg colour (required for light themes to be readable). Set `true` to leave it unpainted so the terminal's own background / transparency shows through — at the cost of light themes looking wrong. |
 | `confirm_destructive` | true | Destructive actions (drop table/database, truncate, delete rows, discard edits, drop column, delete provider/connection, clear history/bookmarks) prompt for confirmation. Set `false` to skip the prompts and run each action immediately. |
@@ -199,6 +200,9 @@ settings:
   query_timeout: 1m
   default_driver: postgres
   theme: gruvbox
+  theme_overrides:
+    muted: "#a89984"
+    search: "#504945"
   icons: nerdfont
   confirm_destructive: false
   inspector_open: true
@@ -219,6 +223,11 @@ theme picker (a scrollable, filterable overlay — type to filter by name,
 is painted too, so light themes preview correctly. See [`THIRDPARTY.md`](../THIRDPARTY.md)
 for theme attribution.
 
+If a theme is almost right but one slot is hard to read, patch it with
+`theme_overrides` in config or `:color muted #a0a0a0` (see the settings table).
+`:color` with no args lists overrides; `:color muted default` clears one.
+Overrides stay applied when you switch themes.
+
 You can also change most settings from inside the app with `:set`:
 
 ```
@@ -228,8 +237,10 @@ You can also change most settings from inside the app with `:set`:
 :set confirm_destructive off
 :set inspector_open on
 :set status_hints off
+:color muted #a0a0a0
+:color muted default
 ```
 
 Bare `:set` lists current values; `:set <option>` shows one. Changes apply
 immediately and are written back to `config.yaml` (same persistence as `:theme`
-and `:icons`).
+and `:icons`). `:color` lists / sets / clears `theme_overrides` the same way.

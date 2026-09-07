@@ -22,7 +22,8 @@ const (
 // config file. Zero values fall back to the defaults above (see Effective).
 //
 // Currently wired: page_size, query_timeout, default_driver, theme,
-// transparent_background, confirm_destructive, inspector_open, status_hints.
+// theme_overrides, transparent_background, confirm_destructive,
+// inspector_open, status_hints.
 // Reserved for follow-ups (not yet applied): cursor_style — the struct is
 // designed so adding fields is the only change needed here.
 type Settings struct {
@@ -75,6 +76,12 @@ type Settings struct {
 	// Pointer so the discoverability-friendly default (on) differs from bool's
 	// zero value.
 	StatusHints *bool `yaml:"status_hints,omitempty"`
+
+	// ThemeOverrides patches named semantic colour slots on top of Theme
+	// (e.g. muted: "#a0a0a0"). Keys are snake_case slot names; values are
+	// #rgb / #rrggbb. Derived washes recompute from the patched palette.
+	// Empty / omitted means no overrides. See :color and docs/configuration.md.
+	ThemeOverrides map[string]string `yaml:"theme_overrides,omitempty"`
 }
 
 // Effective returns a copy of s with zero-values replaced by the defaults, so
@@ -92,6 +99,13 @@ func (s Settings) Effective() Settings {
 	// <= 0 as no timeout).
 	if out.DefaultDriver == "" {
 		out.DefaultDriver = DefaultDriver
+	}
+	if len(out.ThemeOverrides) > 0 {
+		cp := make(map[string]string, len(out.ThemeOverrides))
+		for k, v := range out.ThemeOverrides {
+			cp[k] = v
+		}
+		out.ThemeOverrides = cp
 	}
 	return out
 }

@@ -15,6 +15,10 @@ commits, so it can come up empty).
 - `status_hints` setting / `:set status_hints on|off` — toggle the right-aligned
   context keybinding strip on the status bar. Defaults on; left-side `? help`
   and first-run jump hints stay visible when off.
+- `theme_overrides` / `:color [slot] [hex|default]` — patch semantic colour
+  slots (`muted`, `fg`, `primary`, `search`, …) on top of the active theme.
+  Overrides persist in config and stay applied when switching themes (`:theme`
+  / `g c`).
 
 ### Fixed
 - `:` command line: Enter accepts the highlighted completion when browsing

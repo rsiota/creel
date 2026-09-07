@@ -750,7 +750,8 @@ func NewModel(cfg *config.Config) Model {
 	// Apply the configured theme (falls back to the default when unset or
 	// unknown) before any component renders, so the whole UI is themed from
 	// the first frame. init() already applied the default; this overrides it.
-	applyPalette(paletteForTheme(settings.Theme))
+	// theme_overrides (if any) patch semantic slots before styles rebuild.
+	applyTheme(settings.Theme, settings.ThemeOverrides)
 
 	// Apply the icon set the same way: portable triangles by default, Nerd
 	// Font angle glyphs when `icons: nerdfont` is set.
@@ -1118,7 +1119,7 @@ func (m *Model) handleTabKey(msg tea.KeyMsg) bool {
 		case "c":
 			// g c — open the theme picker for live-preview theme switching.
 			m.clearPendingG()
-			m.themePicker.Show(m.settings.Theme)
+			m.themePicker.Show(m.settings.Theme, m.settings.ThemeOverrides)
 			return true
 		case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 			m.clearPendingG()
@@ -2839,7 +2840,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.themePicker.IsVisible() {
 		switch msg.String() {
 		case "esc", "ctrl+c":
-			applyPalette(paletteForTheme(m.themePicker.AppliedAtOpen()))
+			applyTheme(m.themePicker.AppliedAtOpen(), m.settings.ThemeOverrides)
 			m.themePicker.Hide()
 			return m, nil
 		case "enter":
