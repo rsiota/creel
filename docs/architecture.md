@@ -128,7 +128,7 @@ subsystem:
 - `erd.go` / `erd_graph.go` / `erd_panel.go` — static ERD (`g R`): layout, dependency ranking, Mermaid export
 
 **Search & lookup**
-- `cross_search_panel.go` / `cross_search_ops.go` — cross-table search (`S`)
+- `cross_search_panel.go` / `cross_search_ops.go` — cross-table search (`S` / `:grep`)
 - `lookup_panel.go` — shared overlay for `:sizes`, `:tables`, `:refs`, `:uses`,
   `:locks`, `:who`, `:diagnose`, and related commands
 

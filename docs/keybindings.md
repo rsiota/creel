@@ -92,6 +92,7 @@ group). SQLite uses Connection + Options only.
 | `g e` / `:explain` | Raw query plan overlay |
 | `I`        | Import SQL dump           |
 | `S`        | Cross-table search        |
+| `:grep [q]` | Cross-table search (global; optional query) |
 | `/`        | Filter tables             |
 
 ## Editor (Vim)

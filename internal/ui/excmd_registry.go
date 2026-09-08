@@ -909,6 +909,15 @@ func exCommands() []exCmdSpec {
 			},
 		},
 		{
+			verbs:   []string{"grep"},
+			desc:    "cross-table search of cell values (same as sidebar S)",
+			usage:   ":grep [query]",
+			argKind: exArgText,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				return m.exGrep(args)
+			},
+		},
+		{
 			verbs:    []string{"stats"},
 			desc:     "summary stats for a column (min/max/avg/…)",
 			usage:    ":stats [column]",

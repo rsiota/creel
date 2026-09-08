@@ -55,6 +55,11 @@ func (c *CrossSearchPanel) Show() {
 	c.done = false
 }
 
+// SetQuery replaces the search query (used by :grep to prefill).
+func (c *CrossSearchPanel) SetQuery(q string) {
+	c.query = q
+}
+
 // Hide closes the panel.
 func (c *CrossSearchPanel) Hide() {
 	c.visible = false

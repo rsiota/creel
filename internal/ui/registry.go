@@ -115,7 +115,7 @@ func registry() []Section {
 				{"N", []string{"N"}, "new table (grid editor)", "N"},
 				{"X", []string{"X"}, "export database", "X"},
 				{"I", []string{"I"}, "import SQL dump", ""},
-				{"S", []string{"S"}, "cross-table search", "S"},
+				{"S", []string{"S"}, "cross-table search (:grep)", "S"},
 				{"/", []string{"/"}, "filter tables", "/"},
 			},
 		},

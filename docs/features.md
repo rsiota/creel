@@ -236,7 +236,9 @@ erDiagram
   under the cursor and lists rule-based findings (full/sequential scans,
   filesort, missing-index hints) in the lookup overlay. Use `g e` for the raw
   plan and `:aiexplain` / `:why` for a prose walkthrough of the same plan.
-- **Cross-table search** (`S`) and **column statistics** (`g s`).
+- **Cross-table search** (`S` / `:grep [query]`) and **column statistics** (`g s`).
+  `:grep` opens the same popup from any focus; with a query it starts searching
+  immediately. Distinct from `:search` / `:find` (schema name fuzzy-find).
 - **Table sizes** (`:sizes`) — base tables with approximate row counts and
   on-disk size, largest first. Enter opens the table. The same size data feeds
   the `:backup` picker.

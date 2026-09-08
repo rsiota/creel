@@ -2973,6 +2973,29 @@ type searchHit struct {
 	parent string // table for columns; empty otherwise
 }
 
+// exGrep opens the cross-table cell-value search popup (:grep), optionally
+// prefilling and running a query. Distinct from :search/:find (schema names)
+// and from results g/ (in-page regex). Same overlay as sidebar S.
+func (m *Model) exGrep(args []string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if len(m.tables) == 0 {
+		m.schemaMsg = "no tables to search"
+		return nil
+	}
+	query := strings.TrimSpace(strings.Join(args, " "))
+	m.crossSearch.Show()
+	if query != "" {
+		m.crossSearch.SetQuery(query)
+		m.layoutWorkspace()
+		return m.startCrossSearch()
+	}
+	m.layoutWorkspace()
+	return nil
+}
+
 // exSearch fuzzy-finds tables, views, and columns by name (:search / :find).
 // Uses cached sidebar metadata (m.tables + columnCache); distinct from the
 // results g / regex and from cross-search (cell values).
