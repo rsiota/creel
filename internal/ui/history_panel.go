@@ -257,7 +257,8 @@ func truncateForDisplay(s string, max int) string {
 	if max < 1 {
 		return ""
 	}
-	s = strings.ReplaceAll(s, "\n", " ")
+	// Collapse control chars (HTML often has \r\n) so values stay on one line.
+	s = sanitizeCellValue(s)
 	runes := []rune(s)
 	if len(runes) <= max {
 		return s

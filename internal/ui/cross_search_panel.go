@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // SearchResult represents a single matching cell found during cross-table search.
@@ -181,20 +182,15 @@ func (c CrossSearchPanel) View() string {
 		end = len(c.results)
 	}
 
+	// Inner content width matches the bordered panel's Width below.
+	contentW := c.width - 2
+	if contentW < 1 {
+		contentW = 1
+	}
+
 	var rows []string
 	for i := c.scrollRow; i < end; i++ {
-		r := c.results[i]
-		isSelected := i == c.cursor
-		tableLabel := fmt.Sprintf("%s.%s", r.Table, r.Column)
-		valDisplay := truncateForDisplay(r.Value, c.width-len(tableLabel)-8)
-		if isSelected {
-			line := fmt.Sprintf("❯ %s  %s", tableLabel, valDisplay)
-			rows = append(rows, selectedStyle.Render(line))
-		} else {
-			styledTable := lipgloss.NewStyle().Foreground(colorAccent).Render(tableLabel)
-			line := fmt.Sprintf("  %s  %s", styledTable, valDisplay)
-			rows = append(rows, normalStyle.Render(line))
-		}
+		rows = append(rows, c.renderResultRow(c.results[i], i == c.cursor, contentW))
 	}
 
 	if len(c.results) == 0 && c.done {
@@ -224,4 +220,46 @@ func (c CrossSearchPanel) View() string {
 		Render(fullContent)
 
 	return panel
+}
+
+// renderResultRow draws one hit, truncating the value so the row spans the
+// full inner panel width (no style padding — that was leaving a right gutter).
+func (c CrossSearchPanel) renderResultRow(r SearchResult, selected bool, contentW int) string {
+	tableLabel := fmt.Sprintf("%s.%s", r.Table, r.Column)
+	val := sanitizeCellValue(r.Value)
+
+	const prefixW = 2 // "❯ " / "  "
+	const gapW = 2    // "  " between label and value
+	labelW := lipgloss.Width(tableLabel)
+	valBudget := contentW - prefixW - labelW - gapW
+	if valBudget < 1 {
+		labelBudget := contentW - prefixW - gapW - 1
+		if labelBudget < 1 {
+			labelBudget = 1
+		}
+		tableLabel = ansi.Truncate(tableLabel, labelBudget, "…")
+		labelW = lipgloss.Width(tableLabel)
+		valBudget = contentW - prefixW - labelW - gapW
+		if valBudget < 1 {
+			valBudget = 1
+		}
+	}
+	valDisplay := ansi.Truncate(val, valBudget, "…")
+
+	if selected {
+		line := fmt.Sprintf("❯ %s  %s", tableLabel, valDisplay)
+		if pad := contentW - lipgloss.Width(line); pad > 0 {
+			line += strings.Repeat(" ", pad)
+		}
+		return lipgloss.NewStyle().
+			Foreground(colorBg).
+			Background(colorPrimary).
+			Render(line)
+	}
+	styledTable := lipgloss.NewStyle().Foreground(colorAccent).Render(tableLabel)
+	line := fmt.Sprintf("  %s  %s", styledTable, valDisplay)
+	if pad := contentW - lipgloss.Width(line); pad > 0 {
+		line += strings.Repeat(" ", pad)
+	}
+	return lipgloss.NewStyle().Foreground(colorFg).Render(line)
 }

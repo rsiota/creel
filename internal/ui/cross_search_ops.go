@@ -82,14 +82,10 @@ func (m Model) runCrossSearchBatch(query string, batchStart int) tea.Cmd {
 				}
 				for ci, col := range result.Columns {
 					if ci < len(row) && strings.Contains(strings.ToLower(row[ci]), strings.ToLower(query)) {
-						val := row[ci]
-						if len(val) > 80 {
-							val = val[:80]
-						}
 						results = append(results, SearchResult{
 							Table:  table,
 							Column: col.Name,
-							Value:  val,
+							Value:  row[ci],
 							Row:    row,
 						})
 						break // one match per row
