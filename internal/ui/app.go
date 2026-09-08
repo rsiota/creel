@@ -1093,6 +1093,7 @@ func (m *Model) handleTabKey(msg tea.KeyMsg) bool {
 	if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() ||
 		m.searching || m.ex.visible || m.backendSearching ||
 		m.sidebarFiltering || m.inspector.IsFiltering() ||
+		m.crossSearch.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() ||
 		(m.focus == FocusEditor && m.editor.CapturingKeys()) {
 		return false
 	}
@@ -3327,6 +3328,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Ex command line — not while a text-input / editing mode is active.
 		if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() || m.inspector.IsFiltering() ||
 			m.sidebarFiltering || m.searching || m.backendSearching ||
+			m.crossSearch.IsVisible() || m.history.IsVisible() || m.bookmarks.IsVisible() ||
 			(m.focus == FocusEditor && m.editor.CapturingKeys()) {
 			break
 		}
@@ -3348,6 +3350,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebarFiltering ||
 			m.history.IsVisible() ||
 			m.bookmarks.IsVisible() ||
+			m.crossSearch.IsVisible() ||
 			m.backendSearching ||
 			m.focus == FocusAssistant ||
 			(m.focus == FocusEditor && m.editor.CapturingKeys()) {
