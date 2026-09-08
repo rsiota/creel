@@ -53,10 +53,12 @@ func PgRestoreGuard(cfg ConnectionConfig) error {
 
 // BuildPsqlArgs is the psql argv after the binary. Password is never included
 // (use PGPASSFILE). The dump is read from stdin (caller sets cmd.Stdin).
-func BuildPsqlArgs(cfg ConnectionConfig) []string {
-	args := []string{
-		"--no-password",
-		"--set", "ON_ERROR_STOP=1",
+// When continueOnError is false (default), ON_ERROR_STOP=1 aborts on the first
+// SQL error; when true, psql keeps going so ignored errors can be reviewed.
+func BuildPsqlArgs(cfg ConnectionConfig, continueOnError bool) []string {
+	args := []string{"--no-password"}
+	if !continueOnError {
+		args = append(args, "--set", "ON_ERROR_STOP=1")
 	}
 	if sock := cfg.socketPath(); sock != "" {
 		args = append(args, "--host="+sock)
@@ -83,18 +85,18 @@ func BuildPsqlArgs(cfg ConnectionConfig) []string {
 // SSH + Postgres on the SSH host: run psql remotely and stream the dump over
 // SSH stdin. Falls back to local psql + port forward when needed.
 //
-// onBytes is called with the cumulative bytes sent (may be nil).
-func RunPgRestore(bin string, cfg ConnectionConfig, dumpFile string, conn *Connection, onBytes func(int64)) error {
+// With opts.ContinueOnError, ON_ERROR_STOP is left off so SQL errors do not
+// abort the load; ClientStderr then holds the ignored messages for review.
+func RunPgRestore(bin string, cfg ConnectionConfig, dumpFile string, conn *Connection, opts RestoreOpts) RestoreResult {
 	if err := PgRestoreGuard(cfg); err != nil {
-		return err
+		return RestoreResult{Err: err, Continued: opts.ContinueOnError}
 	}
 
 	throughSSH := strings.TrimSpace(cfg.SSHHost) != ""
 	if throughSSH && MysqlHostOnSSHTarget(cfg.Host) && conn != nil {
-		if err := conn.runRemotePgRestore(dumpFile, onBytes); err == nil {
-			return nil
-		} else if !remotePsqlUnavailable(err) {
-			return err
+		res := conn.runRemotePgRestore(dumpFile, opts)
+		if res.Err == nil || !remotePsqlUnavailable(res.Err) {
+			return res
 		}
 	}
 
@@ -102,18 +104,21 @@ func RunPgRestore(bin string, cfg ConnectionConfig, dumpFile string, conn *Conne
 		var err error
 		bin, err = FindPsql()
 		if err != nil {
-			return fmt.Errorf("psql is not on PATH")
+			return RestoreResult{Err: fmt.Errorf("psql is not on PATH"), Continued: opts.ContinueOnError}
 		}
 	}
 
 	restoreCfg := cfg
 	if throughSSH {
 		if conn == nil {
-			return fmt.Errorf(":restore needs an active SSH connection")
+			return RestoreResult{Err: fmt.Errorf(":restore needs an active SSH connection"), Continued: opts.ContinueOnError}
 		}
 		fwd, err := conn.startMysqlDumpForward()
 		if err != nil {
-			return fmt.Errorf("%s", strings.ReplaceAll(err.Error(), ":backup", ":restore"))
+			return RestoreResult{
+				Err:       fmt.Errorf("%s", strings.ReplaceAll(err.Error(), ":backup", ":restore")),
+				Continued: opts.ContinueOnError,
+			}
 		}
 		defer fwd.Close()
 		restoreCfg = pgDumpConfigViaForward(cfg, fwd)
@@ -121,28 +126,31 @@ func RunPgRestore(bin string, cfg ConnectionConfig, dumpFile string, conn *Conne
 
 	passFile, err := writePgPassFile(restoreCfg)
 	if err != nil {
-		return err
+		return RestoreResult{Err: err, Continued: opts.ContinueOnError}
 	}
 	defer os.Remove(passFile)
 
 	in, err := os.Open(dumpFile)
 	if err != nil {
-		return err
+		return RestoreResult{Err: err, Continued: opts.ContinueOnError}
 	}
 	defer in.Close()
 
-	args := BuildPsqlArgs(restoreCfg)
+	var last int64
+	onBytes := opts.OnBytes
+	count := func(n int64) {
+		last = n
+		if onBytes != nil {
+			onBytes(n)
+		}
+	}
+
+	args := BuildPsqlArgs(restoreCfg, opts.ContinueOnError)
 	cmd := exec.Command(bin, args...)
 	cmd.Env = pgClientEnv(restoreCfg, passFile)
 	var stderr bytes.Buffer
-	cmd.Stdin = &countingReader{r: in, onBytes: onBytes}
+	cmd.Stdin = &countingReader{r: in, onBytes: count}
 	cmd.Stderr = &stderr
-	if err := runPsqlCmd(cmd); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			return fmt.Errorf("psql: %w", err)
-		}
-		return fmt.Errorf("psql: %s", msg)
-	}
-	return nil
+	runErr := runPsqlCmd(cmd)
+	return finalizeCLIRestore("psql", opts.ContinueOnError, last, stderr.String(), runErr)
 }

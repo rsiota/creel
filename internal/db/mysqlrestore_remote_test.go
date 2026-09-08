@@ -14,7 +14,7 @@ func TestBuildRemoteMysqlRestoreCmd(t *testing.T) {
 		Host:     "127.0.0.1",
 		Port:     3306,
 	}
-	cmd := buildRemoteMysqlRestoreCmd(cfg)
+	cmd := buildRemoteMysqlRestoreCmd(cfg, false)
 	for _, want := range []string{
 		"mysql --defaults-extra-file=",
 		"--host=127.0.0.1",
@@ -26,6 +26,13 @@ func TestBuildRemoteMysqlRestoreCmd(t *testing.T) {
 		if !strings.Contains(cmd, want) {
 			t.Errorf("missing %q in:\n%s", want, cmd)
 		}
+	}
+	if strings.Contains(cmd, "--force") {
+		t.Fatal("default remote restore must not pass --force")
+	}
+	force := buildRemoteMysqlRestoreCmd(cfg, true)
+	if !strings.Contains(force, "--force") {
+		t.Fatalf("continue-on-error remote must pass --force:\n%s", force)
 	}
 	b64 := base64.StdEncoding.EncodeToString([]byte(MysqlDumpDefaults(cfg)))
 	if !strings.Contains(cmd, b64) {

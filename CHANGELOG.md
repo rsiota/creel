@@ -12,6 +12,11 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- `:restore!` — continue past SQL errors when loading a MySQL/Postgres dump
+  (`mysql --force` / psql without `ON_ERROR_STOP`), then open a lookup overlay
+  listing ignored client messages. Plain `:restore` still stops on the first
+  error and hints to use `:restore!`. In-app `I` / `:import` (already
+  continue-on-error) opens the same style of overlay when statements fail.
 - Scoop bucket ([rsiota/scoop-creel](https://github.com/rsiota/scoop-creel)) and
   AUR `creel-bin` packaging (`packaging/`, `scripts/update-packaging.sh`) —
   Windows `scoop install creel` and Arch prebuilt binary installs from GitHub

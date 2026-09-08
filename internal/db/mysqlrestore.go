@@ -55,8 +55,9 @@ func MysqlRestoreGuard(cfg ConnectionConfig) error {
 // BuildMysqlArgs is the mysql client argv after the binary. defaultsFile must
 // be the first option (--defaults-extra-file). Password is never included.
 // throughSSH adds protocol compression for bulk stdin over a localhost forward.
+// continueOnError adds --force so SQL errors do not abort the load.
 // The dump is read from stdin (caller sets cmd.Stdin).
-func BuildMysqlArgs(cfg ConnectionConfig, defaultsFile string, throughSSH bool) []string {
+func BuildMysqlArgs(cfg ConnectionConfig, defaultsFile string, throughSSH, continueOnError bool) []string {
 	args := []string{"--defaults-extra-file=" + defaultsFile}
 	if sock := cfg.socketPath(); sock != "" {
 		args = append(args, "--socket="+sock)
@@ -82,6 +83,9 @@ func BuildMysqlArgs(cfg ConnectionConfig, defaultsFile string, throughSSH bool) 
 	if throughSSH {
 		args = append(args, "--compress")
 	}
+	if continueOnError {
+		args = append(args, "--force")
+	}
 	args = append(args, cfg.Database)
 	return args
 }
@@ -93,18 +97,18 @@ func BuildMysqlArgs(cfg ConnectionConfig, defaultsFile string, throughSSH bool) 
 // `ssh host mysql … < dump.sql`. Falls back to local mysql + port forward when
 // the remote binary is missing or MySQL is on a different internal host.
 //
-// onBytes is called with the cumulative bytes sent (may be nil).
-func RunMysqlRestore(bin string, cfg ConnectionConfig, dumpFile string, conn *Connection, onBytes func(int64)) error {
+// With opts.ContinueOnError, mysql --force keeps loading after SQL errors;
+// ClientStderr then holds the ignored messages for review.
+func RunMysqlRestore(bin string, cfg ConnectionConfig, dumpFile string, conn *Connection, opts RestoreOpts) RestoreResult {
 	if err := MysqlRestoreGuard(cfg); err != nil {
-		return err
+		return RestoreResult{Err: err, Continued: opts.ContinueOnError}
 	}
 
 	throughSSH := strings.TrimSpace(cfg.SSHHost) != ""
 	if throughSSH && MysqlHostOnSSHTarget(cfg.Host) && conn != nil {
-		if err := conn.runRemoteMysqlRestore(dumpFile, onBytes); err == nil {
-			return nil
-		} else if !remoteMysqlUnavailable(err) {
-			return err
+		res := conn.runRemoteMysqlRestore(dumpFile, opts)
+		if res.Err == nil || !remoteMysqlUnavailable(res.Err) {
+			return res
 		}
 		// Remote has no mysql — try local binary + forward below.
 	}
@@ -113,19 +117,22 @@ func RunMysqlRestore(bin string, cfg ConnectionConfig, dumpFile string, conn *Co
 		var err error
 		bin, err = FindMysql()
 		if err != nil {
-			return fmt.Errorf("mysql is not on PATH")
+			return RestoreResult{Err: fmt.Errorf("mysql is not on PATH"), Continued: opts.ContinueOnError}
 		}
 	}
 
 	restoreCfg := cfg
 	if throughSSH {
 		if conn == nil {
-			return fmt.Errorf(":restore needs an active SSH connection")
+			return RestoreResult{Err: fmt.Errorf(":restore needs an active SSH connection"), Continued: opts.ContinueOnError}
 		}
 		fwd, err := conn.startMysqlDumpForward()
 		if err != nil {
 			// Rephrase backup-oriented forward errors for restore.
-			return fmt.Errorf("%s", strings.ReplaceAll(err.Error(), ":backup", ":restore"))
+			return RestoreResult{
+				Err:       fmt.Errorf("%s", strings.ReplaceAll(err.Error(), ":backup", ":restore")),
+				Continued: opts.ContinueOnError,
+			}
 		}
 		defer fwd.Close()
 		restoreCfg = mysqlDumpConfigViaForward(cfg, fwd)
@@ -133,41 +140,44 @@ func RunMysqlRestore(bin string, cfg ConnectionConfig, dumpFile string, conn *Co
 
 	tmp, err := os.CreateTemp("", "creel-mysql-*.cnf")
 	if err != nil {
-		return err
+		return RestoreResult{Err: err, Continued: opts.ContinueOnError}
 	}
 	defaultsPath := tmp.Name()
 	defer os.Remove(defaultsPath)
 	if err := tmp.Chmod(0o600); err != nil {
 		tmp.Close()
-		return err
+		return RestoreResult{Err: err, Continued: opts.ContinueOnError}
 	}
 	if _, err := tmp.WriteString(MysqlDumpDefaults(restoreCfg)); err != nil {
 		tmp.Close()
-		return err
+		return RestoreResult{Err: err, Continued: opts.ContinueOnError}
 	}
 	if err := tmp.Close(); err != nil {
-		return err
+		return RestoreResult{Err: err, Continued: opts.ContinueOnError}
 	}
 
 	in, err := os.Open(dumpFile)
 	if err != nil {
-		return err
+		return RestoreResult{Err: err, Continued: opts.ContinueOnError}
 	}
 	defer in.Close()
 
-	args := BuildMysqlArgs(restoreCfg, defaultsPath, throughSSH)
+	var last int64
+	onBytes := opts.OnBytes
+	count := func(n int64) {
+		last = n
+		if onBytes != nil {
+			onBytes(n)
+		}
+	}
+
+	args := BuildMysqlArgs(restoreCfg, defaultsPath, throughSSH, opts.ContinueOnError)
 	cmd := exec.Command(bin, args...)
 	var stderr bytes.Buffer
-	cmd.Stdin = &countingReader{r: in, onBytes: onBytes}
+	cmd.Stdin = &countingReader{r: in, onBytes: count}
 	cmd.Stderr = &stderr
-	if err := runMysqlCmd(cmd); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			return fmt.Errorf("mysql: %w", err)
-		}
-		return fmt.Errorf("mysql: %s", msg)
-	}
-	return nil
+	runErr := runMysqlCmd(cmd)
+	return finalizeCLIRestore("mysql", opts.ContinueOnError, last, stderr.String(), runErr)
 }
 
 // countingReader counts bytes read and reports the running total.

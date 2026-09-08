@@ -420,7 +420,7 @@ func TestImportResult_Summary(t *testing.T) {
 		want     string
 	}{
 		{ImportResult{Statements: 10, Errors: nil}, "backup.sql", "Imported 10 statements → backup.sql"},
-		{ImportResult{Statements: 10, Errors: []ImportError{{Err: fmt.Errorf("syntax error")}}}, "backup.sql", "Imported 10 statements, 1 failed → backup.sql (syntax error)"},
+		{ImportResult{Statements: 10, Errors: []ImportError{{Err: fmt.Errorf("syntax error")}}}, "backup.sql", "Imported 10 statements, 1 failed → backup.sql (review overlay)"},
 	}
 	for _, tc := range tests {
 		got := tc.result.Summary(tc.filename)

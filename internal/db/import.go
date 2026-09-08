@@ -24,9 +24,8 @@ func (r ImportResult) Summary(filename string) string {
 	if len(r.Errors) == 0 {
 		return fmt.Sprintf("Imported %d statements → %s", r.Statements, filename)
 	}
-	first := r.Errors[0].Err.Error()
-	return fmt.Sprintf("Imported %d statements, %d failed → %s (%s)",
-		r.Statements, len(r.Errors), filename, truncate(first, 80))
+	return fmt.Sprintf("Imported %d statements, %d failed → %s (review overlay)",
+		r.Statements, len(r.Errors), filename)
 }
 
 // ImportSQL reads a SQL dump from r and executes each statement against the

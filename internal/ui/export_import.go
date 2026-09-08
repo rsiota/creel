@@ -671,7 +671,11 @@ func backupProgressStatus(n int64, started time.Time) string {
 // defaults/.pgpass file, never argv. When the DB is on the SSH host, the
 // client runs remotely and the dump streams over SSH stdin. Live byte counts
 // update the status bar while the restore runs.
-func (m *Model) exRestore(path string) tea.Cmd {
+//
+// When force is true (:restore!), the client continues past SQL errors
+// (mysql --force / psql without ON_ERROR_STOP) and any client stderr is shown
+// in the lookup overlay for review — Sequel Ace-style ignore-all + summary.
+func (m *Model) exRestore(path string, force bool) tea.Cmd {
 	if m.connection == nil {
 		m.schemaMsg = "not connected"
 		return nil
@@ -731,29 +735,99 @@ func (m *Model) exRestore(path string) tea.Cmd {
 	conn := m.connection
 	driver := cfg.Driver
 	m.restoreStarted = time.Now()
-	m.exportMsg = "Restoring…"
+	if force {
+		m.exportMsg = "Restoring… (continue on error)"
+	} else {
+		m.exportMsg = "Restoring…"
+	}
 
 	progress := make(chan restoreProgressMsg, 1)
 	done := make(chan restoreDoneMsg, 1)
 	go func() {
 		var last int64
-		onBytes := func(n int64) {
-			last = n
-			select {
-			case progress <- restoreProgressMsg{bytes: n, path: expanded}:
-			default:
-			}
+		opts := db.RestoreOpts{
+			ContinueOnError: force,
+			OnBytes: func(n int64) {
+				last = n
+				select {
+				case progress <- restoreProgressMsg{bytes: n, path: expanded}:
+				default:
+				}
+			},
 		}
-		var runErr error
+		var res db.RestoreResult
 		switch driver {
 		case db.DriverMySQL:
-			runErr = db.RunMysqlRestore(bin, cfg, expanded, conn, onBytes)
+			res = db.RunMysqlRestore(bin, cfg, expanded, conn, opts)
 		case db.DriverPostgres:
-			runErr = db.RunPgRestore(bin, cfg, expanded, conn, onBytes)
+			res = db.RunPgRestore(bin, cfg, expanded, conn, opts)
 		}
-		done <- restoreDoneMsg{path: expanded, bytes: last, err: runErr}
+		if res.Bytes == 0 {
+			res.Bytes = last
+		}
+		done <- restoreDoneMsg{
+			path:         expanded,
+			bytes:        res.Bytes,
+			err:          res.Err,
+			clientStderr: res.ClientStderr,
+			continued:    res.Continued,
+		}
 	}()
 	return waitForRestoreProgress(progress, done)
+}
+
+// showImportErrorOverlay opens the lookup panel with statements that failed
+// during an in-app import (I / :import already continues past errors).
+func (m *Model) showImportErrorOverlay(filename string, errs []db.ImportError) {
+	if len(errs) == 0 {
+		return
+	}
+	const max = 500
+	n := len(errs)
+	if n > max {
+		n = max
+	}
+	rows := make([][]string, 0, n)
+	for i := 0; i < n; i++ {
+		e := errs[i]
+		msg := ""
+		if e.Err != nil {
+			msg = e.Err.Error()
+		}
+		rows = append(rows, []string{
+			fmt.Sprintf("%d", i+1),
+			truncateRunes(msg, 120),
+			truncateRunes(e.Statement, 100),
+		})
+	}
+	title := fmt.Sprintf("Import errors — %s (%d)", filepath.Base(filename), len(errs))
+	if len(errs) > max {
+		title = fmt.Sprintf("Import errors — %s (showing %d of %d)", filepath.Base(filename), max, len(errs))
+	}
+	m.lookupPanel.Show(title, db.Result{
+		Columns: []db.Column{{Name: "#"}, {Name: "Error"}, {Name: "Statement"}},
+		Rows:    rows,
+	}, nil)
+}
+
+// showRestoreErrorOverlay opens the lookup panel with client stderr lines from
+// a :restore! (continue-on-error) run.
+func (m *Model) showRestoreErrorOverlay(path string, lines []string) {
+	if len(lines) == 0 {
+		return
+	}
+	rows := make([][]string, 0, len(lines))
+	for i, line := range lines {
+		rows = append(rows, []string{
+			fmt.Sprintf("%d", i+1),
+			truncateRunes(line, 200),
+		})
+	}
+	m.lookupPanel.Show(
+		fmt.Sprintf("Restore errors — %s (%d)", filepath.Base(path), len(lines)),
+		db.Result{Columns: []db.Column{{Name: "#"}, {Name: "Error"}}, Rows: rows},
+		nil,
+	)
 }
 
 func waitForRestoreProgress(progress <-chan restoreProgressMsg, done <-chan restoreDoneMsg) tea.Cmd {

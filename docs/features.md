@@ -278,8 +278,13 @@ erDiagram
   the DB is on the SSH host, the dump runs remotely and streams back; otherwise
   a temporary localhost forward is used. Leaving every table on schema+data keeps
   a full-database dump (including views). `:restore` / `:mysqlload` / `:psqlload
-  <file>` is the inverse — `mysql` or `psql` loads a dump the same way. Use
-  `I` / `:import` for in-app statement-by-statement import.
+  <file>` is the inverse — `mysql` or `psql` loads a dump the same way.
+  `:restore!` continues past SQL errors (mysql `--force` / psql without
+  `ON_ERROR_STOP`) and opens a lookup overlay listing ignored client messages.
+  In-app `I` / `:import` already continues statement-by-statement; when any
+  statements fail, the same overlay lists Error + Statement for review.
+  Prefer `:restore` for large MySQL/Postgres dumps; keep `I` for progress UI
+  and SQLite.
 - **Lock waits** — `:locks` / `:blocked` lists sessions waiting on locks held by
   other sessions (PostgreSQL `pg_locks` / MySQL InnoDB). The lookup overlay shows
   waiter → blocker, wait age, relation, and a truncated query; Enter opens the

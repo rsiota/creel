@@ -292,11 +292,13 @@ type backupProgressWrapper struct {
 	done     <-chan backupDoneMsg
 }
 
-// restoreDoneMsg carries the result of an async :restore (mysql CLI) run.
+// restoreDoneMsg carries the result of an async :restore (mysql/psql) run.
 type restoreDoneMsg struct {
-	path  string
-	bytes int64
-	err   error
+	path         string
+	bytes        int64
+	err          error
+	clientStderr string
+	continued    bool
 }
 
 // restoreProgressMsg carries live byte-count updates during :restore.
@@ -1737,12 +1739,22 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, waitForRestoreProgress(msg.progress, msg.done)
 	case restoreDoneMsg:
 		if msg.err != nil {
-			m.exportMsg = fmt.Sprintf("restore failed: %v", msg.err)
-		} else {
-			size := db.FormatDumpSize(msg.bytes)
-			m.exportMsg = fmt.Sprintf("restored %s ← %s", size, msg.path)
-			m.loadTables()
+			hint := ""
+			if !msg.continued {
+				hint = " — :restore! to continue past SQL errors"
+			}
+			m.exportMsg = fmt.Sprintf("restore failed: %v%s", msg.err, hint)
+			return m, nil
 		}
+		size := db.FormatDumpSize(msg.bytes)
+		lines := db.StderrErrorLines(msg.clientStderr)
+		if n := len(lines); n > 0 {
+			m.exportMsg = fmt.Sprintf("restored %s ← %s (%d errors — review overlay)", size, msg.path, n)
+			m.showRestoreErrorOverlay(msg.path, lines)
+		} else {
+			m.exportMsg = fmt.Sprintf("restored %s ← %s", size, msg.path)
+		}
+		m.loadTables()
 		return m, nil
 
 	case importProgressWrapper:
@@ -1759,6 +1771,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.exportMsg = msg.result.Summary(msg.filename)
 			m.loadTables()
+			if len(msg.result.Errors) > 0 {
+				m.showImportErrorOverlay(msg.filename, msg.result.Errors)
+			}
 		}
 		return m, nil
 

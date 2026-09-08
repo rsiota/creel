@@ -82,7 +82,7 @@ group). SQLite uses Connection + Options only.
 | `N`        | New table (grid editor)   |
 | `X`        | Export database (portable SQL dump) |
 | `:backup`  | Size-aware `mysqldump` / `pg_dump` picker (schema/data per table) → `~/Downloads` |
-| `:restore <file>` | `mysql` / `psql` CLI load of a dump (MySQL/Postgres; works over SSH; prefer over `I` for large files) |
+| `:restore[!] <file>` | `mysql` / `psql` CLI load (MySQL/Postgres; SSH OK). `:restore!` continues past SQL errors and opens an error review overlay |
 | `:sizes`   | Table row counts and disk sizes (largest first; Enter opens table) |
 | `:locks`   | Show lock waiters → blockers (MySQL/Postgres); Enter opens relation |
 | `:who`     | List live sessions (MySQL/Postgres); pair with `:kill <pid>` |

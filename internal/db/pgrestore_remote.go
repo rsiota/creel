@@ -11,7 +11,7 @@ import (
 // buildRemotePgRestoreCmd is a bash -c script run on the SSH host: write a
 // 0600 .pgpass from base64, then run psql reading the dump from stdin
 // (session.Stdin is the local dump file — not the script).
-func buildRemotePgRestoreCmd(cfg ConnectionConfig) string {
+func buildRemotePgRestoreCmd(cfg ConnectionConfig, continueOnError bool) string {
 	remote := cfg
 	if strings.TrimSpace(remote.Socket) == "" {
 		remote.Host = "127.0.0.1"
@@ -21,7 +21,7 @@ func buildRemotePgRestoreCmd(cfg ConnectionConfig) string {
 	}
 	remote.SSHHost = ""
 	passB64 := base64.StdEncoding.EncodeToString([]byte(PgPassLine(remote) + "\n"))
-	args := BuildPsqlArgs(remote)
+	args := BuildPsqlArgs(remote, continueOnError)
 	var quoted []string
 	for _, a := range args {
 		quoted = append(quoted, shellSingleQuote(a))
@@ -40,38 +40,41 @@ psql %s
 
 // runRemotePgRestore runs psql on the SSH host via the live tunnel and streams
 // dumpFile into its stdin.
-func (c *Connection) runRemotePgRestore(dumpFile string, onBytes func(int64)) error {
+func (c *Connection) runRemotePgRestore(dumpFile string, opts RestoreOpts) RestoreResult {
 	if c == nil || c.db == nil {
-		return fmt.Errorf(":restore needs an active SSH connection")
+		return RestoreResult{Err: fmt.Errorf(":restore needs an active SSH connection"), Continued: opts.ContinueOnError}
 	}
 	tunnel := c.sshTunnel()
 	if tunnel == nil {
-		return fmt.Errorf("no active SSH tunnel")
+		return RestoreResult{Err: fmt.Errorf("no active SSH tunnel"), Continued: opts.ContinueOnError}
 	}
 	in, err := os.Open(dumpFile)
 	if err != nil {
-		return err
+		return RestoreResult{Err: err, Continued: opts.ContinueOnError}
 	}
 	defer in.Close()
 
 	session, err := tunnel.NewSession()
 	if err != nil {
-		return err
+		return RestoreResult{Err: err, Continued: opts.ContinueOnError}
 	}
 	defer session.Close()
 
-	var stderr bytes.Buffer
-	session.Stdin = &countingReader{r: in, onBytes: onBytes}
-	session.Stderr = &stderr
-	cmd := "bash -c " + shellSingleQuote(buildRemotePgRestoreCmd(c.config))
-	if err := session.Run(cmd); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			return fmt.Errorf("remote psql: %w", err)
+	var last int64
+	onBytes := opts.OnBytes
+	count := func(n int64) {
+		last = n
+		if onBytes != nil {
+			onBytes(n)
 		}
-		return fmt.Errorf("remote psql: %s", msg)
 	}
-	return nil
+
+	var stderr bytes.Buffer
+	session.Stdin = &countingReader{r: in, onBytes: count}
+	session.Stderr = &stderr
+	cmd := "bash -c " + shellSingleQuote(buildRemotePgRestoreCmd(c.config, opts.ContinueOnError))
+	runErr := session.Run(cmd)
+	return finalizeCLIRestore("remote psql", opts.ContinueOnError, last, stderr.String(), runErr)
 }
 
 func remotePsqlUnavailable(err error) bool {

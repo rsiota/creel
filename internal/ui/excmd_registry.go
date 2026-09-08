@@ -349,16 +349,16 @@ func exCommands() []exCmdSpec {
 		},
 		{
 			verbs:    []string{"restore", "mysqlload", "psqlload", "pgload"},
-			desc:     "restore a MySQL/Postgres dump with mysql/psql (fast; SSH OK); use :import for in-app import",
-			usage:    ":restore <file>",
+			desc:     "restore a MySQL/Postgres dump with mysql/psql; :restore! continues past SQL errors",
+			usage:    ":restore[!] <file>",
 			argKind:  exArgRequired,
 			complete: completePath,
-			run: func(m *Model, args []string, _ bool) tea.Cmd {
+			run: func(m *Model, args []string, force bool) tea.Cmd {
 				if len(args) == 0 {
 					m.schemaMsg = ":restore needs a file path"
 					return nil
 				}
-				return m.exRestore(args[0])
+				return m.exRestore(args[0], force)
 			},
 		},
 		{

@@ -49,10 +49,12 @@ implement the interface in a new file.
   the SSH host, run the dump remotely and stream stdout back; otherwise local
   `mysqldump` through OpenSSH `ssh -L` or an in-process forward
 - `mysqlrestore.go` / `mysqlrestore_remote.go` — `:restore` via the `mysql`
-  client; same remote-vs-forward strategy, dump streamed on stdin
+  client; same remote-vs-forward strategy, dump streamed on stdin; `:restore!`
+  adds `--force` and surfaces ignored stderr in the lookup overlay
 - `pgdump.go` / `pgdump_remote.go` — `:backup` via `pg_dump` (plain SQL);
   same selective plan and remote-vs-forward strategy as MySQL
-- `pgrestore.go` / `pgrestore_remote.go` — `:restore` via `psql`; dump on stdin
+- `pgrestore.go` / `pgrestore_remote.go` — `:restore` via `psql`; dump on stdin;
+  `:restore!` omits `ON_ERROR_STOP` for the same continue-and-review flow
 - `locks.go` / `sessions.go` — `LockWait` / `SessionInfo` helpers; driver
   `Locks()` / `Sessions()` / `KillSession()` live in `mysql.go` / `postgres.go`
   / `sqlite.go`
