@@ -162,6 +162,24 @@ Status bar shows `NORMAL` / `INSERT` / `SEARCH` / `V-LINE` while the editor is f
 | `g X`      | Export dialog (format · columns · scope)   |
 | `:diff`    | Diff result pages of two tabs (`:diff [a] [b]`) |
 
+## Record inspector (`ctrl+o`)
+
+| Key | Action |
+| --- | --- |
+| `j/k` | Move field (or tree row when JSON is open) |
+| `g` / `G` | Top / bottom (field or JSON tree) |
+| `/` | Filter fields |
+| `o` / `enter` | Open JSON fold / toggle node under cursor |
+| `h` / `l` | Collapse / expand JSON node (←/→ same) |
+| `esc` | Collapse JSON tree (or cancel insert) |
+| `e` / `i` | Edit field (`E` popup for JSON) |
+| `E` | Expand/view field (multi-line) |
+| `g d` | Follow foreign key |
+| `u` / `g b` | Go back |
+| `A` | Insert row |
+| `D` | Discard edits |
+| `ctrl+s` | Save |
+
 ## Chart panel (`:bar` / `:line` / `:pie` / …)
 
 | Key | Action |

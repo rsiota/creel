@@ -54,7 +54,9 @@ func TestNewHintSections(t *testing.T) {
 	m.focus = FocusInspector
 	m.inspector.visible = true
 	check("Inspector", map[string]string{
-		"j": "move field", "/": "filter fields", "e": "edit field",
+		"j": "move field", "/": "filter fields", "o": "fold / unfold JSON node",
+		"h": "collapse / expand JSON node",
+		"e": "edit field (JSON opens E)",
 		"d": "follow foreign key", "u": "go back", "A": "insert row",
 	})
 	m.inspector.visible = false

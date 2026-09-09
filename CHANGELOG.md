@@ -12,6 +12,11 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- JSON/JSONB fold in the record inspector — focused object/array fields show a
+  collapsed summary (`▸ {n keys}` / `▸ [n]`); `o` / `enter` opens a navigable
+  tree (`j`/`k` move, `h`/`l` collapse/expand, toggle nested nodes with
+  `o`/`enter`, `esc` or leaving the field closes it). `e` / `i` on JSON opens
+  the `E` cell editor; `E` still pretty-prints and `compactJSON`s on save.
 - Chart export — with a chart open, `x` writes a Unicode snapshot and `X` an
   SVG to `~/Downloads` (`:chartexport [txt|svg]` / `:chartsave`). Works for
   bar, hist, freq, pie, line, and scatter.

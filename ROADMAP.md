@@ -259,7 +259,8 @@ at a time so each can be checked before the next starts.
 
 **Fits the product (later)**
 - DuckDB as a fourth driver (charts + CSV/Parquet; static-binary friendly).
-- JSON/JSONB foldable tree in the inspector (`E` already pretty-prints).
+- JSON/JSONB foldable tree in the inspector — ✅ DONE (navigable nested folds
+  with `o`/`enter`; `E` remains the full editor).
 - ERD tooltip nullability/defaults (`TableColumnInfo`).
 - Unify the two ERD routing systems onto the dynamic polyline router.
 - Discoverability content (short asciinema of `g r` → insert-related → ERD

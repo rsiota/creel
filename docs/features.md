@@ -265,7 +265,12 @@ erDiagram
   shows `PARAM n` while any are set. Cleared on disconnect.
 - **Record inspector** — side panel with a vertical form view that tracks the
   results cursor. Results `h`/`l` always update the focused inspector field;
-  inspector → grid column sync is opt-in via `:set inspector_sync on`.
+  inspector → grid column sync is opt-in via `:set inspector_sync on`. JSON /
+  JSONB object and array fields fold by default (`▸ {n keys}` / `▸ [n]`);
+  `o` / `enter` opens a navigable tree (`j`/`k` move, `o`/`enter` toggles the
+  node under the cursor, `h`/`l` collapse/expand like the explorer, nested
+  containers start collapsed, `esc` or leaving the field closes the tree).
+  `e` / `i` on JSON opens the `E` cell editor (tree is view-only).
 - **Schema editing** — add columns, rename tables, create/drop/truncate tables,
   and a grid-based table designer (`N`).
 - **Table structure view** (`d`) — a tabbed structure editor: columns (editable

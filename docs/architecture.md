@@ -112,8 +112,9 @@ subsystem:
   `chart_query.go` / `chart_export.go` — bar, line, scatter, hist, freq, and pie
   charts in the results slot; `x` / `X` / `:chartexport` write Unicode or SVG
   snapshots to `~/Downloads`
-- `inspector.go` — record inspector (right-side form view)
-- `cell_edit_popup.go`, `json_format.go` — cell editor + JSON pretty-print/highlight
+- `inspector.go` — record inspector (right-side form view); JSON/JSONB fold
+- `cell_edit_popup.go`, `json_format.go`, `json_tree.go` — cell editor + JSON
+  pretty-print/highlight + inspector fold summaries
 
 **Row & schema editing**
 - `editing.go` — edit staging, FK nav, table-name rewrite

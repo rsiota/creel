@@ -4518,7 +4518,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				// otherwise the shared textinput keeps rendering on the newly
 				// focused field (same failure mode as results-grid click-away).
 				m.commitInspectorFieldEdit()
-				m.inspector.CursorUp()
+				m.inspector.CursorUp(m.inspectorResults())
 				m.syncGridColFromInspector()
 				return m, nil
 			case "down", "j":
@@ -4544,7 +4544,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.inspector.FilterBackspace()
 				return m, nil
 			case "up", "k":
-				m.inspector.CursorUp()
+				m.inspector.CursorUp(m.inspectorResults())
 				m.syncGridColFromInspector()
 				return m, nil
 			case "down", "j":
@@ -4561,23 +4561,45 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "up", "k":
 			m.inspector.pendingG = false
-			m.inspector.CursorUp()
+			src := m.inspectorResults()
+			if m.inspector.JSONTreeActive() {
+				if m.inspector.JSONTreeUp(src) {
+					return m, nil
+				}
+			}
+			m.inspector.CursorUp(src)
 			m.syncGridColFromInspector()
 			return m, nil
 		case "down", "j":
 			m.inspector.pendingG = false
-			m.inspector.CursorDown(m.inspectorResults())
+			src := m.inspectorResults()
+			if m.inspector.JSONTreeActive() {
+				if m.inspector.JSONTreeDown(src) {
+					return m, nil
+				}
+			}
+			m.inspector.CursorDown(src)
 			m.syncGridColFromInspector()
 			return m, nil
 		case "G":
 			m.inspector.pendingG = false
-			m.inspector.CursorBottom(m.inspectorResults())
+			src := m.inspectorResults()
+			if m.inspector.JSONTreeActive() {
+				m.inspector.JSONTreeBottom(src)
+				return m, nil
+			}
+			m.inspector.CursorBottom(src)
 			m.syncGridColFromInspector()
 			return m, nil
 		case "g":
 			if m.inspector.pendingG {
 				m.inspector.pendingG = false
-				m.inspector.CursorTop()
+				src := m.inspectorResults()
+				if m.inspector.JSONTreeActive() {
+					m.inspector.JSONTreeTop(src)
+					return m, nil
+				}
+				m.inspector.CursorTop(src)
 				m.syncGridColFromInspector()
 				return m, nil
 			}
@@ -4604,11 +4626,33 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "/":
 			m.inspector.StartFilter()
 			return m, nil
+		case "o", "enter":
+			m.inspector.pendingG = false
+			if m.inspector.ToggleJSONFold(m.inspectorResults()) {
+				return m, nil
+			}
+			return m, nil
+		case "l", "right":
+			m.inspector.pendingG = false
+			if m.inspector.JSONTreeExpand(m.inspectorResults()) {
+				return m, nil
+			}
+			return m, nil
+		case "h", "left":
+			m.inspector.pendingG = false
+			if m.inspector.JSONTreeCollapse(m.inspectorResults()) {
+				return m, nil
+			}
+			return m, nil
 		case "e", "i":
 			m.inspector.pendingG = false
 			src := m.inspectorResults()
 			col := m.inspector.selectedColumn(src)
 			if !m.inspector.IsInserting() && m.results.IsBlobCell(m.results.CursorRow(), col) {
+				return m, m.openCellEditPopup(m.results.CursorRow(), col)
+			}
+			// JSON is view-only in the inspector fold; edit via the E popup.
+			if !m.inspector.IsInserting() && m.inspector.FocusedFieldIsJSON(src) {
 				return m, m.openCellEditPopup(m.results.CursorRow(), col)
 			}
 			if !m.inspector.IsInserting() && m.inspector.IsFieldTruncated(src) {
@@ -4635,6 +4679,10 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "esc":
+			if m.inspector.JSONTreeActive() {
+				m.inspector.CollapseJSONTree()
+				return m, nil
+			}
 			if m.inspector.IsInserting() {
 				m.inspector.CancelInsert()
 				return m, m.maybeRestoreExplorerAfterInsert()

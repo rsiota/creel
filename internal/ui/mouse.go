@@ -166,8 +166,18 @@ func (m Model) handleInspectorWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	src := m.inspectorResults()
 	if msg.Type == tea.MouseWheelUp {
-		m.inspector.CursorUp()
+		if m.inspector.JSONTreeActive() {
+			if m.inspector.JSONTreeUp(src) {
+				return m, nil
+			}
+		}
+		m.inspector.CursorUp(src)
 	} else {
+		if m.inspector.JSONTreeActive() {
+			if m.inspector.JSONTreeDown(src) {
+				return m, nil
+			}
+		}
 		m.inspector.CursorDown(src)
 	}
 	m.syncGridColFromInspector()

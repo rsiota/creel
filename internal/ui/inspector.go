@@ -19,20 +19,24 @@ const InspectorWidth = 45
 // column name as a label above a bordered value box. When the underlying
 // results are editable, individual fields can be modified inline.
 type Inspector struct {
-	width        int
-	height       int
-	visible      bool
-	cursorField  int
-	editing      bool
-	editInput    textinput.Model
-	scrollRow    int
-	pendingG     bool
-	filtering    bool
-	filter       string
-	inserting    bool
-	insertValues map[int]string
-	editingCol   int
-	editOriginal string // value loaded into editInput; used to skip no-op commits
+	width          int
+	height         int
+	visible        bool
+	cursorField    int
+	editing        bool
+	editInput      textinput.Model
+	scrollRow      int
+	pendingG       bool
+	filtering      bool
+	filter         string
+	inserting      bool
+	insertValues   map[int]string
+	editingCol     int
+	editOriginal   string          // value loaded into editInput; used to skip no-op commits
+	jsonExpanded   bool            // field-level fold: tree visible for focused JSON
+	jsonTreeOpen   map[string]bool // which container paths are expanded
+	jsonTreeCursor int             // selected row in the visible tree
+	jsonTreeScroll int             // first visible tree row (viewport)
 }
 
 // NewInspector creates a new inspector component.
@@ -50,6 +54,7 @@ func (i *Inspector) Toggle() {
 	i.filter = ""
 	i.inserting = false
 	i.insertValues = nil
+	i.clearJSONTree()
 }
 
 // IsInserting returns whether the inspector is in new-record mode.
@@ -66,6 +71,7 @@ func (i *Inspector) StartInsert() {
 	i.editing = false
 	i.filtering = false
 	i.filter = ""
+	i.clearJSONTree()
 }
 
 // SetInsertValues replaces pending insert field values (column index → text).
@@ -115,6 +121,7 @@ func (i *Inspector) Show() {
 	i.filter = ""
 	i.inserting = false
 	i.insertValues = nil
+	i.clearJSONTree()
 }
 
 // Hide forcibly closes the inspector.
@@ -127,6 +134,7 @@ func (i *Inspector) Hide() {
 	i.filter = ""
 	i.inserting = false
 	i.insertValues = nil
+	i.clearJSONTree()
 }
 
 // IsVisible returns whether the inspector panel is currently shown.
@@ -155,6 +163,7 @@ func (i *Inspector) Reset() {
 	i.filter = ""
 	i.inserting = false
 	i.insertValues = nil
+	i.clearJSONTree()
 }
 
 // IsFiltering returns whether the inspector filter input is active.
@@ -168,6 +177,7 @@ func (i *Inspector) StartFilter() {
 	i.filter = ""
 	i.cursorField = 0
 	i.scrollRow = 0
+	i.clearJSONTree()
 }
 
 // CancelFilter exits filter mode and clears the query.
@@ -190,6 +200,7 @@ func (i *Inspector) FilterAddChar(ch string) {
 	i.filter += ch
 	i.cursorField = 0
 	i.scrollRow = 0
+	i.clearJSONTree()
 }
 
 // FilterBackspace removes the last character from the filter.
@@ -199,6 +210,7 @@ func (i *Inspector) FilterBackspace() {
 	}
 	i.cursorField = 0
 	i.scrollRow = 0
+	i.clearJSONTree()
 }
 
 // fieldList returns visible field column indices, filtered and sorted when active.
@@ -263,6 +275,9 @@ func (i *Inspector) SyncToColumn(col int, results ResultsTable) {
 	fields := i.fieldList(results)
 	for fi, c := range fields {
 		if c == col {
+			if i.cursorField != fi {
+				i.clearJSONTree()
+			}
 			i.cursorField = fi
 			i.ensureFieldVisible(results)
 			return
@@ -287,27 +302,288 @@ func (i Inspector) IsFieldTruncated(results ResultsTable) bool {
 	return runeLen(val) > valueWidth
 }
 
+// FocusedFieldIsJSON reports whether the focused field holds a JSON object
+// or array (foldable in the inspector; edited via the E popup).
+func (i Inspector) FocusedFieldIsJSON(results ResultsTable) bool {
+	val, ok := i.focusedFieldRaw(results)
+	return ok && isJSONValue(val)
+}
+
+// JSONTreeActive reports whether the focused JSON field fold is open (tree
+// navigation captures j/k / o / enter / esc).
+func (i Inspector) JSONTreeActive() bool {
+	return i.jsonExpanded
+}
+
+func (i Inspector) focusedFieldRaw(results ResultsTable) (string, bool) {
+	col := i.selectedColumn(results)
+	if col < 0 || col >= results.NumCols() {
+		return "", false
+	}
+	if i.inserting {
+		return i.insertValues[col], true
+	}
+	row := results.CursorRow()
+	if row < 0 || row >= results.NumRows() {
+		return "", false
+	}
+	return results.RowValue(row, col), true
+}
+
+func (i *Inspector) clearJSONTree() {
+	i.jsonExpanded = false
+	i.jsonTreeOpen = nil
+	i.jsonTreeCursor = 0
+	i.jsonTreeScroll = 0
+}
+
+// CollapseJSONTree closes the field-level JSON fold (esc while browsing).
+func (i *Inspector) CollapseJSONTree() {
+	i.clearJSONTree()
+}
+
+func (i Inspector) jsonTreeRows(results ResultsTable) []jsonTreeRow {
+	val, ok := i.focusedFieldRaw(results)
+	if !ok {
+		return nil
+	}
+	v, ok := parseJSONContainer(val)
+	if !ok {
+		return nil
+	}
+	return buildJSONTreeRows(v, i.jsonTreeOpen)
+}
+
+func (i *Inspector) clampJSONTree(results ResultsTable) {
+	rows := i.jsonTreeRows(results)
+	if len(rows) == 0 {
+		i.jsonTreeCursor = 0
+		i.jsonTreeScroll = 0
+		return
+	}
+	if i.jsonTreeCursor >= len(rows) {
+		i.jsonTreeCursor = len(rows) - 1
+	}
+	if i.jsonTreeCursor < 0 {
+		i.jsonTreeCursor = 0
+	}
+	if i.jsonTreeCursor < i.jsonTreeScroll {
+		i.jsonTreeScroll = i.jsonTreeCursor
+	}
+	if i.jsonTreeCursor >= i.jsonTreeScroll+jsonTreeMaxLines {
+		i.jsonTreeScroll = i.jsonTreeCursor - jsonTreeMaxLines + 1
+	}
+	if i.jsonTreeScroll < 0 {
+		i.jsonTreeScroll = 0
+	}
+}
+
+// ToggleJSONFold opens the field fold, toggles the tree node under the cursor,
+// or closes the fold when collapsing the root. Returns false when the field
+// is not a JSON object/array.
+func (i *Inspector) ToggleJSONFold(results ResultsTable) bool {
+	if !i.FocusedFieldIsJSON(results) {
+		return false
+	}
+	if !i.jsonExpanded {
+		i.jsonExpanded = true
+		i.jsonTreeOpen = map[string]bool{jsonTreeRootPath: true}
+		i.jsonTreeCursor = 0
+		i.jsonTreeScroll = 0
+		i.ensureFieldVisible(results)
+		return true
+	}
+	rows := i.jsonTreeRows(results)
+	if len(rows) == 0 {
+		return true
+	}
+	if i.jsonTreeCursor < 0 || i.jsonTreeCursor >= len(rows) {
+		i.clampJSONTree(results)
+	}
+	row := rows[i.jsonTreeCursor]
+	if !row.foldable {
+		return true
+	}
+	if row.path == jsonTreeRootPath && row.open {
+		i.clearJSONTree()
+		i.ensureFieldVisible(results)
+		return true
+	}
+	if i.jsonTreeOpen == nil {
+		i.jsonTreeOpen = map[string]bool{jsonTreeRootPath: true}
+	}
+	i.jsonTreeOpen[row.path] = !i.jsonTreeOpen[row.path]
+	i.clampJSONTree(results)
+	i.ensureFieldVisible(results)
+	return true
+}
+
+func jsonTreeParentPath(path string) string {
+	if path == jsonTreeRootPath || path == "" {
+		return ""
+	}
+	i := strings.LastIndex(path, "/")
+	if i <= 0 {
+		return jsonTreeRootPath
+	}
+	return path[:i]
+}
+
+// JSONTreeExpand (l / →) opens the node under the cursor. If it is already
+// open, moves to its first child. When the field fold is closed, opens it.
+func (i *Inspector) JSONTreeExpand(results ResultsTable) bool {
+	if !i.FocusedFieldIsJSON(results) {
+		return false
+	}
+	if !i.jsonExpanded {
+		return i.ToggleJSONFold(results)
+	}
+	rows := i.jsonTreeRows(results)
+	if len(rows) == 0 {
+		return true
+	}
+	i.clampJSONTree(results)
+	row := rows[i.jsonTreeCursor]
+	if row.foldable && !row.open {
+		if i.jsonTreeOpen == nil {
+			i.jsonTreeOpen = map[string]bool{jsonTreeRootPath: true}
+		}
+		i.jsonTreeOpen[row.path] = true
+		i.clampJSONTree(results)
+		i.ensureFieldVisible(results)
+		return true
+	}
+	if row.foldable && row.open && i.jsonTreeCursor+1 < len(rows) &&
+		rows[i.jsonTreeCursor+1].depth == row.depth+1 {
+		i.jsonTreeCursor++
+		i.clampJSONTree(results)
+	}
+	return true
+}
+
+// JSONTreeCollapse (h / ←) folds the node under the cursor. If it is already
+// collapsed (or a leaf), moves to its parent — collapsing the root closes the
+// field fold.
+func (i *Inspector) JSONTreeCollapse(results ResultsTable) bool {
+	if !i.jsonExpanded {
+		return false
+	}
+	rows := i.jsonTreeRows(results)
+	if len(rows) == 0 {
+		return true
+	}
+	i.clampJSONTree(results)
+	row := rows[i.jsonTreeCursor]
+	if row.foldable && row.open {
+		if row.path == jsonTreeRootPath {
+			i.clearJSONTree()
+			i.ensureFieldVisible(results)
+			return true
+		}
+		i.jsonTreeOpen[row.path] = false
+		i.clampJSONTree(results)
+		i.ensureFieldVisible(results)
+		return true
+	}
+	parent := jsonTreeParentPath(row.path)
+	if parent == "" {
+		i.clearJSONTree()
+		i.ensureFieldVisible(results)
+		return true
+	}
+	for idx, r := range rows {
+		if r.path == parent {
+			i.jsonTreeCursor = idx
+			i.clampJSONTree(results)
+			return true
+		}
+	}
+	return true
+}
+
+// JSONTreeUp moves the tree cursor up. Returns false when already at the top
+// (caller should collapse and move to the previous field).
+func (i *Inspector) JSONTreeUp(results ResultsTable) bool {
+	if !i.jsonExpanded {
+		return false
+	}
+	if i.jsonTreeCursor > 0 {
+		i.jsonTreeCursor--
+		i.clampJSONTree(results)
+		return true
+	}
+	i.clearJSONTree()
+	return false
+}
+
+// JSONTreeDown moves the tree cursor down. Returns false when already at the
+// bottom (caller should collapse and move to the next field).
+func (i *Inspector) JSONTreeDown(results ResultsTable) bool {
+	if !i.jsonExpanded {
+		return false
+	}
+	rows := i.jsonTreeRows(results)
+	if i.jsonTreeCursor < len(rows)-1 {
+		i.jsonTreeCursor++
+		i.clampJSONTree(results)
+		return true
+	}
+	i.clearJSONTree()
+	return false
+}
+
+// JSONTreeTop moves the tree cursor to the root row.
+func (i *Inspector) JSONTreeTop(results ResultsTable) {
+	if !i.jsonExpanded {
+		return
+	}
+	i.jsonTreeCursor = 0
+	i.clampJSONTree(results)
+}
+
+// JSONTreeBottom moves the tree cursor to the last visible row.
+func (i *Inspector) JSONTreeBottom(results ResultsTable) {
+	if !i.jsonExpanded {
+		return
+	}
+	rows := i.jsonTreeRows(results)
+	if len(rows) == 0 {
+		return
+	}
+	i.jsonTreeCursor = len(rows) - 1
+	i.clampJSONTree(results)
+}
+
 // CursorTop moves the field cursor to the first field.
-func (i *Inspector) CursorTop() {
+func (i *Inspector) CursorTop(results ...ResultsTable) {
+	if i.cursorField != 0 {
+		i.clearJSONTree()
+	}
 	i.cursorField = 0
-	i.ensureFieldVisible()
+	i.ensureFieldVisible(results...)
 }
 
 // CursorBottom moves the field cursor to the last field.
 func (i *Inspector) CursorBottom(results ResultsTable) {
 	n := len(i.fieldList(results))
+	next := 0
 	if n > 0 {
-		i.cursorField = n - 1
+		next = n - 1
 	}
+	if i.cursorField != next {
+		i.clearJSONTree()
+	}
+	i.cursorField = next
 	i.ensureFieldVisible(results)
 }
 
 // CursorUp moves the field cursor up by one.
-func (i *Inspector) CursorUp() {
+func (i *Inspector) CursorUp(results ...ResultsTable) {
 	if i.cursorField > 0 {
 		i.cursorField--
+		i.clearJSONTree()
 	}
-	i.ensureFieldVisible()
+	i.ensureFieldVisible(results...)
 }
 
 // CursorDown moves the field cursor down by one.
@@ -315,6 +591,7 @@ func (i *Inspector) CursorDown(results ResultsTable) {
 	n := len(i.fieldList(results))
 	if n > 0 && i.cursorField < n-1 {
 		i.cursorField++
+		i.clearJSONTree()
 	}
 	i.ensureFieldVisible(results)
 }
@@ -331,7 +608,6 @@ func (i *Inspector) ClickField(contentY int, results ResultsTable) int {
 		return -1
 	}
 
-	// In insert mode the "[new record]" header occupies the first content line.
 	y := contentY
 	if i.inserting {
 		y--
@@ -340,29 +616,42 @@ func (i *Inspector) ClickField(contentY int, results ResultsTable) int {
 		return -1
 	}
 
-	maxFields := i.visibleFieldCount()
-	start := i.scrollRow
-	if start > numFields-maxFields && numFields > maxFields {
-		start = numFields - maxFields
+	start := i.scrollStart(results)
+	acc := 0
+	for fi := start; fi < numFields; fi++ {
+		h := i.fieldLineCount(results, fi)
+		if y >= acc && y < acc+h {
+			if i.cursorField != fi {
+				i.clearJSONTree()
+			}
+			i.cursorField = fi
+			i.ensureFieldVisible(results)
+			return fieldIndices[fi]
+		}
+		acc += h
 	}
-	if start < 0 {
-		start = 0
-	}
-
-	relField := y / linesPerField
-	fieldIdx := start + relField
-	if fieldIdx < 0 || fieldIdx >= numFields {
-		return -1
-	}
-	i.cursorField = fieldIdx
-	i.ensureFieldVisible(results)
-	return fieldIndices[fieldIdx]
+	return -1
 }
 
-// visibleFieldCount returns how many complete fields fit in the available height.
-func (i Inspector) visibleFieldCount() int {
+// fieldsAvailHeight is the vertical budget for field boxes (and the insert
+// header when present).
+func (i Inspector) fieldsAvailHeight() int {
 	avail := i.height
 	if i.filtering {
+		avail--
+	}
+	if avail < 1 {
+		return 1
+	}
+	return avail
+}
+
+// visibleFieldCount returns how many complete fields fit when every field is
+// the default single-value height. Used as a fallback when results are not
+// available (e.g. SetSize before the first View).
+func (i Inspector) visibleFieldCount() int {
+	avail := i.fieldsAvailHeight()
+	if i.inserting {
 		avail--
 	}
 	if avail < linesPerField {
@@ -371,23 +660,143 @@ func (i Inspector) visibleFieldCount() int {
 	return avail / linesPerField
 }
 
+func (i Inspector) valueWidth() int {
+	w := i.width - 4
+	if w < 5 {
+		return 5
+	}
+	return w
+}
+
+// fieldLineCount is the rendered height of field index fi (label + borders +
+// value lines), including the JSON fold when that field is focused.
+func (i Inspector) fieldLineCount(results ResultsTable, fi int) int {
+	fieldIndices := i.fieldList(results)
+	if fi < 0 || fi >= len(fieldIndices) {
+		return linesPerField
+	}
+	col := fieldIndices[fi]
+	row := results.CursorRow()
+	if i.inserting {
+		row = 0
+	}
+	val := ""
+	if i.inserting {
+		val = i.insertValues[col]
+	} else if row >= 0 && row < results.NumRows() {
+		val = results.RowValue(row, col)
+	}
+	focused := fi == i.cursorField
+	editing := i.editing && focused
+	dirty := false
+	if i.inserting {
+		dirty = i.insertValues[col] != ""
+	} else if row >= 0 && row < results.NumRows() {
+		dirty = results.IsDirty(row, col)
+	}
+	content := i.valueContentFor(val, focused, editing, dirty)
+	return 3 + strings.Count(content, "\n") + 1
+}
+
+func (i Inspector) valueContentFor(val string, focused, editing, dirty bool) string {
+	vw := i.valueWidth()
+	switch {
+	case editing:
+		return renderEditInput(i.editInput, vw, colorEdit)
+	case focused:
+		if content, ok := jsonTreeValueContent(val, vw, i.jsonExpanded, i.jsonTreeOpen, i.jsonTreeCursor, i.jsonTreeScroll); ok {
+			return content
+		}
+	}
+	displayVal := truncateCell(val, vw)
+	valStyle := lipgloss.NewStyle().Foreground(colorFg)
+	if !i.inserting && (val == "NULL" || db.IsBlobPlaceholder(val)) {
+		valStyle = lipgloss.NewStyle().Foreground(colorMuted)
+	}
+	if dirty {
+		valStyle = lipgloss.NewStyle().Foreground(colorPrimary)
+	}
+	if i.inserting && val == "" {
+		valStyle = lipgloss.NewStyle().Foreground(colorMuted)
+		displayVal = truncateCell("(empty)", vw)
+	}
+	return valStyle.Render(displayVal)
+}
+
+// scrollStart returns the first visible field index, clamped so the viewport
+// still fills when near the bottom.
+func (i Inspector) scrollStart(results ResultsTable) int {
+	fieldIndices := i.fieldList(results)
+	numFields := len(fieldIndices)
+	if numFields == 0 {
+		return 0
+	}
+	start := i.scrollRow
+	if start < 0 {
+		start = 0
+	}
+	if start >= numFields {
+		start = numFields - 1
+	}
+	return start
+}
+
 // ensureFieldVisible adjusts scrollRow so the cursor field stays in view.
 func (i *Inspector) ensureFieldVisible(results ...ResultsTable) {
-	max := i.visibleFieldCount()
+	if len(results) == 0 {
+		max := i.visibleFieldCount()
+		if i.cursorField < i.scrollRow {
+			i.scrollRow = i.cursorField
+		}
+		if i.cursorField >= i.scrollRow+max {
+			i.scrollRow = i.cursorField - max + 1
+		}
+		if i.scrollRow < 0 {
+			i.scrollRow = 0
+		}
+		return
+	}
+	r := results[0]
+	fieldIndices := i.fieldList(r)
+	numFields := len(fieldIndices)
+	if numFields == 0 {
+		i.scrollRow = 0
+		return
+	}
+	if i.cursorField >= numFields {
+		i.cursorField = numFields - 1
+	}
+	if i.cursorField < 0 {
+		i.cursorField = 0
+	}
 	if i.cursorField < i.scrollRow {
 		i.scrollRow = i.cursorField
 	}
-	if i.cursorField >= i.scrollRow+max {
-		i.scrollRow = i.cursorField - max + 1
+
+	avail := i.fieldsAvailHeight()
+	if i.inserting {
+		avail--
+	}
+	if avail < 1 {
+		avail = 1
+	}
+
+	// Grow scrollRow until the cursor field fits in the remaining budget.
+	for i.scrollRow < i.cursorField {
+		used := 0
+		for fi := i.scrollRow; fi <= i.cursorField; fi++ {
+			used += i.fieldLineCount(r, fi)
+		}
+		if used <= avail {
+			break
+		}
+		i.scrollRow++
 	}
 	if i.scrollRow < 0 {
 		i.scrollRow = 0
 	}
-	if len(results) > 0 {
-		fieldIndices := i.fieldList(results[0])
-		if len(fieldIndices) > 0 && i.scrollRow > len(fieldIndices)-1 {
-			i.scrollRow = len(fieldIndices) - 1
-		}
+	if i.scrollRow > numFields-1 {
+		i.scrollRow = numFields - 1
 	}
 }
 
@@ -502,13 +911,7 @@ func (i Inspector) View(results ResultsTable) string {
 	}
 
 	if numFields == 0 || (!i.inserting && results.NumRows() == 0) {
-		fieldsHeight := i.height
-		if i.filtering {
-			fieldsHeight--
-		}
-		if fieldsHeight < 1 {
-			fieldsHeight = 1
-		}
+		fieldsHeight := i.fieldsAvailHeight()
 		var body strings.Builder
 		if i.filtering && numFields == 0 && results.NumCols() > 0 {
 			body.WriteString(mutedStyle.Render(" (no matches)"))
@@ -535,13 +938,6 @@ func (i Inspector) View(results ResultsTable) string {
 		row = 0
 	}
 
-	valueWidth := i.width - 4
-	if valueWidth < 5 {
-		valueWidth = 5
-	}
-
-	maxFields := i.visibleFieldCount()
-
 	cursorClamp := i.cursorField
 	if cursorClamp >= numFields {
 		cursorClamp = numFields - 1
@@ -550,16 +946,11 @@ func (i Inspector) View(results ResultsTable) string {
 		cursorClamp = 0
 	}
 
-	start := i.scrollRow
-	if start > numFields-maxFields && numFields > maxFields {
-		start = numFields - maxFields
-	}
-	if start < 0 {
-		start = 0
-	}
-	end := start + maxFields
-	if end > numFields {
-		end = numFields
+	start := i.scrollStart(results)
+	avail := i.fieldsAvailHeight()
+	used := 0
+	if i.inserting {
+		used = 1
 	}
 
 	labelStyle := lipgloss.NewStyle().Foreground(colorLabel)
@@ -576,7 +967,7 @@ func (i Inspector) View(results ResultsTable) string {
 		rendered.WriteString("\n")
 	}
 
-	for fi := start; fi < end; fi++ {
+	for fi := start; fi < numFields; fi++ {
 		c := fieldIndices[fi]
 		colName := results.ColumnName(c)
 		isPK := results.isPKColumn(colName)
@@ -590,7 +981,6 @@ func (i Inspector) View(results ResultsTable) string {
 			val = i.insertValues[c]
 		}
 
-		// Label (left) and column type (right, marker slot).
 		labelRaw := colName
 		if isPK {
 			labelRaw = "* " + labelRaw
@@ -606,7 +996,6 @@ func (i Inspector) View(results ResultsTable) string {
 			ls = pkLabelStyle
 		}
 		labelStr := ls.Render(labelRaw)
-		// Marker: FK target when present (→ table.col), otherwise the column type.
 		markerStr := typeStyle.Render(strings.ToLower(results.ColumnType(c)))
 		if fk, ok := results.ForeignKeyAt(c); ok {
 			target := "→ " + fk.RefTable + "." + fk.RefColumn
@@ -617,51 +1006,19 @@ func (i Inspector) View(results ResultsTable) string {
 			markerStr = fkStyle.Render(target)
 		}
 
-		// Value line(s) filling the box interior.
-		var valueContent string
-		switch {
-		case i.editing && isFocused:
-			valueContent = renderEditInput(i.editInput, valueWidth, colorEdit)
-		case !i.inserting && isFocused:
-			if pretty, isJSON := formatJSON(val); isJSON {
-				// Multi-line highlighted JSON for the focused field.
-				jsonLines := strings.Split(pretty, "\n")
-				const maxJSONLines = 6
-				if len(jsonLines) > maxJSONLines {
-					jsonLines = jsonLines[:maxJSONLines]
-				}
-				hl := make([]string, len(jsonLines))
-				for k, jl := range jsonLines {
-					hl[k] = highlightJSON(truncateCell(jl, valueWidth))
-				}
-				valueContent = strings.Join(hl, "\n")
-			}
+		editing := i.editing && isFocused
+		valueContent := i.valueContentFor(val, isFocused, editing, isDirty)
+		box := renderFieldBox(labelStr, markerStr, valueContent, i.width, fieldBoxBorder(isFocused))
+		boxH := strings.Count(box, "\n") + 1
+		if used > 0 && used+boxH > avail {
+			break
 		}
-		if valueContent == "" {
-			displayVal := truncateCell(val, valueWidth)
-			valStyle := lipgloss.NewStyle().Foreground(colorFg)
-			if !i.inserting && (val == "NULL" || db.IsBlobPlaceholder(val)) {
-				valStyle = lipgloss.NewStyle().Foreground(colorMuted)
-			}
-			if isDirty {
-				valStyle = lipgloss.NewStyle().Foreground(colorPrimary)
-			}
-			if i.inserting && val == "" {
-				valStyle = lipgloss.NewStyle().Foreground(colorMuted)
-				displayVal = truncateCell("(empty)", valueWidth)
-			}
-			valueContent = valStyle.Render(displayVal)
-		}
-
-		rendered.WriteString(renderFieldBox(labelStr, markerStr, valueContent, i.width, fieldBoxBorder(isFocused)))
+		rendered.WriteString(box)
 		rendered.WriteString("\n")
+		used += boxH
 	}
 
-	// Height-constrained fields block fills the panel.
-	fieldsHeight := i.height
-	if i.filtering {
-		fieldsHeight--
-	}
+	fieldsHeight := i.fieldsAvailHeight()
 	if fieldsHeight < linesPerField {
 		fieldsHeight = linesPerField
 	}
