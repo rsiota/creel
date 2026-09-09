@@ -23,7 +23,7 @@ const (
 //
 // Currently wired: page_size, query_timeout, default_driver, theme,
 // theme_overrides, transparent_background, confirm_destructive,
-// inspector_open, status_hints, ai_dry_run.
+// inspector_open, inspector_sync, status_hints, ai_dry_run.
 // Reserved for follow-ups (not yet applied): cursor_style — the struct is
 // designed so adding fields is the only change needed here.
 type Settings struct {
@@ -69,6 +69,13 @@ type Settings struct {
 	// behaviour — closed until ctrl+o. Left unsanitized like
 	// TransparentBackground so the default stays off without writing the key.
 	InspectorOpen bool `yaml:"inspector_open,omitempty"`
+
+	// InspectorSync moves the results grid column cursor when the inspector
+	// field cursor moves (j/k, wheel, click). Default off — the moving grid
+	// highlight while focused on the inspector is useful for some and
+	// distracting for others. Grid → inspector sync stays always on so the
+	// inspector follows h/l on the results panel.
+	InspectorSync bool `yaml:"inspector_sync,omitempty"`
 
 	// StatusHints shows the right-aligned context keybinding strip on the
 	// status bar (j/k, enter, …). nil (the default) and true keep the strip;

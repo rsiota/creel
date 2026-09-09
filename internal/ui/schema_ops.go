@@ -353,8 +353,10 @@ func (m Model) inspectorColumnSyncActive() bool {
 // syncGridColFromInspector moves the results column cursor to the inspector
 // field without changing focus. Hidden grid columns are left alone so j/k
 // can still inspect a column that is not shown in the table.
+// Gated by settings.InspectorSync (default off) — grid → inspector sync is
+// unconditional via syncInspectorFieldFromGrid.
 func (m *Model) syncGridColFromInspector() {
-	if !m.inspectorColumnSyncActive() {
+	if !m.settings.InspectorSync || !m.inspectorColumnSyncActive() {
 		return
 	}
 	col := m.inspector.selectedColumn(m.results)

@@ -15,6 +15,7 @@ func setupInspectorColSyncModel(t *testing.T) Model {
 	m.state = stateWorkspace
 	m.focus = FocusInspector
 	m.inspector.visible = true
+	m.settings.InspectorSync = true // opt in: tests cover inspector → grid sync
 	m.results.SetResult(
 		[]string{"id", "name", "email"},
 		[][]string{{"1", "alice", "alice@test.com"}},
@@ -24,6 +25,20 @@ func setupInspectorColSyncModel(t *testing.T) Model {
 	m.results.SetCursor(0, 0)
 	m.layoutWorkspace()
 	return m
+}
+
+func TestInspectorJKDoesNotMoveResultsColumnByDefault(t *testing.T) {
+	m := setupInspectorColSyncModel(t)
+	m.settings.InspectorSync = false
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m = updated.(Model)
+	if m.inspector.cursorField != 1 {
+		t.Fatalf("cursorField=%d, want 1", m.inspector.cursorField)
+	}
+	if m.results.CursorCol() != 0 {
+		t.Fatalf("results col=%d, want 0 (inspector_sync off)", m.results.CursorCol())
+	}
 }
 
 func TestInspectorJKMovesResultsColumn(t *testing.T) {

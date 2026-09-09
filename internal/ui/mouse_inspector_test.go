@@ -20,6 +20,7 @@ func newInspectorMouseModel(t *testing.T) Model {
 	m.state = stateWorkspace
 	m.focus = FocusResults
 	m.inspector.visible = true
+	m.settings.InspectorSync = true // wheel/click tests assert inspector → grid sync
 	m.results.SetResult(
 		[]string{"id", "user_id", "email", "created_at"},
 		[][]string{{"1", "42", "alice@test.com", "2024-01-01"}},

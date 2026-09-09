@@ -12,6 +12,10 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- `inspector_sync` / `:set inspector_sync on|off` — when on, inspector field
+  navigation also moves the results grid column cursor. **Default off** so
+  browsing the inspector does not skate the grid highlight. Results `h`/`l`
+  still update the inspector field either way.
 - `:restore!` — continue past SQL errors when loading a MySQL/Postgres dump
   (`mysql --force` / psql without `ON_ERROR_STOP`), then open a lookup overlay
   listing ignored client messages. Plain `:restore` still stops on the first

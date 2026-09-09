@@ -262,8 +262,23 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		default:
 			return m, nil
 		}
+		// Capture the in-edit column before applyFocus: that call syncs the
+		// inspector field from the grid when *entering* the panel, which would
+		// otherwise make a same-field click look like a different column when
+		// inspector_sync is off (grid cursor does not follow the field).
+		src := m.inspectorResults()
+		editCol := -1
+		if m.inspector.IsEditing() {
+			editCol = m.inspector.selectedColumn(src)
+		}
+		already := m.focus == FocusInspector
 		m.focus = FocusInspector
-		m.applyFocus()
+		if already {
+			m.editor.Blur()
+			m.tabBar.Blur()
+		} else {
+			m.applyFocus()
+		}
 
 		// Resolve an in-flight field edit before moving the cursor. Without
 		// this, clicking another field while editing left edit mode active
@@ -271,11 +286,6 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		// newly focused field. Commit — mirroring Enter / j/k — so the value
 		// is staged on its own column, then move. Clicking the field already
 		// being edited is left alone.
-		src := m.inspectorResults()
-		editCol := -1
-		if m.inspector.IsEditing() {
-			editCol = m.inspector.selectedColumn(src)
-		}
 		col := m.inspector.ClickField(msg.Y-1, src)
 		if editCol >= 0 && col >= 0 && col != editCol {
 			m.commitInspectorFieldEdit()

@@ -263,7 +263,8 @@ erDiagram
   clears. Literals, comments, and Postgres `::casts` are left alone. Status bar
   shows `PARAM n` while any are set. Cleared on disconnect.
 - **Record inspector** — side panel with a vertical form view that tracks the
-  results cursor.
+  results cursor. Results `h`/`l` always update the focused inspector field;
+  inspector → grid column sync is opt-in via `:set inspector_sync on`.
 - **Schema editing** — add columns, rename tables, create/drop/truncate tables,
   and a grid-based table designer (`N`).
 - **Table structure view** (`d`) — a tabbed structure editor: columns (editable

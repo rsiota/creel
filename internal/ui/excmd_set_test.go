@@ -213,6 +213,30 @@ func TestExSetInspectorOpen(t *testing.T) {
 	}
 }
 
+func TestExSetInspectorSync(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	cfg := &config.Config{}
+	m := NewModel(cfg)
+	if m.settings.InspectorSync {
+		t.Fatal("inspector_sync should default off")
+	}
+
+	m.runExCommand("set inspector_sync on")
+	if !m.settings.InspectorSync || !cfg.Settings.InspectorSync {
+		t.Errorf("inspector_sync not on: settings=%v config=%v",
+			m.settings.InspectorSync, cfg.Settings.InspectorSync)
+	}
+	if !strings.Contains(m.schemaMsg, "inspector_sync=on") {
+		t.Errorf("schemaMsg = %q", m.schemaMsg)
+	}
+
+	m.runExCommand("set column_sync off")
+	if m.settings.InspectorSync || cfg.Settings.InspectorSync {
+		t.Error("column_sync alias should turn preference off")
+	}
+}
+
 func TestConnectOpensInspectorWhenPreferred(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "startup.db")

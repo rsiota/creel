@@ -198,6 +198,7 @@ optional and fall back to defaults when omitted:
 | `transparent_background` | false | By default creel fills the app background with the theme's bg colour (required for light themes to be readable). Set `true` to leave it unpainted so the terminal's own background / transparency shows through — at the cost of light themes looking wrong. |
 | `confirm_destructive` | true | Destructive actions (drop table/database, truncate, delete rows, discard edits, drop column, delete provider/connection, clear history/bookmarks) prompt for confirmation. Set `false` to skip the prompts and run each action immediately. |
 | `inspector_open` | false | Show the row inspector when entering a workspace (after connect / database select). Toggle anytime with `ctrl+o`; `:set inspector_open on` opens it immediately and persists. |
+| `inspector_sync` | false | When on, moving the inspector field cursor (`j`/`k`, wheel, click) also moves the results grid column cursor. Default off — the grid highlight skating while you browse the inspector is opt-in. Grid → inspector sync (results `h`/`l` updates the inspector field) stays always on. |
 | `status_hints` | true | Show the right-aligned context keybinding strip on the status bar (`j/k`, `enter`, …). Set `false` to hide it; left-side chrome (`? help`, first-run jump hints) stays. |
 | `ai_dry_run` | false | When on, `:ai` / panel Apply / `:aifix` open a new **AI scratch** tab (previous editor buffer kept) and auto-run the SQL if it is read-only (`SELECT` / `SHOW` / `EXPLAIN` / …). Writes and DDL still land in the tab for review — never auto-run. Default off keeps the classic “fill editor, then `ctrl+e`” flow. |
 
@@ -213,6 +214,7 @@ settings:
   icons: nerdfont
   confirm_destructive: false
   inspector_open: true
+  inspector_sync: true
   status_hints: false
   ai_dry_run: true
 ```
@@ -245,6 +247,7 @@ You can also change most settings from inside the app with `:set`:
 :set query_timeout 2m
 :set confirm_destructive off
 :set inspector_open on
+:set inspector_sync on
 :set status_hints off
 :set ai_dry_run on
 :color muted #a0a0a0

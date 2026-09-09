@@ -197,6 +197,25 @@ var allSettingSpecs = []settingSpec{
 		complete: completeBoolValues,
 	},
 	{
+		key:     "inspector_sync",
+		aliases: []string{"inspectorsync", "inspector-sync", "sync_inspector", "column_sync"},
+		describe: func(m Model) string {
+			return formatSettingBool("inspector_sync", m.settings.InspectorSync)
+		},
+		apply: func(m *Model, value string) tea.Cmd {
+			on, ok := parseSettingBool(value)
+			if !ok {
+				m.schemaMsg = ":set inspector_sync needs on or off"
+				return nil
+			}
+			m.settings.InspectorSync = on
+			m.saveSettings()
+			m.schemaMsg = formatSettingBool("inspector_sync", on)
+			return nil
+		},
+		complete: completeBoolValues,
+	},
+	{
 		key:     "status_hints",
 		aliases: []string{"hints", "status-hints", "statushints", "show_hints"},
 		describe: func(m Model) string {
