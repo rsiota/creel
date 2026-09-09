@@ -108,7 +108,10 @@ subsystem:
 - `filtering.go` — filter/sort stack, column visibility, backend LIKE search
 - `filter_picker.go` — DISTINCT-value multi-select filter (`g f`)
 - `stats.go` — column statistics + async total row count
-- `chart_panel.go` / `chart_line.go` / `chart_hist.go` / `chart_query.go` — bar, line, scatter, and histogram charts in the results slot (`:bar` / `:line` / `:scatter` / `:hist` / `:freq` / column marks; bang re-queries the full result)
+- `chart_panel.go` / `chart_line.go` / `chart_hist.go` / `chart_pie.go` /
+  `chart_query.go` / `chart_export.go` — bar, line, scatter, hist, freq, and pie
+  charts in the results slot; `x` / `X` / `:chartexport` write Unicode or SVG
+  snapshots to `~/Downloads`
 - `inspector.go` — record inspector (right-side form view)
 - `cell_edit_popup.go`, `json_format.go` — cell editor + JSON pretty-print/highlight
 

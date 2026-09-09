@@ -12,6 +12,9 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- Chart export — with a chart open, `x` writes a Unicode snapshot and `X` an
+  SVG to `~/Downloads` (`:chartexport [txt|svg]` / `:chartsave`). Works for
+  bar, hist, freq, pie, line, and scatter.
 - `inspector_sync` / `:set inspector_sync on|off` — when on, inspector field
   navigation also moves the results grid column cursor. **Default off** so
   browsing the inspector does not skate the grid highlight. Results `h`/`l`

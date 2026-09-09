@@ -69,7 +69,8 @@ top 20 bars are kept and the rest fold into `(other)`; press `o` to unfold
 (and `o` again to fold). `Enter` on a bar keeps rows with that label and
 restores the grid. `Esc`/`q` closes the chart. While the chart is open you can
 still type `:` (e.g. `:watch 2`) — the chart stays up and redraws on each
-refresh. Non-numeric and NULL
+refresh — and export with `x` (Unicode `.txt` to `~/Downloads`) or `X`
+(`.svg`), or `:chartexport [txt|svg]`. Non-numeric and NULL
 value cells are skipped for `sum`/`avg`. `:bar!` charts every row of the
 last SELECT (not just the current page). Bang charts re-fetch the full SELECT
 on refresh.

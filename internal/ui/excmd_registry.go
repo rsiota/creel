@@ -980,6 +980,14 @@ func exCommands() []exCmdSpec {
 			run:      func(m *Model, args []string, force bool) tea.Cmd { return m.exHist(args, force) },
 		},
 		{
+			verbs:    []string{"chartexport", "chartsave", "exportchart"},
+			desc:     "export the open chart to ~/Downloads as txt or svg",
+			usage:    ":chartexport [txt|svg]",
+			argKind:  exArgOptional,
+			complete: completeEnum("txt", "svg"),
+			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exChartExport(args) },
+		},
+		{
 			verbs:   []string{"count"},
 			desc:    "row count for a table (SELECT count(*))",
 			usage:   ":count [table]",

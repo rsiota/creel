@@ -412,6 +412,8 @@ func registry() []Section {
 				{"ctrl+d / ctrl+u", []string{"ctrl+d", "ctrl+u"}, "page down / up", "ctrl+d/ctrl+u"},
 				{"o", []string{"o"}, "unfold / fold (other)", "o"},
 				{"enter", []string{"enter"}, "keep rows for this bar", "enter"},
+				{"x", []string{"x"}, "export Unicode snapshot to ~/Downloads", "x"},
+				{"X", []string{"X"}, "export SVG to ~/Downloads", "X"},
 				{":", []string{":"}, "ex command line", ":"},
 				{"?", []string{"?"}, "help", "?"},
 				{"esc", []string{"esc", "q"}, "close", "esc"},

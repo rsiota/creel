@@ -162,6 +162,18 @@ Status bar shows `NORMAL` / `INSERT` / `SEARCH` / `V-LINE` while the editor is f
 | `g X`      | Export dialog (format · columns · scope)   |
 | `:diff`    | Diff result pages of two tabs (`:diff [a] [b]`) |
 
+## Chart panel (`:bar` / `:line` / `:pie` / …)
+
+| Key | Action |
+| --- | --- |
+| `j/k/h/l` | Move |
+| `o` | Unfold / fold `(other)` |
+| `enter` | Keep rows for this bar / slice |
+| `x` | Export Unicode snapshot → `~/Downloads` |
+| `X` | Export SVG → `~/Downloads` |
+| `:chartexport [txt\|svg]` | Same export with an explicit format |
+| `esc` / `q` | Close chart |
+
 ## Cell editor (`E`)
 
 | Key        | Action                                          |

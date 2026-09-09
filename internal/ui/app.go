@@ -3221,6 +3221,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc", "q", "ctrl+c":
 			m.chartPanel.Hide()
 			return m, nil
+		case "x":
+			m.exportChart(chartExportTXT)
+			return m, nil
+		case "X":
+			m.exportChart(chartExportSVG)
+			return m, nil
 		case "enter":
 			return m, m.drillChartBar()
 		}

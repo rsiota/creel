@@ -181,6 +181,7 @@ or sequenced behind them.
 - **ERD tooltip nullability/defaults** — needs `TableColumnInfo` on hover
   (deferred from the 2026-07-30 tooltip work).
 - **Export a chart** as a Unicode snapshot or SVG.
+  ✅ DONE (`x` / `X` / `:chartexport`).
 - **`:watch` + chart** — ✅ DONE (2026-08-20); see Product review slice 3.
 
 **AI**
@@ -247,6 +248,8 @@ at a time so each can be checked before the next starts.
 - Jump-anywhere palette — ✅ DONE (Ctrl+P lists tables, bookmarks, and themes
   alongside keybindings; history stays on Ctrl+Y; Enter jumps or replays).
 - Chart export (Unicode snapshot or SVG).
+  ✅ DONE (`x` / `X` on an open chart, or `:chartexport [txt|svg]` →
+  `~/Downloads`).
 - AI “explain this query / why slow” with the last `EXPLAIN` attached —
   ✅ DONE (`:aiexplain` / `:why`; caches plan from `g e` / `:explain`, else
   runs EXPLAIN then streams prose to the assistant panel).
