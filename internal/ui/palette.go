@@ -62,6 +62,13 @@ const (
 	maxPaletteQueryLen  = 72
 )
 
+// palettePopupDim is the outer size of the ctrl+p jump-anywhere overlay.
+// Kept shorter than the connection-form shell (popupDim) so the prompt plus
+// maxPaletteItems rows fill the frame without empty padding at the bottom.
+func palettePopupDim() (w, h int) {
+	return 71, maxPaletteItems + 3 // items + prompt + border
+}
+
 // Open shows the palette, building items from the keybinding registry plus
 // optional jump targets in src.
 func (p *palette) Open(src paletteJumpSrc) {

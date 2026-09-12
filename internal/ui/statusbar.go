@@ -27,8 +27,9 @@ func popupShellContentHeight() int {
 
 // popupDim returns the fixed outer popup dimensions (border included). Width
 // is shared by most overlays; height matches the 6-field connection-editor
-// shell. Callers that must fit a short terminal should prefer
-// popupContentSize / popupOuterSize, which cap against term height.
+// shell. The ctrl+p palette uses palettePopupDim instead (shorter). Callers
+// that must fit a short terminal should prefer popupContentSize /
+// popupOuterSize, which cap against term height.
 func popupDim() (w, h int) {
 	return 71, popupShellContentHeight() + 2
 }

@@ -5696,7 +5696,7 @@ func (m Model) viewWorkspace() string {
 
 	// Overlay command palette if visible
 	if m.palette.IsVisible() {
-		pw, ph := popupDim()
+		pw, ph := palettePopupDim()
 		palPanel := m.palette.View(pw, ph)
 		panelW := lipgloss.Width(palPanel)
 		panelH := lipgloss.Height(palPanel)

@@ -797,16 +797,18 @@ func (m *Model) dismissOverlayOnOutsideClick(msg tea.MouseMsg) bool {
 		return false
 	}
 
-	// popupDim() overlays (71×19).
-	pw, ph := popupDim()
-	px, py, _, _ := centeredRect(pw, ph)
+	// Compact overlays: palette uses its own footprint; pickers share popupDim.
 	if m.palette.IsVisible() {
+		pw, ph := palettePopupDim()
+		px, py, _, _ := centeredRect(pw, ph)
 		if outside(px, py, pw, ph) {
 			m.palette.Hide()
 			return true
 		}
 		return false
 	}
+	pw, ph := popupDim()
+	px, py, _, _ := centeredRect(pw, ph)
 	if m.filterPicker.IsVisible() {
 		if outside(px, py, pw, ph) {
 			m.filterPicker.Hide()
