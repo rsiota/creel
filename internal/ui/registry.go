@@ -370,7 +370,8 @@ func registry() []Section {
 			Title:  "Cross-Table Search",
 			Source: "app.go",
 			Items: []Binding{
-				{"↑/↓", []string{"up", "down"}, "move result", "↑/↓"},
+				{"j/k", []string{"j", "k", "up", "down"}, "move result", "j/k"},
+				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
 				{"enter", []string{"enter"}, "search / open result", "enter"},
 				{"esc", []string{"esc", "ctrl+c"}, "close", "esc"},
 			},

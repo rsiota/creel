@@ -28,11 +28,18 @@ func TestExCompletionShowsAllOnOpen(t *testing.T) {
 func TestExCompletionFiltersByPrefix(t *testing.T) {
 	var ex exCmd
 
-	// "g" matches only goto (verbs goto/gt) → one row, still shown.
+	// "g" matches goto and grep (alias gt folds into goto) → two rows.
 	ex.input = "g"
 	ex.recomputeCompletion()
-	if len(ex.comp) != 1 || ex.comp[0].verb != "goto" {
-		t.Errorf("prefix %q -> comp=%+v, want [goto]", "g", ex.comp)
+	if len(ex.comp) != 2 {
+		t.Fatalf("prefix %q -> %d comps, want 2: %+v", "g", len(ex.comp), ex.comp)
+	}
+	verbs := map[string]bool{}
+	for _, c := range ex.comp {
+		verbs[c.verb] = true
+	}
+	if !verbs["goto"] || !verbs["grep"] {
+		t.Errorf("prefix %q -> comps=%+v, want goto and grep", "g", ex.comp)
 	}
 
 	// Fully typing the canonical verb hides the popup.

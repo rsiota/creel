@@ -111,7 +111,7 @@ subsystem:
 - `chart_panel.go` / `chart_line.go` / `chart_hist.go` / `chart_pie.go` /
   `chart_query.go` / `chart_export.go` — bar, line, scatter, hist, freq, and pie
   charts in the results slot; `x` / `X` / `:chartexport` write Unicode or SVG
-  snapshots to `~/Downloads`
+  snapshots to `~/Downloads` (SVG uses the active theme palette)
 - `inspector.go` — record inspector (right-side form view); JSON/JSONB fold
 - `cell_edit_popup.go`, `json_format.go`, `json_tree.go` — cell editor + JSON
   pretty-print/highlight + inspector fold summaries
@@ -149,7 +149,7 @@ subsystem:
 **Command system** (the unified action layer)
 - `registry.go` — single source of truth for keybindings (`Binding` / `Section` types)
 - `help.go` — help overlay (`?`), renders from the registry
-- `palette.go` — fuzzy jump-anywhere palette (`Ctrl+P`: bindings, tables, bookmarks, themes)
+- `palette.go` — fuzzy jump-anywhere palette (`Ctrl+P`: bindings, tables, bookmarks; themes when filtered)
 - `keymsg.go` — maps dispatch token strings → `tea.KeyMsg` for replay
 - `excmd.go` / `excmd_registry.go` — `:` Ex command line
 

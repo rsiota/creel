@@ -85,6 +85,40 @@ func TestDeliverGeneratedSQLDryRunFixTitle(t *testing.T) {
 	}
 }
 
+func TestDeliverGeneratedSQLDryRunReusesScratchTab(t *testing.T) {
+	m := NewModel(&config.Config{Settings: config.Settings{AIDryRun: true}})
+	m.state = stateWorkspace
+	_ = m.deliverGeneratedSQL("SELECT 1", "count")
+	before := len(m.resultsTabs)
+	firstID := m.activeTabID
+
+	_ = m.deliverGeneratedSQL("SELECT 2", "again")
+	if len(m.resultsTabs) != before {
+		t.Fatalf("tabs = %d, want reuse at %d", len(m.resultsTabs), before)
+	}
+	if m.activeTabID != firstID {
+		t.Fatalf("active = %d, want reused %d", m.activeTabID, firstID)
+	}
+	if m.editor.Value() != "SELECT 2" {
+		t.Errorf("editor = %q", m.editor.Value())
+	}
+
+	_ = m.deliverGeneratedSQL("SELECT 3", "fix")
+	if len(m.resultsTabs) != before+1 {
+		t.Fatalf("AI fix should open its own tab: tabs=%d", len(m.resultsTabs))
+	}
+	if tab := m.activeTab(); tab == nil || tab.Title != "AI fix" {
+		t.Fatalf("title = %+v", tab)
+	}
+	_ = m.deliverGeneratedSQL("SELECT 4", "fix")
+	if len(m.resultsTabs) != before+1 {
+		t.Fatalf("AI fix should also reuse: tabs=%d", len(m.resultsTabs))
+	}
+	if m.editor.Value() != "SELECT 4" {
+		t.Errorf("editor = %q", m.editor.Value())
+	}
+}
+
 func TestAIResultMsgRespectsDryRun(t *testing.T) {
 	m := NewModel(&config.Config{Settings: config.Settings{AIDryRun: true}})
 	m.state = stateWorkspace

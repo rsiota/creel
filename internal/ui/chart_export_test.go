@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestChartTitleSlug(t *testing.T) {
@@ -59,10 +60,26 @@ func TestSnapshotSVGBarAndPie(t *testing.T) {
 	if !strings.Contains(svg, "<svg") || !strings.Contains(svg, "<rect") {
 		t.Fatalf("bar svg:\n%s", svg)
 	}
+	th := chartSVGThemeColors()
+	if !strings.Contains(svg, th.bg) || !strings.Contains(svg, th.primary) {
+		t.Fatalf("bar svg should use theme colors bg=%s primary=%s:\n%s", th.bg, th.primary, svg)
+	}
 	c.ShowPie("pie · status", []chartBar{{label: "ok", value: 7}, {label: "err", value: 3}}, 0)
 	svg = c.SnapshotSVG()
 	if !strings.Contains(svg, "<path") && !strings.Contains(svg, "<circle") {
 		t.Fatalf("pie svg:\n%s", svg)
+	}
+}
+
+func TestSnapshotSVGUsesThemeOverrides(t *testing.T) {
+	prev := colorPrimary
+	t.Cleanup(func() { colorPrimary = prev })
+	colorPrimary = lipgloss.Color("#abcdef")
+	c := NewChartPanel()
+	c.ShowBar("demo", []chartBar{{label: "a", value: 1}}, 0, barAggCount)
+	svg := c.SnapshotSVG()
+	if !strings.Contains(svg, "#abcdef") {
+		t.Fatalf("expected primary override in svg:\n%s", svg)
 	}
 }
 

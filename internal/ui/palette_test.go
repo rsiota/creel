@@ -24,8 +24,16 @@ func TestPaletteOpenClose(t *testing.T) {
 	if len(p.items) == 0 {
 		t.Fatal("palette should have items built from registry")
 	}
-	if len(p.filtered) != len(p.items) {
-		t.Fatalf("filtered should equal items on open (%d vs %d)", len(p.filtered), len(p.items))
+	if len(p.filtered) == 0 {
+		t.Fatal("filtered should list non-theme items on open")
+	}
+	if len(p.filtered) >= len(p.items) {
+		t.Fatalf("empty open should hide themes (%d filtered >= %d items)", len(p.filtered), len(p.items))
+	}
+	for _, it := range p.filtered {
+		if it.jump == paletteJumpTheme {
+			t.Fatal("themes must stay out of the empty filter")
+		}
 	}
 	p.Hide()
 	if p.IsVisible() {
@@ -398,6 +406,11 @@ func TestPaletteJumpAnywhereItems(t *testing.T) {
 	if counts["Themes"] < 1 {
 		t.Error("expected at least one theme item")
 	}
+	for _, it := range p.filtered {
+		if it.jump == paletteJumpTheme {
+			t.Fatal("empty filter must hide themes so jump targets stay visible")
+		}
+	}
 
 	simulateTyping(&p, "users")
 	foundTable := false
@@ -409,6 +422,27 @@ func TestPaletteJumpAnywhereItems(t *testing.T) {
 	}
 	if !foundTable {
 		t.Fatal("fuzzy 'users' should match the users table jump")
+	}
+}
+
+func TestPaletteThemesAppearWhenFiltered(t *testing.T) {
+	var p palette
+	p.Open(paletteJumpSrc{Tables: []string{"users"}})
+	for _, it := range p.filtered {
+		if it.jump == paletteJumpTheme {
+			t.Fatal("themes should be hidden with empty input")
+		}
+	}
+	simulateTyping(&p, "gruvbox")
+	found := false
+	for _, it := range p.filtered {
+		if it.jump == paletteJumpTheme && it.payload == "gruvbox" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("typing a theme name should surface theme jumps")
 	}
 }
 

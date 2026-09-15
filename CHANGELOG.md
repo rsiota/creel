@@ -19,7 +19,8 @@ commits, so it can come up empty).
   the `E` cell editor; `E` still pretty-prints and `compactJSON`s on save.
 - Chart export — with a chart open, `x` writes a Unicode snapshot and `X` an
   SVG to `~/Downloads` (`:chartexport [txt|svg]` / `:chartsave`). Works for
-  bar, hist, freq, pie, line, and scatter.
+  bar, hist, freq, pie, line, and scatter. SVG fills/strokes follow the active
+  theme (including `theme_overrides`).
 - `inspector_sync` / `:set inspector_sync on|off` — when on, inspector field
   navigation also moves the results grid column cursor. **Default off** so
   browsing the inspector does not skate the grid highlight. Results `h`/`l`
@@ -46,6 +47,15 @@ commits, so it can come up empty).
   new **AI scratch** tab (previous editor kept) and auto-run read-only SQL
   (`SELECT` / `SHOW` / `EXPLAIN` / …). Writes and DDL still require `ctrl+e`.
   Default off preserves review-then-run.
+
+### Changed
+- Cross-table search (`S` / `:grep`): `j`/`k`/`g`/`G` navigate hits once
+  results exist (before that they still type into the query); Enter re-runs
+  the search when the query changed since the last run.
+- Ctrl+P empty filter no longer lists every theme — type a theme name (or
+  `theme`) to jump; tables, bookmarks, and keybindings stay on the first page.
+- `ai_dry_run` reuses the existing **AI scratch** / **AI fix** tab instead of
+  opening a new one on every Apply / `:ai` / `:aifix`.
 
 ### Fixed
 - `:` command line: Enter accepts the highlighted completion when browsing

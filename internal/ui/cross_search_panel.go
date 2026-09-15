@@ -21,6 +21,7 @@ type CrossSearchPanel struct {
 	visible   bool
 	searching bool
 	query     string
+	lastQuery string // query that produced the current results (for Enter re-search)
 	results   []SearchResult
 	cursor    int
 	scrollRow int
@@ -47,6 +48,7 @@ func (c *CrossSearchPanel) Show() {
 	c.visible = true
 	c.searching = false
 	c.query = ""
+	c.lastQuery = ""
 	c.results = nil
 	c.cursor = 0
 	c.scrollRow = 0
@@ -74,11 +76,24 @@ func (c *CrossSearchPanel) AddQueryChar(ch string) {
 	c.query += ch
 }
 
-// Backspace removes the last character from the search query.
+// Backspace removes the last rune from the search query.
 func (c *CrossSearchPanel) Backspace() {
-	if len(c.query) > 0 {
-		c.query = c.query[:len(c.query)-1]
+	if c.query == "" {
+		return
 	}
+	r := []rune(c.query)
+	c.query = string(r[:len(r)-1])
+}
+
+// CanOpenResult reports whether Enter should navigate to the selected hit
+// (search finished, hits exist, query unchanged since that search).
+func (c CrossSearchPanel) CanOpenResult() bool {
+	return !c.searching && c.done && len(c.results) > 0 && c.query == c.lastQuery
+}
+
+// HasResults reports whether any hits are available to navigate.
+func (c CrossSearchPanel) HasResults() bool {
+	return len(c.results) > 0
 }
 
 // StartSearch begins the search process, resetting results.
@@ -102,6 +117,7 @@ func (c *CrossSearchPanel) AddResults(results []SearchResult, tableCount int) {
 func (c *CrossSearchPanel) FinishSearch() {
 	c.searching = false
 	c.done = true
+	c.lastQuery = c.query
 }
 
 // SelectedResult returns the result at the cursor, or nil if none.
@@ -135,6 +151,24 @@ func (c *CrossSearchPanel) CursorDown() {
 		c.cursor++
 		c.adjustScroll()
 	}
+}
+
+// CursorTop moves the selection to the first result.
+func (c *CrossSearchPanel) CursorTop() {
+	if len(c.results) == 0 {
+		return
+	}
+	c.cursor = 0
+	c.adjustScroll()
+}
+
+// CursorBottom moves the selection to the last result.
+func (c *CrossSearchPanel) CursorBottom() {
+	if len(c.results) == 0 {
+		return
+	}
+	c.cursor = len(c.results) - 1
+	c.adjustScroll()
 }
 
 func (c *CrossSearchPanel) adjustScroll() {

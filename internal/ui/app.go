@@ -3700,8 +3700,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.crossSearch.Hide()
 			return m, nil
 		case "enter":
-			// If we have results (search done), navigate to selected result.
-			if !m.crossSearch.searching && len(m.crossSearch.results) > 0 {
+			// Open the selected hit when the query matches the last search;
+			// otherwise (edited query, or no hits yet) start/re-run search.
+			if m.crossSearch.CanOpenResult() {
 				if r := m.crossSearch.SelectedResult(); r != nil {
 					m.crossSearch.Hide()
 					m.syncSidebarCursorToTable(r.Table)
@@ -3711,7 +3712,6 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			// Otherwise, start the search if a query is typed.
 			if m.crossSearch.Query() != "" && !m.crossSearch.searching {
 				return m, m.startCrossSearch()
 			}
@@ -3725,6 +3725,26 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "down":
 			m.crossSearch.CursorDown()
 			return m, nil
+		case "k":
+			if m.crossSearch.HasResults() {
+				m.crossSearch.CursorUp()
+				return m, nil
+			}
+		case "j":
+			if m.crossSearch.HasResults() {
+				m.crossSearch.CursorDown()
+				return m, nil
+			}
+		case "g":
+			if m.crossSearch.HasResults() {
+				m.crossSearch.CursorTop()
+				return m, nil
+			}
+		case "G":
+			if m.crossSearch.HasResults() {
+				m.crossSearch.CursorBottom()
+				return m, nil
+			}
 		}
 		if ch, ok := keyFilterChar(msg); ok {
 			m.crossSearch.AddQueryChar(ch)

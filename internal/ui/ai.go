@@ -285,8 +285,8 @@ func aiAuthHint(err error) string {
 
 // deliverGeneratedSQL places AI-produced SQL for the user. With ai_dry_run off
 // (default), it fills the current editor for review + ctrl+e. With ai_dry_run
-// on, it opens a new "AI scratch" tab (preserving the previous buffer), then
-// auto-runs only when the statement is not a write/DDL.
+// on, it reuses (or opens) an "AI scratch" / "AI fix" tab, then auto-runs only
+// when the statement is not a write/DDL.
 func (m *Model) deliverGeneratedSQL(sql, kind string) tea.Cmd {
 	sql = strings.TrimSpace(sql)
 	if sql == "" {
@@ -312,7 +312,7 @@ func (m *Model) deliverGeneratedSQL(sql, kind string) tea.Cmd {
 	if kind == "fix" {
 		title = "AI fix"
 	}
-	m.addTab(title, sql)
+	m.ensureAIScratchTab(title, sql)
 	m.focus = FocusEditor
 	m.applyFocus()
 	if db.IsWriteQuery(sql) {
@@ -331,6 +331,25 @@ func (m *Model) deliverGeneratedSQL(sql, kind string) tea.Cmd {
 	}
 	m.aiMsg = "AI scratch — running…"
 	return m.executeQuery()
+}
+
+// ensureAIScratchTab reuses an existing tab with the given AI title (replacing
+// its buffer) so rapid Apply / :ai / :aifix iterations do not pile up tabs.
+// Falls back to addTab when no matching scratch tab exists.
+func (m *Model) ensureAIScratchTab(title, sql string) {
+	for _, tab := range m.resultsTabs {
+		if tab.Title != title {
+			continue
+		}
+		m.setActiveTab(tab.ID)
+		m.editor.SetValue(sql)
+		if active := m.activeTab(); active != nil {
+			active.EditorQuery = sql
+			active.SetQuery(sql)
+		}
+		return
+	}
+	m.addTab(title, sql)
 }
 
 // exAI dispatches the asynchronous natural-language-to-SQL request for the

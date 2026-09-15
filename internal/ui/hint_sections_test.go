@@ -35,7 +35,7 @@ func TestNewHintSections(t *testing.T) {
 
 	m.crossSearch.Show()
 	check("Cross-Table Search", map[string]string{
-		"enter": "search / open result", "esc": "close",
+		"j": "move result", "enter": "search / open result", "esc": "close",
 	})
 	m.crossSearch.Hide()
 

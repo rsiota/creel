@@ -77,8 +77,7 @@ func (p *palette) Open(src paletteJumpSrc) {
 	p.cursor = 0
 	p.items = buildPaletteItems(src)
 	sortPaletteItems(p.items)
-	p.filtered = p.items
-	p.cursor = 0
+	p.refilter()
 }
 
 // Hide hides the palette.
@@ -87,8 +86,9 @@ func (p *palette) Hide() { p.visible = false }
 // IsVisible reports whether the palette is shown.
 func (p palette) IsVisible() bool { return p.visible }
 
-// Jump-target sections are listed first so Ctrl+P surfaces tables and themes
-// before the long keybinding catalog.
+// Jump-target sections are listed first so Ctrl+P surfaces tables and bookmarks
+// before the long keybinding catalog. Themes are omitted from the empty filter
+// (see refilter) so ~570 theme names do not bury jump targets and bindings.
 var paletteJumpSections = []string{"Tables", "Bookmarks", "Themes"}
 
 // buildPaletteItems flattens jump targets and the keybinding registry into
@@ -248,7 +248,16 @@ func (b Binding) replayTokens() []string {
 // matching over the description, key display, and section title.
 func (p *palette) refilter() {
 	if p.input == "" {
-		p.filtered = append([]paletteItem(nil), p.items...)
+		// Empty filter: hide the theme catalog so tables/bookmarks/bindings
+		// stay discoverable. Themes still appear once the user types.
+		out := make([]paletteItem, 0, len(p.items))
+		for _, it := range p.items {
+			if it.jump == paletteJumpTheme {
+				continue
+			}
+			out = append(out, it)
+		}
+		p.filtered = out
 		sortPaletteItems(p.filtered)
 		p.cursor = 0
 		return

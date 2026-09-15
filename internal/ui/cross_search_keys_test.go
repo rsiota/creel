@@ -29,6 +29,70 @@ func TestCrossSearchTypingDoesNotCreateTab(t *testing.T) {
 	}
 }
 
+// Before any hits, j/k type into the query (so "john" remains searchable).
+// After hits exist, j/k move the selection like history/bookmarks.
+func TestCrossSearchJKNavigateWhenResults(t *testing.T) {
+	m := newWorkspaceModel(t)
+	m.crossSearch.Show()
+
+	m = sendKey(m, runeKey('j'))
+	if got := m.crossSearch.Query(); got != "j" {
+		t.Fatalf("before results, j should type: query=%q", got)
+	}
+
+	m.crossSearch.AddResults([]SearchResult{
+		{Table: "a", Column: "c", Value: "1"},
+		{Table: "b", Column: "c", Value: "2"},
+	}, 2)
+	m.crossSearch.FinishSearch()
+	if m.crossSearch.cursor != 0 {
+		t.Fatalf("cursor = %d", m.crossSearch.cursor)
+	}
+
+	m = sendKey(m, runeKey('j'))
+	if m.crossSearch.cursor != 1 {
+		t.Fatalf("j should move down: cursor=%d", m.crossSearch.cursor)
+	}
+	if got := m.crossSearch.Query(); got != "j" {
+		t.Fatalf("j with results must not append: query=%q", got)
+	}
+
+	m = sendKey(m, runeKey('k'))
+	if m.crossSearch.cursor != 0 {
+		t.Fatalf("k should move up: cursor=%d", m.crossSearch.cursor)
+	}
+}
+
+func TestCrossSearchEnterResearchesAfterEdit(t *testing.T) {
+	m := newWorkspaceModel(t)
+	m.crossSearch.Show()
+	m.crossSearch.SetQuery("alice")
+	m.crossSearch.AddResults([]SearchResult{{Table: "users", Column: "name", Value: "alice"}}, 1)
+	m.crossSearch.FinishSearch()
+
+	if !m.crossSearch.CanOpenResult() {
+		t.Fatal("unchanged query should open on Enter")
+	}
+
+	m = sendKey(m, runeKey('x'))
+	if m.crossSearch.CanOpenResult() {
+		t.Fatal("edited query should not open; Enter must re-search")
+	}
+	if got := m.crossSearch.Query(); got != "alicex" {
+		t.Fatalf("query = %q", got)
+	}
+}
+
+func TestCrossSearchBackspaceRuneSafe(t *testing.T) {
+	p := NewCrossSearchPanel()
+	p.Show()
+	p.SetQuery("café")
+	p.Backspace()
+	if got := p.Query(); got != "caf" {
+		t.Fatalf("backspace = %q, want caf", got)
+	}
+}
+
 // Long HTML values (with newlines/CRs) must stay on one row and span the
 // full inner width of the panel — not a fixed byte cap from search collection.
 func TestCrossSearchLongHTMLDoesNotOverflow(t *testing.T) {

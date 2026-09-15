@@ -144,10 +144,10 @@ assistant panel — also never auto-run. Optional focus text narrows the
 question (`:aiexplain why is the join slow`).
 
 With `ai_dry_run: true` (or `:set ai_dry_run on`), `:ai` / panel Apply /
-`:aifix` open a new **AI scratch** tab instead of overwriting the current
-editor, then auto-run the SQL when it is read-only (`SELECT` / `SHOW` /
-`EXPLAIN` / …). Writes and DDL still land in the tab for review — they are
-never auto-run.
+`:aifix` reuse an **AI scratch** tab (or **AI fix** for `:aifix`) instead of
+overwriting the current editor, then auto-run the SQL when it is read-only
+(`SELECT` / `SHOW` / `EXPLAIN` / …). Writes and DDL still land in the tab for
+review — they are never auto-run.
 
 Configure it **in-app** from the assistant panel:
 
@@ -200,7 +200,7 @@ optional and fall back to defaults when omitted:
 | `inspector_open` | false | Show the row inspector when entering a workspace (after connect / database select). Toggle anytime with `ctrl+o`; `:set inspector_open on` opens it immediately and persists. |
 | `inspector_sync` | false | When on, moving the inspector field cursor (`j`/`k`, wheel, click) also moves the results grid column cursor. Default off — the grid highlight skating while you browse the inspector is opt-in. Grid → inspector sync (results `h`/`l` updates the inspector field) stays always on. |
 | `status_hints` | true | Show the right-aligned context keybinding strip on the status bar (`j/k`, `enter`, …). Set `false` to hide it; left-side chrome (`? help`, first-run jump hints) stays. |
-| `ai_dry_run` | false | When on, `:ai` / panel Apply / `:aifix` open a new **AI scratch** tab (previous editor buffer kept) and auto-run the SQL if it is read-only (`SELECT` / `SHOW` / `EXPLAIN` / …). Writes and DDL still land in the tab for review — never auto-run. Default off keeps the classic “fill editor, then `ctrl+e`” flow. |
+| `ai_dry_run` | false | When on, `:ai` / panel Apply / `:aifix` reuse an **AI scratch** tab (or **AI fix** for `:aifix`; previous editor buffer kept on first open) and auto-run the SQL if it is read-only (`SELECT` / `SHOW` / `EXPLAIN` / …). Writes and DDL still land in the tab for review — never auto-run. Default off keeps the classic “fill editor, then `ctrl+e`” flow. |
 
 ```yaml
 settings:

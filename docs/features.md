@@ -70,7 +70,7 @@ top 20 bars are kept and the rest fold into `(other)`; press `o` to unfold
 restores the grid. `Esc`/`q` closes the chart. While the chart is open you can
 still type `:` (e.g. `:watch 2`) — the chart stays up and redraws on each
 refresh — and export with `x` (Unicode `.txt` to `~/Downloads`) or `X`
-(`.svg`), or `:chartexport [txt|svg]`. Non-numeric and NULL
+(`.svg`, using the active theme colours), or `:chartexport [txt|svg]`. Non-numeric and NULL
 value cells are skipped for `sum`/`avg`. `:bar!` charts every row of the
 last SELECT (not just the current page). Bang charts re-fetch the full SELECT
 on refresh.
@@ -239,7 +239,9 @@ erDiagram
   plan and `:aiexplain` / `:why` for a prose walkthrough of the same plan.
 - **Cross-table search** (`S` / `:grep [query]`) and **column statistics** (`g s`).
   `:grep` opens the same popup from any focus; with a query it starts searching
-  immediately. Distinct from `:search` / `:find` (schema name fuzzy-find).
+  immediately. After hits appear, `j`/`k` (and `g`/`G`) move the selection;
+  edit the query and press Enter again to re-search. Distinct from `:search` /
+  `:find` (schema name fuzzy-find).
 - **Table sizes** (`:sizes`) — base tables with approximate row counts and
   on-disk size, largest first. Enter opens the table. The same size data feeds
   the `:backup` picker.
@@ -332,7 +334,8 @@ erDiagram
   you switch themes. See
   [Configuration → Settings](configuration.md#settings).
 - **Command palette** (`Ctrl+P`) — fuzzy jump-anywhere: keybindings, tables,
-  bookmarks, and themes. Enter opens a table, loads a bookmark, applies a
+  bookmarks, and themes. Themes appear once you type a filter (so the empty
+  list stays useful). Enter opens a table, loads a bookmark, applies a
   theme, or replays a binding. History stays on `Ctrl+Y`. Full **help
   overlay** (`?`).
 - **AI assistant** — turn a natural-language question into SQL using any
@@ -340,11 +343,11 @@ erDiagram
   current table plus its FK neighbours (and tables named in the question),
   not the first 100 tables. After a failed query, `:aifix` (alias `:fixsql`)
   asks the model to rewrite it; review then `ctrl+e` — never auto-run by
-  default. With `:set ai_dry_run on`, generated SQL opens in an **AI scratch**
-  tab and auto-runs when it is a read-only statement (writes/DDL still wait
-  for `ctrl+e`). `:aiexplain` (alias `:why`) explains the statement under the
-  cursor with the EXPLAIN plan attached; the prose reply streams into the
-  assistant panel. See [Configuration → AI assistant](configuration.md#ai-assistant).
+  default. With `:set ai_dry_run on`, generated SQL lands in a reused **AI
+  scratch** tab and auto-runs when it is a read-only statement (writes/DDL
+  still wait for `ctrl+e`). `:aiexplain` (alias `:why`) explains the statement
+  under the cursor with the EXPLAIN plan attached; the prose reply streams
+  into the assistant panel. See [Configuration → AI assistant](configuration.md#ai-assistant).
 
 ## CLI (headless)
 

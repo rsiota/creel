@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -181,6 +182,38 @@ func xmlEscape(s string) string {
 	return replacer.Replace(s)
 }
 
+// chartSVGTheme maps the active TUI palette into SVG fills/strokes so exports
+// match the on-screen chart (including theme_overrides).
+type chartSVGTheme struct {
+	bg, fg, muted, primary, border string
+	series                         []string
+}
+
+func chartSVGThemeColors() chartSVGTheme {
+	hex := func(c lipgloss.Color, fallback string) string {
+		s := strings.TrimSpace(string(c))
+		if strings.HasPrefix(s, "#") && (len(s) == 4 || len(s) == 7) {
+			return s
+		}
+		return fallback
+	}
+	return chartSVGTheme{
+		bg:      hex(colorBg, "#ffffff"),
+		fg:      hex(colorFg, "#111111"),
+		muted:   hex(colorMuted, "#666666"),
+		primary: hex(colorPrimary, "#3b82f6"),
+		border:  hex(colorBorder, "#cccccc"),
+		series: []string{
+			hex(colorPrimary, "#3b82f6"),
+			hex(colorAccent, "#8b5cf6"),
+			hex(colorSuccess, "#22c55e"),
+			hex(colorError, "#ef4444"),
+			hex(colorWarn, "#f59e0b"),
+			hex(colorMark, "#14b8a6"),
+		},
+	}
+}
+
 func chartSVGBars(c ChartPanel) string {
 	vis := c.visibleBars()
 	title := c.title
@@ -208,15 +241,16 @@ func chartSVGBars(c ChartPanel) string {
 		right  = 72.0
 		bottom = 24.0
 	)
+	th := chartSVGThemeColors()
 	height := top + float64(len(vis))*(barH+gap) + bottom
 	width := left + plotW + right
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="%.0f" height="%.0f" viewBox="0 0 %.0f %.0f">
 <title>%s</title>
-<rect width="100%%" height="100%%" fill="#ffffff"/>
-<text x="16" y="28" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="#111">%s</text>
-`, width, height, width, height, xmlEscape(title), xmlEscape(title)))
+<rect width="100%%" height="100%%" fill="%s"/>
+<text x="16" y="28" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="%s">%s</text>
+`, width, height, width, height, xmlEscape(title), th.bg, th.fg, xmlEscape(title)))
 	for i, bar := range vis {
 		y := top + float64(i)*(barH+gap)
 		w := plotW * bar.value / maxVal
@@ -224,13 +258,13 @@ func chartSVGBars(c ChartPanel) string {
 			w = 0
 		}
 		b.WriteString(fmt.Sprintf(
-			`<text x="%.0f" y="%.0f" text-anchor="end" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#333">%s</text>
-<rect x="%.0f" y="%.0f" width="%.1f" height="%.0f" fill="#3b82f6" rx="2"/>
-<text x="%.0f" y="%.0f" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#333">%s</text>
+			`<text x="%.0f" y="%.0f" text-anchor="end" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="%s">%s</text>
+<rect x="%.0f" y="%.0f" width="%.1f" height="%.0f" fill="%s" rx="2"/>
+<text x="%.0f" y="%.0f" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="%s">%s</text>
 `,
-			left-8, y+barH*0.72, xmlEscape(truncateRunes(bar.label, 28)),
-			left, y, w, barH,
-			left+w+8, y+barH*0.72, xmlEscape(formatChartValue(bar.value)),
+			left-8, y+barH*0.72, th.fg, xmlEscape(truncateRunes(bar.label, 28)),
+			left, y, w, barH, th.primary,
+			left+w+8, y+barH*0.72, th.fg, xmlEscape(formatChartValue(bar.value)),
 		))
 	}
 	b.WriteString("</svg>\n")
@@ -276,6 +310,7 @@ func chartSVGXY(c ChartPanel) string {
 		right  = 24.0
 		bottom = 40.0
 	)
+	th := chartSVGThemeColors()
 	width := left + plotW + right
 	height := top + plotH + bottom
 	mapX := func(x float64) float64 {
@@ -288,16 +323,16 @@ func chartSVGXY(c ChartPanel) string {
 	b.WriteString(fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="%.0f" height="%.0f" viewBox="0 0 %.0f %.0f">
 <title>%s</title>
-<rect width="100%%" height="100%%" fill="#ffffff"/>
-<text x="16" y="28" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="#111">%s</text>
-<rect x="%.0f" y="%.0f" width="%.0f" height="%.0f" fill="none" stroke="#ccc"/>
-`, width, height, width, height, xmlEscape(title), xmlEscape(title), left, top, plotW, plotH))
+<rect width="100%%" height="100%%" fill="%s"/>
+<text x="16" y="28" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="%s">%s</text>
+<rect x="%.0f" y="%.0f" width="%.0f" height="%.0f" fill="none" stroke="%s"/>
+`, width, height, width, height, xmlEscape(title), th.bg, th.fg, xmlEscape(title), left, top, plotW, plotH, th.border))
 	b.WriteString(fmt.Sprintf(
-		`<text x="%.0f" y="%.0f" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10" fill="#666">%s</text>
-<text x="%.0f" y="%.0f" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10" fill="#666">%s</text>
+		`<text x="%.0f" y="%.0f" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10" fill="%s">%s</text>
+<text x="%.0f" y="%.0f" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10" fill="%s">%s</text>
 `,
-		8.0, top+10, xmlEscape(formatChartValue(maxY)),
-		8.0, top+plotH, xmlEscape(formatChartValue(minY)),
+		8.0, top+10, th.muted, xmlEscape(formatChartValue(maxY)),
+		8.0, top+plotH, th.muted, xmlEscape(formatChartValue(minY)),
 	))
 	if c.kind == chartKindLine && len(pts) > 1 {
 		var poly strings.Builder
@@ -307,12 +342,12 @@ func chartSVGXY(c ChartPanel) string {
 			}
 			poly.WriteString(fmt.Sprintf("%.1f,%.1f", mapX(p.x), mapY(p.y)))
 		}
-		b.WriteString(fmt.Sprintf(`<polyline fill="none" stroke="#3b82f6" stroke-width="2" points="%s"/>`+"\n", poly.String()))
+		b.WriteString(fmt.Sprintf(`<polyline fill="none" stroke="%s" stroke-width="2" points="%s"/>`+"\n", th.primary, poly.String()))
 	}
 	for _, p := range pts {
 		b.WriteString(fmt.Sprintf(
-			`<circle cx="%.1f" cy="%.1f" r="3" fill="#3b82f6"/>`+"\n",
-			mapX(p.x), mapY(p.y),
+			`<circle cx="%.1f" cy="%.1f" r="3" fill="%s"/>`+"\n",
+			mapX(p.x), mapY(p.y), th.primary,
 		))
 	}
 	b.WriteString("</svg>\n")
@@ -341,14 +376,14 @@ func chartSVGPie(c ChartPanel) string {
 		legX   = 380.0
 		legY   = 60.0
 	)
-	colors := []string{"#3b82f6", "#8b5cf6", "#22c55e", "#ef4444", "#f59e0b", "#14b8a6"}
+	th := chartSVGThemeColors()
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="%.0f" height="%.0f" viewBox="0 0 %.0f %.0f">
 <title>%s</title>
-<rect width="100%%" height="100%%" fill="#ffffff"/>
-<text x="16" y="28" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="#111">%s</text>
-`, width, height, width, height, xmlEscape(title), xmlEscape(title)))
+<rect width="100%%" height="100%%" fill="%s"/>
+<text x="16" y="28" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="%s">%s</text>
+`, width, height, width, height, xmlEscape(title), th.bg, th.fg, xmlEscape(title)))
 	start := -math.Pi / 2
 	for i, bar := range vis {
 		frac := bar.value / total
@@ -362,7 +397,7 @@ func chartSVGPie(c ChartPanel) string {
 		y1 := cy + r*math.Sin(start)
 		x2 := cx + r*math.Cos(end)
 		y2 := cy + r*math.Sin(end)
-		color := colors[i%len(colors)]
+		color := th.series[i%len(th.series)]
 		if frac >= 1 {
 			// Full circle — path arcs can't close a 360° slice.
 			b.WriteString(fmt.Sprintf(
@@ -378,10 +413,10 @@ func chartSVGPie(c ChartPanel) string {
 		pct := 100 * frac
 		b.WriteString(fmt.Sprintf(
 			`<rect x="%.0f" y="%.0f" width="12" height="12" fill="%s" rx="2"/>
-<text x="%.0f" y="%.0f" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#333">%s — %s (%.1f%%)</text>
+<text x="%.0f" y="%.0f" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="%s">%s — %s (%.1f%%)</text>
 `,
 			legX, legY+float64(i)*22, color,
-			legX+20, legY+float64(i)*22+11,
+			legX+20, legY+float64(i)*22+11, th.fg,
 			xmlEscape(truncateRunes(bar.label, 24)),
 			xmlEscape(formatChartValue(bar.value)),
 			pct,
@@ -393,12 +428,13 @@ func chartSVGPie(c ChartPanel) string {
 }
 
 func chartSVGEmpty(title string) string {
+	th := chartSVGThemeColors()
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="480" height="120" viewBox="0 0 480 120">
 <title>%s</title>
-<rect width="100%%" height="100%%" fill="#ffffff"/>
-<text x="16" y="28" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="#111">%s</text>
-<text x="16" y="64" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#666">no numeric values to chart</text>
+<rect width="100%%" height="100%%" fill="%s"/>
+<text x="16" y="28" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="%s">%s</text>
+<text x="16" y="64" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="%s">no numeric values to chart</text>
 </svg>
-`, xmlEscape(title), xmlEscape(title))
+`, xmlEscape(title), th.bg, th.fg, xmlEscape(title), th.muted)
 }
