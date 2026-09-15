@@ -24,8 +24,6 @@ const (
 // Currently wired: page_size, query_timeout, default_driver, theme,
 // theme_overrides, transparent_background, confirm_destructive,
 // inspector_open, inspector_sync, status_hints, ai_dry_run.
-// Reserved for follow-ups (not yet applied): cursor_style — the struct is
-// designed so adding fields is the only change needed here.
 type Settings struct {
 	PageSize int `yaml:"page_size,omitempty"`
 	// QueryTimeout is the per-query deadline. Zero (the zero value / unset)

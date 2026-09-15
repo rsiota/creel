@@ -63,6 +63,8 @@ commits, so it can come up empty).
   than the viewport.
 - Invalid `theme_overrides` entries (unknown slot / bad hex) are reported in
   the status bar on startup instead of failing silently.
+- Dropped the unused `cursor_style` reservation from settings docs / roadmap
+  (editor and cell-edit carets stay as hard-coded underline / reverse).
 
 ### Fixed
 - `:` command line: Enter accepts the highlighted completion when browsing

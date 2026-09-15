@@ -222,7 +222,7 @@ settings:
 `query_timeout` accepts values like `30s`, `2m`, `1h30m`, or a bare number of
 seconds (`45`). An invalid value makes config load fail loudly rather than
 silently falling back. An unknown `theme` silently falls back to the default
-rather than blocking startup. (`cursor_style` is reserved for upcoming work.)
+rather than blocking startup.
 
 ### Themes
 

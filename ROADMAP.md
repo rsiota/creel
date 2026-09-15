@@ -74,10 +74,6 @@ fuzzy ranker keeps them and Tab fills the whole path. Files:
   walks history uninterrupted. Files: `excmd.go`. Tests:
   `excmd_completion_test.go`.
 
-### `cursor_style` setting (#7 follow-up)
-Reserved field in `Settings`; needs results-cursor rendering work. Parked
-until someone wants configurable cursor shapes.
-
 ### `:set <opt>` (#15)
 Deferred — the runtime toggles are already covered by `:timing`/`:limit`/
 `:theme`; `:set` would mainly add `confirm_destructive`/`timeout` mirrors.
@@ -202,8 +198,6 @@ or sequenced behind them.
 
 **Docs / consistency**
 - Fuzzy verb matching for `:` (`:g<tab>` → `goto`) — last wave-2 leftover.
-- `cursor_style` is reserved but unused; ship block/underline or drop the
-  field.
 
 ### Product review — 2026-08-20
 
