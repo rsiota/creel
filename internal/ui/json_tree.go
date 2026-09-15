@@ -202,7 +202,16 @@ func renderJSONTreeContent(rows []jsonTreeRow, width, cursor, scroll int) string
 	if scroll >= len(rows) {
 		scroll = len(rows) - 1
 	}
-	end := scroll + jsonTreeMaxLines
+
+	limit := jsonTreeMaxLines
+	if scroll+limit < len(rows) {
+		// Reserve one line for the "+N more" footer when truncated.
+		limit = jsonTreeMaxLines - 1
+		if limit < 1 {
+			limit = 1
+		}
+	}
+	end := scroll + limit
 	if end > len(rows) {
 		end = len(rows)
 	}
@@ -243,6 +252,11 @@ func renderJSONTreeContent(rows []jsonTreeRow, width, cursor, scroll int) string
 		} else {
 			lines = append(lines, padPlainToWidth(styled, width))
 		}
+	}
+	if end < len(rows) {
+		more := len(rows) - end
+		footer := muted.Render(fmt.Sprintf("  … +%d more", more))
+		lines = append(lines, padPlainToWidth(footer, width))
 	}
 	return strings.Join(lines, "\n")
 }

@@ -162,6 +162,8 @@ type crossSearchResultMsg struct {
 	results    []SearchResult
 	tablesDone int
 	batchEnd   int
+	skipped    int  // tables skipped due to schema/query errors in this batch
+	capped     bool // this batch hit the global hit cap
 	done       bool
 }
 
@@ -814,6 +816,9 @@ func NewModel(cfg *config.Config) Model {
 	if len(m.config.Connections) > 0 {
 		m.connList.StartFilter()
 		m.selectRecentConnection() // StartFilter resets cursor; re-apply MRU
+	}
+	if msg := themeOverrideSkipMessage(settings.ThemeOverrides); msg != "" {
+		m.schemaMsg = msg
 	}
 	return m
 }
@@ -1621,7 +1626,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case crossSearchResultMsg:
 		m.crossSearch.AddResults(msg.results, msg.tablesDone)
+		m.crossSearch.AddBatchMeta(msg.skipped, msg.capped)
 		if msg.done || len(m.crossSearch.results) >= crossSearchMaxResults {
+			if len(m.crossSearch.results) >= crossSearchMaxResults {
+				m.crossSearch.capped = true
+			}
 			m.crossSearch.FinishSearch()
 			return m, nil
 		}
@@ -3234,17 +3243,34 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Lookup panel is modal — j/k scroll, enter jumps, esc/q close.
+	// Lookup panel is modal — j/k scroll, enter jumps / opens editor, y yanks, esc/q close.
 	if m.lookupPanel.IsVisible() {
 		switch msg.String() {
 		case "esc", "q", "ctrl+c":
 			m.lookupPanel.Hide()
+			return m, nil
+		case "y":
+			if text := m.lookupPanel.SelectedCopyText(); text != "" {
+				if err := clipboard.WriteAll(text); err != nil {
+					m.schemaMsg = "clipboard: " + err.Error()
+				} else {
+					m.schemaMsg = "copied to clipboard"
+				}
+			}
 			return m, nil
 		case "enter":
 			if jump := m.lookupPanel.SelectedJump(); jump != "" {
 				m.lookupPanel.Hide()
 				m.syncSidebarCursorToTable(jump)
 				return m, m.openTable(jump)
+			}
+			if text := m.lookupPanel.SelectedEditText(); text != "" {
+				m.lookupPanel.Hide()
+				m.editor.SetValue(text)
+				m.focus = FocusEditor
+				m.applyFocus()
+				m.schemaMsg = "loaded into editor"
+				return m, m.editor.Focus()
 			}
 			return m, nil
 		}

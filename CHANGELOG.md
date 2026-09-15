@@ -51,11 +51,18 @@ commits, so it can come up empty).
 ### Changed
 - Cross-table search (`S` / `:grep`): `j`/`k`/`g`/`G` navigate hits once
   results exist (before that they still type into the query); Enter re-runs
-  the search when the query changed since the last run.
+  the search when the query changed since the last run. Status line notes the
+  200-hit cap and tables skipped for schema/query errors.
 - Ctrl+P empty filter no longer lists every theme — type a theme name (or
   `theme`) to jump; tables, bookmarks, and keybindings stay on the first page.
 - `ai_dry_run` reuses the existing **AI scratch** / **AI fix** tab instead of
   opening a new one on every Apply / `:ai` / `:aifix`.
+- Import / `:restore!` error overlay: `y` copies the full error (and statement);
+  Enter loads the statement (or stderr line) into the editor.
+- JSON inspector folds show a muted `… +N more` footer when the tree is taller
+  than the viewport.
+- Invalid `theme_overrides` entries (unknown slot / bad hex) are reported in
+  the status bar on startup instead of failing silently.
 
 ### Fixed
 - `:` command line: Enter accepts the highlighted completion when browsing

@@ -14,15 +14,19 @@ import (
 // ":uses", ":locks", ":who", ":diagnose", ":search", and related commands. The cursor moves among data rows
 // only (title and column header stay fixed); Enter opens the jump target for
 // the selected row when one was supplied (e.g. a table name from :sizes).
+// Optional copyText / editText (parallel to rows) power yank and “open in
+// editor” for overlays like import/restore errors.
 type LookupPanel struct {
-	visible bool
-	title   string
-	result  db.Result
-	jumps   []string // parallel to result.Rows; empty entry = no Enter action
-	cursor  int      // index into result.Rows
-	scroll  int      // first visible data-row index
-	width   int
-	height  int
+	visible  bool
+	title    string
+	result   db.Result
+	jumps    []string // parallel to result.Rows; empty entry = no table jump
+	copyText []string // parallel; y copies this (full, untruncated)
+	editText []string // parallel; Enter loads into editor when jump is empty
+	cursor   int      // index into result.Rows
+	scroll   int      // first visible data-row index
+	width    int
+	height   int
 }
 
 func (p LookupPanel) IsVisible() bool { return p.visible }
@@ -32,10 +36,17 @@ func (p LookupPanel) IsVisible() bool { return p.visible }
 // row Enter-jumpable (typically a table name). Pass nil when nothing is
 // jumpable (e.g. :peek).
 func (p *LookupPanel) Show(title string, result db.Result, jumps []string) {
+	p.ShowDetailed(title, result, jumps, nil, nil)
+}
+
+// ShowDetailed is Show plus optional per-row clipboard / editor payloads.
+func (p *LookupPanel) ShowDetailed(title string, result db.Result, jumps, copyText, editText []string) {
 	p.visible = true
 	p.title = title
 	p.result = result
 	p.jumps = jumps
+	p.copyText = copyText
+	p.editText = editText
 	p.cursor = 0
 	p.scroll = 0
 	if len(result.Rows) == 0 {
@@ -61,10 +72,46 @@ func (p LookupPanel) SelectedJump() string {
 	return p.jumps[p.cursor]
 }
 
-// HasJumps reports whether any row is Enter-jumpable (for hints).
+// SelectedCopyText returns the yank payload for the cursor row.
+func (p LookupPanel) SelectedCopyText() string {
+	if p.cursor < 0 || p.cursor >= len(p.copyText) {
+		return ""
+	}
+	return p.copyText[p.cursor]
+}
+
+// SelectedEditText returns the editor payload for the cursor row.
+func (p LookupPanel) SelectedEditText() string {
+	if p.cursor < 0 || p.cursor >= len(p.editText) {
+		return ""
+	}
+	return p.editText[p.cursor]
+}
+
+// HasJumps reports whether any row is Enter-jumpable to a table (for hints).
 func (p LookupPanel) HasJumps() bool {
 	for _, j := range p.jumps {
 		if j != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// HasCopyText reports whether any row has a yank payload.
+func (p LookupPanel) HasCopyText() bool {
+	for _, t := range p.copyText {
+		if t != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// HasEditText reports whether any row can be loaded into the editor on Enter.
+func (p LookupPanel) HasEditText() bool {
+	for _, t := range p.editText {
+		if t != "" {
 			return true
 		}
 	}

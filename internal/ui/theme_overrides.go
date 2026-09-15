@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -100,7 +101,7 @@ func parseHexColor(raw string) (lipgloss.Color, bool) {
 
 // withThemeOverrides returns a copy of p with recognized overrides applied.
 // Unknown slots and invalid colours are skipped (so a typo in config cannot
-// block theme load).
+// block theme load). Use themeOverrideSkipMessage to surface skipped keys.
 func withThemeOverrides(p colorPalette, overrides map[string]string) colorPalette {
 	if len(overrides) == 0 {
 		return p
@@ -113,6 +114,43 @@ func withThemeOverrides(p colorPalette, overrides map[string]string) colorPalett
 			continue
 		}
 		setPaletteSlot(&out, slot, c)
+	}
+	return out
+}
+
+// themeOverrideSkipMessage lists override keys that were ignored (unknown
+// slot or bad hex). Empty when every entry applied cleanly.
+func themeOverrideSkipMessage(overrides map[string]string) string {
+	skips := themeOverrideSkips(overrides)
+	if len(skips) == 0 {
+		return ""
+	}
+	return "theme_overrides skipped: " + strings.Join(skips, ", ")
+}
+
+func themeOverrideSkips(overrides map[string]string) []string {
+	if len(overrides) == 0 {
+		return nil
+	}
+	type skip struct{ key, why string }
+	var list []skip
+	for k, v := range overrides {
+		slot := normalizeThemeSlot(k)
+		if !isThemeOverrideSlot(slot) {
+			list = append(list, skip{k, "unknown slot"})
+			continue
+		}
+		if _, ok := parseHexColor(v); !ok {
+			list = append(list, skip{k, "bad hex"})
+		}
+	}
+	if len(list) == 0 {
+		return nil
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].key < list[j].key })
+	out := make([]string, len(list))
+	for i, s := range list {
+		out[i] = fmt.Sprintf("%s (%s)", s.key, s.why)
 	}
 	return out
 }

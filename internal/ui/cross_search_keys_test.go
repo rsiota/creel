@@ -145,6 +145,23 @@ func TestCrossSearchLongHTMLDoesNotOverflow(t *testing.T) {
 	}
 }
 
+func TestCrossSearchStatusShowsCappedAndSkipped(t *testing.T) {
+	p := NewCrossSearchPanel()
+	p.Show()
+	p.SetSize(80, 16)
+	p.StartSearch(10)
+	p.AddResults([]SearchResult{{Table: "t", Column: "c", Value: "v"}}, 1)
+	p.AddBatchMeta(2, true)
+	p.FinishSearch()
+	view := ansi.Strip(p.View())
+	if !strings.Contains(view, "capped at 200") {
+		t.Fatalf("missing capped note: %q", view)
+	}
+	if !strings.Contains(view, "2 tables skipped") {
+		t.Fatalf("missing skipped note: %q", view)
+	}
+}
+
 // Values longer than the old 80-byte search clamp must still fill a wide panel.
 func TestCrossSearchValueUsesFullPanelWidth(t *testing.T) {
 	p := NewCrossSearchPanel()

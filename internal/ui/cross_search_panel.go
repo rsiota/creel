@@ -27,8 +27,10 @@ type CrossSearchPanel struct {
 	scrollRow int
 	width     int
 	height    int
-	searched  int // tables searched so far
-	total     int // total tables to search
+	searched  int  // tables searched so far
+	total     int  // total tables to search
+	skipped   int  // tables skipped (schema/query errors)
+	capped    bool // hit the global hit cap
 	done      bool
 }
 
@@ -54,6 +56,8 @@ func (c *CrossSearchPanel) Show() {
 	c.scrollRow = 0
 	c.searched = 0
 	c.total = 0
+	c.skipped = 0
+	c.capped = false
 	c.done = false
 }
 
@@ -103,6 +107,8 @@ func (c *CrossSearchPanel) StartSearch(totalTables int) {
 	c.scrollRow = 0
 	c.searched = 0
 	c.total = totalTables
+	c.skipped = 0
+	c.capped = false
 	c.done = false
 	c.searching = true
 }
@@ -111,6 +117,14 @@ func (c *CrossSearchPanel) StartSearch(totalTables int) {
 func (c *CrossSearchPanel) AddResults(results []SearchResult, tableCount int) {
 	c.results = append(c.results, results...)
 	c.searched += tableCount
+}
+
+// AddBatchMeta records skipped tables and whether the hit cap was reached.
+func (c *CrossSearchPanel) AddBatchMeta(skipped int, capped bool) {
+	c.skipped += skipped
+	if capped {
+		c.capped = true
+	}
 }
 
 // FinishSearch marks the search as complete.
@@ -204,12 +218,13 @@ func (c CrossSearchPanel) View() string {
 	var status string
 	switch {
 	case c.searching:
-		status = mutedStyle.Render(fmt.Sprintf(" searching %d/%d tables…  %d hits", c.searched, c.total, len(c.results)))
+		status = mutedStyle.Render(fmt.Sprintf(" searching %d/%d tables…  %d hits%s",
+			c.searched, c.total, len(c.results), c.statusExtras()))
 	case c.done:
 		if len(c.results) == 0 {
-			status = mutedStyle.Render(" no matches found")
+			status = mutedStyle.Render(" no matches found" + c.statusExtras())
 		} else {
-			status = mutedStyle.Render(fmt.Sprintf(" %d matches", len(c.results)))
+			status = mutedStyle.Render(fmt.Sprintf(" %d matches%s", len(c.results), c.statusExtras()))
 		}
 	}
 
@@ -259,6 +274,22 @@ func (c CrossSearchPanel) View() string {
 		Render(fullContent)
 
 	return panel
+}
+
+// statusExtras formats capped / skipped notes for the status line.
+func (c CrossSearchPanel) statusExtras() string {
+	var parts []string
+	if c.capped {
+		parts = append(parts, fmt.Sprintf("capped at %d", crossSearchMaxResults))
+	}
+	if c.skipped > 0 {
+		parts = append(parts, fmt.Sprintf("%d table%s skipped",
+			c.skipped, pluralIf(c.skipped != 1, "s")))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "  (" + strings.Join(parts, "; ") + ")"
 }
 
 // renderResultRow draws one hit, truncating the value so the row spans the

@@ -98,6 +98,34 @@ func TestJSONTreeValueContentArraySummary(t *testing.T) {
 	}
 }
 
+func TestJSONTreeMoreFooter(t *testing.T) {
+	// Build an object with more keys than the viewport so the footer appears.
+	var b strings.Builder
+	b.WriteByte('{')
+	for i := 0; i < jsonTreeMaxLines+5; i++ {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(`"k`)
+		b.WriteString(strings.Repeat("a", i+1))
+		b.WriteString(`":1`)
+	}
+	b.WriteByte('}')
+	open := map[string]bool{jsonTreeRootPath: true}
+	got, ok := jsonTreeValueContent(b.String(), 40, true, open, 0, 0)
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	plain := stripANSI(got)
+	if !strings.Contains(plain, "+") || !strings.Contains(plain, "more") {
+		t.Fatalf("expected +N more footer, got %q", plain)
+	}
+	lines := strings.Split(plain, "\n")
+	if len(lines) > jsonTreeMaxLines {
+		t.Fatalf("view height %d > max %d", len(lines), jsonTreeMaxLines)
+	}
+}
+
 func newJSONInspector(t *testing.T) Inspector {
 	t.Helper()
 	var i Inspector

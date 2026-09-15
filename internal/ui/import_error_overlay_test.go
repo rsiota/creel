@@ -9,13 +9,16 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/rsiota/creel/internal/config"
 	"github.com/rsiota/creel/internal/db"
 )
 
 func TestShowImportErrorOverlay(t *testing.T) {
 	m := &Model{}
+	longStmt := "INSERT INTO t VALUES (" + strings.Repeat("x", 200) + ")"
 	m.showImportErrorOverlay("dump.sql", []db.ImportError{
-		{Statement: "INSERT INTO t VALUES (1)", Err: errors.New("duplicate key")},
+		{Statement: longStmt, Err: errors.New("duplicate key")},
 		{Statement: "BAD", Err: errors.New("syntax")},
 	})
 	if !m.lookupPanel.IsVisible() {
@@ -26,6 +29,31 @@ func TestShowImportErrorOverlay(t *testing.T) {
 	}
 	if got := len(m.lookupPanel.result.Rows); got != 2 {
 		t.Fatalf("rows = %d", got)
+	}
+	if got := m.lookupPanel.SelectedEditText(); got != longStmt {
+		t.Fatalf("editText should keep full statement, got len=%d", len(got))
+	}
+	if !strings.Contains(m.lookupPanel.SelectedCopyText(), "duplicate key") {
+		t.Fatalf("copyText = %q", m.lookupPanel.SelectedCopyText())
+	}
+	if !strings.Contains(m.lookupPanel.SelectedCopyText(), longStmt) {
+		t.Fatal("copyText should include full statement")
+	}
+}
+
+func TestImportErrorOverlayEnterLoadsEditor(t *testing.T) {
+	m := NewModel(&config.Config{})
+	m.state = stateWorkspace
+	m.showImportErrorOverlay("dump.sql", []db.ImportError{
+		{Statement: "SELECT 1", Err: errors.New("nope")},
+	})
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm := next.(Model)
+	if mm.lookupPanel.IsVisible() {
+		t.Fatal("overlay should close")
+	}
+	if mm.editor.Value() != "SELECT 1" {
+		t.Fatalf("editor = %q", mm.editor.Value())
 	}
 }
 

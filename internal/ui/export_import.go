@@ -788,6 +788,8 @@ func (m *Model) showImportErrorOverlay(filename string, errs []db.ImportError) {
 		n = max
 	}
 	rows := make([][]string, 0, n)
+	copyText := make([]string, 0, n)
+	editText := make([]string, 0, n)
 	for i := 0; i < n; i++ {
 		e := errs[i]
 		msg := ""
@@ -799,15 +801,17 @@ func (m *Model) showImportErrorOverlay(filename string, errs []db.ImportError) {
 			truncateRunes(msg, 120),
 			truncateRunes(e.Statement, 100),
 		})
+		copyText = append(copyText, strings.TrimSpace(msg+"\n\n"+e.Statement))
+		editText = append(editText, e.Statement)
 	}
 	title := fmt.Sprintf("Import errors — %s (%d)", filepath.Base(filename), len(errs))
 	if len(errs) > max {
 		title = fmt.Sprintf("Import errors — %s (showing %d of %d)", filepath.Base(filename), max, len(errs))
 	}
-	m.lookupPanel.Show(title, db.Result{
+	m.lookupPanel.ShowDetailed(title, db.Result{
 		Columns: []db.Column{{Name: "#"}, {Name: "Error"}, {Name: "Statement"}},
 		Rows:    rows,
-	}, nil)
+	}, nil, copyText, editText)
 }
 
 // showRestoreErrorOverlay opens the lookup panel with client stderr lines from
@@ -817,16 +821,20 @@ func (m *Model) showRestoreErrorOverlay(path string, lines []string) {
 		return
 	}
 	rows := make([][]string, 0, len(lines))
+	copyText := make([]string, 0, len(lines))
 	for i, line := range lines {
 		rows = append(rows, []string{
 			fmt.Sprintf("%d", i+1),
 			truncateRunes(line, 200),
 		})
+		copyText = append(copyText, line)
 	}
-	m.lookupPanel.Show(
+	m.lookupPanel.ShowDetailed(
 		fmt.Sprintf("Restore errors — %s (%d)", filepath.Base(path), len(lines)),
 		db.Result{Columns: []db.Column{{Name: "#"}, {Name: "Error"}}, Rows: rows},
 		nil,
+		copyText,
+		copyText, // Enter loads the full stderr line into the editor
 	)
 }
 

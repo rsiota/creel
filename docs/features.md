@@ -240,8 +240,10 @@ erDiagram
 - **Cross-table search** (`S` / `:grep [query]`) and **column statistics** (`g s`).
   `:grep` opens the same popup from any focus; with a query it starts searching
   immediately. After hits appear, `j`/`k` (and `g`/`G`) move the selection;
-  edit the query and press Enter again to re-search. Distinct from `:search` /
-  `:find` (schema name fuzzy-find).
+  edit the query and press Enter again to re-search. Results are capped at 200
+  hits (20 rows per table); the status line notes the cap and any tables
+  skipped for schema/query errors. Distinct from `:search` / `:find` (schema
+  name fuzzy-find).
 - **Table sizes** (`:sizes`) — base tables with approximate row counts and
   on-disk size, largest first. Enter opens the table. The same size data feeds
   the `:backup` picker.
@@ -294,6 +296,8 @@ erDiagram
   `ON_ERROR_STOP`) and opens a lookup overlay listing ignored client messages.
   In-app `I` / `:import` already continues statement-by-statement; when any
   statements fail, the same overlay lists Error + Statement for review.
+  From the overlay, `y` copies the full text and Enter loads the statement
+  (or stderr line) into the editor.
   Prefer `:restore` for large MySQL/Postgres dumps; keep `I` for progress UI
   and SQLite.
 - **Lock waits** — `:locks` / `:blocked` lists sessions waiting on locks held by

@@ -58,6 +58,40 @@ func TestWithThemeOverrides(t *testing.T) {
 	}
 }
 
+func TestThemeOverrideSkipMessage(t *testing.T) {
+	msg := themeOverrideSkipMessage(map[string]string{
+		"fg":    "notahex",
+		"nope":  "#123456",
+		"muted": "#abcdef",
+	})
+	if !strings.Contains(msg, "fg (bad hex)") {
+		t.Fatalf("want bad hex note: %q", msg)
+	}
+	if !strings.Contains(msg, "nope (unknown slot)") {
+		t.Fatalf("want unknown slot note: %q", msg)
+	}
+	if strings.Contains(msg, "muted") {
+		t.Fatalf("valid override should not be listed: %q", msg)
+	}
+	if themeOverrideSkipMessage(nil) != "" {
+		t.Fatal("empty overrides should yield empty message")
+	}
+}
+
+func TestNewModelReportsSkippedThemeOverrides(t *testing.T) {
+	defer applyPalette(defaultPalette)
+	cfg := &config.Config{Settings: config.Settings{
+		ThemeOverrides: map[string]string{
+			"nope": "#ffffff",
+			"fg":   "bad",
+		},
+	}}
+	m := NewModel(cfg)
+	if !strings.Contains(m.schemaMsg, "theme_overrides skipped") {
+		t.Fatalf("schemaMsg = %q", m.schemaMsg)
+	}
+}
+
 func TestExColorOverridePersistsAndApplies(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	defer applyPalette(defaultPalette)

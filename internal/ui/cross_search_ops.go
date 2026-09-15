@@ -20,11 +20,22 @@ func (m Model) startCrossSearch() tea.Cmd {
 
 // runCrossSearchBatch searches a batch of tables for the query string and
 // returns partial results. The caller handles accumulating results and
-// re-invoking for the next batch.
+// re-invoking for the next batch. remaining is how many more hits fit under
+// the global cap (based on results already shown).
 func (m Model) runCrossSearchBatch(query string, batchStart int) tea.Cmd {
 	conn := m.connection
 	if conn == nil {
 		return nil
+	}
+	remaining := crossSearchMaxResults - len(m.crossSearch.results)
+	if remaining <= 0 {
+		return func() tea.Msg {
+			return crossSearchResultMsg{
+				done:     true,
+				capped:   true,
+				batchEnd: batchStart,
+			}
+		}
 	}
 	d := conn.DB()
 	driver := conn.Config().Driver
@@ -39,14 +50,18 @@ func (m Model) runCrossSearchBatch(query string, batchStart int) tea.Cmd {
 
 	return func() tea.Msg {
 		var results []SearchResult
+		skipped := 0
+		capped := false
 		for _, table := range batch {
-			if len(results) >= crossSearchMaxResults {
+			if len(results) >= remaining {
+				capped = true
 				break
 			}
 			cols := columnCache[table]
 			if cols == nil {
 				fetched, err := d.TableSchema(table)
 				if err != nil {
+					skipped++
 					continue
 				}
 				cols = fetched
@@ -74,10 +89,12 @@ func (m Model) runCrossSearchBatch(query string, batchStart int) tea.Cmd {
 				table, strings.Join(conditions, " OR "))
 			result, err := d.Execute(queryStr)
 			if err != nil {
+				skipped++
 				continue
 			}
 			for _, row := range result.Rows {
-				if len(results) >= crossSearchMaxResults {
+				if len(results) >= remaining {
+					capped = true
 					break
 				}
 				for ci, col := range result.Columns {
@@ -92,11 +109,16 @@ func (m Model) runCrossSearchBatch(query string, batchStart int) tea.Cmd {
 					}
 				}
 			}
+			if capped {
+				break
+			}
 		}
-		done := end >= len(tables)
+		done := end >= len(tables) || capped
 		return crossSearchResultMsg{
 			results:    results,
 			tablesDone: len(batch),
+			skipped:    skipped,
+			capped:     capped,
 			done:       done,
 			batchEnd:   end,
 		}
