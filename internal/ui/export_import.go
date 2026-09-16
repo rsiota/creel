@@ -480,10 +480,9 @@ func serializeTSV(cols []string, rows [][]string) string {
 	return b.String()
 }
 
-// execExportDump starts a table-by-table SQL dump of the selected tables,
-// writing to ~/Downloads with a timestamped filename. It writes the header and
-// first table, then chains per-table commands via exportProgressMsg so the
-// status bar can show live progress.
+// execExportDump dumps the selected tables to ~/Downloads with a timestamped
+// filename. SQL dumps stream table-by-table via exportProgressMsg for live
+// status; CSV/JSON write in one shot via DumpTables and finish with exportDumpMsg.
 func (m *Model) execExportDump(tables []string) tea.Cmd {
 	if m.connection == nil || len(tables) == 0 {
 		return nil
@@ -496,10 +495,34 @@ func (m *Model) execExportDump(tables []string) tea.Cmd {
 		fileLabel = "database"
 	}
 	timestamp := time.Now().Format("2006-01-02")
-	ext := string(m.exportPicker.CurrentFormat())
+	format := m.exportPicker.CurrentFormat()
+	ext := string(format)
 	filename := fmt.Sprintf("%s_%s.%s", fileLabel, timestamp, ext)
 	total := len(tables)
 	database := conn.DB()
+
+	if format != db.FormatSQL {
+		return func() tea.Msg {
+			dir, err := userDownloadsDir()
+			if err != nil {
+				return exportDumpMsg{err: err}
+			}
+			path := filepath.Join(dir, filename)
+			f, err := os.Create(path)
+			if err != nil {
+				return exportDumpMsg{path: path, err: err}
+			}
+			err = db.DumpTables(f, database, driver, realDBName, tables, format)
+			closeErr := f.Close()
+			if err != nil {
+				return exportDumpMsg{path: path, err: err}
+			}
+			if closeErr != nil {
+				return exportDumpMsg{path: path, err: closeErr}
+			}
+			return exportDumpMsg{path: path, tables: total}
+		}
+	}
 
 	return func() tea.Msg {
 		dir, err := userDownloadsDir()

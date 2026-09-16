@@ -76,6 +76,18 @@ func TestExportPicker_Format(t *testing.T) {
 	if p.CurrentFormat() != db.FormatSQL {
 		t.Fatalf("expected default format SQL, got %s", p.CurrentFormat())
 	}
+	p.CycleFormat()
+	if p.CurrentFormat() != db.FormatCSV {
+		t.Fatalf("after one cycle: got %s, want csv", p.CurrentFormat())
+	}
+	p.CycleFormat()
+	if p.CurrentFormat() != db.FormatJSON {
+		t.Fatalf("after two cycles: got %s, want json", p.CurrentFormat())
+	}
+	p.CycleFormat()
+	if p.CurrentFormat() != db.FormatSQL {
+		t.Fatalf("after three cycles: got %s, want sql", p.CurrentFormat())
+	}
 }
 
 func TestExportPicker_CursorNavigation(t *testing.T) {

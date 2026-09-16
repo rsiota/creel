@@ -179,6 +179,7 @@ func registry() []Section {
 				{"space", []string{" "}, "toggle table", "space"},
 				{"a", []string{"a"}, "select all", "a"},
 				{"n", []string{"n"}, "select none", "n"},
+				{"f", []string{"f"}, "cycle format (sql/csv/json)", "f"},
 				{"enter", []string{"enter"}, "export", "enter"},
 				{"esc", []string{"esc"}, "cancel", "esc"},
 			},

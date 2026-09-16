@@ -2,6 +2,8 @@ package db
 
 import (
 	"bufio"
+	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -13,8 +15,8 @@ type Format string
 
 const (
 	FormatSQL  Format = "sql"
-	FormatCSV  Format = "csv"  // reserved for future use
-	FormatJSON Format = "json" // reserved for future use
+	FormatCSV  Format = "csv"
+	FormatJSON Format = "json"
 )
 
 // insertBatchSize is the maximum number of rows per multi-value INSERT
@@ -30,12 +32,23 @@ const insertBatchSize = 100
 // Each table is preceded by DROP TABLE IF EXISTS, followed by CREATE TABLE
 // (native DDL when the driver exposes it), then batched INSERT statements.
 //
+// For FormatCSV each table is written as a CSV section (header + rows). When
+// more than one table is selected, sections are separated by a blank line and
+// prefixed with `# table: <name>`.
+//
+// For FormatJSON a single table is a JSON array of row objects; multiple
+// tables become an object keyed by table name.
+//
 // For incremental / streaming use, callers may instead invoke DumpHeader,
-// DumpTable, and DumpFooter directly.
+// DumpTable, and DumpFooter directly (SQL only).
 func DumpTables(w io.Writer, database DB, driver Driver, dbName string, tables []string, format Format) error {
 	switch format {
 	case FormatSQL:
 		return dumpSQL(w, database, driver, dbName, tables)
+	case FormatCSV:
+		return dumpCSV(w, database, driver, tables)
+	case FormatJSON:
+		return dumpJSON(w, database, driver, tables)
 	default:
 		return fmt.Errorf("unsupported export format: %s", format)
 	}
@@ -54,6 +67,98 @@ func dumpSQL(w io.Writer, database DB, driver Driver, dbName string, tables []st
 		}
 	}
 	return DumpFooter(bw, driver)
+}
+
+func dumpCSV(w io.Writer, database DB, driver Driver, tables []string) error {
+	for i, table := range tables {
+		if len(tables) > 1 {
+			if _, err := fmt.Fprintf(w, "# table: %s\n", table); err != nil {
+				return err
+			}
+		}
+		if err := writeTableCSV(w, database, driver, table); err != nil {
+			return fmt.Errorf("dump table %s: %w", table, err)
+		}
+		if i < len(tables)-1 {
+			if _, err := fmt.Fprintln(w); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func writeTableCSV(w io.Writer, database DB, driver Driver, table string) error {
+	result, err := database.Execute("SELECT * FROM " + quoteIdent(driver, table))
+	if err != nil {
+		return err
+	}
+	cw := csv.NewWriter(w)
+	cols := make([]string, len(result.Columns))
+	for i, c := range result.Columns {
+		cols[i] = c.Name
+	}
+	if err := cw.Write(cols); err != nil {
+		return err
+	}
+	for _, row := range result.Rows {
+		out := make([]string, len(row))
+		for i, v := range row {
+			if v == "NULL" {
+				out[i] = ""
+			} else {
+				out[i] = v
+			}
+		}
+		if err := cw.Write(out); err != nil {
+			return err
+		}
+	}
+	cw.Flush()
+	return cw.Error()
+}
+
+func dumpJSON(w io.Writer, database DB, driver Driver, tables []string) error {
+	if len(tables) == 1 {
+		rows, err := tableJSONRows(database, driver, tables[0])
+		if err != nil {
+			return fmt.Errorf("dump table %s: %w", tables[0], err)
+		}
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		return enc.Encode(rows)
+	}
+	out := make(map[string][]map[string]interface{}, len(tables))
+	for _, table := range tables {
+		rows, err := tableJSONRows(database, driver, table)
+		if err != nil {
+			return fmt.Errorf("dump table %s: %w", table, err)
+		}
+		out[table] = rows
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
+}
+
+func tableJSONRows(database DB, driver Driver, table string) ([]map[string]interface{}, error) {
+	result, err := database.Execute("SELECT * FROM " + quoteIdent(driver, table))
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]map[string]interface{}, len(result.Rows))
+	for r, row := range result.Rows {
+		obj := make(map[string]interface{}, len(result.Columns))
+		for i, c := range result.Columns {
+			if i < len(row) && row[i] != "NULL" {
+				obj[c.Name] = row[i]
+			} else {
+				obj[c.Name] = nil
+			}
+		}
+		rows[r] = obj
+	}
+	return rows, nil
 }
 
 // DumpHeader writes the dump preamble: comments and (MySQL) session-variable

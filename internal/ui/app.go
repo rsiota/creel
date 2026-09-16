@@ -2647,6 +2647,9 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "n":
 			m.exportPicker.SelectNone()
 			return m, nil
+		case "f":
+			m.exportPicker.CycleFormat()
+			return m, nil
 		case "up", "k":
 			m.exportPicker.CursorUp()
 			return m, nil

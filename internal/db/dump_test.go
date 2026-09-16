@@ -568,3 +568,83 @@ func splitSQLStatements(dump string) []string {
 	}
 	return stmts
 }
+
+func TestDumpCSV_SingleAndMulti(t *testing.T) {
+	s := newTestSQLiteDB(t)
+	if _, err := s.Exec(`CREATE TABLE a (id INTEGER PRIMARY KEY, name TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Exec(`CREATE TABLE b (id INTEGER PRIMARY KEY, n INT)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Exec(`INSERT INTO a (id, name) VALUES (1, 'alice'), (2, 'bob')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Exec(`INSERT INTO b (id, n) VALUES (1, 10)`); err != nil {
+		t.Fatal(err)
+	}
+
+	var single bytes.Buffer
+	if err := DumpTables(&single, s, DriverSQLite, "test", []string{"a"}, FormatCSV); err != nil {
+		t.Fatal(err)
+	}
+	got := single.String()
+	if !strings.Contains(got, "id,name") || !strings.Contains(got, "alice") {
+		t.Fatalf("single CSV:\n%s", got)
+	}
+	if strings.Contains(got, "# table:") {
+		t.Fatalf("single-table CSV should not have section headers:\n%s", got)
+	}
+
+	var multi bytes.Buffer
+	if err := DumpTables(&multi, s, DriverSQLite, "test", []string{"a", "b"}, FormatCSV); err != nil {
+		t.Fatal(err)
+	}
+	mout := multi.String()
+	if !strings.Contains(mout, "# table: a") || !strings.Contains(mout, "# table: b") {
+		t.Fatalf("multi CSV missing section headers:\n%s", mout)
+	}
+}
+
+func TestDumpJSON_SingleAndMulti(t *testing.T) {
+	s := newTestSQLiteDB(t)
+	if _, err := s.Exec(`CREATE TABLE a (id INTEGER PRIMARY KEY, name TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Exec(`CREATE TABLE b (id INTEGER PRIMARY KEY, note TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Exec(`INSERT INTO a (id, name) VALUES (1, 'alice')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Exec(`INSERT INTO b (id, note) VALUES (1, NULL)`); err != nil {
+		t.Fatal(err)
+	}
+
+	var single bytes.Buffer
+	if err := DumpTables(&single, s, DriverSQLite, "test", []string{"a"}, FormatJSON); err != nil {
+		t.Fatal(err)
+	}
+	got := single.String()
+	if !strings.HasPrefix(strings.TrimSpace(got), "[") {
+		t.Fatalf("single-table JSON should be an array:\n%s", got)
+	}
+	if !strings.Contains(got, `"alice"`) {
+		t.Fatalf("missing value:\n%s", got)
+	}
+
+	var multi bytes.Buffer
+	if err := DumpTables(&multi, s, DriverSQLite, "test", []string{"a", "b"}, FormatJSON); err != nil {
+		t.Fatal(err)
+	}
+	mout := multi.String()
+	if !strings.HasPrefix(strings.TrimSpace(mout), "{") {
+		t.Fatalf("multi-table JSON should be an object:\n%s", mout)
+	}
+	if !strings.Contains(mout, `"a"`) || !strings.Contains(mout, `"b"`) {
+		t.Fatalf("missing table keys:\n%s", mout)
+	}
+	if !strings.Contains(mout, "null") {
+		t.Fatalf("NULL should become JSON null:\n%s", mout)
+	}
+}

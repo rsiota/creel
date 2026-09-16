@@ -150,12 +150,13 @@ func (p ExportPicker) SelectedTables() []string {
 // CurrentFormat returns the active export format.
 func (p ExportPicker) CurrentFormat() db.Format { return p.format }
 
-// CycleFormat advances to the next supported format.
+// CycleFormat advances to the next supported dump format (SQL → CSV → JSON).
 func (p *ExportPicker) CycleFormat() {
 	switch p.format {
 	case db.FormatSQL:
-		// CSV/JSON not yet wired — keep on SQL for now.
-		p.format = db.FormatSQL
+		p.format = db.FormatCSV
+	case db.FormatCSV:
+		p.format = db.FormatJSON
 	default:
 		p.format = db.FormatSQL
 	}
@@ -199,7 +200,7 @@ func (p ExportPicker) View() string {
 		Render(strings.Join(rows, "\n"))
 
 	formatLabel := strings.ToUpper(string(p.format))
-	footer := mutedStyle.Render("  Export | " + formatLabel + " | " + fmt.Sprintf("%d-%d", p.MarkedCount(), len(p.items)))
+	footer := mutedStyle.Render("  Export | " + formatLabel + " (f) | " + fmt.Sprintf("%d/%d", p.MarkedCount(), len(p.items)))
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		listStyled,

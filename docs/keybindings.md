@@ -80,7 +80,7 @@ group). SQLite uses Connection + Options only.
 | `T`        | Truncate table            |
 | `D`        | Drop table                |
 | `N`        | New table (grid editor)   |
-| `X`        | Export database (portable SQL dump) |
+| `X`        | Export database (SQL / CSV / JSON; `f` cycles) |
 | `:backup`  | Size-aware `mysqldump` / `pg_dump` picker (schema/data per table) → `~/Downloads` |
 | `:restore[!] <file>` | `mysql` / `psql` CLI load (MySQL/Postgres; SSH OK). `:restore!` continues past SQL errors and opens an error review overlay |
 | `:sizes`   | Table row counts and disk sizes (largest first; Enter opens table) |

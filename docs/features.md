@@ -282,8 +282,9 @@ erDiagram
   plus a definition tab for views.
 - **Import / export** — streaming SQL dump importer (`I`) that understands
   MySQL/Sequel Ace dumps (`\'` escapes, backticks, `#` comments) and a
-  pure-Go `mysqldump`-compatible exporter (`X`) that uses native CREATE TABLE
-  DDL (MySQL `SHOW CREATE TABLE`, SQLite `sqlite_master`); result-set export
+  pure-Go exporter (`X`) that cycles SQL / CSV / JSON (`f` in the picker).
+  SQL dumps use native CREATE TABLE DDL (MySQL `SHOW CREATE TABLE`, SQLite
+  `sqlite_master`); result-set export
   via the `g X` dialog (format, columns, and whole-table/marked/page scope)
   or instant CSV (`x`). `:backup` / `:mysqldump` / `:pg_dump` opens a size-aware
   table picker (rows, disk size, schema/data per table) then runs the native
