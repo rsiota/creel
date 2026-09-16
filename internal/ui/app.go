@@ -159,6 +159,7 @@ type connTestResultMsg struct {
 
 // crossSearchResultMsg carries partial results from one batch of tables.
 type crossSearchResultMsg struct {
+	gen        uint64 // must match CrossSearchPanel.Gen or the msg is dropped
 	results    []SearchResult
 	tablesDone int
 	batchEnd   int
@@ -1621,10 +1622,14 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case crossSearchStartMsg:
 		// Begin searching from the first table.
 		query := m.crossSearch.Query()
-		m.crossSearch.StartSearch(len(m.tables))
-		return m, m.runCrossSearchBatch(query, 0)
+		gen := m.crossSearch.StartSearch(len(m.tables))
+		return m, m.runCrossSearchBatch(query, 0, gen)
 
 	case crossSearchResultMsg:
+		// Drop stale batches after Hide or a newer StartSearch.
+		if msg.gen != m.crossSearch.Gen() || !m.crossSearch.IsSearching() {
+			return m, nil
+		}
 		m.crossSearch.AddResults(msg.results, msg.tablesDone)
 		m.crossSearch.AddBatchMeta(msg.skipped, msg.capped)
 		if msg.done || len(m.crossSearch.results) >= crossSearchMaxResults {
@@ -1635,7 +1640,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		// Continue with next batch.
-		return m, m.runCrossSearchBatch(m.crossSearch.Query(), msg.batchEnd)
+		return m, m.runCrossSearchBatch(m.crossSearch.Query(), msg.batchEnd, msg.gen)
 
 	case copyFlashTickMsg:
 		if m.results.AdvanceCopyFlash() {

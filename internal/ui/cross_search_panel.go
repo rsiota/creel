@@ -32,6 +32,7 @@ type CrossSearchPanel struct {
 	skipped   int  // tables skipped (schema/query errors)
 	capped    bool // hit the global hit cap
 	done      bool
+	gen       uint64 // bumps on StartSearch / Hide to drop stale batch msgs
 }
 
 // NewCrossSearchPanel creates a new cross-search panel.
@@ -66,11 +67,15 @@ func (c *CrossSearchPanel) SetQuery(q string) {
 	c.query = q
 }
 
-// Hide closes the panel.
+// Hide closes the panel and invalidates any in-flight search batches.
 func (c *CrossSearchPanel) Hide() {
+	c.gen++
 	c.visible = false
 	c.searching = false
 }
+
+// Gen returns the active search generation (for stale-delivery checks).
+func (c CrossSearchPanel) Gen() uint64 { return c.gen }
 
 // Query returns the current search query.
 func (c CrossSearchPanel) Query() string { return c.query }
@@ -100,8 +105,10 @@ func (c CrossSearchPanel) HasResults() bool {
 	return len(c.results) > 0
 }
 
-// StartSearch begins the search process, resetting results.
-func (c *CrossSearchPanel) StartSearch(totalTables int) {
+// StartSearch begins the search process, resetting results. It returns the
+// generation token that subsequent batch messages must carry.
+func (c *CrossSearchPanel) StartSearch(totalTables int) uint64 {
+	c.gen++
 	c.results = nil
 	c.cursor = 0
 	c.scrollRow = 0
@@ -111,6 +118,7 @@ func (c *CrossSearchPanel) StartSearch(totalTables int) {
 	c.capped = false
 	c.done = false
 	c.searching = true
+	return c.gen
 }
 
 // AddResults appends search results from a table and marks progress.
