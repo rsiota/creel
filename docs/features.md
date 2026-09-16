@@ -314,8 +314,10 @@ erDiagram
   operators (`dd`, `dw`, `x`, `D`), yank/paste, undo/redo (`u`/`U`), buffer
   search (`/` + `n`/`N`), visual line (`V`), and SQL autocompletion that
   offers tables after `FROM`/`JOIN` and columns of those tables after
-  `WHERE`/`ON`/`SET`. On a
-  syntax error, the cursor jumps to the reported token/line.
+  `WHERE`/`ON`/`SET`. `ctrl+e` / `:run` executes the statement under the
+  cursor; `:runall` / `:source` runs every statement in the buffer (stop on
+  error); `:source <file>` runs a `.sql` file without replacing the buffer.
+  On a syntax error, the cursor jumps to the reported token/line.
 - **Query history & bookmarks** — per-connection, persisted, searchable.
 - **`:watch` / `:tail`** — periodic refresh of the last query (status bar
   `WATCH` / `TAIL`). New or changed rows are tinted on each tick. An open

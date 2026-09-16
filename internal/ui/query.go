@@ -14,7 +14,7 @@ import (
 
 // executeQuery runs the query under the cursor asynchronously with pagination.
 // When the editor contains multiple statements, only the one under the cursor
-// is executed.
+// is executed. Use executeAllQueries / :runall to run the whole buffer.
 func (m *Model) executeQuery() tea.Cmd {
 	query := m.editor.StatementAtCursor()
 	if query == "" {
@@ -31,6 +31,116 @@ func (m *Model) executeQuery() tea.Cmd {
 	m.totalRows = 0
 	m.totalRowsSet = false
 	return m.runPageQuery()
+}
+
+// executeAllQueries runs every statement in sql in order, stopping on the first
+// error. Intermediate result sets are discarded; the last statement that
+// produced columns (or the last statement overall) populates the results grid.
+// SELECT statements are page-capped like a normal run. Shared by :runall and
+// :source.
+func (m *Model) executeAllQueries(sql string) tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	stmts := db.SplitStatements(sql)
+	if len(stmts) == 0 {
+		m.schemaMsg = "nothing to run"
+		return nil
+	}
+
+	expanded := make([]string, len(stmts))
+	for i, st := range stmts {
+		q := strings.TrimRight(strings.TrimSpace(st.Text), ";")
+		eq, err := m.expandQueryParams(q)
+		if err != nil {
+			m.schemaMsg = fmt.Sprintf("statement %d/%d: %s", i+1, len(stmts), err.Error())
+			return nil
+		}
+		expanded[i] = eq
+	}
+
+	m.filters = nil
+	m.sortCol = ""
+	m.sortDir = ""
+	m.page = 0
+	m.queryStack = nil
+	m.totalRows = 0
+	m.totalRowsSet = false
+
+	if m.queryCancel != nil {
+		m.queryCancel()
+		m.queryCancel = nil
+	}
+
+	conn := m.connection
+	tx := m.tx
+	pageSize := m.pageSize
+	ctx, cancel := m.queryContext()
+	m.queryCancel = cancel
+	m.queryRunning = true
+	m.queryCancelled = false
+	m.queryStart = time.Now()
+	m.querySpinner = 0
+
+	execCmd := func() tea.Msg {
+		var (
+			last       db.Result
+			lastQuery  string
+			lastExec   string
+			hadColumns bool
+			ran        int
+		)
+		for i, q := range expanded {
+			execQ := q
+			if isSelectQuery(q) && !hasJoinClause(q) {
+				execQ = pageExecQuery(q, pageSize, 0)
+			}
+			var (
+				result db.Result
+				err    error
+			)
+			if tx != nil {
+				result, err = tx.ExecuteContext(ctx, execQ)
+			} else {
+				result, err = conn.DB().ExecuteContext(ctx, execQ)
+			}
+			if err != nil {
+				return queryExecutedMsg{
+					query:      q,
+					execQuery:  execQ,
+					err:        err,
+					page:       0,
+					pageSize:   pageSize,
+					cancelled:  errors.Is(err, context.Canceled),
+					timedOut:   errors.Is(err, context.DeadlineExceeded),
+					multiRan:   ran,
+					multiTotal: len(expanded),
+					multiFail:  i + 1,
+				}
+			}
+			ran++
+			lastQuery = q
+			lastExec = execQ
+			if len(result.Columns) > 0 {
+				last = result
+				hadColumns = true
+			} else if !hadColumns {
+				last = result
+			}
+		}
+		return queryExecutedMsg{
+			query:      lastQuery,
+			execQuery:  lastExec,
+			result:     last,
+			page:       0,
+			pageSize:   pageSize,
+			multiRan:   ran,
+			multiTotal: len(expanded),
+		}
+	}
+
+	return tea.Batch(execCmd, spinnerTick())
 }
 
 // explainQuery wraps the statement under the cursor in EXPLAIN and executes it

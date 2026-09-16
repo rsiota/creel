@@ -644,6 +644,34 @@ func (m *Model) exRun() tea.Cmd {
 	return m.executeQuery()
 }
 
+// exRunAll executes every statement in the editor buffer in order (:runall),
+// stopping on the first error. Shares executeAllQueries with :source.
+func (m *Model) exRunAll() tea.Cmd {
+	return m.executeAllQueries(m.editor.Value())
+}
+
+// exSource runs every statement in the editor (:source) or from a .sql file
+// (:source <path>). File contents are executed without replacing the editor
+// buffer; errors report the failing statement index (no cursor jump into a
+// buffer that doesn't contain the file).
+func (m *Model) exSource(args []string) tea.Cmd {
+	if len(args) == 0 {
+		return m.exRunAll()
+	}
+	expanded, err := expandTilde(filepath.Clean(args[0]))
+	if err != nil {
+		m.schemaMsg = err.Error()
+		return nil
+	}
+	content, err := os.ReadFile(expanded)
+	if err != nil {
+		m.schemaMsg = "read failed: " + err.Error()
+		return nil
+	}
+	m.schemaMsg = fmt.Sprintf("sourcing %s", expanded)
+	return m.executeAllQueries(string(content))
+}
+
 // exTabNew opens a new results tab with the current editor contents, matching
 // the bare `t` key in results/connections.
 func (m *Model) exTabNew() tea.Cmd {
@@ -1659,7 +1687,8 @@ func (m *Model) exEditFile(path string) tea.Cmd {
 // relative paths against the working directory (same as :e), returning the
 // expanded path on success or the read error otherwise. Run fails fast on the
 // error (a missing/unreadable file is almost always a typo); the loaded script
-// is not executed — the user reviews it in the editor and runs it (ctrl+e).
+// is not auto-executed — review it in the editor, then :runall / :source (or
+// ctrl+e for the statement under the cursor).
 func (m *Model) loadStartupFile(path string) (string, error) {
 	expanded, err := expandTilde(filepath.Clean(path))
 	if err != nil {

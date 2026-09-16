@@ -454,6 +454,23 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exRun() },
 		},
 		{
+			verbs:   []string{"runall"},
+			desc:    "run every statement in the editor (stop on error)",
+			usage:   ":runall",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exRunAll() },
+		},
+		{
+			verbs:    []string{"source"},
+			desc:     "run every statement in the editor, or from a .sql file",
+			usage:    ":source [file]",
+			argKind:  exArgOptional,
+			complete: completePath,
+			run: func(m *Model, args []string, _ bool) tea.Cmd {
+				return m.exSource(args)
+			},
+		},
+		{
 			verbs:   []string{"explain", "plan"},
 			desc:    "show the query plan for the editor's statement",
 			usage:   ":explain",

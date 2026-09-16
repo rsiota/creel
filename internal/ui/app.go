@@ -113,6 +113,11 @@ type queryExecutedMsg struct {
 	pageSize  int
 	cancelled bool // context was cancelled (superseded by a newer query)
 	timedOut  bool // query exceeded the per-query deadline
+	// Multi-statement (:runall / :source) metadata. multiTotal == 0 means
+	// the single-statement path (ctrl+e / :run).
+	multiRan   int // statements completed successfully before finish/error
+	multiTotal int // total statements in the batch
+	multiFail  int // 1-based index of the failing statement (0 if none)
 }
 
 // schemasLoadedMsg carries prefetched table schemas for autocomplete and
@@ -1338,13 +1343,24 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, rcmd
 			}
 			m.recordQueryFailure(msg.query, msg.err)
-			m.results.SetError(msg.err.Error())
+			errText := msg.err.Error()
+			if msg.multiFail > 0 {
+				errText = fmt.Sprintf("statement %d/%d: %s", msg.multiFail, msg.multiTotal, errText)
+			}
+			m.results.SetError(errText)
 			if m.restoreCursor {
 				m.restoreCursor = false
 			}
 			m.maybeJumpToQueryError(msg.err, msg.query, msg.execQuery)
 		} else {
 			m.clearQueryFailure()
+			if msg.multiTotal > 0 {
+				m.lastQuery = msg.query
+				m.baseQuery = msg.query
+				if msg.multiTotal > 1 {
+					m.schemaMsg = fmt.Sprintf("ran %d statements", msg.multiRan)
+				}
+			}
 			cols := make([]string, len(msg.result.Columns))
 			for i, c := range msg.result.Columns {
 				cols[i] = c.Name

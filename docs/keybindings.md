@@ -111,6 +111,9 @@ group). SQLite uses Connection + Options only.
 | `V`          | Visual line (yank / delete)                     |
 | `ctrl+n`     | Autocomplete                                    |
 | `==`         | Format SQL                                      |
+| `ctrl+e` / `\` | Run statement under cursor                    |
+| `:runall`    | Run every statement in the buffer (stop on error) |
+| `:source [file]` | Same as `:runall`, or run a `.sql` file     |
 
 Status bar shows `NORMAL` / `INSERT` / `SEARCH` / `V-LINE` while the editor is focused.
 
