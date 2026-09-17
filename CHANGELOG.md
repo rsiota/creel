@@ -11,7 +11,35 @@ commits, so it can come up empty).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-17
+
+Search, export, and connect polish: `:grep`, URI paste, dump CSV/JSON,
+`:runall`/`:source`, EXPLAIN ANALYZE, Postgres multi-schema sidebar, plus
+inspector JSON folds, chart export, theme overrides, and packaging channels.
+
 ### Added
+- `:grep [query]` / `S` — global cross-table cell search from any focus. With a
+  query it starts immediately; after hits, `j`/`k`/`g`/`G` navigate (they type
+  into the query before results exist). Enter re-runs when the query changed.
+  Cap: 200 hits (20 rows per table); status notes the cap and tables skipped
+  for schema/query errors.
+- Connection URI paste — `p` (or paste into a field) fills the connection form
+  from a `postgres://` / `mysql://` / `sqlite:` URI; CLI `-uri` does the same
+  for one-shot connect.
+- Table dump CSV and JSON — `f` in the `X` export picker cycles SQL / CSV /
+  JSON; CSV writes per-table sections and JSON writes arrays/objects (no longer
+  SQL-only).
+- `:runall` / `:source` — run every statement in the editor buffer in order
+  (stop on first error with a statement index; last result set shown).
+  `:source <file>` runs a `.sql` file without replacing the buffer.
+- **EXPLAIN ANALYZE** (`g E` / `:explain!`) — timed plan on Postgres and MySQL,
+  gated by `confirm_destructive` and refusing write statements in read-only
+  mode. SQLite keeps plan-only explain with a clear message.
+- Postgres multi-schema sidebar — collapsible schema headers from
+  `schemaTableCache` (active first, marked `*`); expand a foreign schema to
+  peek at tables, then `:schema name` to switch. Status bar shows
+  `● conn / db / schema`. `:schema` completes schema names. MySQL stays flat
+  (`:db`).
 - JSON/JSONB fold in the record inspector — focused object/array fields show a
   collapsed summary (`▸ {n keys}` / `▸ [n]`); `o` / `enter` opens a navigable
   tree (`j`/`k` move, `h`/`l` collapse/expand, toggle nested nodes with
@@ -70,6 +98,11 @@ commits, so it can come up empty).
 - `:` command line: Enter accepts the highlighted completion when browsing
   argument lists after a trailing space (e.g. `:theme `, `:set `), matching
   Tab. Exact tokens still run on Enter.
+- `:grep` cancel, LIKE escape, and text-column probing so cancel is responsive
+  and pattern metacharacters match literally.
+- Cross-search match lines stay within the panel width; Tab no longer swallows
+  typing while the search popup is open.
+- Ctrl+P palette keeps its compact height when the filter is empty.
 
 ## [0.5.0] - 2026-09-06
 
@@ -384,7 +417,8 @@ First public release. creel succeeds `gsql` (the project was renamed) and migrat
 - **Read-only mode** for safely pointing at production.
 - **Session restore**, per-connection query history & bookmarks, EXPLAIN plans, and ~570 themes.
 
-[Unreleased]: https://github.com/rsiota/creel/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/rsiota/creel/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/rsiota/creel/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/rsiota/creel/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/rsiota/creel/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/rsiota/creel/compare/v0.3.0...v0.3.1
