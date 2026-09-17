@@ -412,50 +412,51 @@ type Model struct {
 	assistant Assistant
 
 	// Tab management
-	resultsTabs         []*ResultsTab // All result tabs
-	activeTabID         int           // Currently active tab ID
-	nextTabID           int           // Counter for generating unique tab IDs
-	tabBar              TabBar        // Tab navigation component
-	history             HistoryPanel
-	bookmarks           BookmarkPanel
-	crossSearch         CrossSearchPanel
-	dbPicker            DatabasePicker
-	help                HelpPanel
-	filterPicker        FilterPicker
-	columnPicker        ColumnPicker
-	exportPicker        ExportPicker
-	backupPicker        BackupPicker
-	exportOverlay       ExportOverlay
-	themePicker         ThemePicker
-	providerPicker      ProviderPicker
-	modelBrowser        ModelBrowser
-	providerForm        ProviderForm
-	importPrompt        ImportPrompt
-	addColumnForm       AddColumnForm
-	tableRenameForm     TableRenameForm
-	tableDesigner       TableDesigner
-	schemaEditor        SchemaEditor
-	cellEdit            CellEditPopup
-	explainPanel        ExplainPanel
-	diffPanel           DiffPanel
-	lookupPanel         LookupPanel
-	erdPanel            ERDPanel
-	chartPanel          ChartPanel
-	explorer            RelExplorer
-	palette             palette
-	ex                  exCmd
-	sidebarCursor       int
-	sidebarScroll       int              // cached scroll offset of the first visible sidebar item
-	sidebarViewAnchored bool             // mouse click froze the view; keyboard nav clears it
-	tableRowCounts      map[string]int64 // approximate row counts for sidebar display
-	expanded            map[string][]db.Column
-	columnCache         map[string][]db.Column
-	views               map[string]bool            // view names from Views(); badges views in the sidebar
-	pkCache             map[string][]string        // table -> PK columns (AI schema context)
-	fkCache             map[string][]db.ForeignKey // table -> FKs (AI schema context)
-	schemaNames         []string                   // schemas/namespaces for editor completion
-	schemaTableCache    map[string][]string        // schema → tables (cross-schema completion)
-	recentTables        []string                   // MRU table names (most recent first); for :recent
+	resultsTabs           []*ResultsTab // All result tabs
+	activeTabID           int           // Currently active tab ID
+	nextTabID             int           // Counter for generating unique tab IDs
+	tabBar                TabBar        // Tab navigation component
+	history               HistoryPanel
+	bookmarks             BookmarkPanel
+	crossSearch           CrossSearchPanel
+	dbPicker              DatabasePicker
+	help                  HelpPanel
+	filterPicker          FilterPicker
+	columnPicker          ColumnPicker
+	exportPicker          ExportPicker
+	backupPicker          BackupPicker
+	exportOverlay         ExportOverlay
+	themePicker           ThemePicker
+	providerPicker        ProviderPicker
+	modelBrowser          ModelBrowser
+	providerForm          ProviderForm
+	importPrompt          ImportPrompt
+	addColumnForm         AddColumnForm
+	tableRenameForm       TableRenameForm
+	tableDesigner         TableDesigner
+	schemaEditor          SchemaEditor
+	cellEdit              CellEditPopup
+	explainPanel          ExplainPanel
+	diffPanel             DiffPanel
+	lookupPanel           LookupPanel
+	erdPanel              ERDPanel
+	chartPanel            ChartPanel
+	explorer              RelExplorer
+	palette               palette
+	ex                    exCmd
+	sidebarCursor         int
+	sidebarScroll         int              // cached scroll offset of the first visible sidebar item
+	sidebarViewAnchored   bool             // mouse click froze the view; keyboard nav clears it
+	tableRowCounts        map[string]int64 // approximate row counts for sidebar display
+	expanded              map[string][]db.Column
+	columnCache           map[string][]db.Column
+	views                 map[string]bool            // view names from Views(); badges views in the sidebar
+	pkCache               map[string][]string        // table -> PK columns (AI schema context)
+	fkCache               map[string][]db.ForeignKey // table -> FKs (AI schema context)
+	schemaNames           []string                   // schemas/namespaces for editor completion
+	schemaTableCache      map[string][]string        // schema → tables (cross-schema completion)
+	sidebarSchemaExpanded map[string]bool            // schema header expand override (default: active only)
+	recentTables          []string                   // MRU table names (most recent first); for :recent
 
 	// Fuzzy table search
 	sidebarFilter    string
@@ -633,21 +634,21 @@ type Model struct {
 	tables                     []string
 
 	// Pagination
-	page          int
-	pageSize      int
-	lastQuery     string
-	pageMsg       string
-	totalRows     int       // total rows in the current table (0 = unknown)
-	totalRowsSet  bool      // whether totalRows has been fetched for this query
-	statsMsg      string    // transient column statistics display
-	exportMsg     string    // transient CSV export / backup / import status
+	page           int
+	pageSize       int
+	lastQuery      string
+	pageMsg        string
+	totalRows      int       // total rows in the current table (0 = unknown)
+	totalRowsSet   bool      // whether totalRows has been fetched for this query
+	statsMsg       string    // transient column statistics display
+	exportMsg      string    // transient CSV export / backup / import status
 	backupStarted  time.Time // wall clock when the current :backup started (for MB/s)
 	restoreStarted time.Time // wall clock when the current :restore started (for MB/s)
-	searchMsg     string    // transient regex search result display
-	truncateMsg   string    // transient truncate result display
-	deleteRowsMsg string    // transient row deletion result display
-	schemaMsg     string    // transient schema change result display
-	bookmarkMsg   string    // transient bookmark result display
+	searchMsg      string    // transient regex search result display
+	truncateMsg    string    // transient truncate result display
+	deleteRowsMsg  string    // transient row deletion result display
+	schemaMsg      string    // transient schema change result display
+	bookmarkMsg    string    // transient bookmark result display
 
 	// flashGen tracks the current "generation" of the transient status message.
 	// Each time a new flash is set, the wrapper increments this and arms a
@@ -4461,7 +4462,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case " ":
 				// Exit filter mode and toggle expand on the highlighted table.
-				if item := m.currentSidebarItem(); item != nil && !item.isColumn {
+				if item := m.currentSidebarItem(); item != nil && item.isTableRow() {
 					selected := item.text
 					m.sidebarFiltering = false
 					m.sidebarFilter = ""
@@ -4474,7 +4475,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "enter":
 				// Select the highlighted match in the full sidebar list.
-				if item := m.currentSidebarItem(); item != nil && !item.isColumn {
+				if item := m.currentSidebarItem(); item != nil && item.isTableRow() {
 					selected := item.text
 					m.sidebarFiltering = false
 					m.sidebarFilter = ""
@@ -4551,8 +4552,8 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "enter", "s":
 			item := m.currentSidebarItem()
-			if item != nil && !item.isColumn {
-				return m, m.openTable(item.text)
+			if item != nil {
+				return m, m.sidebarActivateItem(item)
 			}
 		case "d":
 			m.sidebarPendingG = false
@@ -4563,7 +4564,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "T":
 			m.sidebarPendingG = false
 			item := m.currentSidebarItem()
-			if item != nil && !item.isColumn {
+			if item != nil && item.isTableRow() && (item.schema == "" || item.schema == m.currentSchemaName()) {
 				if m.confirmDestructive() {
 					m.truncateConfirm = item.text
 					return m, nil
@@ -4573,7 +4574,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "D":
 			m.sidebarPendingG = false
 			item := m.currentSidebarItem()
-			if item != nil && !item.isColumn {
+			if item != nil && item.isTableRow() && (item.schema == "" || item.schema == m.currentSchemaName()) {
 				if m.confirmDestructive() {
 					m.dropTableConfirm = item.text
 					m.dropTableInput = ""
@@ -4584,7 +4585,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.sidebarPendingG = false
 			item := m.currentSidebarItem()
-			if item != nil && !item.isColumn {
+			if item != nil && item.isTableRow() && (item.schema == "" || item.schema == m.currentSchemaName()) {
 				return m, m.openTableRenameForm(item.text)
 			}
 		case "a":
@@ -5293,8 +5294,15 @@ func (m Model) viewWorkspace() string {
 		isCursor := m.focus == FocusConnections && i == m.sidebarCursor
 
 		var line string
+		// Tables under a schema header are nested two spaces; columns must
+		// use the same nest so they stay aligned with the table name (after
+		// the expand glyph), not with the glyph itself.
+		nest := ""
+		if item.schema != "" {
+			nest = "  "
+		}
 		if item.isColumn {
-			indent := "   "
+			indent := nest + "   " // icon (1) + space + name-start
 			colStyle := lipgloss.NewStyle().Foreground(colorLabel)
 			if isCursor {
 				colStyle = lipgloss.NewStyle().Foreground(colorBg).Background(colorPrimary).Bold(true)
@@ -5302,6 +5310,20 @@ func (m Model) viewWorkspace() string {
 			colName := colStyle.Render(item.text)
 			colType := mutedStyle.Render(item.colType)
 			line = indent + colName + " " + colType
+		} else if item.isSchema {
+			style := mutedStyle
+			expandIcon := icons.collapsed
+			if m.isSchemaSectionExpanded(item.text) {
+				expandIcon = icons.expanded
+			}
+			if isCursor {
+				style = selectedStyle
+			}
+			label := item.text
+			if item.text == m.currentSchemaName() {
+				label = "* " + item.text
+			}
+			line = style.Render(expandIcon + " " + label)
 		} else {
 			style := normalStyle
 			expandIcon := icons.collapsed
@@ -5313,12 +5335,12 @@ func (m Model) viewWorkspace() string {
 			}
 			tableName := item.text
 			if isCursor && m.sidebarFiltering {
-				line = selectedStyle.Render(expandIcon + " " + item.text)
+				line = selectedStyle.Render(nest + expandIcon + " " + item.text)
 			} else {
 				if m.sidebarFiltering {
 					tableName = highlightMatches(item.text, item.matchIdx)
 				}
-				line = style.Render(expandIcon + " " + tableName)
+				line = style.Render(nest + expandIcon + " " + tableName)
 			}
 			if item.isView {
 				line += " " + mutedStyle.Render("view")

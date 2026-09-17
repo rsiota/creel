@@ -220,6 +220,9 @@ func (m *Model) resetWorkspaceForNewConnection() {
 	m.expanded = make(map[string][]db.Column)
 	m.columnCache = nil
 	m.views = nil
+	m.schemaTableCache = nil
+	m.schemaNames = nil
+	m.sidebarSchemaExpanded = nil
 	m.recentTables = nil
 	m.sidebarFiltering = false
 	m.sidebarFilter = ""
@@ -282,6 +285,7 @@ func (m *Model) selectSchema(name string) tea.Cmd {
 	m.columnCache = make(map[string][]db.Column)
 	m.schemaTableCache = nil
 	m.schemaNames = nil
+	m.sidebarSchemaExpanded = nil
 	m.results.Clear()
 	m.results.ClearEditable()
 	m.inspector.Hide()
@@ -395,6 +399,7 @@ func (m *Model) selectDatabase(name string) tea.Cmd {
 	m.columnCache = make(map[string][]db.Column)
 	m.schemaTableCache = nil
 	m.schemaNames = nil
+	m.sidebarSchemaExpanded = nil
 	m.results.Clear()
 	m.results.ClearEditable()
 	m.inspector.Hide()

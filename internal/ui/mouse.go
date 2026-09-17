@@ -371,7 +371,7 @@ func (m Model) handleWorkspaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			if item.isColumn {
 				return m, nil
 			}
-			return m, m.openTable(item.text)
+			return m, m.sidebarActivateItem(item)
 		}
 		return m, nil
 	}

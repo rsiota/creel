@@ -1526,7 +1526,7 @@ func (m *Model) exGoto(name string) tea.Cmd {
 	items := m.sidebarItems()
 	target := -1
 	for i, it := range items {
-		if !it.isColumn && strings.EqualFold(it.text, name) {
+		if it.isTableRow() && strings.EqualFold(it.text, name) {
 			target = i
 			break
 		}
@@ -1534,7 +1534,7 @@ func (m *Model) exGoto(name string) tea.Cmd {
 	if target < 0 {
 		needle := strings.ToLower(name)
 		for i, it := range items {
-			if !it.isColumn && strings.Contains(strings.ToLower(it.text), needle) {
+			if it.isTableRow() && strings.Contains(strings.ToLower(it.text), needle) {
 				target = i
 				break
 			}
@@ -1839,13 +1839,13 @@ func (m *Model) exExport(args []string) tea.Cmd {
 func (m Model) resolveTableName(name string) string {
 	items := m.sidebarItems()
 	for _, it := range items {
-		if !it.isColumn && strings.EqualFold(it.text, name) {
+		if it.isTableRow() && strings.EqualFold(it.text, name) {
 			return it.text
 		}
 	}
 	needle := strings.ToLower(name)
 	for _, it := range items {
-		if !it.isColumn && strings.Contains(strings.ToLower(it.text), needle) {
+		if it.isTableRow() && strings.Contains(strings.ToLower(it.text), needle) {
 			return it.text
 		}
 	}

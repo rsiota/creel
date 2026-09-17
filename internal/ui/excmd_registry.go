@@ -334,11 +334,12 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exDB(args) },
 		},
 		{
-			verbs:   []string{"schema"},
-			desc:    "list or switch schemas (Postgres; MySQL = :db)",
-			usage:   ":schema [name]",
-			argKind: exArgOptional,
-			run:     func(m *Model, args []string, _ bool) tea.Cmd { return m.exSchema(args) },
+			verbs:    []string{"schema"},
+			desc:     "list or switch schemas (Postgres; MySQL = :db)",
+			usage:    ":schema [name]",
+			argKind:  exArgOptional,
+			complete: completeSchema,
+			run:      func(m *Model, args []string, _ bool) tea.Cmd { return m.exSchema(args) },
 		},
 		{
 			verbs:   []string{"backup", "mysqldump", "pgdump", "pg_dump"},
@@ -1143,11 +1144,28 @@ func completeTable(m *Model, args []string, _ string) []string {
 	}
 	var names []string
 	for _, it := range m.sidebarItems() {
-		if !it.isColumn {
+		if it.isTableRow() {
 			names = append(names, it.text)
 		}
 	}
 	return names
+}
+
+// completeSchema offers schema/namespace names for :schema (Postgres search_path;
+// MySQL maps to databases via :db). Prefers the cached schemaNames list so
+// completion works without a round-trip; falls back to a live Schemas() call.
+func completeSchema(m *Model, args []string, _ string) []string {
+	if len(args) > 0 || m.connection == nil {
+		return nil
+	}
+	if len(m.schemaNames) > 0 {
+		return append([]string(nil), m.schemaNames...)
+	}
+	schemas, err := m.connection.Schemas()
+	if err != nil {
+		return nil
+	}
+	return schemas
 }
 
 // completeColumn offers the current result set's column names as the first

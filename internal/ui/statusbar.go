@@ -72,9 +72,16 @@ func (m Model) connectionInfo(name string) string {
 	if m.connection == nil {
 		return sbMuted.Render("not connected") + ro
 	}
+	cfg := m.connection.Config()
 	s := sbSuccess.Render("● "+name) + ro
-	if (m.connection.Config().Driver == db.DriverMySQL || m.connection.Config().Driver == db.DriverPostgres) && m.connection.Config().Database != "" {
-		s += sbMuted.Render(" / ") + sbLabel.Render(m.connection.Config().Database)
+	if (cfg.Driver == db.DriverMySQL || cfg.Driver == db.DriverPostgres) && cfg.Database != "" {
+		s += sbMuted.Render(" / ") + sbLabel.Render(cfg.Database)
+	}
+	// Postgres: show active search_path schema after the database.
+	if cfg.Driver == db.DriverPostgres {
+		if schema := m.currentSchemaName(); schema != "" {
+			s += sbMuted.Render(" / ") + sbLabel.Render(schema)
+		}
 	}
 	return s
 }
@@ -100,7 +107,7 @@ func (m Model) currentTable() string {
 		return t
 	}
 	if m.focus == FocusConnections && !m.sidebarFiltering {
-		if item := m.currentSidebarItem(); item != nil && !item.isColumn {
+		if item := m.currentSidebarItem(); item != nil && item.isTableRow() {
 			return item.text
 		}
 	}
@@ -291,7 +298,7 @@ func (m Model) statusBar(connName string) string {
 
 	// Show row count for the highlighted sidebar table (if available).
 	if m.focus == FocusConnections {
-		if item := m.currentSidebarItem(); item != nil && !item.isColumn {
+		if item := m.currentSidebarItem(); item != nil && item.isTableRow() {
 			if count, ok := m.tableRowCounts[item.text]; ok && count >= 0 {
 				parts = append(parts, sbMuted.Render(fmt.Sprintf("~%s rows", formatCount(int(count)))))
 			}

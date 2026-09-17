@@ -27,7 +27,11 @@ An overview of everything creel can do. For keys, see
 ## Browsing
 
 - **Table browser** — expand/collapse columns, inspect schemas, fuzzy-filter
-  tables.
+  tables. On Postgres with multiple namespaces, the sidebar groups tables under
+  collapsible schema headers (active schema first, marked `*`); expand a
+  foreign schema to peek at its tables, then `:schema name` to switch. The
+  status bar shows the active schema after the database
+  (`● conn / db / schema`). `:schema` completes schema names.
 - **Results grid** — sort, filter, search, hide/show columns, follow foreign
   keys (`g d`), mark rows and columns, bulk-delete rows, and chart marked
   columns with `:bar` / `:line` / `:scatter` / `:hist` / `:freq` / `:pie`.

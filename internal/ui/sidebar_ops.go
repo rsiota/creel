@@ -5,22 +5,37 @@ import (
 	"regexp"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/rsiota/creel/internal/db"
 )
 
-// sidebarItem is a flat entry in the sidebar (table or column).
+// sidebarItem is a flat entry in the sidebar (schema header, table, or column).
 type sidebarItem struct {
 	text     string
 	isColumn bool
-	isView   bool // true for views (badged in the sidebar)
+	isSchema bool   // collapsible schema section header (Postgres multi-schema)
+	isView   bool   // true for views (badged in the sidebar)
+	schema   string // owning schema for table rows when grouped; empty in flat mode
 	colType  string
 	matchIdx []int // rune indices of fuzzy-matched chars (for highlighting)
 }
 
-// sidebarItems builds the flat list of tables + expanded columns.
+// isTableRow reports a browsable table/view row (not a schema header or column).
+func (it sidebarItem) isTableRow() bool {
+	return !it.isColumn && !it.isSchema
+}
+
+// sidebarItems builds the flat list of tables + expanded columns. On Postgres
+// with a populated schemaTableCache and 2+ schemas, inserts collapsible schema
+// headers (active first). Filtering and single-schema connections stay flat.
 func (m Model) sidebarItems() []sidebarItem {
 	if m.sidebarFiltering {
 		return m.filteredTables()
+	}
+	if m.useGroupedSidebar() {
+		return m.groupedSidebarItems()
 	}
 	var items []sidebarItem
 	for _, t := range m.tables {
@@ -32,6 +47,100 @@ func (m Model) sidebarItems() []sidebarItem {
 		}
 	}
 	return items
+}
+
+// useGroupedSidebar is true when the Postgres sidebar should show schema
+// section headers. MySQL keeps a flat list (schemas are databases → :db).
+func (m Model) useGroupedSidebar() bool {
+	if m.connection == nil || m.connection.Config().Driver != db.DriverPostgres {
+		return false
+	}
+	if len(m.schemaNames) < 2 || len(m.schemaTableCache) == 0 {
+		return false
+	}
+	return true
+}
+
+// groupedSidebarItems builds schema headers + tables from schemaTableCache.
+// The active schema is listed first and marked; other schemas start collapsed.
+func (m Model) groupedSidebarItems() []sidebarItem {
+	active := m.currentSchemaName()
+	var items []sidebarItem
+	for _, schema := range m.sidebarSchemaOrder() {
+		items = append(items, sidebarItem{text: schema, isSchema: true})
+		if !m.isSchemaSectionExpanded(schema) {
+			continue
+		}
+		tables := m.tablesForSchemaSection(schema, active)
+		for _, t := range tables {
+			it := sidebarItem{text: t, schema: schema, isView: schema == active && m.views[t]}
+			items = append(items, it)
+			// Column expand only for the active schema (bare-name expand map).
+			if schema == active {
+				if cols, ok := m.expanded[t]; ok {
+					for _, c := range cols {
+						items = append(items, sidebarItem{text: c.Name, isColumn: true, colType: c.Type, schema: schema})
+					}
+				}
+			}
+		}
+	}
+	return items
+}
+
+// sidebarSchemaOrder returns schemas for the grouped sidebar: active first,
+// then the rest of schemaNames that appear in the cache (or are active).
+func (m Model) sidebarSchemaOrder() []string {
+	active := m.currentSchemaName()
+	seen := make(map[string]bool, len(m.schemaNames)+1)
+	var order []string
+	if active != "" {
+		order = append(order, active)
+		seen[active] = true
+	}
+	for _, s := range m.schemaNames {
+		if seen[s] {
+			continue
+		}
+		if _, ok := m.schemaTableCache[s]; !ok && s != active {
+			continue
+		}
+		order = append(order, s)
+		seen[s] = true
+	}
+	return order
+}
+
+// tablesForSchemaSection lists tables under a schema header. The active schema
+// prefers the live m.tables list so expand/views stay in sync before the cache
+// refreshes; other schemas read schemaTableCache.
+func (m Model) tablesForSchemaSection(schema, active string) []string {
+	if schema == active && len(m.tables) > 0 {
+		return m.tables
+	}
+	return m.schemaTableCache[schema]
+}
+
+// isSchemaSectionExpanded reports whether a schema header's tables are shown.
+// Default: only the active schema is expanded.
+func (m Model) isSchemaSectionExpanded(schema string) bool {
+	if m.sidebarSchemaExpanded != nil {
+		if v, ok := m.sidebarSchemaExpanded[schema]; ok {
+			return v
+		}
+	}
+	return schema == m.currentSchemaName()
+}
+
+// toggleSchemaSection flips the expand/collapse state of a schema header.
+func (m *Model) toggleSchemaSection(schema string) {
+	if schema == "" {
+		return
+	}
+	if m.sidebarSchemaExpanded == nil {
+		m.sidebarSchemaExpanded = make(map[string]bool)
+	}
+	m.sidebarSchemaExpanded[schema] = !m.isSchemaSectionExpanded(schema)
 }
 
 // filteredTables returns tables matching the fuzzy filter, best match first.
@@ -233,10 +342,23 @@ func highlightMatches(text string, matchIdx []int) string {
 // syncSidebarCursorToTable moves the cursor to a table in the full sidebar list.
 func (m *Model) syncSidebarCursorToTable(tableName string) {
 	items := m.sidebarItems()
+	active := m.currentSchemaName()
 	for i, item := range items {
-		if !item.isColumn && item.text == tableName {
+		if !item.isTableRow() || item.text != tableName {
+			continue
+		}
+		// Prefer the active-schema row when the same name exists elsewhere.
+		if item.schema == "" || item.schema == active {
 			m.sidebarCursor = i
-			m.sidebarViewAnchored = false // programmatic selection re-centers
+			m.sidebarViewAnchored = false
+			return
+		}
+	}
+	// Fall back to the first matching table row in any schema.
+	for i, item := range items {
+		if item.isTableRow() && item.text == tableName {
+			m.sidebarCursor = i
+			m.sidebarViewAnchored = false
 			return
 		}
 	}
@@ -355,24 +477,61 @@ func (m Model) currentSidebarItem() *sidebarItem {
 }
 
 // sidebarSelectedTable returns the table for the current sidebar cursor,
-// whether it points at the table row or one of its expanded columns.
+// whether it points at the table row or one of its expanded columns. Tables
+// under a non-active schema are ignored (phase 1: structure/open stay on the
+// active search_path schema).
 func (m Model) sidebarSelectedTable() string {
 	items := m.sidebarItems()
 	if m.sidebarCursor < 0 || m.sidebarCursor >= len(items) {
 		return ""
 	}
+	active := m.currentSchemaName()
 	for i := m.sidebarCursor; i >= 0; i-- {
-		if !items[i].isColumn {
+		if items[i].isTableRow() {
+			if items[i].schema != "" && items[i].schema != active {
+				return ""
+			}
 			return items[i].text
+		}
+		if items[i].isSchema {
+			return ""
 		}
 	}
 	return ""
 }
 
-// toggleExpand loads or clears the schema for the selected table.
+// sidebarActivateItem handles Enter / click on a sidebar row: schema headers
+// toggle; active-schema tables open; other-schema tables prompt :schema.
+func (m *Model) sidebarActivateItem(item *sidebarItem) tea.Cmd {
+	if item == nil || item.isColumn {
+		return nil
+	}
+	if item.isSchema {
+		m.toggleSchemaSection(item.text)
+		return nil
+	}
+	active := m.currentSchemaName()
+	if item.schema != "" && item.schema != active {
+		m.schemaMsg = fmt.Sprintf("use :schema %s to switch", item.schema)
+		return nil
+	}
+	return m.openTable(item.text)
+}
+
+// toggleExpand loads or clears the schema for the selected table, or toggles
+// a schema section header.
 func (m *Model) toggleExpand() {
 	item := m.currentSidebarItem()
 	if item == nil || item.isColumn {
+		return
+	}
+	if item.isSchema {
+		m.toggleSchemaSection(item.text)
+		return
+	}
+	active := m.currentSchemaName()
+	if item.schema != "" && item.schema != active {
+		m.schemaMsg = fmt.Sprintf("use :schema %s to switch", item.schema)
 		return
 	}
 	table := item.text
