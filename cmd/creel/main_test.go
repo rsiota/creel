@@ -8,6 +8,51 @@ import (
 	"github.com/rsiota/creel/internal/db"
 )
 
+func TestBuildConnConfigURI(t *testing.T) {
+	t.Run("explicit -uri", func(t *testing.T) {
+		cfg, err := buildConnConfig(map[string]bool{"uri": true}, "",
+			"postgres://alice@db.example:5433/orders?sslmode=require",
+			"sqlite", "", "localhost", 3306, "root", "", "", "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Driver != db.DriverPostgres || cfg.Host != "db.example" || cfg.Port != 5433 {
+			t.Fatalf("got %+v", cfg)
+		}
+		if cfg.Username != "alice" || cfg.Database != "orders" || cfg.SSLMode != "require" {
+			t.Fatalf("got %+v", cfg)
+		}
+	})
+
+	t.Run("-database that looks like a URI", func(t *testing.T) {
+		set := map[string]bool{"database": true}
+		cfg, err := buildConnConfig(set, "", "",
+			"sqlite", "mysql://root@127.0.0.1/app", "localhost", 3306, "root", "", "", "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Driver != db.DriverMySQL || cfg.Database != "app" {
+			t.Fatalf("got %+v", cfg)
+		}
+	})
+
+	t.Run("flat flag overrides URI", func(t *testing.T) {
+		set := map[string]bool{"uri": true, "database": true}
+		cfg, err := buildConnConfig(set, "",
+			"postgres://alice@localhost/orders",
+			"sqlite", "otherdb", "localhost", 3306, "root", "", "", "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Database != "otherdb" {
+			t.Fatalf("database override = %q", cfg.Database)
+		}
+		if cfg.Username != "alice" {
+			t.Fatalf("username should stay from URI: %q", cfg.Username)
+		}
+	})
+}
+
 func TestApplyOverrides(t *testing.T) {
 	base := func() *db.ConnectionConfig {
 		return &db.ConnectionConfig{

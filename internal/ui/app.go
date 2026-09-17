@@ -2328,6 +2328,19 @@ func (m Model) updateAddConnection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.state = stateConnections
 			m.loadConnections()
 			return m, nil
+		case "p":
+			// Paste a postgres:// / mysql:// / sqlite URI from the clipboard.
+			clip, err := clipboard.ReadAll()
+			if err != nil || strings.TrimSpace(clip) == "" {
+				return m, nil
+			}
+			if err := m.connForm.ApplyURI(clip); err != nil {
+				if db.LooksLikeConnectionURI(clip) {
+					m.connForm.SetError(err.Error())
+				}
+				return m, nil
+			}
+			return m, nil
 		}
 	}
 

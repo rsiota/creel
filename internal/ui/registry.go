@@ -90,6 +90,20 @@ func registry() []Section {
 			},
 		},
 		{
+			Title:  "Connection Form",
+			Source: "app.go connection_form.go",
+			Items: []Binding{
+				{"[ / ]", []string{"[", "]"}, "switch page", "[/]"},
+				{"j/k", []string{"j", "k"}, "move", "j/k"},
+				{"e / i / a", []string{"e", "i", "a"}, "edit field", "e"},
+				{"h/l", []string{"h", "l"}, "cycle choice", "h/l"},
+				{"p", []string{"p"}, "paste connection URI", "p"},
+				{"ctrl+t", []string{"ctrl+t"}, "test connection", "ctrl+t"},
+				{"enter", []string{"enter"}, "save", "enter"},
+				{"esc", []string{"esc"}, "cancel", "esc"},
+			},
+		},
+		{
 			Title:  "Tab Bar",
 			Source: "app.go",
 			Items: []Binding{

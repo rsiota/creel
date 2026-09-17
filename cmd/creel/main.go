@@ -20,6 +20,7 @@ func main() {
 		fileFlag     string
 		formatFlag   string
 		connFlag     string
+		uriFlag      string
 		driverFlag   string
 		databaseFlag string
 		hostFlag     string
@@ -37,6 +38,7 @@ func main() {
 	flag.StringVar(&fileFlag, "f", "", "Load a .sql file into the editor at startup")
 	flag.StringVar(&formatFlag, "format", "tsv", "CLI output format: csv, json, jsonl, md, or tsv")
 	flag.StringVar(&connFlag, "c", "", "Saved connection name; opens it in the TUI, or uses it in CLI mode with -e")
+	flag.StringVar(&uriFlag, "uri", "", "Connection URI (postgres://, mysql://, sqlite:); opens the TUI or pairs with -e")
 	flag.StringVar(&driverFlag, "driver", "sqlite", "Database driver: sqlite, mysql, or postgres")
 	flag.StringVar(&databaseFlag, "database", "", "Database (SQLite path or MySQL/Postgres name); opens it in the TUI, or required for CLI -e")
 	flag.StringVar(&hostFlag, "host", "localhost", "Database host (MySQL only)")
@@ -62,7 +64,7 @@ func main() {
 	if queryFlag != "" || cliMode {
 		setFlags := make(map[string]bool)
 		flag.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
-		connCfg, err := buildConnConfig(setFlags, connFlag, driverFlag, databaseFlag, hostFlag, portFlag, userFlag, passFlag, sslModeFlag, socketFlag, readOnlyFlag)
+		connCfg, err := buildConnConfig(setFlags, connFlag, uriFlag, driverFlag, databaseFlag, hostFlag, portFlag, userFlag, passFlag, sslModeFlag, socketFlag, readOnlyFlag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
@@ -86,13 +88,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// -database / -c open the workspace directly instead of the connection
-	// picker (matches README quickstart: `creel -database demo/….db`).
+	// -database / -c / -uri open the workspace directly instead of the
+	// connection picker (matches README quickstart: `creel -database demo/….db`).
 	var startupConn *db.ConnectionConfig
-	if databaseFlag != "" || connFlag != "" {
+	if databaseFlag != "" || connFlag != "" || uriFlag != "" {
 		setFlags := make(map[string]bool)
 		flag.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
-		startupConn, err = buildConnConfig(setFlags, connFlag, driverFlag, databaseFlag, hostFlag, portFlag, userFlag, passFlag, sslModeFlag, socketFlag, readOnlyFlag)
+		startupConn, err = buildConnConfig(setFlags, connFlag, uriFlag, driverFlag, databaseFlag, hostFlag, portFlag, userFlag, passFlag, sslModeFlag, socketFlag, readOnlyFlag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
@@ -105,14 +107,13 @@ func main() {
 	}
 }
 
-// buildConnConfig resolves the connection for CLI mode. A saved connection by
-// name (-c) wins and resolves its secrets from the keyring (so connections
-// saved in the TUI — including SSH-tunneled ones — work headlessly);
-// otherwise the flat driver/host/... flags build an ad-hoc connection. When
-// -c is used, any explicitly-set flat flags (tracked in setFlags) override the
-// matching field of the saved connection, so e.g. `-c localhost -database x`
-// fills in a different database instead of discarding the flag.
-func buildConnConfig(setFlags map[string]bool, name, driver, database, host string, port int, user, pass, sslmode, socket string, readOnly bool) (*db.ConnectionConfig, error) {
+// buildConnConfig resolves the connection for CLI / startup. Priority:
+//   1. saved connection by name (-c), with optional flat-flag overrides
+//   2. -uri (postgres:// / mysql:// / sqlite:), with optional flat-flag overrides
+//   3. flat -driver/-database/-host/… flags
+// A -database value that itself looks like a connection URI is treated as -uri
+// so `creel -database 'postgres://…'` works without a separate flag.
+func buildConnConfig(setFlags map[string]bool, name, uri, driver, database, host string, port int, user, pass, sslmode, socket string, readOnly bool) (*db.ConnectionConfig, error) {
 	if name != "" {
 		cfg, err := config.Load()
 		if err != nil {
@@ -125,8 +126,23 @@ func buildConnConfig(setFlags map[string]bool, name, driver, database, host stri
 		applyOverrides(conn, setFlags, driver, database, host, port, user, pass, sslmode, socket)
 		return conn, nil
 	}
+	if uri == "" && db.LooksLikeConnectionURI(database) {
+		uri = database
+		database = ""
+		delete(setFlags, "database")
+		setFlags["uri"] = true
+	}
+	if uri != "" {
+		cfg, err := db.ParseConnectionURI(uri)
+		if err != nil {
+			return nil, err
+		}
+		cfg.ReadOnly = readOnly
+		applyOverrides(&cfg, setFlags, driver, database, host, port, user, pass, sslmode, socket)
+		return &cfg, nil
+	}
 	if database == "" && socket == "" {
-		return nil, fmt.Errorf("database is required (use -database or -c <name>)")
+		return nil, fmt.Errorf("database is required (use -database, -uri, or -c <name>)")
 	}
 	return &db.ConnectionConfig{
 		Driver:   db.Driver(driver),

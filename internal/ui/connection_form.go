@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/rsiota/creel/internal/config"
+	"github.com/rsiota/creel/internal/db"
 	"github.com/rsiota/creel/internal/secrets"
 )
 
@@ -152,6 +153,45 @@ func NewConnectionFormEdit(cfg config.ConnectionConfig) ConnectionForm {
 	f.fields[fieldGroup].SetValue(cfg.Group)
 	f.setDriverField(cfg.Driver)
 	return f
+}
+
+// ApplyURI fills the form from a postgres://, mysql://, or sqlite/file: URL.
+// Empty Name is replaced with a short suggested name; an existing Name is kept.
+// Returns an error if the string is not a supported connection URI.
+func (f *ConnectionForm) ApplyURI(raw string) error {
+	parsed, err := db.ParseConnectionURI(raw)
+	if err != nil {
+		return err
+	}
+	f.clearTransient()
+	f.setDriverField(string(parsed.Driver))
+
+	if strings.TrimSpace(f.fields[fieldName].Value()) == "" {
+		f.fields[fieldName].SetValue(db.SuggestConnectionName(parsed))
+	}
+	f.fields[fieldDatabase].SetValue(parsed.Database)
+	f.fields[fieldHost].SetValue(parsed.Host)
+	if parsed.Port > 0 {
+		f.fields[fieldPort].SetValue(strconv.Itoa(parsed.Port))
+	} else {
+		f.fields[fieldPort].SetValue("")
+	}
+	f.fields[fieldUser].SetValue(parsed.Username)
+	f.fields[fieldPass].SetValue(parsed.Password)
+	ssl := parsed.SSLMode
+	if ssl == "" && isNetworkDriver(string(parsed.Driver)) {
+		ssl = "prefer"
+	}
+	f.fields[fieldSSLMode].SetValue(ssl)
+	f.fields[fieldSocket].SetValue(parsed.Socket)
+
+	// Land on the Connection page so the filled host/user/db are visible.
+	f.setPage(formPageConnection)
+	f.focusField(fieldName)
+	f.editing = false
+	f.testMsg = "filled from URI"
+	f.testOK = true
+	return nil
 }
 
 // secretsModeFromConfig infers the secret-storage preference from an existing
@@ -615,6 +655,13 @@ func (f ConnectionForm) Update(msg tea.Msg) (ConnectionForm, tea.Cmd) {
 		f.fields[fi], cmd = f.fields[fi].Update(msg)
 		if f.isPathField(fi) {
 			f.pathComp.refresh(f.fields[fi].Value())
+		}
+		// Terminal paste often lands as a burst of runes into the focused
+		// field; when the whole value is a connection URI, fill the form.
+		if db.LooksLikeConnectionURI(f.fields[fi].Value()) {
+			if err := f.ApplyURI(f.fields[fi].Value()); err == nil {
+				return f, nil
+			}
 		}
 		return f, cmd
 	}

@@ -8,7 +8,8 @@ An overview of everything creel can do. For keys, see
 
 - **Three databases, one interface** — connect to SQLite, MySQL, or PostgreSQL,
   with SSH tunneling for remote MySQL and PostgreSQL, TLS (`sslmode`), and
-  unix sockets.
+  unix sockets. Paste a `postgres://` / `mysql://` / `sqlite:` URI into the
+  connection form (`p`, or paste into a field) or pass `-uri` on the CLI.
 - **Recent connections** — the connection picker remembers an MRU list, selects
   the last-used entry on reopen, and badges recent rows. An empty list offers
   **Try the demo database** (Enter) so first-run users can explore without

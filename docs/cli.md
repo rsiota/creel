@@ -26,6 +26,14 @@ creel -e "SHOW TABLES" -driver mysql -database myapp -host 10.0.0.5 -user admin 
 creel -e "SELECT id, name FROM users" -database /tmp/test.db -format csv > users.csv
 ```
 
+Or paste a connection URI (`postgres://`, `mysql://`, `sqlite:` / `file:`):
+
+```sh
+creel -uri 'postgres://alice@localhost/orders?sslmode=require' -e "SELECT 1"
+creel -uri 'mysql://root@127.0.0.1/app'
+creel -database 'postgres://alice@localhost/orders' -e "SELECT 1"   # URI also accepted as -database
+```
+
 Pipe a query (or a `.sql` file) on stdin with `-e -`:
 
 ```sh
@@ -55,6 +63,7 @@ creel -c localhost -database local_turniq -e "SELECT * FROM users"   # -database
 | `-e`          | SQL to execute (CLI mode); `-e -` reads the query from stdin         |             |
 | `-f`          | Load a `.sql` file into the editor at startup (TUI)                  |             |
 | `-c`          | Saved connection name; opens it in the TUI, or uses it with `-e`     |             |
+| `-uri`        | Connection URI (`postgres://`, `mysql://`, `sqlite:` / `file:`)      |             |
 | `-format`     | CLI output format: `csv`, `json`, `jsonl`, `md`, or `tsv`            | `tsv`       |
 | `-driver`     | `sqlite`, `mysql`, or `postgres`                                     | `sqlite`    |
 | `-database`   | SQLite path or MySQL/Postgres database; opens the TUI workspace when used without `-e` |             |
@@ -73,7 +82,8 @@ creel -c localhost -database local_turniq -e "SELECT * FROM users"   # -database
 **explicitly-set** `-driver`/`-database`/`-host`/`-port`/`-user`/`-password`/
 `-sslmode`/`-socket` flags override the matching fields — handy when a saved
 connection has no default `database`, or you want to point at a different DB
-on the same server.
+on the same server. The same overrides apply on top of `-uri`.
+A `-database` value that looks like a connection URI is treated as `-uri`.
 Combine `-c` with `-readonly` to force a saved connection read-only for a
 one-off. See [Configuration](configuration.md#read-only-mode) for the
 per-connection `readonly: true` alternative to `--readonly`.
