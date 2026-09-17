@@ -472,10 +472,15 @@ func exCommands() []exCmdSpec {
 		},
 		{
 			verbs:   []string{"explain", "plan"},
-			desc:    "show the query plan for the editor's statement",
-			usage:   ":explain",
+			desc:    "show the query plan (:explain! = EXPLAIN ANALYZE)",
+			usage:   ":explain[!]",
 			argKind: exArgNone,
-			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.explainQuery() },
+			run: func(m *Model, _ []string, force bool) tea.Cmd {
+				if force {
+					return m.explainQueryAnalyze()
+				}
+				return m.explainQuery()
+			},
 		},
 		{
 			verbs:   []string{"diagnose", "diag"},

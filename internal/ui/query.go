@@ -146,12 +146,52 @@ func (m *Model) executeAllQueries(sql string) tea.Cmd {
 // explainQuery wraps the statement under the cursor in EXPLAIN and executes it
 // asynchronously. The result is displayed in a scrollable overlay panel.
 func (m *Model) explainQuery() tea.Cmd {
-	return m.explainQueryOpts(false, "")
+	return m.explainQueryOpts(false, "", false)
 }
 
-// explainQueryOpts runs EXPLAIN for the statement under the cursor.
-// When forAI is true the plan is handed to :aiexplain instead of the overlay.
-func (m *Model) explainQueryOpts(forAI bool, focus string) tea.Cmd {
+// explainQueryAnalyze runs EXPLAIN ANALYZE (Postgres/MySQL). It actually
+// executes the statement, so write queries are refused in read-only mode and
+// confirm_destructive stages a prompt. SQLite has no timed ANALYZE explain —
+// use plan-only g e / :explain instead.
+func (m *Model) explainQueryAnalyze() tea.Cmd {
+	if m.connection == nil {
+		m.schemaMsg = "not connected"
+		return nil
+	}
+	if m.connection.Config().Driver == db.DriverSQLite {
+		m.schemaMsg = "EXPLAIN ANALYZE is not supported on SQLite — use g e / :explain for the query plan"
+		return nil
+	}
+	query := m.editor.StatementAtCursor()
+	if query == "" {
+		m.schemaMsg = "no statement under cursor"
+		return nil
+	}
+	query = strings.TrimRight(strings.TrimSpace(query), ";")
+	if query == "" {
+		m.schemaMsg = "no statement under cursor"
+		return nil
+	}
+	if db.IsWriteQuery(query) && m.isReadOnly() {
+		m.schemaMsg = "read-only: EXPLAIN ANALYZE refuses write statements"
+		return nil
+	}
+	if m.confirmDestructive() {
+		m.explainAnalyzeConfirm = true
+		return nil
+	}
+	return m.execExplainAnalyze()
+}
+
+// execExplainAnalyze runs the timed explain without a confirmation prompt.
+func (m *Model) execExplainAnalyze() tea.Cmd {
+	return m.explainQueryOpts(false, "", true)
+}
+
+// explainQueryOpts runs EXPLAIN (or EXPLAIN ANALYZE when analyze is true) for
+// the statement under the cursor. When forAI is true the plan is handed to
+// :aiexplain instead of the overlay.
+func (m *Model) explainQueryOpts(forAI bool, focus string, analyze bool) tea.Cmd {
 	if m.connection == nil {
 		return nil
 	}
@@ -174,10 +214,13 @@ func (m *Model) explainQueryOpts(forAI bool, focus string) tea.Cmd {
 
 	driver := m.connection.Config().Driver
 	var explainStmt string
-	switch driver {
-	case db.DriverSQLite:
+	switch {
+	case analyze && (driver == db.DriverPostgres || driver == db.DriverMySQL):
+		explainStmt = "EXPLAIN ANALYZE " + query
+	case driver == db.DriverSQLite:
 		explainStmt = "EXPLAIN QUERY PLAN " + query
-	case db.DriverPostgres:
+		analyze = false
+	case driver == db.DriverPostgres:
 		explainStmt = "EXPLAIN " + query
 	default: // MySQL
 		explainStmt = "EXPLAIN " + query
@@ -188,7 +231,7 @@ func (m *Model) explainQueryOpts(forAI bool, focus string) tea.Cmd {
 	return func() tea.Msg {
 		defer cancel()
 		result, err := conn.DB().ExecuteContext(ctx, explainStmt)
-		return explainResultMsg{result: result, err: err, query: query, forAI: forAI, focus: focus}
+		return explainResultMsg{result: result, err: err, query: query, forAI: forAI, analyze: analyze, focus: focus}
 	}
 }
 

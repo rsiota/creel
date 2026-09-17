@@ -197,12 +197,14 @@ type statsMsg struct {
 // explainResultMsg carries the EXPLAIN query plan result.
 // query is the statement that was explained (for :aiexplain caching).
 // forAI, when set, skips the overlay and hands the plan to the AI explainer.
+// analyze marks EXPLAIN ANALYZE (timed) vs plan-only EXPLAIN.
 type explainResultMsg struct {
-	result db.Result
-	err    error
-	query  string
-	forAI  bool
-	focus  string // optional user focus for :aiexplain (e.g. "why is the join slow")
+	result  db.Result
+	err     error
+	query   string
+	forAI   bool
+	analyze bool
+	focus   string // optional user focus for :aiexplain (e.g. "why is the join slow")
 }
 
 // diagnoseResultMsg carries rule-based EXPLAIN findings for the lookup overlay.
@@ -545,6 +547,11 @@ type Model struct {
 
 	// Kill-session confirmation dialog (non-empty pid while pending).
 	killConfirm string
+
+	// EXPLAIN ANALYZE confirmation (true while the y/enter prompt is up).
+	// ANALYZE actually runs the statement, so it is gated like other
+	// confirm_destructive actions.
+	explainAnalyzeConfirm bool
 
 	// Drop-table confirmation dialog (non-empty table name while pending).
 	// Requires the user to type the table name exactly to proceed.
@@ -3178,6 +3185,19 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// EXPLAIN ANALYZE confirmation — enter runs the timed plan; esc cancels.
+	if m.explainAnalyzeConfirm {
+		switch msg.String() {
+		case "enter", "y", "Y":
+			m.explainAnalyzeConfirm = false
+			return m, m.execExplainAnalyze()
+		case "esc", "ctrl+c", "n", "N":
+			m.explainAnalyzeConfirm = false
+			return m, nil
+		}
+		return m, nil
+	}
+
 	// Cell-edit popup is modal — vim editing; ctrl+s stages; esc insert→normal→close.
 	if m.cellEdit.IsVisible() {
 		switch msg.String() {
@@ -4033,6 +4053,12 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.resultsPendingG = false
 			m.resultsPendingY = false
 			return m, m.explainQuery()
+		}
+		// g E — EXPLAIN ANALYZE (runs the query; confirm_destructive gated).
+		if msg.String() == "E" && m.resultsPendingG {
+			m.resultsPendingG = false
+			m.resultsPendingY = false
+			return m, m.explainQueryAnalyze()
 		}
 
 		// g X — open the export dialog (format + columns + scope). Capital X
@@ -5494,6 +5520,17 @@ func (m Model) viewWorkspace() string {
 	// Overlay kill-session confirmation dialog if visible
 	if m.killConfirm != "" {
 		prompt := fmt.Sprintf("Kill session %s?\nActive queries on that connection will be aborted.", m.killConfirm)
+		dialog := renderConfirmDialogBare(prompt)
+		dlgW := lipgloss.Width(dialog)
+		dlgH := lipgloss.Height(dialog)
+		dlgX := (m.width - dlgW) / 2
+		dlgY := (m.height - 1 - dlgH) / 2
+		view = placeOverlay(view, dialog, dlgX, dlgY)
+	}
+
+	// Overlay EXPLAIN ANALYZE confirmation — the statement will actually run.
+	if m.explainAnalyzeConfirm {
+		prompt := "EXPLAIN ANALYZE runs the statement (including any writes).\nContinue?"
 		dialog := renderConfirmDialogBare(prompt)
 		dlgW := lipgloss.Width(dialog)
 		dlgH := lipgloss.Height(dialog)

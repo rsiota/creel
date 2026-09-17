@@ -90,6 +90,7 @@ group). SQLite uses Connection + Options only.
 | `:diagnose` | Flag seq/full scans and index hints for the editor statement |
 | `:zen`     | Results-only layout (`:zen off` restores) |
 | `g e` / `:explain` | Raw query plan overlay |
+| `g E` / `:explain!` | EXPLAIN ANALYZE (runs the query; Postgres/MySQL) |
 | `I`        | Import SQL dump           |
 | `S`        | Cross-table search        |
 | `:grep [q]` | Cross-table search (global; optional query) |
@@ -130,6 +131,7 @@ Status bar shows `NORMAL` / `INSERT` / `SEARCH` / `V-LINE` while the editor is f
 | `o`        | Sort column                                  |
 | `g s`      | Column statistics                            |
 | `g e`      | Explain query plan                           |
+| `g E`      | EXPLAIN ANALYZE (runs the query)             |
 | `g d`      | Follow foreign key                           |
 | `g b`      | Go back                                      |
 | `g r`      | Relationship explorer (row's FK graph)       |

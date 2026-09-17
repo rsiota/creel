@@ -233,7 +233,10 @@ erDiagram
 
 ### EXPLAIN, search, statistics
 
-- **EXPLAIN plans** — driver-aware rendering (`g e`) of query plans.
+- **EXPLAIN plans** — driver-aware rendering (`g e` / `:explain`) of query plans.
+  **EXPLAIN ANALYZE** (`g E` / `:explain!`) runs the statement for a timed plan
+  on Postgres and MySQL (SQLite has no timed variant). It is gated by
+  `confirm_destructive` and refuses write statements in read-only mode.
 - **Explain diagnosis** — `:diagnose` / `:diag` runs EXPLAIN on the statement
   under the cursor and lists rule-based findings (full/sequential scans,
   filesort, missing-index hints) in the lookup overlay. Use `g e` for the raw

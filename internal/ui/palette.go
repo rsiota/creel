@@ -212,6 +212,7 @@ var chordReplays = map[string][]string{
 	"g f": {"g", "f"},
 	"g s": {"g", "s"},
 	"g e": {"g", "e"},
+	"g E": {"g", "E"},
 	"g H": {"g", "H"},
 	"g /": {"g", "/"},
 	"g X": {"g", "X"},
