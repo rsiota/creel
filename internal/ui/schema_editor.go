@@ -35,6 +35,7 @@ type SchemaEditor struct {
 	editInput textinput.Model
 	pendingD  bool
 	visible   bool
+	readOnly  bool // foreign-schema inspect: navigate tabs, no DDL
 	width     int
 	height    int
 	errMsg    string
@@ -133,6 +134,7 @@ func (e *SchemaEditor) Show(table string, driver db.Driver, columns []db.TableCo
 	e.cursorCol = 0
 	e.editing = false
 	e.pendingD = false
+	e.readOnly = false
 
 	// Start on the editable Columns tab; read-only metadata loads async.
 	e.activeTab = seTabColumns
@@ -168,6 +170,7 @@ func (e *SchemaEditor) Hide() {
 	e.notice = ""
 	e.editing = false
 	e.pendingD = false
+	e.readOnly = false
 	e.structure = structureData{}
 	e.structLoaded = false
 	e.roCursor = 0
@@ -180,6 +183,12 @@ func (e SchemaEditor) IsVisible() bool { return e.visible }
 
 // IsEditing reports whether a cell is being edited inline.
 func (e SchemaEditor) IsEditing() bool { return e.editing }
+
+// IsReadOnly reports whether the panel is inspect-only (no column DDL).
+func (e SchemaEditor) IsReadOnly() bool { return e.readOnly }
+
+// SetReadOnly toggles inspect-only mode (used for foreign-schema tables).
+func (e *SchemaEditor) SetReadOnly(v bool) { e.readOnly = v }
 
 // Table returns the table being edited.
 func (e SchemaEditor) Table() string { return e.table }
@@ -384,14 +393,23 @@ func (e SchemaEditor) Update(msg tea.Msg) (SchemaEditor, tea.Cmd) {
 			e.cursorLeft()
 			return e, nil
 		case "e", "i":
+			if e.readOnly {
+				return e, nil
+			}
 			e.pendingD = false
 			e.startCellEdit()
 			return e, nil
 		case "o":
+			if e.readOnly {
+				return e, nil
+			}
 			e.pendingD = false
 			e.addRowBelow()
 			return e, nil
 		case "d":
+			if e.readOnly {
+				return e, nil
+			}
 			if e.pendingD {
 				e.pendingD = false
 				if e.isNewRow(e.cursorRow) {

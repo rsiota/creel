@@ -179,13 +179,16 @@ type DB interface {
 	// must gate with confirmations.
 	KillSession(pid string) error
 	// TableSchema returns the column names and types for a given table.
+	// table may be bare or schema-qualified (schema.table).
 	TableSchema(table string) ([]Column, error)
 	// TableSchemaInSchema is TableSchema for a table in the named schema
 	// (Postgres namespace / MySQL database). SQLite returns an error.
 	TableSchemaInSchema(schema, table string) ([]Column, error)
 	// PrimaryKeys returns the primary key column names for a table.
+	// table may be bare or schema-qualified (schema.table).
 	PrimaryKeys(table string) ([]string, error)
 	// ForeignKeys returns outbound foreign keys defined on a table.
+	// table may be bare or schema-qualified (schema.table).
 	ForeignKeys(table string) ([]ForeignKey, error)
 	// ReferencingForeignKeys returns the foreign keys that reference the given
 	// table — other tables' FK columns pointing at it (the reverse of
@@ -199,6 +202,7 @@ type DB interface {
 	// their body (views reading it, functions/triggers over it).
 	Uses(table string) ([]Usage, error)
 	// TableColumnInfo returns detailed column metadata for inserts and validation.
+	// table may be bare or schema-qualified (schema.table).
 	TableColumnInfo(table string) ([]TableColumnInfo, error)
 	// Execute runs a query and returns the result set.
 	Execute(query string) (Result, error)

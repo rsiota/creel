@@ -101,15 +101,14 @@ func (m Model) isReadOnly() bool {
 }
 
 // currentTable returns the table the user is currently working with, if known.
-// It prefers the editable results source, then the focused sidebar selection.
+// It prefers the editable results source, then the focused sidebar selection
+// (schema.table when the cursor is on a foreign-schema row).
 func (m Model) currentTable() string {
 	if t := m.results.SourceTable(); t != "" {
 		return t
 	}
 	if m.focus == FocusConnections && !m.sidebarFiltering {
-		if item := m.currentSidebarItem(); item != nil && item.isTableRow() {
-			return item.text
-		}
+		return m.sidebarSelectedTable()
 	}
 	return ""
 }

@@ -3065,7 +3065,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			// Column editing only applies on the Columns tab; read-only tabs
 			// (e.g. expand a trigger) handle enter inside Update.
-			if onColumnsTab {
+			if onColumnsTab && !m.schemaEditor.IsReadOnly() {
 				if m.schemaEditor.IsEditing() {
 					m.schemaEditor, _ = m.schemaEditor.Update(msg)
 					// For existing rows, fire per-cell DDL immediately on commit.
@@ -3100,7 +3100,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// dd to drop column — only existing rows go through the confirm
 			// flow, and only on the Columns tab. New rows are removed locally
 			// by the editor's Update.
-			if onColumnsTab && m.schemaEditor.pendingD && !m.schemaEditor.IsNewRow() {
+			if onColumnsTab && !m.schemaEditor.IsReadOnly() && m.schemaEditor.pendingD && !m.schemaEditor.IsNewRow() {
 				m.schemaEditor.pendingD = false
 				return m, m.dropCurrentColumn()
 			}
@@ -4590,7 +4590,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case "a":
 			m.sidebarPendingG = false
-			if m.sidebarSelectedTable() != "" {
+			if m.sidebarSelectedActiveTable() != "" {
 				return m, m.openAddColumnForm()
 			}
 		case "N":
@@ -5327,7 +5327,11 @@ func (m Model) viewWorkspace() string {
 		} else {
 			style := normalStyle
 			expandIcon := icons.collapsed
-			if _, ok := m.expanded[item.text]; ok {
+			expandKey := item.text
+			if item.schema != "" && item.schema != m.currentSchemaName() {
+				expandKey = item.schema + "." + item.text
+			}
+			if _, ok := m.expanded[expandKey]; ok {
 				expandIcon = icons.expanded
 			}
 			if isCursor && !m.sidebarFiltering {

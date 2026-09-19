@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/rsiota/creel/internal/db"
 )
 
@@ -175,6 +176,98 @@ func TestSplitTableRef(t *testing.T) {
 	sch, tbl = splitTableRef("users")
 	if sch != "" || tbl != "users" {
 		t.Fatalf("bare: got %q %q", sch, tbl)
+	}
+}
+
+func TestSidebarSelectedTableForeignQualified(t *testing.T) {
+	m := Model{
+		connection: db.ConnectionFromConfig(db.ConnectionConfig{
+			Driver: db.DriverPostgres, Database: "app", Schema: "public", Host: "localhost",
+		}),
+		schemaNames: []string{"public", "analytics"},
+		schemaTableCache: map[string][]string{
+			"public":    {"users"},
+			"analytics": {"events"},
+		},
+		tables: []string{"users"},
+	}
+	m.toggleSchemaSection("analytics")
+	items := m.sidebarItems()
+	var cursor int
+	for i, it := range items {
+		if it.isTableRow() && it.text == "events" && it.schema == "analytics" {
+			cursor = i
+			break
+		}
+	}
+	m.sidebarCursor = cursor
+	if got := m.sidebarSelectedTable(); got != "analytics.events" {
+		t.Fatalf("sidebarSelectedTable = %q", got)
+	}
+	if got := m.sidebarSelectedActiveTable(); got != "" {
+		t.Fatalf("active DDL table should be empty, got %q", got)
+	}
+}
+
+func TestResolveTableNameQualified(t *testing.T) {
+	m := Model{
+		connection: db.ConnectionFromConfig(db.ConnectionConfig{
+			Driver: db.DriverPostgres, Database: "app", Schema: "public", Host: "localhost",
+		}),
+		schemaNames: []string{"public", "analytics"},
+		schemaTableCache: map[string][]string{
+			"public":    {"users"},
+			"analytics": {"events"},
+		},
+		tables: []string{"users"},
+	}
+	if got := m.resolveTableName("analytics.events"); got != "analytics.events" {
+		t.Fatalf("qualified = %q", got)
+	}
+	if got := m.resolveTableName("events"); got != "analytics.events" {
+		t.Fatalf("bare foreign = %q", got)
+	}
+	if got := m.resolveTableName("users"); got != "users" {
+		t.Fatalf("active bare = %q", got)
+	}
+}
+
+func TestResolveDDLTableArgRejectsForeign(t *testing.T) {
+	m := Model{
+		connection: db.ConnectionFromConfig(db.ConnectionConfig{
+			Driver: db.DriverPostgres, Database: "app", Schema: "public", Host: "localhost",
+		}),
+		schemaNames: []string{"public", "analytics"},
+		schemaTableCache: map[string][]string{
+			"public":    {"users"},
+			"analytics": {"events"},
+		},
+		tables: []string{"users"},
+	}
+	if got := m.resolveDDLTableArg("analytics.events"); got != "" {
+		t.Fatalf("expected reject, got %q", got)
+	}
+	if !strings.Contains(m.schemaMsg, ":schema analytics") {
+		t.Fatalf("schemaMsg = %q", m.schemaMsg)
+	}
+	if got := m.resolveDDLTableArg("users"); got != "users" {
+		t.Fatalf("active DDL = %q", got)
+	}
+}
+
+func TestSchemaEditorReadOnlyBlocksEdits(t *testing.T) {
+	e := NewSchemaEditor()
+	e.Show("analytics.events", db.DriverPostgres, []db.TableColumnInfo{
+		{Name: "id", Type: "integer"},
+	})
+	e.SetReadOnly(true)
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	if e.IsEditing() {
+		t.Fatal("read-only should not enter cell edit")
+	}
+	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	if len(e.rows) != 1 {
+		t.Fatalf("read-only should not add row, rows=%d", len(e.rows))
 	}
 }
 

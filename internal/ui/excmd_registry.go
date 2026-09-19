@@ -796,7 +796,7 @@ func exCommands() []exCmdSpec {
 		{
 			verbs:   []string{"describe", "desc", "d"},
 			desc:    "open the structure view for a table",
-			usage:   ":describe [table]",
+			usage:   ":describe [table|schema.table]",
 			argKind: exArgTable,
 			run: func(m *Model, args []string, _ bool) tea.Cmd {
 				name := ""
@@ -810,7 +810,7 @@ func exCommands() []exCmdSpec {
 		{
 			verbs:   []string{"columns"},
 			desc:    "open the Columns structure tab",
-			usage:   ":columns [table]",
+			usage:   ":columns [table|schema.table]",
 			argKind: exArgTable,
 			run: func(m *Model, args []string, _ bool) tea.Cmd {
 				name := ""
@@ -824,7 +824,7 @@ func exCommands() []exCmdSpec {
 		{
 			verbs:   []string{"indexes"},
 			desc:    "open the Indexes structure tab",
-			usage:   ":indexes [table]",
+			usage:   ":indexes [table|schema.table]",
 			argKind: exArgTable,
 			run: func(m *Model, args []string, _ bool) tea.Cmd {
 				name := ""
@@ -838,7 +838,7 @@ func exCommands() []exCmdSpec {
 		{
 			verbs:   []string{"constraints"},
 			desc:    "open the Checks structure tab",
-			usage:   ":constraints [table]",
+			usage:   ":constraints [table|schema.table]",
 			argKind: exArgTable,
 			run: func(m *Model, args []string, _ bool) tea.Cmd {
 				name := ""
@@ -852,7 +852,7 @@ func exCommands() []exCmdSpec {
 		{
 			verbs:   []string{"fk"},
 			desc:    "open the Foreign Keys structure tab",
-			usage:   ":fk [table]",
+			usage:   ":fk [table|schema.table]",
 			argKind: exArgTable,
 			run: func(m *Model, args []string, _ bool) tea.Cmd {
 				name := ""

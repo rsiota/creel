@@ -131,9 +131,12 @@ func schemaChangeMessage(action db.SchemaAction, table string) string {
 
 // openAddColumnForm opens the add-column overlay for the selected sidebar table.
 func (m *Model) openAddColumnForm() tea.Cmd {
-	table := m.sidebarSelectedTable()
-	if table == "" && m.schemaEditor.IsVisible() {
+	table := m.sidebarSelectedActiveTable()
+	if table == "" && m.schemaEditor.IsVisible() && !m.schemaEditor.IsReadOnly() {
 		table = m.schemaEditor.Table()
+		if schema, _ := splitTableRef(table); schema != "" {
+			table = ""
+		}
 	}
 	return m.openAddColumnFormForTable(table)
 }
@@ -242,6 +245,8 @@ func (m *Model) applyTableRename(oldName, newName string) {
 }
 
 // openSchemaPanel opens the inline schema editor for the selected sidebar table.
+// Foreign-schema tables open read-only (inspect indexes/FKs/columns); switch
+// with :schema to run DDL against that namespace.
 func (m *Model) openSchemaPanel() tea.Cmd {
 	if m.connection == nil {
 		return nil
@@ -250,19 +255,36 @@ func (m *Model) openSchemaPanel() tea.Cmd {
 	if table == "" {
 		return nil
 	}
+	return m.openSchemaPanelFor(table)
+}
+
+// openSchemaPanelFor opens the structure panel for a bare or schema.table name.
+func (m *Model) openSchemaPanelFor(table string) tea.Cmd {
+	if m.connection == nil || table == "" {
+		return nil
+	}
 	cols, err := m.connection.DB().TableColumnInfo(table)
 	if err != nil {
-		m.connError = err.Error()
+		m.schemaMsg = err.Error()
 		return nil
 	}
 	m.schemaEditor.Show(table, m.connection.Config().Driver, cols)
-	// Async-load the read-only structure tabs (indexes, FKs, triggers, view).
+	schema, _ := splitTableRef(table)
+	active := m.currentSchemaName()
+	foreign := schema != "" && !strings.EqualFold(schema, active)
+	m.schemaEditor.SetReadOnly(foreign)
+	if foreign {
+		m.schemaEditor.SetNotice(fmt.Sprintf("read-only — :schema %s to edit", schema))
+	}
 	return m.loadStructureMetadata(table)
 }
 
 // dropCurrentColumn runs the existing drop-column confirmation flow for the
 // cursor row in the schema editor.
 func (m *Model) dropCurrentColumn() tea.Cmd {
+	if m.schemaEditor.IsReadOnly() {
+		return nil
+	}
 	col, ok := m.schemaEditor.PendingDropColumn()
 	if !ok || m.connection == nil {
 		return nil

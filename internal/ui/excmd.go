@@ -1523,25 +1523,14 @@ func (m *Model) openTableRef(schema, table string) tea.Cmd {
 }
 
 // splitTableRef splits "schema.table" into parts. Bare names return ("", name).
-// Dots inside quoted identifiers are not supported (sidebar/goto use plain names).
 func splitTableRef(name string) (schema, table string) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "", ""
-	}
-	if i := strings.LastIndex(name, "."); i > 0 && i < len(name)-1 {
-		return name[:i], name[i+1:]
-	}
-	return "", name
+	return db.SplitTableRef(name)
 }
 
 // quoteTableRef returns a driver-quoted schema.table (or bare table when schema
 // is empty) for use in SELECT ... FROM.
 func quoteTableRef(driver db.Driver, schema, table string) string {
-	if schema == "" {
-		return quoteIdentD(driver, table)
-	}
-	return quoteIdentD(driver, schema) + "." + quoteIdentD(driver, table)
+	return db.QuoteTableRef(driver, schema, table)
 }
 
 // liveRecentTables returns recent table names that still exist in m.tables,
@@ -1918,19 +1907,67 @@ func (m *Model) exExport(args []string) tea.Cmd {
 
 // resolveTableName finds the canonical (sidebar) name for a table the user
 // typed: an exact case-insensitive match first, then a substring fallback.
+// Qualified names (schema.table) match that schema; bare names prefer the
+// active schema, then any expanded foreign-schema row as schema.table.
 // Returns "" if nothing matches. Shared by ex commands that take a table arg.
 func (m Model) resolveTableName(name string) string {
+	wantSchema, wantTable := splitTableRef(name)
+	if wantTable == "" {
+		return ""
+	}
 	items := m.sidebarItems()
+	active := m.currentSchemaName()
+
+	if wantSchema != "" {
+		for _, it := range items {
+			if it.isTableRow() && strings.EqualFold(it.schema, wantSchema) && strings.EqualFold(it.text, wantTable) {
+				return it.schema + "." + it.text
+			}
+		}
+		for _, t := range m.schemaTableCache[wantSchema] {
+			if strings.EqualFold(t, wantTable) {
+				return wantSchema + "." + t
+			}
+		}
+		return ""
+	}
+
+	// Bare name: prefer active-schema / flat-mode rows.
 	for _, it := range items {
-		if it.isTableRow() && strings.EqualFold(it.text, name) {
+		if !it.isTableRow() || !strings.EqualFold(it.text, wantTable) {
+			continue
+		}
+		if it.schema == "" || it.schema == active {
 			return it.text
 		}
 	}
-	needle := strings.ToLower(name)
+	// Then any foreign-schema row as schema.table.
 	for _, it := range items {
-		if it.isTableRow() && strings.Contains(strings.ToLower(it.text), needle) {
+		if it.isTableRow() && strings.EqualFold(it.text, wantTable) && it.schema != "" {
+			return it.schema + "." + it.text
+		}
+	}
+	// Collapsed schemas: first cache hit outside active (stable order).
+	for _, schema := range m.sidebarSchemaOrder() {
+		if schema == active {
+			continue
+		}
+		for _, t := range m.schemaTableCache[schema] {
+			if strings.EqualFold(t, wantTable) {
+				return schema + "." + t
+			}
+		}
+	}
+
+	needle := strings.ToLower(wantTable)
+	for _, it := range items {
+		if !it.isTableRow() || !strings.Contains(strings.ToLower(it.text), needle) {
+			continue
+		}
+		if it.schema == "" || it.schema == active {
 			return it.text
 		}
+		return it.schema + "." + it.text
 	}
 	return ""
 }
@@ -1962,8 +1999,9 @@ func (m *Model) resolveTableArg(name string) string {
 
 // resolveDDLTableArg resolves an optional table for sidebar-mirrored DDL
 // (:truncate / :drop / :rename). Unlike resolveTableArg, a bare command prefers
-// the sidebar cursor (sidebarSelectedTable) — matching the T/D/r keys — even
+// the sidebar cursor (sidebarSelectedActiveTable) — matching the T/D/r keys — even
 // when results still show a different SourceTable or focus is not the sidebar.
+// Foreign-schema targets are rejected; switch with :schema first.
 func (m *Model) resolveDDLTableArg(name string) string {
 	if m.connection == nil {
 		m.schemaMsg = "not connected"
@@ -1971,15 +2009,29 @@ func (m *Model) resolveDDLTableArg(name string) string {
 	}
 	if name != "" {
 		if resolved := m.resolveTableName(name); resolved != "" {
+			if schema, table := splitTableRef(resolved); schema != "" {
+				if !strings.EqualFold(schema, m.currentSchemaName()) {
+					m.schemaMsg = fmt.Sprintf("use :schema %s to switch for DDL", schema)
+					return ""
+				}
+				return table
+			}
 			return resolved
 		}
 		m.schemaMsg = fmt.Sprintf("no such table: %s", name)
 		return ""
 	}
-	if t := m.sidebarSelectedTable(); t != "" {
+	if t := m.sidebarSelectedActiveTable(); t != "" {
 		return t
 	}
 	if t := m.currentTable(); t != "" {
+		if schema, table := splitTableRef(t); schema != "" {
+			if !strings.EqualFold(schema, m.currentSchemaName()) {
+				m.schemaMsg = fmt.Sprintf("use :schema %s to switch for DDL", schema)
+				return ""
+			}
+			return table
+		}
 		return t
 	}
 	m.schemaMsg = "no current table — name one"
@@ -2757,14 +2809,19 @@ func (m *Model) exDescribe(name string) tea.Cmd {
 
 // exOpenStructureTab opens the structure panel on a specific tab for a table
 // (:columns / :indexes / :fk / :constraints / :describe). Shares openSchemaPanel
-// with the d key and :describe.
+// with the d key and :describe. Accepts schema.table for foreign namespaces.
 func (m *Model) exOpenStructureTab(name string, tab int) tea.Cmd {
 	table := m.resolveTableArg(name)
 	if table == "" {
 		return nil
 	}
-	m.syncSidebarCursorToTable(table)
-	cmd := m.openSchemaPanel()
+	if schema, tbl := splitTableRef(table); schema != "" {
+		m.ensureSchemaSectionExpanded(schema)
+		m.syncSidebarCursorToQualified(schema, tbl)
+	} else {
+		m.syncSidebarCursorToTable(table)
+	}
+	cmd := m.openSchemaPanelFor(table)
 	if m.schemaEditor.IsVisible() {
 		m.schemaEditor.SetActiveTab(tab)
 	}

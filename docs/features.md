@@ -30,9 +30,10 @@ An overview of everything creel can do. For keys, see
   tables. On Postgres with multiple namespaces, the sidebar groups tables under
   collapsible schema headers (active schema first, marked `*`); Enter on a
   foreign-schema table runs `SELECT * FROM schema.table` without switching
-  (`:goto analytics.events` too). Use `:schema name` when you need DDL /
-  structure against that namespace. Status bar shows the active schema after
-  the database (`● conn / db / schema`). `:schema` completes schema names.
+  (`:goto analytics.events` too). `d` / `:describe` / `:columns` / `:indexes`
+  work on foreign tables (structure is read-only there); use `:schema name`
+  when you need DDL against that namespace. Status bar shows the active schema
+  after the database (`● conn / db / schema`). `:schema` completes schema names.
 - **Results grid** — sort, filter, search, hide/show columns, follow foreign
   keys (`g d`), mark rows and columns, bulk-delete rows, and chart marked
   columns with `:bar` / `:line` / `:scatter` / `:hist` / `:freq` / `:pie`.
@@ -288,7 +289,8 @@ erDiagram
   and a grid-based table designer (`N`).
 - **Table structure view** (`d`) — a tabbed structure editor: columns (editable
   grid), foreign keys, indexes, check constraints, and triggers in one view,
-  plus a definition tab for views.
+  plus a definition tab for views. On Postgres, `d` / `:describe schema.table`
+  also opens foreign-schema tables read-only; switch with `:schema` to edit DDL.
 - **Import / export** — streaming SQL dump importer (`I`) that understands
   MySQL/Sequel Ace dumps (`\'` escapes, backticks, `#` comments) and a
   pure-Go exporter (`X`) that cycles SQL / CSV / JSON (`f` in the picker).

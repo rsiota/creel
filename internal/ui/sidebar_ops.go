@@ -75,12 +75,13 @@ func (m Model) groupedSidebarItems() []sidebarItem {
 		for _, t := range tables {
 			it := sidebarItem{text: t, schema: schema, isView: schema == active && m.views[t]}
 			items = append(items, it)
-			// Column expand only for the active schema (bare-name expand map).
-			if schema == active {
-				if cols, ok := m.expanded[t]; ok {
-					for _, c := range cols {
-						items = append(items, sidebarItem{text: c.Name, isColumn: true, colType: c.Type, schema: schema})
-					}
+			cacheKey := t
+			if schema != active {
+				cacheKey = schema + "." + t
+			}
+			if cols, ok := m.expanded[cacheKey]; ok {
+				for _, c := range cols {
+					items = append(items, sidebarItem{text: c.Name, isColumn: true, colType: c.Type, schema: schema})
 				}
 			}
 		}
@@ -497,10 +498,33 @@ func (m Model) currentSidebarItem() *sidebarItem {
 }
 
 // sidebarSelectedTable returns the table for the current sidebar cursor,
-// whether it points at the table row or one of its expanded columns. Tables
-// under a non-active schema are ignored so structure/DDL keys stay on the
-// active search_path schema (browse foreign tables with Enter instead).
+// whether it points at the table row or one of its expanded columns. Foreign-
+// schema tables are returned as schema.table so structure/browse can target
+// them; use sidebarSelectedActiveTable for DDL keys that must stay on the
+// active search_path schema.
 func (m Model) sidebarSelectedTable() string {
+	items := m.sidebarItems()
+	if m.sidebarCursor < 0 || m.sidebarCursor >= len(items) {
+		return ""
+	}
+	active := m.currentSchemaName()
+	for i := m.sidebarCursor; i >= 0; i-- {
+		if items[i].isTableRow() {
+			if items[i].schema != "" && items[i].schema != active {
+				return items[i].schema + "." + items[i].text
+			}
+			return items[i].text
+		}
+		if items[i].isSchema {
+			return ""
+		}
+	}
+	return ""
+}
+
+// sidebarSelectedActiveTable is like sidebarSelectedTable but returns "" for
+// tables under a non-active schema (DDL / destructive keys).
+func (m Model) sidebarSelectedActiveTable() string {
 	items := m.sidebarItems()
 	if m.sidebarCursor < 0 || m.sidebarCursor >= len(items) {
 		return ""
@@ -549,21 +573,29 @@ func (m *Model) toggleExpand() {
 		return
 	}
 	active := m.currentSchemaName()
-	if item.schema != "" && item.schema != active {
-		m.schemaMsg = fmt.Sprintf("use :schema %s to switch", item.schema)
-		return
+	cacheKey := item.text
+	foreign := item.schema != "" && item.schema != active
+	if foreign {
+		cacheKey = item.schema + "." + item.text
 	}
-	table := item.text
-	if _, ok := m.expanded[table]; ok {
-		delete(m.expanded, table)
+	if _, ok := m.expanded[cacheKey]; ok {
+		delete(m.expanded, cacheKey)
 		m.refreshCompletionCandidates()
 		return
 	}
-	cols, err := m.connection.DB().TableSchema(table)
+	var (
+		cols []db.Column
+		err  error
+	)
+	if foreign {
+		cols, err = m.connection.DB().TableSchemaInSchema(item.schema, item.text)
+	} else {
+		cols, err = m.connection.DB().TableSchema(item.text)
+	}
 	if err != nil {
 		m.connError = err.Error()
 		return
 	}
-	m.expanded[table] = cols
+	m.expanded[cacheKey] = cols
 	m.refreshCompletionCandidates()
 }

@@ -11,6 +11,12 @@ commits, so it can come up empty).
 
 ## [Unreleased]
 
+### Added
+- Postgres foreign-schema structure — `d` / `:describe` / `:columns` / `:indexes`
+  / `:fk` / `:constraints` accept `schema.table` and open read-only; sidebar
+  column expand works on foreign schemas. DDL (`T`/`D`/`r`/`a`, `:drop`, …)
+  still requires `:schema` to switch.
+
 ## [0.6.0] - 2026-09-17
 
 Search, export, and connect polish: `:grep`, URI paste, dump CSV/JSON,

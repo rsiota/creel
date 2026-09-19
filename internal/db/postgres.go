@@ -472,11 +472,15 @@ func (p *Postgres) KillSession(pid string) error {
 }
 
 func (p *Postgres) TableSchema(table string) ([]Column, error) {
+	schema, rel := SplitTableRef(table)
+	if schema != "" {
+		return p.TableSchemaInSchema(schema, rel)
+	}
 	rows, err := p.db.Query(
 		`SELECT column_name, data_type FROM information_schema.columns
 		 WHERE table_schema = current_schema() AND table_name = $1
 		 ORDER BY ordinal_position`,
-		table,
+		rel,
 	)
 	if err != nil {
 		return nil, err
@@ -522,18 +526,38 @@ func (p *Postgres) TableSchemaInSchema(schema, table string) ([]Column, error) {
 }
 
 func (p *Postgres) PrimaryKeys(table string) ([]string, error) {
-	rows, err := p.db.Query(
-		`SELECT kcu.column_name
-		 FROM information_schema.table_constraints tc
-		 JOIN information_schema.key_column_usage kcu
-		   ON tc.constraint_name = kcu.constraint_name
-		   AND tc.table_schema = kcu.table_schema
-		 WHERE tc.table_schema = current_schema()
-		   AND tc.table_name = $1
-		   AND tc.constraint_type = 'PRIMARY KEY'
-		 ORDER BY kcu.ordinal_position`,
-		table,
+	schema, rel := SplitTableRef(table)
+	var (
+		rows *sql.Rows
+		err  error
 	)
+	if schema == "" {
+		rows, err = p.db.Query(
+			`SELECT kcu.column_name
+			 FROM information_schema.table_constraints tc
+			 JOIN information_schema.key_column_usage kcu
+			   ON tc.constraint_name = kcu.constraint_name
+			   AND tc.table_schema = kcu.table_schema
+			 WHERE tc.table_schema = current_schema()
+			   AND tc.table_name = $1
+			   AND tc.constraint_type = 'PRIMARY KEY'
+			 ORDER BY kcu.ordinal_position`,
+			rel,
+		)
+	} else {
+		rows, err = p.db.Query(
+			`SELECT kcu.column_name
+			 FROM information_schema.table_constraints tc
+			 JOIN information_schema.key_column_usage kcu
+			   ON tc.constraint_name = kcu.constraint_name
+			   AND tc.table_schema = kcu.table_schema
+			 WHERE tc.table_schema = $1
+			   AND tc.table_name = $2
+			   AND tc.constraint_type = 'PRIMARY KEY'
+			 ORDER BY kcu.ordinal_position`,
+			schema, rel,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -551,20 +575,42 @@ func (p *Postgres) PrimaryKeys(table string) ([]string, error) {
 }
 
 func (p *Postgres) ForeignKeys(table string) ([]ForeignKey, error) {
-	rows, err := p.db.Query(
-		`SELECT kcu.column_name, ccu.table_name, ccu.column_name
-		 FROM information_schema.table_constraints tc
-		 JOIN information_schema.key_column_usage kcu
-		   ON tc.constraint_name = kcu.constraint_name
-		   AND tc.table_schema = kcu.table_schema
-		 JOIN information_schema.constraint_column_usage ccu
-		   ON tc.constraint_name = ccu.constraint_name
-		 WHERE tc.table_schema = current_schema()
-		   AND tc.table_name = $1
-		   AND tc.constraint_type = 'FOREIGN KEY'
-		 ORDER BY kcu.ordinal_position`,
-		table,
+	schema, rel := SplitTableRef(table)
+	var (
+		rows *sql.Rows
+		err  error
 	)
+	if schema == "" {
+		rows, err = p.db.Query(
+			`SELECT kcu.column_name, ccu.table_name, ccu.column_name
+			 FROM information_schema.table_constraints tc
+			 JOIN information_schema.key_column_usage kcu
+			   ON tc.constraint_name = kcu.constraint_name
+			   AND tc.table_schema = kcu.table_schema
+			 JOIN information_schema.constraint_column_usage ccu
+			   ON tc.constraint_name = ccu.constraint_name
+			 WHERE tc.table_schema = current_schema()
+			   AND tc.table_name = $1
+			   AND tc.constraint_type = 'FOREIGN KEY'
+			 ORDER BY kcu.ordinal_position`,
+			rel,
+		)
+	} else {
+		rows, err = p.db.Query(
+			`SELECT kcu.column_name, ccu.table_name, ccu.column_name
+			 FROM information_schema.table_constraints tc
+			 JOIN information_schema.key_column_usage kcu
+			   ON tc.constraint_name = kcu.constraint_name
+			   AND tc.table_schema = kcu.table_schema
+			 JOIN information_schema.constraint_column_usage ccu
+			   ON tc.constraint_name = ccu.constraint_name
+			 WHERE tc.table_schema = $1
+			   AND tc.table_name = $2
+			   AND tc.constraint_type = 'FOREIGN KEY'
+			 ORDER BY kcu.ordinal_position`,
+			schema, rel,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -692,28 +738,58 @@ func (p *Postgres) Uses(table string) ([]Usage, error) {
 }
 
 func (p *Postgres) TableColumnInfo(table string) ([]TableColumnInfo, error) {
-	rows, err := p.db.Query(
-		`SELECT
-		   c.column_name,
-		   c.data_type,
-		   c.is_nullable = 'NO',
-		   c.column_default,
-		   EXISTS(
-		     SELECT 1 FROM information_schema.key_column_usage kcu
-		     JOIN information_schema.table_constraints tc
-		       ON kcu.constraint_name = tc.constraint_name
-		       AND kcu.table_schema = tc.table_schema
-		     WHERE tc.table_schema = current_schema()
-		       AND tc.table_name = c.table_name
-		       AND kcu.column_name = c.column_name
-		       AND tc.constraint_type = 'PRIMARY KEY'
-		   ) AS is_pk,
-		   c.column_default LIKE 'nextval(%' AS is_serial
-		 FROM information_schema.columns c
-		 WHERE c.table_schema = current_schema() AND c.table_name = $1
-		 ORDER BY c.ordinal_position`,
-		table,
+	schema, rel := SplitTableRef(table)
+	var (
+		rows *sql.Rows
+		err  error
 	)
+	if schema == "" {
+		rows, err = p.db.Query(
+			`SELECT
+			   c.column_name,
+			   c.data_type,
+			   c.is_nullable = 'NO',
+			   c.column_default,
+			   EXISTS(
+			     SELECT 1 FROM information_schema.key_column_usage kcu
+			     JOIN information_schema.table_constraints tc
+			       ON kcu.constraint_name = tc.constraint_name
+			       AND kcu.table_schema = tc.table_schema
+			     WHERE tc.table_schema = current_schema()
+			       AND tc.table_name = c.table_name
+			       AND kcu.column_name = c.column_name
+			       AND tc.constraint_type = 'PRIMARY KEY'
+			   ) AS is_pk,
+			   COALESCE(c.column_default LIKE 'nextval(%', false) AS is_serial
+			 FROM information_schema.columns c
+			 WHERE c.table_schema = current_schema() AND c.table_name = $1
+			 ORDER BY c.ordinal_position`,
+			rel,
+		)
+	} else {
+		rows, err = p.db.Query(
+			`SELECT
+			   c.column_name,
+			   c.data_type,
+			   c.is_nullable = 'NO',
+			   c.column_default,
+			   EXISTS(
+			     SELECT 1 FROM information_schema.key_column_usage kcu
+			     JOIN information_schema.table_constraints tc
+			       ON kcu.constraint_name = tc.constraint_name
+			       AND kcu.table_schema = tc.table_schema
+			     WHERE tc.table_schema = $1
+			       AND tc.table_name = c.table_name
+			       AND kcu.column_name = c.column_name
+			       AND tc.constraint_type = 'PRIMARY KEY'
+			   ) AS is_pk,
+			   COALESCE(c.column_default LIKE 'nextval(%', false) AS is_serial
+			 FROM information_schema.columns c
+			 WHERE c.table_schema = $1 AND c.table_name = $2
+			 ORDER BY c.ordinal_position`,
+			schema, rel,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -792,19 +868,40 @@ func (p *Postgres) Begin(level IsolationLevel) (Tx, error) {
 // extracted from the human-readable pg_get_indexdef output; unique comes from
 // indisunique.
 func (p *Postgres) Indexes(table string) ([]Index, error) {
-	rows, err := p.db.Query(
-		`SELECT c.relname AS index_name,
-		        pg_get_indexdef(i.indexrelid) AS indexdef,
-		        i.indisunique,
-		        i.indisprimary
-		 FROM pg_index i
-		 JOIN pg_class c ON c.oid = i.indexrelid
-		 JOIN pg_class t ON t.oid = i.indrelid
-		 JOIN pg_namespace n ON n.oid = t.relnamespace
-		 WHERE t.relname = $1 AND n.nspname = current_schema()
-		 ORDER BY c.relname`,
-		table,
+	schema, rel := SplitTableRef(table)
+	var (
+		rows *sql.Rows
+		err  error
 	)
+	if schema == "" {
+		rows, err = p.db.Query(
+			`SELECT c.relname AS index_name,
+			        pg_get_indexdef(i.indexrelid) AS indexdef,
+			        i.indisunique,
+			        i.indisprimary
+			 FROM pg_index i
+			 JOIN pg_class c ON c.oid = i.indexrelid
+			 JOIN pg_class t ON t.oid = i.indrelid
+			 JOIN pg_namespace n ON n.oid = t.relnamespace
+			 WHERE t.relname = $1 AND n.nspname = current_schema()
+			 ORDER BY c.relname`,
+			rel,
+		)
+	} else {
+		rows, err = p.db.Query(
+			`SELECT c.relname AS index_name,
+			        pg_get_indexdef(i.indexrelid) AS indexdef,
+			        i.indisunique,
+			        i.indisprimary
+			 FROM pg_index i
+			 JOIN pg_class c ON c.oid = i.indexrelid
+			 JOIN pg_class t ON t.oid = i.indrelid
+			 JOIN pg_namespace n ON n.oid = t.relnamespace
+			 WHERE t.relname = $2 AND n.nspname = $1
+			 ORDER BY c.relname`,
+			schema, rel,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -907,16 +1004,34 @@ func splitTopLevelCommas(s string) []string {
 // CREATE TRIGGER text from pg_get_triggerdef is parsed for timing/event and
 // kept as the statement body.
 func (p *Postgres) Triggers(table string) ([]Trigger, error) {
-	rows, err := p.db.Query(
-		`SELECT t.tgname, pg_get_triggerdef(t.oid)
-		 FROM pg_trigger t
-		 JOIN pg_class c ON c.oid = t.tgrelid
-		 JOIN pg_namespace n ON n.oid = c.relnamespace
-		 WHERE c.relname = $1 AND n.nspname = current_schema()
-		   AND NOT t.tgisinternal
-		 ORDER BY t.tgname`,
-		table,
+	schema, rel := SplitTableRef(table)
+	var (
+		rows *sql.Rows
+		err  error
 	)
+	if schema == "" {
+		rows, err = p.db.Query(
+			`SELECT t.tgname, pg_get_triggerdef(t.oid)
+			 FROM pg_trigger t
+			 JOIN pg_class c ON c.oid = t.tgrelid
+			 JOIN pg_namespace n ON n.oid = c.relnamespace
+			 WHERE c.relname = $1 AND n.nspname = current_schema()
+			   AND NOT t.tgisinternal
+			 ORDER BY t.tgname`,
+			rel,
+		)
+	} else {
+		rows, err = p.db.Query(
+			`SELECT t.tgname, pg_get_triggerdef(t.oid)
+			 FROM pg_trigger t
+			 JOIN pg_class c ON c.oid = t.tgrelid
+			 JOIN pg_namespace n ON n.oid = c.relnamespace
+			 WHERE c.relname = $2 AND n.nspname = $1
+			   AND NOT t.tgisinternal
+			 ORDER BY t.tgname`,
+			schema, rel,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -966,12 +1081,22 @@ func (p *Postgres) TableDefinition(table string) (string, error) {
 // ViewDefinition returns the pretty-printed definition of a view from
 // pg_views, or "" if the named relation is not a view.
 func (p *Postgres) ViewDefinition(view string) (string, error) {
+	schema, rel := SplitTableRef(view)
 	var def sql.NullString
-	err := p.db.QueryRow(
-		`SELECT definition FROM pg_views
-		 WHERE schemaname = current_schema() AND viewname = $1`,
-		view,
-	).Scan(&def)
+	var err error
+	if schema == "" {
+		err = p.db.QueryRow(
+			`SELECT definition FROM pg_views
+			 WHERE schemaname = current_schema() AND viewname = $1`,
+			rel,
+		).Scan(&def)
+	} else {
+		err = p.db.QueryRow(
+			`SELECT definition FROM pg_views
+			 WHERE schemaname = $1 AND viewname = $2`,
+			schema, rel,
+		).Scan(&def)
+	}
 	if err == sql.ErrNoRows {
 		return "", nil
 	}
@@ -987,15 +1112,32 @@ func (p *Postgres) ViewDefinition(view string) (string, error) {
 // are always table-level (a single check may reference several columns), so
 // Column is left empty.
 func (p *Postgres) CheckConstraints(table string) ([]CheckConstraint, error) {
-	rows, err := p.db.Query(
-		`SELECT c.conname, pg_get_constraintdef(c.oid)
-		 FROM pg_constraint c
-		 JOIN pg_class t ON t.oid = c.conrelid
-		 JOIN pg_namespace n ON n.oid = t.relnamespace
-		 WHERE t.relname = $1 AND n.nspname = current_schema() AND c.contype = 'c'
-		 ORDER BY c.conname`,
-		table,
+	schema, rel := SplitTableRef(table)
+	var (
+		rows *sql.Rows
+		err  error
 	)
+	if schema == "" {
+		rows, err = p.db.Query(
+			`SELECT c.conname, pg_get_constraintdef(c.oid)
+			 FROM pg_constraint c
+			 JOIN pg_class t ON t.oid = c.conrelid
+			 JOIN pg_namespace n ON n.oid = t.relnamespace
+			 WHERE t.relname = $1 AND n.nspname = current_schema() AND c.contype = 'c'
+			 ORDER BY c.conname`,
+			rel,
+		)
+	} else {
+		rows, err = p.db.Query(
+			`SELECT c.conname, pg_get_constraintdef(c.oid)
+			 FROM pg_constraint c
+			 JOIN pg_class t ON t.oid = c.conrelid
+			 JOIN pg_namespace n ON n.oid = t.relnamespace
+			 WHERE t.relname = $2 AND n.nspname = $1 AND c.contype = 'c'
+			 ORDER BY c.conname`,
+			schema, rel,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
