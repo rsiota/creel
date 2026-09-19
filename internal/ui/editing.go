@@ -331,31 +331,52 @@ func parseSimpleSelectTable(query string) string {
 		}
 	}
 
-	// Extract the table name, handling quoted identifiers.
+	// Extract the table reference, handling quoted identifiers and schema.table.
 	rest = strings.TrimSpace(rest)
-	if len(rest) > 0 && (rest[0] == '"' || rest[0] == '`' || rest[0] == '[') {
-		// Quoted identifier — find closing quote/bracket.
-		closeCh := rest[0]
-		if rest[0] == '[' {
-			closeCh = ']'
-		}
-		endIdx := strings.IndexByte(rest[1:], closeCh)
-		if endIdx == -1 {
-			return ""
-		}
-		return rest[1 : 1+endIdx]
-	}
-
-	// Unquoted: the table name is the first token.
-	for _, terminator := range []string{" ", ";", "\n", "\t"} {
-		if idx := strings.Index(rest, terminator); idx != -1 {
-			rest = rest[:idx]
-		}
-	}
-	if rest == "" {
+	ident, restAfter, ok := takeSQLIdent(rest)
+	if !ok {
 		return ""
 	}
-	return rest
+	restAfter = strings.TrimSpace(restAfter)
+	if len(restAfter) > 0 && restAfter[0] == '.' {
+		ident2, _, ok2 := takeSQLIdent(strings.TrimSpace(restAfter[1:]))
+		if !ok2 {
+			return ""
+		}
+		return ident + "." + ident2
+	}
+	return ident
+}
+
+// takeSQLIdent reads one SQL identifier from the start of s (quoted or bare).
+// Returns the unquoted name, the remainder, and whether an identifier was found.
+func takeSQLIdent(s string) (ident, rest string, ok bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", s, false
+	}
+	if s[0] == '"' || s[0] == '`' || s[0] == '[' {
+		closeCh := s[0]
+		if s[0] == '[' {
+			closeCh = ']'
+		}
+		endIdx := strings.IndexByte(s[1:], closeCh)
+		if endIdx == -1 {
+			return "", s, false
+		}
+		return s[1 : 1+endIdx], s[1+endIdx+1:], true
+	}
+	end := len(s)
+	for i, r := range s {
+		if r == ' ' || r == ';' || r == '\n' || r == '\t' || r == '.' || r == ',' || r == '(' {
+			end = i
+			break
+		}
+	}
+	if end == 0 {
+		return "", s, false
+	}
+	return s[:end], s[end:], true
 }
 
 // replaceSimpleSelectTable rewrites the table name in a simple SELECT ... FROM query.

@@ -22,6 +22,9 @@ func TestParseSimpleSelectTable(t *testing.T) {
 		{`SELECT id, name FROM users;`, "users"},
 		{`SELECT * FROM "my table"`, "my table"},
 		{"SELECT * FROM `backtick`", "backtick"},
+		{`SELECT * FROM analytics.events`, "analytics.events"},
+		{`SELECT * FROM "analytics"."events";`, "analytics.events"},
+		{`SELECT * FROM "analytics".events`, "analytics.events"},
 		// Should return empty (not editable)
 		{`SELECT * FROM users WHERE id = 1`, "users"},
 		{`SELECT * FROM users WHERE first_name = 'Ruben'`, "users"},

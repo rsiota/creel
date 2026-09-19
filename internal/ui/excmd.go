@@ -1495,10 +1495,53 @@ func (m *Model) touchRecentTable(name string) {
 
 // openTable browses a table via SELECT * FROM — shared by :goto, sidebar
 // enter, mouse open, and :recent <n>. Records the table in the MRU list.
+// name may be bare ("users") or qualified ("analytics.events").
 func (m *Model) openTable(name string) tea.Cmd {
-	m.touchRecentTable(name)
-	m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s;", name))
+	schema, table := splitTableRef(name)
+	return m.openTableRef(schema, table)
+}
+
+// openTableRef browses schema.table (schema empty = active-schema bare name).
+// Foreign schemas are quoted so the query does not depend on search_path.
+func (m *Model) openTableRef(schema, table string) tea.Cmd {
+	if table == "" {
+		return nil
+	}
+	label := table
+	from := table
+	if schema != "" {
+		label = schema + "." + table
+		if m.connection != nil {
+			from = quoteTableRef(m.connection.Config().Driver, schema, table)
+		} else {
+			from = label
+		}
+	}
+	m.touchRecentTable(label)
+	m.editor.SetValue(fmt.Sprintf("SELECT * FROM %s;", from))
 	return m.executeQuery()
+}
+
+// splitTableRef splits "schema.table" into parts. Bare names return ("", name).
+// Dots inside quoted identifiers are not supported (sidebar/goto use plain names).
+func splitTableRef(name string) (schema, table string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", ""
+	}
+	if i := strings.LastIndex(name, "."); i > 0 && i < len(name)-1 {
+		return name[:i], name[i+1:]
+	}
+	return "", name
+}
+
+// quoteTableRef returns a driver-quoted schema.table (or bare table when schema
+// is empty) for use in SELECT ... FROM.
+func quoteTableRef(driver db.Driver, schema, table string) string {
+	if schema == "" {
+		return quoteIdentD(driver, table)
+	}
+	return quoteIdentD(driver, schema) + "." + quoteIdentD(driver, table)
 }
 
 // liveRecentTables returns recent table names that still exist in m.tables,
@@ -1515,24 +1558,48 @@ func (m Model) liveRecentTables() []string {
 	for _, t := range m.recentTables {
 		if canon, ok := alive[strings.ToLower(t)]; ok {
 			out = append(out, canon)
+			continue
+		}
+		// Qualified schema.table: keep if still in the cross-schema cache.
+		schema, table := splitTableRef(t)
+		if schema == "" || table == "" {
+			continue
+		}
+		for _, cand := range m.schemaTableCache[schema] {
+			if strings.EqualFold(cand, table) {
+				out = append(out, schema+"."+cand)
+				break
+			}
 		}
 	}
 	return out
 }
 
-// exGoto opens a table by name (:goto users): exact (case-insensitive) match
-// first, then a substring fallback, then runs SELECT * FROM <table>.
+// exGoto opens a table by name (:goto users or :goto analytics.events): exact
+// (case-insensitive) match first, then a substring fallback, then runs
+// SELECT * FROM <table> (qualified when the match is outside the active schema).
 func (m *Model) exGoto(name string) tea.Cmd {
+	wantSchema, wantTable := splitTableRef(name)
 	items := m.sidebarItems()
 	target := -1
 	for i, it := range items {
-		if it.isTableRow() && strings.EqualFold(it.text, name) {
+		if !it.isTableRow() {
+			continue
+		}
+		if wantSchema != "" {
+			if strings.EqualFold(it.schema, wantSchema) && strings.EqualFold(it.text, wantTable) {
+				target = i
+				break
+			}
+			continue
+		}
+		if strings.EqualFold(it.text, wantTable) {
 			target = i
 			break
 		}
 	}
-	if target < 0 {
-		needle := strings.ToLower(name)
+	if target < 0 && wantSchema == "" {
+		needle := strings.ToLower(wantTable)
 		for i, it := range items {
 			if it.isTableRow() && strings.Contains(strings.ToLower(it.text), needle) {
 				target = i
@@ -1540,13 +1607,29 @@ func (m *Model) exGoto(name string) tea.Cmd {
 			}
 		}
 	}
-	if target < 0 {
+	if target >= 0 {
+		it := items[target]
+		m.sidebarCursor = target
+		m.sidebarViewAnchored = false
+		if it.schema != "" && it.schema != m.currentSchemaName() {
+			return m.openTableRef(it.schema, it.text)
+		}
+		return m.openTable(it.text)
+	}
+	// Qualified name may be in a collapsed schema section — still open from cache.
+	if wantSchema != "" {
+		for _, t := range m.schemaTableCache[wantSchema] {
+			if strings.EqualFold(t, wantTable) {
+				m.ensureSchemaSectionExpanded(wantSchema)
+				m.syncSidebarCursorToQualified(wantSchema, t)
+				return m.openTableRef(wantSchema, t)
+			}
+		}
 		m.schemaMsg = fmt.Sprintf("no such table: %s", name)
 		return nil
 	}
-	m.sidebarCursor = target
-	m.sidebarViewAnchored = false
-	return m.openTable(items[target].text)
+	m.schemaMsg = fmt.Sprintf("no such table: %s", name)
+	return nil
 }
 
 // exBegin starts a manual transaction (:begin [isolation]). While it is

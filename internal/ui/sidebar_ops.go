@@ -143,6 +143,26 @@ func (m *Model) toggleSchemaSection(schema string) {
 	m.sidebarSchemaExpanded[schema] = !m.isSchemaSectionExpanded(schema)
 }
 
+// ensureSchemaSectionExpanded expands a schema header if it is collapsed.
+func (m *Model) ensureSchemaSectionExpanded(schema string) {
+	if schema == "" || m.isSchemaSectionExpanded(schema) {
+		return
+	}
+	m.toggleSchemaSection(schema)
+}
+
+// syncSidebarCursorToQualified moves the cursor to schema.table in the sidebar.
+func (m *Model) syncSidebarCursorToQualified(schema, table string) {
+	items := m.sidebarItems()
+	for i, item := range items {
+		if item.isTableRow() && strings.EqualFold(item.schema, schema) && strings.EqualFold(item.text, table) {
+			m.sidebarCursor = i
+			m.sidebarViewAnchored = false
+			return
+		}
+	}
+}
+
 // filteredTables returns tables matching the fuzzy filter, best match first.
 func (m Model) filteredTables() []sidebarItem {
 	if m.sidebarFilter == "" {
@@ -478,8 +498,8 @@ func (m Model) currentSidebarItem() *sidebarItem {
 
 // sidebarSelectedTable returns the table for the current sidebar cursor,
 // whether it points at the table row or one of its expanded columns. Tables
-// under a non-active schema are ignored (phase 1: structure/open stay on the
-// active search_path schema).
+// under a non-active schema are ignored so structure/DDL keys stay on the
+// active search_path schema (browse foreign tables with Enter instead).
 func (m Model) sidebarSelectedTable() string {
 	items := m.sidebarItems()
 	if m.sidebarCursor < 0 || m.sidebarCursor >= len(items) {
@@ -501,7 +521,7 @@ func (m Model) sidebarSelectedTable() string {
 }
 
 // sidebarActivateItem handles Enter / click on a sidebar row: schema headers
-// toggle; active-schema tables open; other-schema tables prompt :schema.
+// toggle; tables open (foreign schemas as schema.table without switching).
 func (m *Model) sidebarActivateItem(item *sidebarItem) tea.Cmd {
 	if item == nil || item.isColumn {
 		return nil
@@ -512,8 +532,7 @@ func (m *Model) sidebarActivateItem(item *sidebarItem) tea.Cmd {
 	}
 	active := m.currentSchemaName()
 	if item.schema != "" && item.schema != active {
-		m.schemaMsg = fmt.Sprintf("use :schema %s to switch", item.schema)
-		return nil
+		return m.openTableRef(item.schema, item.text)
 	}
 	return m.openTable(item.text)
 }
