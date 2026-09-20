@@ -202,6 +202,21 @@ func (p *Postgres) UseSchema(name string) error {
 	return p.reopen()
 }
 
+// currentSchema returns the session's current_schema() (empty string if unset).
+func (p *Postgres) currentSchema() (string, error) {
+	if p.db == nil {
+		return "", fmt.Errorf("not connected")
+	}
+	var name sql.NullString
+	if err := p.db.QueryRow(`SELECT current_schema()`).Scan(&name); err != nil {
+		return "", err
+	}
+	if !name.Valid {
+		return "", nil
+	}
+	return name.String, nil
+}
+
 // reopen rebuilds the sql.DB pool from the current config, preserving the SSH
 // tunnel when present. Shared by UseDatabase and UseSchema.
 func (p *Postgres) reopen() error {

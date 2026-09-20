@@ -473,12 +473,17 @@ func (m *Model) loadTables() {
 	if schemas, err := m.connection.Schemas(); err == nil {
 		m.schemaNames = schemas
 	}
+	// After UseDatabase, Config.Schema is cleared while Postgres still has a
+	// live current_schema() (usually public). Sync so the sidebar marks and
+	// expands the active section.
+	_ = m.connection.EnsureActiveSchema()
 	m.editor.SetActiveSchema(m.currentSchemaName())
 	m.refreshCompletionCandidates()
 }
 
-// currentSchemaName is the connection's active schema for completion filtering.
-// Postgres uses Config.Schema (search_path); MySQL uses the current database.
+// currentSchemaName is the connection's active schema for completion and the
+// grouped sidebar. Postgres uses Config.Schema (filled from current_schema()
+// via EnsureActiveSchema when unset); MySQL uses the current database.
 func (m Model) currentSchemaName() string {
 	if m.connection == nil {
 		return ""

@@ -40,6 +40,57 @@ func TestConnectionInfoShowsPostgresSchema(t *testing.T) {
 	}
 }
 
+func TestGroupedSidebarExpandsActiveSchema(t *testing.T) {
+	m := Model{
+		connection: db.ConnectionFromConfig(db.ConnectionConfig{
+			Driver: db.DriverPostgres, Database: "app", Schema: "public", Host: "localhost",
+		}),
+		schemaNames: []string{"bookings", "public"},
+		schemaTableCache: map[string][]string{
+			"public":   {"users"},
+			"bookings": {"flights"},
+		},
+		tables: []string{"users"},
+	}
+	if !m.isSchemaSectionExpanded("public") {
+		t.Fatal("active public should start expanded")
+	}
+	if m.isSchemaSectionExpanded("bookings") {
+		t.Fatal("foreign bookings should start collapsed")
+	}
+	items := m.sidebarItems()
+	// * public header first, then users, then collapsed bookings header.
+	if len(items) < 3 || items[0].text != "public" || !items[0].isSchema {
+		t.Fatalf("want public header first, got %+v", items)
+	}
+	out := stripAnsi(m.connectionInfo("prod"))
+	if !strings.Contains(out, "public") {
+		t.Fatalf("status should show active schema, got %q", out)
+	}
+}
+
+func TestGroupedSidebarEmptySchemaLooksUnset(t *testing.T) {
+	// Documents the pre-EnsureActiveSchema failure mode: no section matches
+	// active "", so nothing expands by default.
+	m := Model{
+		connection: db.ConnectionFromConfig(db.ConnectionConfig{
+			Driver: db.DriverPostgres, Database: "demo", Host: "localhost",
+		}),
+		schemaNames: []string{"bookings", "public"},
+		schemaTableCache: map[string][]string{
+			"public":   {"users"},
+			"bookings": {"flights"},
+		},
+		tables: []string{"users"},
+	}
+	if m.currentSchemaName() != "" {
+		t.Fatalf("expected empty active schema, got %q", m.currentSchemaName())
+	}
+	if m.isSchemaSectionExpanded("public") || m.isSchemaSectionExpanded("bookings") {
+		t.Fatal("with empty Schema both sections should stay collapsed until synced")
+	}
+}
+
 func TestGroupedSidebarItemsActiveFirst(t *testing.T) {
 	m := Model{
 		connection: db.ConnectionFromConfig(db.ConnectionConfig{

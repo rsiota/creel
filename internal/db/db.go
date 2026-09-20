@@ -597,6 +597,38 @@ func (c *Connection) UseSchema(name string) error {
 	return nil
 }
 
+// EnsureActiveSchema fills Config.Schema from the live session when it is
+// empty. Postgres reads current_schema() (typically "public" after a bare
+// UseDatabase); MySQL copies Database. No-op when Schema is already set or
+// the driver has no notion of schemas. Does not reopen the pool — it only
+// mirrors what the session already uses so the UI can mark the active
+// schema and expand it by default.
+func (c *Connection) EnsureActiveSchema() error {
+	if c == nil || c.db == nil || c.config.Schema != "" {
+		return nil
+	}
+	switch d := c.db.(type) {
+	case *Postgres:
+		name, err := d.currentSchema()
+		if err != nil {
+			return err
+		}
+		if name == "" {
+			return nil
+		}
+		c.config.Schema = name
+		d.config.Schema = name
+		return nil
+	case *MySQL:
+		if c.config.Database != "" {
+			c.config.Schema = c.config.Database
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
 // queryRunner is the subset of *sql.DB / *sql.Tx that executeRows needs
 // (QueryContext). Accepting the interface lets a transaction return result
 // sets through the same row-scanning path as a plain connection.

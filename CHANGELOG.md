@@ -17,6 +17,11 @@ commits, so it can come up empty).
   column expand works on foreign schemas. DDL (`T`/`D`/`r`/`a`, `:drop`, …)
   still requires `:schema` to switch.
 
+### Fixed
+- Postgres active schema after picking a database — when `Schema` is unset,
+  creel now reads `current_schema()` so the sidebar marks and expands the
+  live namespace (usually `public`) instead of leaving every section collapsed.
+
 ## [0.6.0] - 2026-09-17
 
 Search, export, and connect polish: `:grep`, URI paste, dump CSV/JSON,
