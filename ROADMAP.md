@@ -30,9 +30,8 @@ collapse/expand `zc`/`zo`/`za` (2026-07-29) are all done. What remains:
   safe because every other mouse handler no-ops on `MouseMotion`); hover is
   throttled by card identity, routed on `Type` within the `MouseActionMotion`
   block, and cleared on any key/wheel/drag. See `docs/tui-mouse.md` (Hover
-  tooltips section). Note: `db.Column` carries only name + type, so
-  nullability/default/comments aren't shown — that needs a per-table
-  `TableColumnInfo` fetch and is deferred.
+  tooltips section). Nullability/defaults on hover were tried and **rejected**
+  (too noisy vs the card); use `d` / structure for that detail.
 - **Mini-map** ✅ DONE (2026-08-17) — a tiny overview with a viewport rectangle
   for very large schemas. Auto-shown in the bottom-right when the diagram is
   larger than the viewport (hidden in Mermaid, or when the terminal is too
@@ -174,8 +173,6 @@ or sequenced behind them.
 **Graph / charts**
 - **ERD mini-map**, **persist ERD drag positions**, **keyboard nudge**,
   **`:pie`**, **JOIN from ERD path** — shipped.
-- **ERD tooltip nullability/defaults** — needs `TableColumnInfo` on hover
-  (deferred from the 2026-07-30 tooltip work).
 - **Export a chart** as a Unicode snapshot or SVG.
   ✅ DONE (`x` / `X` / `:chartexport`).
 - **`:watch` + chart** — ✅ DONE (2026-08-20); see Product review slice 3.
@@ -255,7 +252,6 @@ at a time so each can be checked before the next starts.
 - DuckDB as a fourth driver (charts + CSV/Parquet; static-binary friendly).
 - JSON/JSONB foldable tree in the inspector — ✅ DONE (navigable nested folds
   with `o`/`enter`; `E` remains the full editor).
-- ERD tooltip nullability/defaults (`TableColumnInfo`).
 - Unify the two ERD routing systems onto the dynamic polyline router.
 - Discoverability content (short asciinema of `g r` → insert-related → ERD
   path → `i` JOIN) and broader packaging (scoop / nix / AUR).
@@ -265,6 +261,9 @@ at a time so each can be checked before the next starts.
 **Still skip**
 - Macros, `:shell`, second favorites, more themes, SQL Server/Turso for the
   comparison table, editing *through* ERD arrows as a general UPDATE engine.
+- **ERD tooltip nullability/defaults** — rejected: hover must stay
+  non-redundant (FK targets / collapsed column reveal only); NOT NULL /
+  DEFAULT on most columns is noise. Use `d` / structure for that detail.
 
 ---
 

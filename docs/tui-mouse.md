@@ -310,12 +310,9 @@ it deviated:
  the diagram. Overlaid beside the card (right side preferred, flips left /
  clamps to stay on-screen) via the existing `placeOverlay` helper.
 
-**Known limitation (data model):** the sketch mentioned "comments," but
-`db.Column` carries only `Name` + `Type` — there is no comment/nullable/default
-field anywhere in the schema extraction (`TableColumnInfo` has NotNull/Default
-but the ERD cards only load `[]db.Column`). Showing those would need a
-per-table async `TableColumnInfo` fetch; deferred — the type + PK/FK markers
-are the available detail today.
+**Not on the tooltip (rejected):** nullability / defaults / comments. Those
+repeat or crowd what the card already implies; use `d` / structure instead.
+`db.Column` stays name + type for the ERD cards on purpose.
 
 ---
 
