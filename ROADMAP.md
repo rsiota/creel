@@ -13,257 +13,34 @@ lists the files most likely to change.
 
 ## Open work
 
-### ERD (`g R` / `:erd`) — drag + fit-to-screen shipped; interactivity remains
+Short live backlog only. Everything else that used to live here has shipped —
+see **History** below (and git) for the DONE scrapbook.
 
-The static ERD, its interactive tier (focus/highlight/path/search), free-form
-mouse drag (2026-07-27), fit-to-screen `zz` (2026-07-27), and card
-collapse/expand `zc`/`zo`/`za` (2026-07-29) are all done. What remains:
-
-- **Hover tooltips** ✅ DONE (2026-07-30) — hovering an ERD card overlays a
-  tooltip showing ONLY info the card itself doesn't paint, so it never reads
-  as redundant: an **expanded** card lists its FK references
-  (`◇ col → refTable.refColumn`) — the one detail you'd otherwise trace an
-  arrow for — suppressed entirely when the card has no FKs; a **collapsed**
-  card (`zc`) reveals its hidden columns, each FK annotated with its target.
-  FK targets come from `layout.arrows` so they match the diagram. Required
-  flipping the program to `WithMouseAllMotion` (button-less motion, app-wide —
-  safe because every other mouse handler no-ops on `MouseMotion`); hover is
-  throttled by card identity, routed on `Type` within the `MouseActionMotion`
-  block, and cleared on any key/wheel/drag. See `docs/tui-mouse.md` (Hover
-  tooltips section). Nullability/defaults on hover were tried and **rejected**
-  (too noisy vs the card); use `d` / structure for that detail.
-- **Mini-map** ✅ DONE (2026-08-17) — a tiny overview with a viewport rectangle
-  for very large schemas. Auto-shown in the bottom-right when the diagram is
-  larger than the viewport (hidden in Mermaid, or when the terminal is too
-  small to host it). Cards paint as filled blocks (focused = accent, selected
-  / path = primary); a box traces the current view. Click or drag the map to
-  pan — click and drag are the same action here, so pan happens on press and
-  on every motion (no pending/promote step; see `docs/tui-mouse.md`). Files:
-  `erd_minimap.go`, `erd_panel.go`, `mouse.go`. Tests: `erd_minimap_test.go`.
-- **Drag deferred follow-ups:** persisted positions ✅ DONE (2026-08-17) —
-  per-connection session snapshot, scoped by whole-schema (`*`) vs
-  neighbourhood (focused table) so a drag in one view cannot land on the
-  other; snap-to-grid on drop (free cell today); Level C bend-optimal
-  routing (A* on the cell grid; the current Level B router always produces
-  a visible, correct arrow but isn't bend-optimal in pathological layouts).
-  Keyboard nudge (`H`/`J`/`K`/`L`) shipped 2026-08-17.
-
-### `:` argument completion — wave 2 (#10 v2)
-Wave 1 shipped (2026-07-28): each `exCmdSpec` gained an optional `complete`
-closure, and `Model.recomputeExCompletion` drives the popup past the verb.
-`completeTable` (15 table commands: `:goto`/`:describe`/`:columns`/`:indexes`/…),
-`completeConnection`, `completeTheme`, and `completeEnum` (`:export`, `:icons`)
-are wired; Tab completes the top match into the last token. Wave 2 column
-completion shipped (2026-07-29): `completeColumn` (`:sort`/`:hidecolumn`/
-`:stats`/`:filter`) reads the results grid so it stays correct for custom
-queries; `completePath` (`:e`/`:w`/`:import`/`:open`/`:save`) reuses the
-import prompt's filesystem engine, returning full-path candidates so the
-fuzzy ranker keeps them and Tab fills the whole path. Files:
-`excmd_registry.go`, `excmd.go`, `import_prompt.go`. Tests:
-`excmd_completion_test.go`. Remaining:
-- **Fuzzy (vs strict prefix) verb matching** — bundled freebie deferred to avoid
-  changing the "g→goto only" behaviour the verb tests assert.
-
-`up`/`down` popup selection shipped (2026-07-30): when the popup is visible,
-  up/down move its selection (wrapping, mirroring the command palette) and Tab
-  completes the highlighted row; the popup window scrolls once the cursor
-  reaches its edge. A `recalling` flag keeps a history walk going even when a
-  recalled value would itself show a popup, and typing clears it — so
-  `:`+`up` still replays the last command, vim-style, and `up`/`up`/`down`
-  walks history uninterrupted. Files: `excmd.go`. Tests:
+### Now
+- **Fuzzy `:` verb matching** — Helix-style (`:g` → `goto`); deferred only to
+  keep the strict “g→goto only” verb tests. Files: `excmd.go`,
   `excmd_completion_test.go`.
+- **Unify ERD routing** — legacy three-mode router (initial ranked layout) vs
+  dynamic polyline router (`routeArrow` / `rerouteArrows` after drag).
+  Consolidate onto the dynamic path next time the router is touched.
+  Files: `erd_graph.go`, `erd_test.go`.
+- **Publish AUR `creel-bin`** — packaging tree and Scoop bucket are live; one-time
+  push to `ssh://aur@aur.archlinux.org/creel-bin.git` still needed. See
+  `packaging/README.md`.
 
-### `:set <opt>` (#15)
-Deferred — the runtime toggles are already covered by `:timing`/`:limit`/
-`:theme`; `:set` would mainly add `confirm_destructive`/`timeout` mirrors.
+### Later / polish
+- **ERD snap-to-grid on drop** and Level C bend-optimal routing (A*) — Level B
+  already draws correct arrows; this is pathological-layout polish.
+- **DuckDB** as a fourth driver — demand-gated (charts + CSV/Parquet; static-
+  binary friendly).
+- **Nix** packaging — deferred behind Brew / Scoop / AUR.
 
-### Tier 4 — DBA / niche (#15)
-`:who`, `:locks`, `:kill <pid>` — session/lock inspection. **Shipped** for
-MySQL/Postgres (`:locks` / `:blocked`, `:who` / `:sessions`, `:kill`).
-
-### Tech debt / docs
-- **Unify ERD routing.** Two routing systems now coexist: the legacy three-mode
-  router (side elbow / over-top lane) for the initial ranked layout, and the
-  dynamic polyline router (`routeArrow`/`rerouteArrows`) for post-drag. Not
-  urgent (the legacy path is proven and untouched), but consolidate onto the
-  dynamic router next time the router is touched, so there's one path.
-- **TUI mouse notes doc.** ✅ DONE (2026-07-30) — `docs/tui-mouse.md`
-  captures the bubbletea mouse model end to end: the `Type` (deprecated) vs
-  `Action`+`Button` two-field model; the drag-motion gotcha
-  (`Type=MouseLeft`+`Action=MouseActionMotion`, **not** `Type=MouseMotion` —
-  that's button-less hover needing `WithMouseAllMotion`); `WithMouseCellMotion`
-  vs `WithMouseAllMotion` + terminal variance; the Action-first routing pattern,
-  the press→drag→release state machine, double-click detection, wheel/Shift
-  semantics, the size-the-panel-before-hit-testing trap, and a hover-tooltips
-  implementation sketch for the next ERD item. See it before touching mouse code.
-
-### Data-fidelity & UX gaps — 2026-08-04 review
-
-Findings from a focused review of the core "browse and move data" loop. Four
-siblings (NULL vs empty-string distinction, copy-row-to-clipboard, multi-line
-cell viewer, CLI output format + connection reuse) shipped in this pass — see
-the 2026-08-04 History entries; later follow-ups:
-
-- **Binary / BLOB rendering** ✅ DONE (2026-08-12) — `<BLOB …>` placeholder,
-  `Result.Blobs`, `:saveblob`, hex literals in dump/INSERT/clone. Demo:
-  `demo/blob-demo.sql`. Also: TUI honors `-database` / `-c` (opens workspace
-  instead of the connection picker).
-- **Column-width memory** ✅ DONE (2026-08-12) — per-(connection,database,table)
-  widths in session JSON; max-merge so short pages don't shrink columns.
-  Cleared by `:session clear`.
-- **Transaction isolation level** ✅ DONE — `:begin [serializable|repeatable
-  read|read committed|read uncommitted]` (also `s`/`rr`/`rc`/`ru` and
-  hyphenated forms). Status bar shows `TXN S` / `TXN RR` / …. Files:
-  `isolation.go`, `db.go`, `excmd.go`, `excmd_registry.go`, `statusbar.go`.
-
-### Graph UX — browse/edit via the FK graph (in progress)
-
-Goal: the relationship explorer + ERD are how you *move through and edit*
-relational data, not just inspect schema. Pitch: “browse like a folder tree of
-related rows — edit without writing the JOIN.”
-
-**Shipped — first slice:**
-- Unified back from explorer: `u` / `backspace` / `g b` (same `queryStack`)
-- **Insert related** — `A` on an **inbound** edge prefills the child FK and
-  opens inspector insert against the child table **without navigating the
-  grid** (explorer yields the right slot, then restores after save or cancel)
-- **Open in a new tab** — `t` runs the node's drill query in a new results tab;
-  `Enter` still re-roots the current tab
-- Inbound edges with count `0` stay visible so the first related row is
-  insertable
-- Empty-state status lines truncated so a long `emptyMsg` cannot wrap and
-  inflate the explorer past its slot (was clipping the three panels' top
-  borders)
-
-Files: `rel_explorer.go`, `editing.go`, `app.go`, `schema_ops.go`,
-`inspector.go`, `excmd.go` (`loadRowEdges`), `registry.go`,
-`graph_nav_test.go`.
-
-**Next slices (suggested order):**
-1. **Insert related without navigating away** — shipped: insert into the child
-   table while the explorer root and grid stay on the parent.
-2. **ERD as launcher** — shipped (2026-08-16): Enter / double-click a card
-   → `SELECT *` and close the overlay; `f` (and the ◎ header click) keep
-   neighbourhood drill. **Generate JOIN from shortest path** — shipped: trace
-   with `p`, then `i` drops JOIN SQL into the editor.
-3. **Cross-highlight** — shipped (2026-08-16): grid FK cell ↔ explorer
-   outbound edge; opening the ERD traces the FK path from the current table to
-   the referenced one. ERD is a full-screen overlay, so grid+ERD cannot share
-   a frame — highlight is applied at open.
-
-**Explicitly defer:** editing *through* ERD arrows as a general UPDATE engine;
-force-directed layouts; omniscient DB “git blame.”
-
-### Product review — 2026-08-16
-
-Suggestions from a pass over the shipped surface: polish the daily-driver
-loop, then deepen the graph+charts identity rather than growing another REPL.
-The three **Now** items are the first slice; everything else stays demand-gated
-or sequenced behind them.
-
-**Now (shipping)** — all shipped; see History / later sections.
-- **TLS / SSL + unix sockets** — shipped.
-- **Editor undo + `/` + visual line** — shipped.
-- **ERD as launcher + cross-highlight** — shipped.
-
-**Next (connection / editing polish)** — all shipped.
-- **Reconnect / keep-alive**, **transaction isolation**, **jump to syntax
-  error**, **`y r` / `:copyrow` keybinding**.
-
-**Graph / charts**
-- **ERD mini-map**, **persist ERD drag positions**, **keyboard nudge**,
-  **`:pie`**, **JOIN from ERD path** — shipped.
-- **Export a chart** as a Unicode snapshot or SVG.
-  ✅ DONE (`x` / `X` / `:chartexport`).
-- **`:watch` + chart** — ✅ DONE (2026-08-20); see Product review slice 3.
-
-**AI**
-- “Explain this query” / “why is this slow” with the last `EXPLAIN` attached —
-  ✅ DONE (`:aiexplain` / `:why`).
-- **“Fix this error”** — shipped (`:aifix` / `:fixsql`).
-- Restrict schema context to the focused table + FK neighbourhood — shipped.
-- Optional: run generated SQL in a scratch tab (read-only) and iterate on the
-  error. Keep `ctrl+e` as the default — do not auto-run DDL.
-  ✅ DONE (`ai_dry_run` / `:set ai_dry_run on`: new AI scratch tab; auto-run
-  non-writes only).
-
-**Demand-gated / skip**
-- `:who` / `:locks` / `:kill` — shipped for MySQL/Postgres.
-- Macros, `:shell`, a second favorites system — already rejected.
-- More themes (~570 is enough).
-- SQL Server / Turso just to match sqlit’s comparison table.
-
-**Docs / consistency**
-- Fuzzy verb matching for `:` (`:g<tab>` → `goto`) — last wave-2 leftover.
-
-### Product review — 2026-08-20
-
-Prioritized next slices after another pass: strengthen “open → browse →
-analyze → reuse” without diluting the vim + graph identity. Ship one slice
-at a time so each can be checked before the next starts.
-
-**Now (shipping) — slice 1** ✅ DONE (2026-08-20)
-- **Recent connections + first-run demo** — persist an MRU of connection names
-  (`internal/recent`, `~/.config/creel/recent.json`); reopen the picker with
-  the last-used connection selected and a muted `recent` badge; when the list
-  is empty, offer a selectable **Try the demo database** row (`demo.ResolvePath`
-  — cwd `demo/creel-demo.db` if present, else materialize the embedded schema
-  under the config dir). Files: `demo/embed.go`, `internal/recent/`,
-  `connection_list.go`, `connection_ops.go`, `app.go`. Tests:
-  `recent_test.go`, `embed_test.go`, `recent_demo_test.go`,
-  `connection_list_test.go`.
-
-**Now (shipping) — slice 2** ✅ DONE (2026-08-20)
-- **Query parameters** — `:param name value` / `:param` / `:param!` [name];
-  `:name` placeholders expanded to SQL literals before execute (page query,
-  EXPLAIN, chart bang). Skips quotes, comments, and `::` casts. Status bar
-  `PARAM n`. Cleared on disconnect. Files: `query_params.go`, `query.go`,
-  `chart_query.go`, `excmd_registry.go`, `statusbar.go`. Tests:
-  `query_params_test.go`.
-
-**Now (shipping) — slice 3** ✅ DONE (2026-08-20)
-- **`:watch` + chart** — an open chart redraws on each results refresh
-  (page charts from the new grid; bang charts re-fetch). `:watch` / `:tail`
-  tint rows whose content is new since the previous tick. Files:
-  `chart_query.go`, `app.go`, `results_table.go`, `watch_delta.go`,
-  `excmd.go`. Tests: `watch_chart_test.go`.
-
-**Now (shipping) — slice 4** ✅ DONE (2026-08-20)
-- **CLI stdin + non-zero exit** — `-e -` (or `-cli` with no `-e`) reads SQL
-  from stdin; connect/SQL/empty-stdin failures exit `1`. Files:
-  `cmd/creel/main.go`, `docs/cli.md`. Tests: `cmd/creel/main_test.go`.
-
-**Next (one at a time)** — see **Then** below.
-- Color PK / FK columns in the grid — ✅ DONE (soft primary→bg FK cell tint
-  only; PK stays as before with `*`; headers untinted).
-- Jump-anywhere palette — ✅ DONE (Ctrl+P lists tables, bookmarks, and themes
-  alongside keybindings; history stays on Ctrl+Y; Enter jumps or replays).
-- Chart export (Unicode snapshot or SVG).
-  ✅ DONE (`x` / `X` on an open chart, or `:chartexport [txt|svg]` →
-  `~/Downloads`).
-- AI “explain this query / why slow” with the last `EXPLAIN` attached —
-  ✅ DONE (`:aiexplain` / `:why`; caches plan from `g e` / `:explain`, else
-  runs EXPLAIN then streams prose to the assistant panel).
-- Optional AI scratch-tab dry-run (still no auto-run DDL).
-- Result-set diff of two tabs — ✅ DONE (`:diff [a] [b]`; PK match when same
-  source table + PK cols, else row index; schema-diff stays rejected).
-
-**Fits the product (later)**
-- DuckDB as a fourth driver (charts + CSV/Parquet; static-binary friendly).
-- JSON/JSONB foldable tree in the inspector — ✅ DONE (navigable nested folds
-  with `o`/`enter`; `E` remains the full editor).
-- Unify the two ERD routing systems onto the dynamic polyline router.
-- Discoverability content (short asciinema of `g r` → insert-related → ERD
-  path → `i` JOIN) and broader packaging (scoop / nix / AUR).
-  ✅ Scoop + AUR `-bin` DONE (`packaging/`, `rsiota/scoop-creel`; Nix deferred;
-  AUR publish still needs a one-time push to `aur.archlinux.org`).
-
-**Still skip**
+### Still skip
 - Macros, `:shell`, second favorites, more themes, SQL Server/Turso for the
   comparison table, editing *through* ERD arrows as a general UPDATE engine.
-- **ERD tooltip nullability/defaults** — rejected: hover must stay
-  non-redundant (FK targets / collapsed column reveal only); NOT NULL /
-  DEFAULT on most columns is noise. Use `d` / structure for that detail.
+- **ERD tooltip nullability/defaults** — rejected: hover stays non-redundant
+  (FK targets / collapsed column reveal only). Use `d` / structure for that.
+
 
 ---
 
