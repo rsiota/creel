@@ -754,7 +754,7 @@ func renderHelpSegment(seg helpSegment, re *regexp.Regexp, isCurrent bool, match
 }
 
 // renderGettingStartedRows lays out a short onboarding guide: connect, run a
-// query, and the three main discovery surfaces (Ctrl+P, ?, :).
+// query, the graph/chart identity, and the main discovery surfaces.
 func renderGettingStartedRows(contentW int) []helpRow {
 	_ = contentW
 	// Unpadded styles: renderHelpRow may style the first rune separately for the
@@ -785,7 +785,16 @@ func renderGettingStartedRows(contentW int) []helpRow {
 			title: "First steps",
 			lines: []string{
 				"On the connections screen, pick Try the demo database to explore.",
-				"Press enter to connect, then run a query with ctrl+enter.",
+				"Press enter to connect, then j/k to a table and s to SELECT *.",
+			},
+		},
+		{
+			title: "Graph & charts (try these)",
+			keys: []entry{
+				{"g r", "Relationship explorer — browse a row's FK graph like a folder"},
+				{"A", "Insert related — on an inbound edge, prefills the child FK"},
+				{"g R", "Static ERD — table cards + arrows; p traces a path, i drops JOIN SQL"},
+				{"M", "Mark columns, then :bar / :pie / :line / :hist to chart the page"},
 			},
 		},
 		{

@@ -70,6 +70,9 @@ func TestOpenDemoDatabaseFromEmptyList(t *testing.T) {
 	if got := m.connection.Config().Name; got != "creel-demo.db" {
 		t.Fatalf("connection name=%q, want creel-demo.db", got)
 	}
+	if !strings.Contains(m.schemaMsg, "g r") || !strings.Contains(m.schemaMsg, "g R") {
+		t.Fatalf("demo open should hint graph chords, got schemaMsg=%q", m.schemaMsg)
+	}
 	if cmd != nil {
 		_ = cmd // focus / prefetch / keep-alive; not needed for the assert
 	}

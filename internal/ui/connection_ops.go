@@ -39,12 +39,18 @@ func (m *Model) openDemoDatabase() tea.Cmd {
 		m.connError = err.Error()
 		return nil
 	}
-	return m.connectWithConfig(db.ConnectionConfig{
+	cmd := m.connectWithConfig(db.ConnectionConfig{
 		Driver:   db.DriverSQLite,
 		Database: path,
 		// Name left empty → connectWithConfig uses the file basename for
 		// session keying; omitted from the saved-connection MRU.
 	})
+	// One-shot status hint: the demo schema is built for the FK graph / ERD /
+	// charts — surface those chords before the user only finds "run query".
+	if m.connError == "" && m.state == stateWorkspace {
+		m.schemaMsg = "demo: s on a table · g r row links · g R ERD · M then :bar · ? Start"
+	}
+	return cmd
 }
 
 // connectByName opens the named connection from config. On success it replaces

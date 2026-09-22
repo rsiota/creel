@@ -16,7 +16,10 @@ func TestHelpGettingStartedTab(t *testing.T) {
 	h.Show()
 	h.SetSize(120, 40)
 	out := stripAnsi(h.View())
-	for _, want := range []string{"Getting started", "Try the demo database", "ctrl+p", "ctrl+enter"} {
+	for _, want := range []string{
+		"Getting started", "Try the demo database", "ctrl+p", "ctrl+enter",
+		"Graph & charts", "g r", "g R", ":bar",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Start tab missing %q", want)
 		}
