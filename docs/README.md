@@ -16,7 +16,8 @@ is a quickstart; the pages below are the reference.
 - [**CLI mode**](cli.md) — headless queries (`-e`, `-e -` from stdin, `-format`);
   failures exit `1`.
 - [**Demo database**](../demo/README.md) — the bundled e-commerce schema used by
-  the screenshots and the recorded demo.
+  the screenshots and demos, plus a short **graph tour** (`g r` → insert-related
+  → ERD path → `i` JOIN).
 
 ## Internals
 

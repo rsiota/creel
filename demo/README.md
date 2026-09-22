@@ -30,15 +30,27 @@ otherwise writes the sample under `~/.config/creel/demo/`. Or add a connection
 | Driver   | `sqlite`                               |
 | Database | absolute path to `demo/creel-demo.db`  |
 
-Connect, then try the showcase features:
+### Graph tour (try this)
+
+The demo schema is built for the FK graph. After connect:
+
+1. `j/k` to **users**, `s` (or `:goto users`) — load the grid
+2. `l` to focus results if needed, then `g r` — relationship explorer on the row
+3. `j` to an inbound edge (e.g. **orders**), `A` — insert related (FK prefilled); `esc` cancels
+4. `:explore` (or `esc` with explorer focused) to close, then `g R` / `:erd` — static ERD
+5. On the ERD: `p` to anchor a path, move to another card, `p` again to trace, `i` to drop JOIN SQL into the editor
+
+A recorded version of that loop lives at
+[`docs/images/demo-graph.gif`](../docs/images/demo-graph.gif) (regenerate with
+`vhs demo/graph-tour.tape` from the repo root, with `creel` on `PATH`).
 
 | Keys   | What you get                                         |
 | ------ | ---------------------------------------------------- |
 | `g R`  | **Static ERD** — table cards + FK arrows; `zz` fits, mini-map pans |
 | `s`    | `SELECT *` from a table into the results grid        |
 | `g r`  | **Relationship explorer** — a row's FK graph         |
-| `g c`  | Theme picker (live preview)                          |
-| `?`    | Full keybinding overlay                              |
+| `g c`  | Theme picker (live preview)                      |
+| `?`    | Full keybinding overlay (Start tab covers this tour) |
 
 ### Schema
 

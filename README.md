@@ -17,6 +17,12 @@
   </a>
 </p>
 <p align="center"><em>A quick tour of creel, recorded with <a href="https://asciinema.org">asciinema</a>. From a clone: <code>asciinema play demo.cast</code></em></p>
+<p align="center">
+  <a href="docs/images/demo-graph.gif">
+    <img src="docs/images/demo-graph.gif" alt="creel — graph tour: explorer, insert-related, ERD path, JOIN" width="760">
+  </a>
+</p>
+<p align="center"><em>Graph loop: <code>g r</code> → insert-related → <code>g R</code> path → <code>i</code> JOIN. Step-by-step in <a href="demo/README.md">demo/README.md</a>; regenerate with <code>vhs demo/graph-tour.tape</code>.</em></p>
 
 A fast, memory-efficient SQL TUI for **SQLite**, **MySQL**, and **PostgreSQL**, written in Go.
 
