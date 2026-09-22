@@ -65,6 +65,9 @@ dispatch via `tea.Sequence` (no parallel executors, no behaviour divergence):
   reachable from Ctrl+P: `g d/b/r/R/f/s/e/E/H//X`, `g c`, `g x`, `dd`, `y y`,
   `y r`, `==`. Alternative-action lines (`g t / g T`, `g g / G`, `ctrl+e / \`)
   stay non-executable until split into one-action entries.
+- Confirming a **Results**-section row focuses the results panel before
+  replaying, so chords like `g R` / `g r` work even when the editor still has
+  focus (the usual post-connect state).
 - Tests: `TestPaletteChordsExecutableViaSequence`, `TestReplayKeySequence`,
   `TestChordReplaysAreRealBindings` (drift guard).
 

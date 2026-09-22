@@ -212,6 +212,8 @@ func TestPaletteChordsExecutableViaSequence(t *testing.T) {
 	want := map[string][]string{
 		"g d": {"g", "d"},
 		"g e": {"g", "e"},
+		"g r": {"g", "r"},
+		"g R": {"g", "R"},
 		"g s": {"g", "s"},
 		"g X": {"g", "X"},
 		"g c": {"g", "c"},
@@ -587,3 +589,32 @@ func TestApplyPaletteJump(t *testing.T) {
 		t.Error("nord palette was not applied")
 	}
 }
+
+// TestPaletteResultsChordFocusesResults is the regression for Ctrl+P →
+// "static ERD" doing nothing: g R only dispatches on FocusResults, but the
+// workspace usually leaves focus on the editor after connect.
+func TestPaletteResultsChordFocusesResults(t *testing.T) {
+	m := NewModel(&config.Config{})
+	m.state = stateWorkspace
+	m.focus = FocusEditor
+	m.width, m.height = 100, 30
+	m.palette.Open(paletteJumpSrc{})
+	if !paletteSetCursorToItem(&m.palette, func(it paletteItem) bool {
+		return it.display == "g R"
+	}) {
+		t.Fatal("palette missing g R (static ERD) item")
+	}
+
+	next, cmd := m.handlePaletteKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if m.palette.IsVisible() {
+		t.Fatal("palette should close on enter")
+	}
+	if m.focus != FocusResults {
+		t.Fatalf("focus = %v, want FocusResults so g R can open the ERD", m.focus)
+	}
+	if cmd == nil {
+		t.Fatal("expected a replay command for g R")
+	}
+}
+

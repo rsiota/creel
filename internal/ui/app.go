@@ -1064,6 +1064,25 @@ func (m *Model) toggleBookmarks() {
 	m.layoutWorkspace()
 }
 
+// handlePaletteKey routes keys to the open command palette. Results-panel
+// bindings (g R, g r, g d, …) only fire when results has focus — the usual
+// post-connect focus is the editor, so confirming those rows from Ctrl+P used
+// to replay into vim and look like a no-op. Focus results before the replay.
+func (m Model) handlePaletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	confirming := msg.String() == "enter"
+	section := ""
+	if confirming {
+		section = m.palette.selectedItem().section
+	}
+	var cmd tea.Cmd
+	m.palette, cmd = m.palette.Update(msg)
+	if confirming && cmd != nil && section == "Results" {
+		m.focus = FocusResults
+		m.applyFocus()
+	}
+	return m, cmd
+}
+
 // paletteJumpSrc collects tables and bookmarks for the jump-anywhere palette.
 // Themes are appended inside buildPaletteItems. History stays on Ctrl+Y so the
 // palette doesn't drown in recent queries.
@@ -3270,9 +3289,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.handleExKey(msg)
 		}
 		if m.palette.visible {
-			var cmd tea.Cmd
-			m.palette, cmd = m.palette.Update(msg)
-			return m, cmd
+			return m.handlePaletteKey(msg)
 		}
 		switch msg.String() {
 		case ":":
@@ -3394,9 +3411,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Command palette is modal — intercept all keys when visible.
 	if m.palette.visible {
-		var cmd tea.Cmd
-		m.palette, cmd = m.palette.Update(msg)
-		return m, cmd
+		return m.handlePaletteKey(msg)
 	}
 
 	// Ex command line (":") is modal — intercept all keys when visible.
