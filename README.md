@@ -50,16 +50,18 @@ Linux, macOS, and Windows binaries are on the [latest release](https://github.co
 **Connect**
 
 - Three databases, one interface — SQLite, MySQL, and PostgreSQL, with SSH tunneling, TLS (`sslmode`), and unix sockets for remote MySQL and PostgreSQL.
+- Paste a `postgres://` / `mysql://` / `sqlite:` URI into the connection form (`p`) or pass `-uri` on the CLI.
 - Secret storage — passwords live in the OS keychain (macOS/Windows/Linux), with a plaintext fallback if no keychain is available.
 - Read-only mode — point creel at production safely; per-connection flag or global `-readonly`.
 
 **Browse**
 
-- Table browser — expand columns, inspect schemas, fuzzy-filter.
-- Results grid — sort, filter, search, hide columns, follow foreign keys (`g d`), soft FK cell tint, chart columns (`M` + `:bar` / `:line` / `:scatter` / `:hist` / `:freq`).
+- Table browser — expand columns, inspect schemas, fuzzy-filter; on Postgres, multi-schema sidebar groups (open foreign-schema tables without switching).
+- Results grid — sort, filter, search, hide columns, follow foreign keys (`g d`), soft FK cell tint, chart columns (`M` + `:bar` / `:line` / `:scatter` / `:hist` / `:freq` / `:pie`).
 - Relationship explorer (`g r`) — browse a row's inbound/outbound FK graph like a folder.
-- Static ERD (`g R`) — graphical entity-relationship diagram; exportable as Mermaid.
-- EXPLAIN plans (`g e`), diagnosis (`:diagnose`), cross-table search (`S`), column statistics (`g s`), table sizes (`:sizes`).
+- Static ERD (`g R`) — graphical entity-relationship diagram; exportable as Mermaid; path trace + `i` drops JOIN SQL.
+- EXPLAIN (`g e`) / EXPLAIN ANALYZE (`g E`), diagnosis (`:diagnose`), cross-table search (`S` / `:grep`), column statistics (`g s`), table sizes (`:sizes`).
+- Diff result pages (`:diff`), live refresh (`:watch` / `:tail`, charts redraw too).
 - Session ops — `:locks` / `:who` / `:kill` for blocked and live sessions (MySQL/Postgres).
 
 <p align="center">
