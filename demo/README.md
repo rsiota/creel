@@ -42,7 +42,7 @@ The demo schema is built for the FK graph. After connect:
 
 A recorded version of that loop lives at
 [`docs/images/demo-graph.gif`](../docs/images/demo-graph.gif) (regenerate with
-`vhs demo/graph-tour.tape` from the repo root, with `creel` on `PATH`).
+`./scripts/record-graph-tour.sh` — VHS, GitHub Light, 1400×880).
 
 | Keys   | What you get                                         |
 | ------ | ---------------------------------------------------- |
