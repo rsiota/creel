@@ -62,9 +62,9 @@ dispatch via `tea.Sequence` (no parallel executors, no behaviour divergence):
 - `keymsg.go`: `replayKeySequence` builds a `tea.Sequence` of synthesised keys so
   the stateful pending-G/pending-D flag set by key 1 is consumed by key 2.
 - `chordReplays` (palette.go) lists the unambiguous single-action chords now
-  reachable from Ctrl+P: `g d/b/f/s/e/H//X`, `g c`, `g x`, `dd`, `y y`, `==`.
-  Alternative-action lines (`g t / g T`, `g g / G`, `ctrl+e / \`) stay
-  non-executable until split into one-action entries.
+  reachable from Ctrl+P: `g d/b/r/R/f/s/e/E/H//X`, `g c`, `g x`, `dd`, `y y`,
+  `y r`, `==`. Alternative-action lines (`g t / g T`, `g g / G`, `ctrl+e / \`)
+  stay non-executable until split into one-action entries.
 - Tests: `TestPaletteChordsExecutableViaSequence`, `TestReplayKeySequence`,
   `TestChordReplaysAreRealBindings` (drift guard).
 
