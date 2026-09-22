@@ -830,11 +830,15 @@ func renderGettingStartedRows(contentW int) []helpRow {
 		}
 	}
 	const gap = 4
+	descW := contentW - keyW - gap - 2 // 2 leading spaces
+	if descW < 8 {
+		descW = 8
+	}
 	var out []helpRow
 	for _, sec := range sections {
 		out = append(out, helpRow{{text: sec.title, style: secTitleStyle}})
 		for _, ln := range sec.lines {
-			out = append(out, helpRow{{text: "  " + ln, style: fgStyle}})
+			out = append(out, helpRow{{text: "  " + truncateRunes(ln, max(8, contentW-2)), style: fgStyle}})
 		}
 		for _, e := range sec.keys {
 			key := e.key + strings.Repeat(" ", max(0, keyW-runeLen(e.key)))
@@ -842,7 +846,7 @@ func renderGettingStartedRows(contentW int) []helpRow {
 				{text: "  ", style: plain},
 				{text: key, style: labelStyle},
 				{text: strings.Repeat(" ", gap), style: plain},
-				{text: e.desc, style: fgStyle},
+				{text: truncateRunes(e.desc, descW), style: fgStyle},
 			})
 		}
 		out = append(out, helpRow{}) // blank separator
