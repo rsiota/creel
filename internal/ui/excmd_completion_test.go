@@ -64,6 +64,30 @@ func TestExCompletionFiltersByPrefix(t *testing.T) {
 	}
 }
 
+// TestExCompletionFuzzyFallback: when nothing has the typed prefix, match
+// verbs by subsequence so :gto still finds goto (Helix-style).
+func TestExCompletionFuzzyFallback(t *testing.T) {
+	var ex exCmd
+	ex.input = "gto"
+	ex.recomputeCompletion()
+	if len(ex.comp) == 0 || ex.comp[0].verb != "goto" {
+		t.Fatalf(":gto -> %+v, want goto first", ex.comp)
+	}
+
+	ex.input = "tme"
+	ex.recomputeCompletion()
+	found := false
+	for _, c := range ex.comp {
+		if c.verb == "theme" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf(":tme -> %+v, want theme in the fuzzy list", ex.comp)
+	}
+}
+
 // TestExCompletionTabCompletes: Tab fills the verb from the top match and then
 // hides the popup (the verb is now exact).
 func TestExCompletionTabCompletes(t *testing.T) {

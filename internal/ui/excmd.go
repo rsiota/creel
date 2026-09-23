@@ -206,10 +206,11 @@ func verbPrefix(input string) (verb string, hasSpace bool) {
 }
 
 // recomputeCompletion refreshes the verb-completion list from the current
-// input. Completion applies only to the verb (before any space); matches are
-// prefix-based and case-insensitive, one row per command even if several of
-// its aliases match. The popup is hidden once the typed verb is an exact,
-// unambiguous canonical match (the user has fully specified the command).
+// input. Completion applies only to the verb (before any space). Prefix
+// matches come first (so :g stays goto/grep); if none match, fuzzy
+// subsequence matching is used so :gto still finds goto. One row per
+// command even if several of its aliases match. The popup is hidden once
+// the typed verb is an exact, unambiguous canonical match.
 func (ex *exCmd) recomputeCompletion() {
 	ex.comp = ex.comp[:0]
 	ex.argMode = false // verb mode
@@ -219,21 +220,77 @@ func (ex *exCmd) recomputeCompletion() {
 		return
 	}
 	needle := strings.ToLower(verb)
-	for _, s := range exCommands() {
-		for _, v := range s.verbs {
-			if strings.HasPrefix(v, needle) {
-				ex.comp = append(ex.comp, exCompItem{
-					verb:  s.verbs[0],
-					usage: s.usage,
-					desc:  s.desc,
-				})
-				break
-			}
+	if needle == "" {
+		for _, s := range exCommands() {
+			ex.comp = append(ex.comp, exCompItem{
+				verb:  s.verbs[0],
+				usage: s.usage,
+				desc:  s.desc,
+			})
 		}
+		return
 	}
-	if len(ex.comp) == 1 && ex.comp[0].verb == needle && needle != "" {
+
+	prefixHits, fuzzyHits := matchExVerbs(needle)
+	hits := prefixHits
+	if len(hits) == 0 {
+		hits = fuzzyHits
+	}
+	for _, s := range hits {
+		ex.comp = append(ex.comp, exCompItem{
+			verb:  s.verbs[0],
+			usage: s.usage,
+			desc:  s.desc,
+		})
+	}
+	if len(ex.comp) == 1 && ex.comp[0].verb == needle {
 		ex.comp = nil
 	}
+}
+
+// matchExVerbs splits commands into prefix matches and fuzzy (subsequence)
+// matches for needle. Each command appears at most once, ranked by the best
+// alias score (lower is better).
+func matchExVerbs(needle string) (prefixHits, fuzzyHits []exCmdSpec) {
+	type scored struct {
+		spec  exCmdSpec
+		score int
+	}
+	var prefix, fuzzy []scored
+	for _, s := range exCommands() {
+		var bestPrefix, bestFuzzy int
+		hasPrefix, hasFuzzy := false, false
+		for _, v := range s.verbs {
+			lv := strings.ToLower(v)
+			if strings.HasPrefix(lv, needle) {
+				_, score := fuzzyMatch(needle, v)
+				if !hasPrefix || score < bestPrefix {
+					bestPrefix = score
+					hasPrefix = true
+				}
+				continue
+			}
+			idx, score := fuzzyMatch(needle, v)
+			if idx != nil && (!hasFuzzy || score < bestFuzzy) {
+				bestFuzzy = score
+				hasFuzzy = true
+			}
+		}
+		if hasPrefix {
+			prefix = append(prefix, scored{s, bestPrefix})
+		} else if hasFuzzy {
+			fuzzy = append(fuzzy, scored{s, bestFuzzy})
+		}
+	}
+	sort.SliceStable(prefix, func(i, j int) bool { return prefix[i].score < prefix[j].score })
+	sort.SliceStable(fuzzy, func(i, j int) bool { return fuzzy[i].score < fuzzy[j].score })
+	for _, h := range prefix {
+		prefixHits = append(prefixHits, h.spec)
+	}
+	for _, h := range fuzzy {
+		fuzzyHits = append(fuzzyHits, h.spec)
+	}
+	return prefixHits, fuzzyHits
 }
 
 // recomputeExCompletion is the Model-level entry point for the ":" popup. Verb
