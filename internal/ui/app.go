@@ -4326,18 +4326,17 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				// / — backend full-text search across all columns.
 				m.resultsPendingY = false
-				if m.canFilter() {
-					m.backendSearching = true
-					m.backendSearchInput = ""
+				if m.rejectFilter(false) {
 					return m, nil
 				}
+				m.backendSearching = true
+				m.backendSearchInput = ""
+				return m, nil
 			case "f":
 				if m.resultsPendingG {
 					m.resultsPendingG = false
 					m.resultsPendingY = false
-					if m.canFilter() {
-						return m, m.openFilterPicker()
-					}
+					return m, m.openFilterPicker()
 				}
 			case "c":
 				m.resultsPendingG = false
@@ -4390,9 +4389,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case "o":
 				m.resultsPendingG = false
 				m.resultsPendingY = false
-				if m.canFilter() {
-					return m, m.toggleSort()
-				}
+				return m, m.toggleSort()
 			case "x":
 				m.resultsPendingG = false
 				m.resultsPendingY = false

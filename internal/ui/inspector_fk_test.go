@@ -76,13 +76,13 @@ func TestInspectorGDIgnoresNonFKField(t *testing.T) {
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 	m = updated.(Model)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
 	m = updated.(Model)
-	if cmd != nil {
-		t.Fatal("g d on non-FK inspector field should no-op")
-	}
 	if m.editor.Value() != "" && strings.Contains(m.editor.Value(), "departments") {
 		t.Fatalf("should not have followed grid FK, editor=%q", m.editor.Value())
+	}
+	if !strings.Contains(m.schemaMsg, "no foreign key") {
+		t.Errorf("schemaMsg = %q, want no foreign key", m.schemaMsg)
 	}
 }
 
@@ -93,9 +93,13 @@ func TestInspectorGDSkipsNullFK(t *testing.T) {
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 	m = updated.(Model)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
-	if cmd != nil {
-		t.Fatal("g d on NULL FK should no-op")
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m = updated.(Model)
+	if strings.Contains(m.editor.Value(), "departments") {
+		t.Fatalf("g d on NULL FK should not follow, editor=%q", m.editor.Value())
+	}
+	if !strings.Contains(m.schemaMsg, "empty") {
+		t.Errorf("schemaMsg = %q, want empty cell", m.schemaMsg)
 	}
 }
 

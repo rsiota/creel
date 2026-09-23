@@ -106,6 +106,68 @@ func TestCanFilter_EmptyBaseQuery(t *testing.T) {
 	}
 }
 
+func TestFilterUnavailableReason(t *testing.T) {
+	if got := (Model{}).filterUnavailableReason(); got != "not connected" {
+		t.Errorf("empty model -> %q, want not connected", got)
+	}
+	m := Model{connection: &db.Connection{}}
+	if got := m.filterUnavailableReason(); got != "run a SELECT first" {
+		t.Errorf("no query -> %q, want run a SELECT first", got)
+	}
+	m.baseQuery = "INSERT INTO users VALUES (1)"
+	if got := m.filterUnavailableReason(); got != "filtering needs a SELECT" {
+		t.Errorf("insert -> %q", got)
+	}
+	m.baseQuery = "SELECT * FROM users JOIN orders ON users.id = orders.user_id"
+	m.results = NewResultsTable()
+	m.results.SetResult([]string{"id", "name", "id", "user_id"}, [][]string{{"1", "a", "2", "1"}}, "")
+	if got := m.filterUnavailableReason(); !strings.Contains(got, "unique column") {
+		t.Errorf("dup cols -> %q, want unique column names", got)
+	}
+	m.baseQuery = "SELECT * FROM users"
+	if got := m.filterUnavailableReason(); got != "" {
+		t.Errorf("simple select -> %q, want empty", got)
+	}
+}
+
+func TestOpenFilterPickerReportsWhy(t *testing.T) {
+	m := &Model{results: NewResultsTable(), focus: FocusEditor}
+	m.results.SetResult([]string{"id"}, [][]string{{"1"}}, "")
+	if cmd := m.openFilterPicker(); cmd != nil {
+		t.Fatal("expected nil cmd without a connection")
+	}
+	if !strings.Contains(m.schemaMsg, "not connected") {
+		t.Errorf("schemaMsg = %q, want not connected", m.schemaMsg)
+	}
+}
+
+func TestFollowForeignKeyReportsWhy(t *testing.T) {
+	m := &Model{results: NewResultsTable(), editor: NewQueryEditor()}
+	m.results.SetResult([]string{"id", "name"}, [][]string{{"1", "alice"}}, "")
+	if cmd := m.followForeignKey(); cmd != nil {
+		t.Fatal("expected nil cmd on a non-FK column")
+	}
+	if !strings.Contains(m.schemaMsg, "no foreign key") {
+		t.Errorf("schemaMsg = %q, want no foreign key", m.schemaMsg)
+	}
+}
+
+func TestGFKeyReportsDuplicateColumns(t *testing.T) {
+	m := newResultsWorkspaceModel()
+	m.connection = &db.Connection{}
+	m.baseQuery = "SELECT * FROM users JOIN orders ON users.id = orders.user_id"
+	m.results.SetResult([]string{"id", "name", "id", "user_id"}, [][]string{{"1", "a", "2", "1"}}, "")
+
+	m = press(m, keyRunes('g'))
+	m = press(m, keyRunes('f'))
+	if !strings.Contains(m.schemaMsg, "unique column") {
+		t.Errorf("g f on duplicate columns -> %q, want unique column names", m.schemaMsg)
+	}
+	if m.filterPicker.IsVisible() {
+		t.Error("picker should stay closed when filtering is rejected")
+	}
+}
+
 func TestBuildFilteredQuery_WrapsJoin(t *testing.T) {
 	m := Model{
 		baseQuery: "SELECT u.id, o.total FROM users u JOIN orders o ON u.id = o.user_id",

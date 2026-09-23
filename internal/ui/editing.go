@@ -62,10 +62,12 @@ func (m *Model) followForeignKey() tea.Cmd {
 func (m *Model) followForeignKeyAt(col int) tea.Cmd {
 	fk, ok := m.results.ForeignKeyAt(col)
 	if !ok {
+		m.schemaMsg = "no foreign key on this column"
 		return nil
 	}
 	val := m.results.RowValue(m.results.CursorRow(), col)
 	if val == "" || val == "NULL" {
+		m.schemaMsg = "foreign key cell is empty"
 		return nil
 	}
 
@@ -218,6 +220,7 @@ func (m *Model) explorerInsertRelated() tea.Cmd {
 
 func (m *Model) goBackQuery() tea.Cmd {
 	if len(m.queryStack) == 0 {
+		m.schemaMsg = "nothing to go back to"
 		return nil
 	}
 	entry := m.queryStack[len(m.queryStack)-1]

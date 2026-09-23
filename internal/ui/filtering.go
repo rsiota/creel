@@ -55,6 +55,37 @@ func (m Model) canFilter() bool {
 	return m.resultColumnsUnique()
 }
 
+// filterUnavailableReason explains why canFilter is false, or "" if filtering
+// is allowed. Shared by g f / * / ! / o / F so a rejected chord is visible.
+func (m Model) filterUnavailableReason() string {
+	if m.connection == nil {
+		return "not connected"
+	}
+	if m.baseQuery == "" {
+		return "run a SELECT first"
+	}
+	if !isSelectQuery(m.baseQuery) {
+		return "filtering needs a SELECT"
+	}
+	if !isSelectStarFromSimpleTable(m.baseQuery) && !m.resultColumnsUnique() {
+		return "filtering needs a SELECT with unique column names"
+	}
+	return ""
+}
+
+// rejectFilter sets schemaMsg and returns true when sort/filter cannot run.
+func (m *Model) rejectFilter(needRows bool) bool {
+	if reason := m.filterUnavailableReason(); reason != "" {
+		m.schemaMsg = reason
+		return true
+	}
+	if needRows && m.results.NumRows() == 0 {
+		m.schemaMsg = "no rows to filter"
+		return true
+	}
+	return false
+}
+
 // resultColumnsUnique reports whether every result column name is unique
 // (case-insensitive). Empty names count as duplicates.
 func (m Model) resultColumnsUnique() bool {
@@ -175,11 +206,12 @@ func (m *Model) applyColumnVisibility() tea.Cmd {
 // openFilterPicker opens the value picker for the current column,
 // fetching distinct values from the database asynchronously.
 func (m *Model) openFilterPicker() tea.Cmd {
-	if !m.canFilter() || m.results.NumRows() == 0 {
+	if m.rejectFilter(true) {
 		return nil
 	}
 	colName := m.results.ColumnName(m.results.CursorCol())
 	if colName == "" {
+		m.schemaMsg = "no column under cursor"
 		return nil
 	}
 
@@ -359,7 +391,11 @@ func (m *Model) toggleSort() tea.Cmd {
 
 // sortByColName cycles the sort state for the given column: none → ASC → DESC → none.
 func (m *Model) sortByColName(colName string) tea.Cmd {
-	if !m.canFilter() || m.results.NumRows() == 0 || colName == "" {
+	if m.rejectFilter(true) {
+		return nil
+	}
+	if colName == "" {
+		m.schemaMsg = "no column under cursor"
 		return nil
 	}
 	switch {
@@ -492,16 +528,18 @@ func removeColumnFilters(filters []string, colName string) []string {
 // and applies it, replacing any existing filter on that column. negate=false
 // keeps rows matching the value (`*`); negate=true hides them (`!`).
 func (m *Model) quickFilterCell(negate bool) tea.Cmd {
-	if !m.canFilter() || m.results.NumRows() == 0 {
+	if m.rejectFilter(true) {
 		return nil
 	}
 	col := m.results.CursorCol()
 	colName := m.results.ColumnName(col)
 	if colName == "" {
+		m.schemaMsg = "no column under cursor"
 		return nil
 	}
 	value := m.results.CursorCellValue()
 	if value == "" {
+		m.schemaMsg = "cursor cell is empty — move to a value first"
 		return nil
 	}
 	dbType := m.results.ColumnType(col)
@@ -519,11 +557,16 @@ func (m *Model) quickFilterCell(negate bool) tea.Cmd {
 // applies it as a filter, then clears the marks. Marks are consumed because
 // the resulting filter now represents them in the active result set.
 func (m *Model) filterByMarks() tea.Cmd {
-	if !m.canFilter() || !m.results.IsEditable() {
+	if m.rejectFilter(true) {
+		return nil
+	}
+	if !m.results.IsEditable() {
+		m.schemaMsg = "mark-filter needs an editable table"
 		return nil
 	}
 	tuples := m.results.MarkedPKs()
 	if len(tuples) == 0 {
+		m.schemaMsg = "mark rows with space first"
 		return nil
 	}
 	pkNames := m.results.PKColumns()
