@@ -486,7 +486,7 @@ func registry() []Section {
 				{"space", []string{" "}, "toggle value", "space"},
 				{"ctrl+a", []string{"ctrl+a"}, "select all", "ctrl+a"},
 				{"ctrl+n", []string{"ctrl+n"}, "select none", "ctrl+n"},
-				{"enter", []string{"enter"}, "apply filter", "enter"},
+				{"enter", []string{"enter"}, "apply highlighted value (or ticked values)", "enter"},
 				{"esc", []string{"esc"}, "cancel", "esc"},
 			},
 		},

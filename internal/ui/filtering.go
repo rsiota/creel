@@ -206,9 +206,11 @@ func (m *Model) openFilterPicker() tea.Cmd {
 
 // applyFilterPickerSelection takes the selected values from the picker
 // and applies them as a filter (IN clause or IS NULL), then re-executes.
+// Enter with no Space ticks applies the highlighted (fuzzy-filtered) value.
 func (m *Model) applyFilterPickerSelection() tea.Cmd {
 	colName := m.filterPicker.Column()
-	selected := m.filterPicker.SelectedValues()
+	_, _, hadExisting := findEqualityFilter(m.filters, colName)
+	selected := m.filterPicker.valuesToApply(hadExisting)
 	m.filterPicker.Hide()
 
 	// Remove any existing equality/IN filter on this column.
@@ -222,6 +224,7 @@ func (m *Model) applyFilterPickerSelection() tea.Cmd {
 			escaped[i] = strings.ReplaceAll(v, "'", "''")
 		}
 		m.filters = append(m.filters, buildInClause(colName, escaped))
+		m.schemaMsg = "filtered: " + compactFilter(m.filters[len(m.filters)-1])
 	}
 
 	m.applyFilteredQuery()

@@ -105,6 +105,39 @@ func (p FilterPicker) SelectedValues() []string {
 	return out
 }
 
+// CursorValue returns the highlighted value in the current (filtered) list.
+func (p FilterPicker) CursorValue() string {
+	items := p.filteredValues()
+	if p.cursor < 0 || p.cursor >= len(items) {
+		return ""
+	}
+	return items[p.cursor].value
+}
+
+// valuesToApply is what Enter should filter by:
+//   - while typing a fuzzy filter, the highlighted match (so Enter confirms
+//     "the one I just searched for" without Space);
+//   - otherwise any Space-ticked values (multi-select);
+//   - otherwise the highlighted row, unless hadExisting is set — then an
+//     empty tick set means "clear this column's filter".
+func (p FilterPicker) valuesToApply(hadExisting bool) []string {
+	if p.filtering() {
+		if v := p.CursorValue(); v != "" {
+			return []string{v}
+		}
+		return nil
+	}
+	if selected := p.SelectedValues(); len(selected) > 0 {
+		return selected
+	}
+	if !hadExisting {
+		if v := p.CursorValue(); v != "" {
+			return []string{v}
+		}
+	}
+	return nil
+}
+
 func (p FilterPicker) filteredValues() []filterValue {
 	var out []filterValue
 	if p.filter == "" {

@@ -445,6 +445,67 @@ func TestApplyFilterPickerSelection_Single(t *testing.T) {
 	}
 }
 
+func TestApplyFilterPickerSelection_EnterAppliesHighlight(t *testing.T) {
+	m := &Model{
+		baseQuery:  "SELECT * FROM users",
+		connection: &db.Connection{},
+		results:    NewResultsTable(),
+		focus:      FocusEditor,
+	}
+	m.results.SetResult([]string{"id", "country"}, [][]string{{"1", "UK"}}, "")
+
+	m.filterPicker.Show("country")
+	m.filterPicker.SetValues([]string{"UK", "US", "France"}, nil)
+	m.filterPicker.FilterAddChar("fr") // highlights France
+
+	m.applyFilterPickerSelection()
+
+	if len(m.filters) != 1 || m.filters[0] != "country = 'France'" {
+		t.Errorf("enter without space should apply the highlighted match, got %v", m.filters)
+	}
+}
+
+func TestApplyFilterPickerSelection_EnterAppliesCursorWhenIdle(t *testing.T) {
+	m := &Model{
+		baseQuery:  "SELECT * FROM users",
+		connection: &db.Connection{},
+		results:    NewResultsTable(),
+		focus:      FocusEditor,
+	}
+	m.results.SetResult([]string{"id", "country"}, [][]string{{"1", "UK"}}, "")
+
+	m.filterPicker.Show("country")
+	m.filterPicker.SetValues([]string{"UK", "US"}, nil)
+	m.filterPicker.CursorDown() // highlight US, no space
+
+	m.applyFilterPickerSelection()
+
+	if len(m.filters) != 1 || m.filters[0] != "country = 'US'" {
+		t.Errorf("enter should apply the highlighted row, got %v", m.filters)
+	}
+}
+
+func TestApplyFilterPickerSelection_UncheckAllClearsExisting(t *testing.T) {
+	m := &Model{
+		baseQuery:  "SELECT * FROM users",
+		connection: &db.Connection{},
+		results:    NewResultsTable(),
+		filters:    []string{"country = 'UK'"},
+		focus:      FocusEditor,
+	}
+	m.results.SetResult([]string{"id", "country"}, [][]string{{"1", "UK"}}, "")
+
+	m.filterPicker.Show("country")
+	m.filterPicker.SetValues([]string{"UK", "US"}, map[string]bool{"UK": true})
+	m.filterPicker.SelectNone()
+
+	m.applyFilterPickerSelection()
+
+	if len(m.filters) != 0 {
+		t.Errorf("unchecking every value should clear the column filter, got %v", m.filters)
+	}
+}
+
 func TestApplyFilterPickerSelection_Replaces(t *testing.T) {
 	m := &Model{
 		baseQuery:  "SELECT * FROM users",

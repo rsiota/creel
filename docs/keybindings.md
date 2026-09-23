@@ -289,7 +289,7 @@ is available.
 | `j/k`      | Move                                            |
 | `space`    | Toggle value                                    |
 | `a` / `n`  | Select all / none                               |
-| `enter`    | Apply filter                                    |
+| `enter`    | Apply highlighted value (or ticked values)      |
 | `esc`      | Cancel                                          |
 
 ## Column visibility (`v`)
