@@ -12,12 +12,6 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/rsiota/creel?color=blue" alt="License"></a>
 </p>
 <p align="center">
-  <a href="docs/images/demo.gif">
-    <img src="docs/images/demo.gif" alt="creel — recorded demo" width="760">
-  </a>
-</p>
-<p align="center"><em>A quick tour of creel, recorded with <a href="https://asciinema.org">asciinema</a>. From a clone: <code>asciinema play demo.cast</code></em></p>
-<p align="center">
   <a href="docs/images/demo-graph.gif">
     <img src="docs/images/demo-graph.gif" alt="creel — graph tour: explorer, insert-related, ERD path, JOIN" width="760">
   </a>
