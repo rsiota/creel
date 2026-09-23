@@ -11,7 +11,7 @@ import (
 // must be both the top item AND the value that gets selected on space.
 func TestFilterPickerToggleSelectsHighlightedValue(t *testing.T) {
 	var p FilterPicker
-	p.Show("name")
+	p.Show("name", "")
 	p.SetValues([]string{"carolina", "caroline", "caroline mullan", "colin"}, nil)
 
 	// Filter to "colin" — four matches, but "colin" ranks first by score.
@@ -42,7 +42,7 @@ func TestFilterPickerToggleSelectsHighlightedValue(t *testing.T) {
 // immediate visual feedback instead of having to scroll a long list to confirm.
 func TestFilterPickerSelectedBubbleToTopWithoutFilter(t *testing.T) {
 	var p FilterPicker
-	p.Show("name")
+	p.Show("name", "")
 	p.SetValues([]string{"alice", "bob", "carol", "dave"}, nil)
 
 	// Walk down to "carol" (index 2 in canonical order) and toggle it.
@@ -75,7 +75,7 @@ func TestFilterPickerSelectedBubbleToTopWithoutFilter(t *testing.T) {
 // index stays consistent between navigation and toggle after sorting.
 func TestFilterPickerCursorDownThenToggleSelectsSecondItem(t *testing.T) {
 	var p FilterPicker
-	p.Show("name")
+	p.Show("name", "")
 	p.SetValues([]string{"carolina", "caroline", "colin"}, nil)
 
 	p.FilterAddChar("colin")
@@ -93,7 +93,7 @@ func TestFilterPickerCursorDownThenToggleSelectsSecondItem(t *testing.T) {
 
 func TestFilterPickerScrollStaysUntilViewportEdge(t *testing.T) {
 	p := NewFilterPicker()
-	p.Show("id")
+	p.Show("id", "")
 	values := make([]string, 30)
 	for i := range values {
 		values[i] = fmt.Sprintf("v%02d", i)

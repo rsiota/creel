@@ -217,7 +217,7 @@ func (m *Model) openFilterPicker() tea.Cmd {
 
 	src := m.filterBaseSQL()
 	col := m.quoteSortCol(colName)
-	m.filterPicker.Show(colName)
+	m.filterPicker.Show(colName, m.results.CursorCellValue())
 	m.layoutWorkspace()
 
 	conn := m.connection

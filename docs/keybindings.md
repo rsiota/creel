@@ -286,9 +286,9 @@ is available.
 | Key        | Action                                          |
 | ---------- | ----------------------------------------------- |
 | type       | Fuzzy-filter values                             |
-| `j/k`      | Move                                            |
-| `space`    | Toggle value                                    |
-| `a` / `n`  | Select all / none                               |
+| `↑` / `↓`  | Move                                            |
+| `space`    | Toggle extra values (multi-select)              |
+| `ctrl+a` / `ctrl+n` | Select all / none                      |
 | `enter`    | Apply highlighted value (or ticked values)      |
 | `esc`      | Cancel                                          |
 

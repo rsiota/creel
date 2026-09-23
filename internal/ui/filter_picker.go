@@ -30,6 +30,7 @@ type FilterPicker struct {
 	column    string // column being filtered
 	loading   bool   // waiting for async query
 	seq       int    // monotonic counter; stamps selectedAt on each toggle
+	seed      string // value to highlight when values load (current cell)
 }
 
 // NewFilterPicker creates a hidden filter picker.
@@ -37,10 +38,12 @@ func NewFilterPicker() FilterPicker {
 	return FilterPicker{}
 }
 
-// Show opens the picker for a given column in loading state.
-func (p *FilterPicker) Show(column string) {
+// Show opens the picker for a given column in loading state. seed is the
+// value to highlight once distinct values arrive (typically the cursor cell).
+func (p *FilterPicker) Show(column, seed string) {
 	p.visible = true
 	p.column = column
+	p.seed = seed
 	p.filter = ""
 	p.cursor = 0
 	p.scrollRow = 0
@@ -65,6 +68,22 @@ func (p *FilterPicker) SetValues(values []string, preSelected map[string]bool) {
 	}
 	p.cursor = 0
 	p.scrollRow = 0
+	p.focusValue(p.seed)
+}
+
+// focusValue moves the cursor to val in the current (sorted) list.
+func (p *FilterPicker) focusValue(val string) {
+	if val == "" {
+		return
+	}
+	items := p.filteredValues()
+	for i, v := range items {
+		if v.value == val {
+			p.cursor = i
+			p.adjustScroll()
+			return
+		}
+	}
 }
 
 // Hide closes the picker.
@@ -72,6 +91,7 @@ func (p *FilterPicker) Hide() {
 	p.visible = false
 	p.values = nil
 	p.filter = ""
+	p.seed = ""
 	p.cursor = 0
 	p.scrollRow = 0
 }

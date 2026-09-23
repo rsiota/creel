@@ -37,7 +37,7 @@ func TestFuzzyExactMatchRanksFirst(t *testing.T) {
 
 func TestFilterPickerRanksByScore(t *testing.T) {
 	var p FilterPicker
-	p.Show("name")
+	p.Show("name", "")
 	p.SetValues([]string{"carolina", "caroline", "caroline mullan", "colin"}, nil)
 
 	p.FilterAddChar("colin")
