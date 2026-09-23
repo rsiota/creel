@@ -30,7 +30,7 @@ func TestConnectionFormSQLitePathCompletion(t *testing.T) {
 	}
 
 	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyTab})
-	want := filepath.Join(dir, "app.db")
+	want := dir + "/app.db"
 	if got := f.fields[fieldDatabase].Value(); got != want {
 		t.Fatalf("after tab: value = %q, want %q", got, want)
 	}
@@ -54,7 +54,7 @@ func TestConnectionFormSQLitePathCompletionEnterAccepts(t *testing.T) {
 	}
 
 	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	want := filepath.Join(dir, "app.db")
+	want := dir + "/app.db"
 	if got := f.fields[fieldDatabase].Value(); got != want {
 		t.Fatalf("after enter: value = %q, want %q", got, want)
 	}
@@ -76,7 +76,7 @@ func TestConnectionFormPathEnterLeavesInsertWithoutCompletions(t *testing.T) {
 
 func TestConnectionFormSSHKeyPathCompletion(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	sshDir := filepath.Join(home, ".ssh")
 	if err := os.Mkdir(sshDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -117,7 +117,7 @@ func TestConnectionFormSSHKeyPathCompletion(t *testing.T) {
 
 func TestConnectionFormSSHKeyPathCompletionEnterAccepts(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	sshDir := filepath.Join(home, ".ssh")
 	if err := os.Mkdir(sshDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -156,6 +156,14 @@ func TestConnectionFormSSHKeyPathCompletionEnterAccepts(t *testing.T) {
 	if !f.editing {
 		t.Fatal("enter with open completions should accept, not leave insert mode")
 	}
+}
+
+// setTestHome points os.UserHomeDir at dir on both Unix (HOME) and Windows
+// (USERPROFILE). t.Setenv("HOME") alone is ignored on Windows.
+func setTestHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 }
 
 func TestConnectionFormNetworkDatabaseNotPathField(t *testing.T) {

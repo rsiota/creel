@@ -11,9 +11,9 @@ func TestExpandHomePath(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"/abs/id_rsa", "/abs/id_rsa"},
-		{"foo/bar", "foo/bar"},
-		{"foo/../bar", "bar"},
+		{"/abs/id_rsa", filepath.Clean("/abs/id_rsa")},
+		{"foo/bar", filepath.Clean("foo/bar")},
+		{"foo/../bar", filepath.Clean("foo/../bar")},
 	}
 	for _, c := range cases {
 		got, err := expandHomePath(c.in)

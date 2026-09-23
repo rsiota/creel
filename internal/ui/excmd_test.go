@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 
@@ -58,8 +59,19 @@ func TestSplitShellFields(t *testing.T) {
 		{"a b c", []string{"a", "b", "c"}},
 		{`"a b" c`, []string{"a b", "c"}},
 		{`'a b' c`, []string{"a b", "c"}},
-		{`a\ b c`, []string{"a b", "c"}}, // backslash escapes the space
 		{"  trim  ", []string{"trim"}},
+	}
+	if runtime.GOOS == "windows" {
+		// Backslash is a path separator; only ", ', and \ are escapes.
+		cases = append(cases, struct {
+			in   string
+			want []string
+		}{`e C:\Users\foo\bar.sql`, []string{"e", `C:\Users\foo\bar.sql`}})
+	} else {
+		cases = append(cases, struct {
+			in   string
+			want []string
+		}{`a\ b c`, []string{"a b", "c"}})
 	}
 	for _, c := range cases {
 		if got := splitShellFields(c.in); !eqSlice(got, c.want) {

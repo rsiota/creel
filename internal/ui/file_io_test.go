@@ -12,9 +12,9 @@ func TestExpandTilde(t *testing.T) {
 		in   string
 		want string // "" means "expect an error or skip (home-dependent)"
 	}{
-		{"foo/bar", "foo/bar"},
-		{"/abs/path", "/abs/path"},
-		{"foo/../bar", "bar"}, // filepath.Clean collapses ..
+		{"foo/bar", filepath.Clean("foo/bar")},
+		{"/abs/path", filepath.Clean("/abs/path")},
+		{"foo/../bar", filepath.Clean("foo/../bar")},
 	}
 	for _, c := range cases {
 		got, err := expandTilde(filepath.Clean(c.in))
@@ -33,7 +33,7 @@ func TestExpandTilde(t *testing.T) {
 	if err != nil {
 		t.Skip("no home dir")
 	}
-	got, err := expandTilde("~/x.sql")
+	got, err := expandTilde(filepath.Clean("~/x.sql"))
 	if err != nil {
 		t.Fatalf("expandTilde(~/x.sql) error: %v", err)
 	}

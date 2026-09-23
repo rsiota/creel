@@ -19,6 +19,8 @@ func newSQLiteTestConn(t *testing.T) *db.Connection {
 	if err := conn.Connect(); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
+	// Windows cannot delete an open SQLite file; close before TempDir cleanup.
+	t.Cleanup(func() { _ = conn.Close() })
 	return conn
 }
 

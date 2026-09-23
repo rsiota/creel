@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -592,7 +593,9 @@ func parseExLine(input string) (verb string, args []string, force bool) {
 
 // splitShellFields is a small shell-like field splitter: whitespace separates
 // fields, single/double quotes group a field, and a backslash escapes the next
-// rune (except inside single quotes, matching POSIX-ish behaviour).
+// rune (except inside single quotes, matching POSIX-ish behaviour). On
+// Windows a backslash is a path separator, so it is only an escape before
+// ", ', or another \ — otherwise C:\Users\... would be eaten.
 func splitShellFields(s string) []string {
 	var fields []string
 	var cur strings.Builder
@@ -602,7 +605,12 @@ func splitShellFields(s string) []string {
 		r := runes[i]
 		switch {
 		case r == '\\' && i+1 < len(runes) && !inSingle:
-			cur.WriteRune(runes[i+1])
+			next := runes[i+1]
+			if runtime.GOOS == "windows" && next != '"' && next != '\'' && next != '\\' {
+				cur.WriteRune(r)
+				continue
+			}
+			cur.WriteRune(next)
 			i++
 		case r == '\'' && !inDouble:
 			inSingle = !inSingle

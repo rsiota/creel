@@ -27,7 +27,7 @@ func TestImportPromptEnterAcceptsPathCompletion(t *testing.T) {
 	if !p.AcceptPathCompletion() {
 		t.Fatal("AcceptPathCompletion should succeed with open dropdown")
 	}
-	want := filepath.Join(dir, "dump.sql")
+	want := dir + "/dump.sql"
 	if got := p.input.Value(); got != want {
 		t.Fatalf("after accept: value = %q, want %q", got, want)
 	}

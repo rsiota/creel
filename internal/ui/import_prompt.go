@@ -71,31 +71,39 @@ func (p ImportPrompt) ExpandPath() (string, error) {
 	return expandTilde(raw)
 }
 
-// expandTilde resolves a leading ~ (~ or ~/rest) to the user's home directory.
-// Paths without a leading ~ are returned unchanged. The caller is expected to
-// have run filepath.Clean first (ExpandPath does; the ex :e/:w handlers do).
+// expandTilde resolves a leading ~ (~ or ~/rest or ~\rest) to the user's home
+// directory. Paths without a leading ~ are returned unchanged. The caller is
+// expected to have run filepath.Clean first (ExpandPath does; the ex :e/:w
+// handlers do). Clean turns ~/ into ~\ on Windows, so both separators count.
 func expandTilde(raw string) (string, error) {
-	if raw == "~" {
+	if rest, ok := cutHomePrefix(raw); ok {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
-		return home, nil
-	}
-	if len(raw) > 2 && raw[:2] == "~/" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
+		if rest == "" {
+			return home, nil
 		}
-		return filepath.Join(home, raw[2:]), nil
+		return filepath.Join(home, rest), nil
 	}
 	return raw, nil
 }
 
+// cutHomePrefix reports whether raw is ~ or ~/rest / ~\rest and returns rest.
+func cutHomePrefix(raw string) (rest string, ok bool) {
+	if raw == "~" {
+		return "", true
+	}
+	if strings.HasPrefix(raw, "~/") || strings.HasPrefix(raw, `~\`) {
+		return raw[2:], true
+	}
+	return "", false
+}
+
 // splitPathVal splits the input into the directory prefix (including the
-// trailing /) and the partial entry name being typed after it.
+// trailing separator) and the partial entry name being typed after it.
 func splitPathVal(val string) (dir, partial string) {
-	idx := strings.LastIndex(val, "/")
+	idx := strings.LastIndexAny(val, `/\`)
 	if idx == -1 {
 		return "", val
 	}
@@ -104,19 +112,15 @@ func splitPathVal(val string) (dir, partial string) {
 
 // resolveDir expands ~ in a directory prefix so it can be passed to os.ReadDir.
 func resolveDir(dir string) string {
-	if dir == "~/" || dir == "~" {
+	if rest, ok := cutHomePrefix(strings.TrimRight(dir, `/\`)); ok {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return dir
 		}
-		return home
-	}
-	if len(dir) > 2 && dir[:2] == "~/" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return dir
+		if rest == "" {
+			return home
 		}
-		return filepath.Join(home, dir[2:])
+		return filepath.Join(home, rest)
 	}
 	return dir
 }
@@ -124,7 +128,7 @@ func resolveDir(dir string) string {
 // completeFilePath returns the directory entries matching a path prefix — the
 // shared engine behind both the import prompt's live completion and the ":"
 // file-argument completers (:e/:w/:import/:open/:save). It splits the input
-// at the last "/", lists that directory (expanding ~), and returns the
+// at the last "/" or "\", lists that directory (expanding ~), and returns the
 // matching entry basenames — appending "/" to directories, sorting, and
 // omitting hidden entries unless the partial itself starts with ".". Returns
 // nil when the input has no directory prefix or the directory can't be read.

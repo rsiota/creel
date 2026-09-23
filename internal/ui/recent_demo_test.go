@@ -73,6 +73,7 @@ func TestOpenDemoDatabaseFromEmptyList(t *testing.T) {
 	if !strings.Contains(m.schemaMsg, "g r") || !strings.Contains(m.schemaMsg, "g R") {
 		t.Fatalf("demo open should hint graph chords, got schemaMsg=%q", m.schemaMsg)
 	}
+	t.Cleanup(func() { _ = m.connection.Close() })
 	if cmd != nil {
 		_ = cmd // focus / prefetch / keep-alive; not needed for the assert
 	}

@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -158,24 +159,31 @@ func loadKeySigner(keyPath, passphrase string) (ssh.Signer, error) {
 	return signer, nil
 }
 
-// expandHomePath resolves a leading ~ (~ or ~/rest) to the user's home
-// directory before opening the SSH private key. Other paths are cleaned and
-// returned unchanged.
+// expandHomePath resolves a leading ~ (~ or ~/rest or ~\rest) to the user's
+// home directory before opening the SSH private key. Other paths are cleaned
+// and returned unchanged. filepath.Clean turns ~/ into ~\ on Windows, so both
+// separators count.
 func expandHomePath(raw string) (string, error) {
 	raw = filepath.Clean(raw)
-	if raw == "~" {
+	if rest, ok := cutHomePrefix(raw); ok {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
-		return home, nil
-	}
-	if len(raw) >= 2 && raw[:2] == "~/" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
+		if rest == "" {
+			return home, nil
 		}
-		return filepath.Join(home, raw[2:]), nil
+		return filepath.Join(home, rest), nil
 	}
 	return raw, nil
+}
+
+func cutHomePrefix(raw string) (rest string, ok bool) {
+	if raw == "~" {
+		return "", true
+	}
+	if strings.HasPrefix(raw, "~/") || strings.HasPrefix(raw, `~\`) {
+		return raw[2:], true
+	}
+	return "", false
 }
