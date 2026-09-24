@@ -157,10 +157,10 @@ func TestRenderGraphERD(t *testing.T) {
 	}
 }
 
-// TestERDArrowElbow asserts the arrow's vertical run bends into its arrowhead
-// as a corner (┐/┘), not a straight stub (│) left dangling beside it. In the
-// fixture the parent (users) sits left of the child (orders), so the arrowhead
-// is ◀ and its vertical column is the cell immediately to its right.
+// TestERDArrowElbow asserts a two-cell stub at the arrowhead: a horizontal
+// (─) beside the triangle, then the elbow (┐/┘) one cell further out — `◀─┐`
+// rather than `◀┐`. In the fixture the parent (users) sits left of the child
+// (orders), so the arrowhead is ◀.
 func TestERDArrowElbow(t *testing.T) {
 	tables, schemas, pks, fks := erdFixture()
 	c, _ := renderGraphERD(tables, schemas, pks, fks)
@@ -175,18 +175,24 @@ func TestERDArrowElbow(t *testing.T) {
 			if g != head {
 				continue
 			}
-			nx := x + 1 // vertical runs one cell right of a left-pointing head
+			nx := x + 1
 			if !c.inBounds(nx, y) {
 				t.Fatalf("arrowhead at (%d,%d) has no cell to its right", x, y)
 			}
 			ng, _, _ := cellGlyph(c.cells[y][nx])
-			switch ng {
-			case '┐', '┘':
-				// elbow bending into the arrowhead — the wanted shape
-			case '─':
-				// endpoints aligned: a pure horizontal feed, no vertical to bend
+			if ng != '─' {
+				t.Errorf("cell beside arrowhead is %q, want ─ (two-cell stub)", string(ng))
+			}
+			ex := x + 2
+			if !c.inBounds(ex, y) {
+				t.Fatalf("arrowhead at (%d,%d) has no elbow cell two cells out", x, y)
+			}
+			eg, _, _ := cellGlyph(c.cells[y][ex])
+			switch eg {
+			case '┐', '┘', '─':
+				// elbow, or a longer horizontal when the endpoints share a row
 			default:
-				t.Errorf("cell beside arrowhead is %q, want an elbow (┐/┘) or horizontal (─)", string(ng))
+				t.Errorf("second cell from arrowhead is %q, want an elbow (┐/┘) or ─", string(eg))
 			}
 			checked++
 		}
@@ -824,7 +830,7 @@ func TestERDHighlightArrowOnTop(t *testing.T) {
 	// parent PK row): both arrows draw a line through it, so it must be blue.
 	if users != nil {
 		py := users.colRowY("id")
-		vertX := users.x + users.w + 1
+		vertX := users.x + users.w + erdHeadStub
 		if sel.inBounds(vertX, py) {
 			_, bendFg, _ := cellGlyph(sel.cells[py][vertX])
 			if bendFg != string(colorPrimary) {

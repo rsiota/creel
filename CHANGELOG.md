@@ -21,6 +21,10 @@ commits, so it can come up empty).
   column expand works on foreign schemas. DDL (`T`/`D`/`r`/`a`, `:drop`, …)
   still requires `:schema` to switch.
 
+### Changed
+- ERD arrowheads leave a two-cell stub before the elbow (`◀─┐`) so the turn
+  is easier to read.
+
 ### Fixed
 - Postgres active schema after picking a database — when `Schema` is unset,
   creel now reads `current_schema()` so the sidebar marks and expands the

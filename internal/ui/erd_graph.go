@@ -179,17 +179,6 @@ func (c *gcanvas) vline(x, y1, y2 int, fg string) {
 	}
 }
 
-// addConn ORs a connection direction into a cell's line mask, bending a
-// straight segment into an elbow (or tee) where routes meet. Used to turn an
-// arrow's vertical run into the corner that feeds its arrowhead, so the line
-// meets the triangle's base at a 90° angle instead of a dangling stub.
-func (c *gcanvas) addConn(x, y int, d erdDir) {
-	rx, ry := x-c.ox, y-c.oy
-	if c.inBounds(rx, ry) {
-		c.cells[ry][rx].con |= d
-	}
-}
-
 // String emits the canvas, grouping each row into maximal runs of equal
 // (fg, bold) so styling is applied per-run rather than per-cell. Grouping is
 // by style, not glyph, so a styled title like " users " renders as one span.
@@ -630,19 +619,22 @@ func (c *gcanvas) drawArrowPoly(pts []erdPoint, headSide erdDir, fg string) {
 	c.setCh(last.x, last.y, head, fg, true)
 }
 
-// drawSideArrowLeft: parent sits to the left of child. The vertical runs one
-// cell further into the gutter than the arrowhead and bends into a corner at
-// the parent's row, so the line meets the arrowhead along its wide edge as an
-// elbow rather than a dangling stub.
+// erdHeadStub is the columns between the arrowhead and the elbow that feeds
+// it, so the turn reads as `◀─┐` rather than `◀┐`.
+const erdHeadStub = 2
+
+// drawSideArrowLeft: parent sits to the left of child. The vertical sits
+// erdHeadStub cells out from the arrowhead and a short horizontal feeds the
+// triangle, so the bend reads as `◀─┐` rather than `◀┐`.
 func (c *gcanvas) drawSideArrowLeft(child, parent *gcard, childCol, parentCol, fg string) {
 	cy := child.colRowY(childCol)
 	py := parent.colRowY(parentCol)
 	exitX := child.x - 1         // gutter cell touching child's left border
 	headX := parent.x + parent.w // arrowhead: tip touches parent's right border
-	vertX := headX + 1           // vertical: one cell out, meets the wide edge
+	vertX := headX + erdHeadStub
 	c.hline(vertX, exitX, cy, fg)
 	c.vline(vertX, cy, py, fg)
-	c.addConn(vertX, py, erdLeft) // bend the vertical into the arrowhead
+	c.hline(vertX, headX, py, fg)
 	c.setCh(headX, py, arrowheadL(), fg, true)
 }
 
@@ -653,10 +645,10 @@ func (c *gcanvas) drawSideArrowRight(child, parent *gcard, childCol, parentCol, 
 	py := parent.colRowY(parentCol)
 	exitX := child.x + child.w // gutter cell touching child's right border
 	headX := parent.x - 1      // arrowhead: tip touches parent's left border
-	vertX := headX - 1         // vertical: one cell out, meets the wide edge
+	vertX := headX - erdHeadStub
 	c.hline(exitX, vertX, cy, fg)
 	c.vline(vertX, cy, py, fg)
-	c.addConn(vertX, py, erdRight) // bend the vertical into the arrowhead
+	c.hline(vertX, headX, py, fg)
 	c.setCh(headX, py, arrowheadR(), fg, true)
 }
 
@@ -671,25 +663,22 @@ func (c *gcanvas) drawMarginArrow(child, parent *gcard, childCol, parentCol stri
 	cy := child.colRowY(childCol)
 	py := parent.colRowY(parentCol)
 	var childRiserX, headX, vertX int
-	var bend erdDir
 	var head rune
 	if parent.x <= child.x {
 		childRiserX = child.x - 1   // gutter to the left of the child
 		headX = parent.x + parent.w // tip touches parent's right border
-		vertX = headX + 1           // riser one cell out, meets the wide edge
-		head = arrowheadL()         // points left, into the parent's right edge
-		bend = erdLeft              // corner turns toward the arrowhead
+		vertX = headX + erdHeadStub
+		head = arrowheadL() // points left, into the parent's right edge
 	} else {
 		childRiserX = child.x + child.w // gutter to the right of the child
 		headX = parent.x - 1            // tip touches parent's left border
-		vertX = headX - 1               // riser one cell out, meets the wide edge
-		head = arrowheadR()             // points right, into the parent's left edge
-		bend = erdRight                 // corner turns toward the arrowhead
+		vertX = headX - erdHeadStub
+		head = arrowheadR() // points right, into the parent's left edge
 	}
 	c.vline(childRiserX, laneY, cy, fg)
 	c.hline(childRiserX, vertX, laneY, fg)
 	c.vline(vertX, laneY, py, fg)
-	c.addConn(vertX, py, bend) // bend the riser into the arrowhead
+	c.hline(vertX, headX, py, fg)
 	c.setCh(headX, py, head, fg, true)
 }
 
@@ -869,7 +858,7 @@ func routeSide(child, parent *gcard, cy, py int, others []*gcard) ([]erdPoint, e
 	case parent.x+parent.w <= child.x: // parent sits fully left of child
 		exitX := child.x - 1         // gutter cell touching the child's left border
 		headX := parent.x + parent.w // arrowhead tip touches the parent's right border
-		for vertX := headX + 1; vertX <= exitX; vertX++ {
+		for vertX := headX + erdHeadStub; vertX <= exitX; vertX++ {
 			if segClearH(others, exitX, vertX, cy) &&
 				segClearV(others, vertX, cy, py) &&
 				segClearH(others, vertX, headX, py) {
@@ -879,7 +868,7 @@ func routeSide(child, parent *gcard, cy, py int, others []*gcard) ([]erdPoint, e
 	case child.x+child.w <= parent.x: // parent sits fully right of child
 		exitX := child.x + child.w
 		headX := parent.x - 1
-		for vertX := headX - 1; vertX >= exitX; vertX-- {
+		for vertX := headX - erdHeadStub; vertX >= exitX; vertX-- {
 			if segClearH(others, exitX, vertX, cy) &&
 				segClearV(others, vertX, cy, py) &&
 				segClearH(others, vertX, headX, py) {
@@ -912,11 +901,11 @@ func routeLane(child, parent *gcard, cy, py int, all []*gcard, lanes *lanePacker
 	// may lengthen but stays attached to the head.
 	headX := parent.x - 1
 	headSide := erdRight
-	parentVertX0 := headX - 1
+	parentVertX0 := headX - erdHeadStub
 	if parentLeft {
 		headX = parent.x + parent.w
 		headSide = erdLeft
-		parentVertX0 = headX + 1
+		parentVertX0 = headX + erdHeadStub
 	}
 	// Claim a lane row, then settle each riser in the nearest clear column for
 	// the span from its card's row to the lane. Because the lane lies entirely
