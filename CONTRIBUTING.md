@@ -34,6 +34,14 @@ A few highlights worth knowing about:
   dispatch. If you add or change a keybinding, these will tell you what to
   update.
 - **`internal/db/*_test.go`** — driver behaviour tests, one set per database.
+  Live MySQL/Postgres tests (`TestLive*`) skip unless `CREEL_LIVE_DB=1`. CI
+  sets that against `postgres:16` and `mysql:8.4` and fails if either service
+  is down. Locally, a missing driver is skipped so you can run just the one
+  you have:
+
+  ```sh
+  CREEL_LIVE_DB=1 go test ./internal/db/ -run TestLive
+  ```
 
 ## Conventions
 
