@@ -1356,3 +1356,34 @@ func exLookup(verb string) *exCmdSpec {
 	}
 	return nil
 }
+
+// exResolve is the execute-time verb matcher: exact alias first, then a unique
+// prefix, then a unique fuzzy subsequence (same ranking as the ":" popup).
+// Ambiguous prefixes like "g" (goto vs grep) stay unresolved so Enter
+// completes instead of guessing.
+func exResolve(verb string) *exCmdSpec {
+	if spec := exLookup(verb); spec != nil {
+		return spec
+	}
+	return uniqueExMatch(verb)
+}
+
+// uniqueExMatch returns the command uniquely identified by verb as a prefix
+// or, if nothing shares that prefix, as a fuzzy subsequence. nil when zero or
+// several commands match — the caller then completes or reports E492.
+func uniqueExMatch(verb string) *exCmdSpec {
+	if verb == "" {
+		return nil
+	}
+	prefixHits, fuzzyHits := matchExVerbs(verb)
+	switch {
+	case len(prefixHits) == 1:
+		return &prefixHits[0]
+	case len(prefixHits) > 1:
+		return nil
+	case len(fuzzyHits) == 1:
+		return &fuzzyHits[0]
+	default:
+		return nil
+	}
+}

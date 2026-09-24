@@ -77,3 +77,37 @@ func TestExLookupResolvesKnownVerbs(t *testing.T) {
 		t.Error("exLookup should return nil for an unknown verb")
 	}
 }
+
+// TestExResolveUniquePrefix: execute-time matching expands unique prefixes
+// and unique fuzzy subsequences, but leaves ambiguous stems (g → goto/grep)
+// unresolved so Enter completes instead of guessing.
+func TestExResolveUniquePrefix(t *testing.T) {
+	if spec := exResolve("go"); spec == nil || spec.verbs[0] != "goto" {
+		t.Fatalf("exResolve(go) = %v, want goto", specName(spec))
+	}
+	if spec := exResolve("th"); spec == nil || spec.verbs[0] != "theme" {
+		t.Fatalf("exResolve(th) = %v, want theme", specName(spec))
+	}
+	if spec := exResolve("gto"); spec == nil || spec.verbs[0] != "goto" {
+		t.Fatalf("exResolve(gto) = %v, want goto (unique fuzzy)", specName(spec))
+	}
+	if spec := exResolve("g"); spec != nil {
+		t.Errorf("exResolve(g) = %s, want nil (goto vs grep)", spec.verbs[0])
+	}
+	if spec := exResolve("ex"); spec != nil {
+		t.Errorf("exResolve(ex) = %s, want nil (explain/explore/export)", spec.verbs[0])
+	}
+	if spec := exResolve("w"); spec == nil || spec.verbs[0] != "write" {
+		t.Fatalf("exResolve(w) = %v, want write (exact alias still wins)", specName(spec))
+	}
+	if spec := exResolve("zzz"); spec != nil {
+		t.Errorf("exResolve(zzz) = %s, want nil", spec.verbs[0])
+	}
+}
+
+func specName(s *exCmdSpec) string {
+	if s == nil {
+		return "<nil>"
+	}
+	return s.verbs[0]
+}

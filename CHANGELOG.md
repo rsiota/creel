@@ -12,6 +12,10 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- Unique-prefix `:` execute — unambiguous stems run on first Enter (`:go` →
+  `:goto`, `:th` → `:theme`, `:gto` fuzzy-matches `:goto`). Ambiguous stems
+  (`:g` → goto vs grep) still complete first. A results-column jump still
+  beats a prefix (`:id` stays the `id` column, not `:indexes`).
 - Postgres foreign-schema structure — `d` / `:describe` / `:columns` / `:indexes`
   / `:fk` / `:constraints` accept `schema.table` and open read-only; sidebar
   column expand works on foreign schemas. DDL (`T`/`D`/`r`/`a`, `:drop`, …)

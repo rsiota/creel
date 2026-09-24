@@ -356,6 +356,16 @@ func TestExGoto(t *testing.T) {
 	if !strings.Contains(m.schemaMsg, "no such table") {
 		t.Errorf(":goto nope -> %q", m.schemaMsg)
 	}
+
+	// Unique prefix + unique fuzzy resolve to the same helper.
+	m.runExCommand("go users")
+	if m.sidebarCursor != 0 || !strings.Contains(m.editor.Value(), "SELECT * FROM users") {
+		t.Errorf(":go users -> cursor=%d editor=%q", m.sidebarCursor, m.editor.Value())
+	}
+	m.runExCommand("gto orders")
+	if m.sidebarCursor != 1 || !strings.Contains(m.editor.Value(), "SELECT * FROM orders") {
+		t.Errorf(":gto orders -> cursor=%d editor=%q", m.sidebarCursor, m.editor.Value())
+	}
 }
 
 // Regression: :wq/:x on the last tab now quits the app (it used to refuse),
@@ -382,6 +392,22 @@ func TestExFallbackColumnJump(t *testing.T) {
 	}
 }
 
+// :id uniquely prefixes :indexes, but in the results view a column named id
+// must still win — unique-prefix execute must not steal the legacy jump.
+func TestExColumnJumpBeatsUniquePrefix(t *testing.T) {
+	m := &Model{results: NewResultsTable(), focus: FocusResults}
+	m.results.SetResult([]string{"id", "name"}, [][]string{{"1", "a"}}, "")
+	m.results.SetCursor(0, 1)
+
+	m.runExCommand("id")
+	if m.results.CursorCol() != 0 {
+		t.Errorf("fallback :id -> cursor col %d, want 0 (not :indexes)", m.results.CursorCol())
+	}
+	if strings.Contains(m.schemaMsg, "E492") {
+		t.Errorf(":id in results should jump, got %q", m.schemaMsg)
+	}
+}
+
 func TestExUnknownCommand(t *testing.T) {
 	m := &Model{results: NewResultsTable(), focus: FocusResults}
 	m.results.SetResult([]string{"id"}, [][]string{{"1"}}, "")
@@ -395,7 +421,7 @@ func TestExUnknownCommand(t *testing.T) {
 func TestExUnknownNotInResults(t *testing.T) {
 	m := &Model{results: NewResultsTable(), focus: FocusEditor}
 	m.results.SetResult([]string{"id"}, [][]string{{"1"}}, "")
-	m.runExCommand("id")
+	m.runExCommand("zzzz")
 	if !strings.Contains(m.schemaMsg, "E492") {
 		t.Errorf("bare identifier outside results should be E492, got %q", m.schemaMsg)
 	}

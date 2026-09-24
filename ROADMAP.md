@@ -17,9 +17,6 @@ Short live backlog only. Everything else that used to live here has shipped —
 see **History** below (and git) for the DONE scrapbook.
 
 ### Now
-- **Fuzzy `:` verb matching** — Helix-style (`:g` → `goto`); deferred only to
-  keep the strict “g→goto only” verb tests. Files: `excmd.go`,
-  `excmd_completion_test.go`.
 - **Unify ERD routing** — legacy three-mode router (initial ranked layout) vs
   dynamic polyline router (`routeArrow` / `rerouteArrows` after drag).
   Consolidate onto the dynamic path next time the router is touched.
@@ -151,8 +148,12 @@ palette). Never copy a key handler body into an ex executor. A full unified
 ### 🟢 Polish
 
 10. **Vim `:` ex-command mode** (2026-07-14) — modal `:` line (`excmd.go`),
-    shell-like parser, `E492` for unknown, fallback column jump. v2 completion
-    is open (above).
+    shell-like parser, `E492` for unknown, fallback column jump. Unique-prefix
+    / unique-fuzzy execute (2026-09-24): `:go` / `:gto` / `:th` run on first
+    Enter; `:g` stays complete-only (goto vs grep). Results column jump still
+    wins over a prefix (`:id` → the `id` column, not `:indexes`). Files:
+    `excmd.go`, `excmd_registry.go`. Tests: `excmd_completion_test.go`,
+    `excmd_registry_test.go`.
 11. **ERD / relationship view:**
     - Interactive relationship explorer `g r` / `:explore` (2026-07-20) —
       expand-in-place FK tree (`rel_explorer.go`).

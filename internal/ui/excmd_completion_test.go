@@ -234,6 +234,16 @@ func TestExArgCompletionTables(t *testing.T) {
 	if !sameStrings(got, want) {
 		t.Errorf("goto candidates = %v, want %v", got, want)
 	}
+
+	// Unique prefix of :goto should complete tables too (`:go users`).
+	m.ex.input = "go "
+	m.recomputeExCompletion()
+	if !m.ex.argMode {
+		t.Fatal("expected arg mode after unique-prefix verb")
+	}
+	if got := exCandidates(m.ex.comp); !sameStrings(got, want) {
+		t.Errorf("go candidates = %v, want %v", got, want)
+	}
 }
 
 // TestExArgCompletionTablesWithPartial: a partial token fuzzy-filters.
@@ -819,15 +829,42 @@ func TestExPopupWindow(t *testing.T) {
 
 // --- Enter completes partial popup selections --------------------------------
 
-func TestExCompletionEnterCompletesPartialVerb(t *testing.T) {
+func TestExCompletionEnterRunsUniquePrefix(t *testing.T) {
 	m := &Model{}
 	m.ex.Open()
 	for _, r := range "got" {
 		m.handleExKey(runeKey(r))
 	}
 	m.handleExKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.ex.IsVisible() {
+		t.Error("Enter on unique prefix :got should run goto and close")
+	}
+}
+
+func TestExCompletionEnterRunsUniqueFuzzy(t *testing.T) {
+	m := &Model{}
+	m.ex.Open()
+	for _, r := range "gto" {
+		m.handleExKey(runeKey(r))
+	}
+	if m.exEnterShouldComplete() {
+		t.Fatal("unique fuzzy :gto should run on Enter, not complete")
+	}
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.ex.IsVisible() {
+		t.Error("Enter on unique fuzzy :gto should run goto and close")
+	}
+}
+
+func TestExCompletionEnterCompletesAmbiguousPrefix(t *testing.T) {
+	m := &Model{}
+	m.ex.Open()
+	for _, r := range "g" {
+		m.handleExKey(runeKey(r))
+	}
+	m.handleExKey(tea.KeyMsg{Type: tea.KeyEnter})
 	if !m.ex.IsVisible() {
-		t.Fatal("Enter should complete in-place, not close the ex line")
+		t.Fatal("Enter on :g should complete, not run (goto vs grep)")
 	}
 	if m.ex.input != "goto" {
 		t.Errorf("Enter -> input=%q, want goto", m.ex.input)

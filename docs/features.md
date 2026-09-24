@@ -328,6 +328,8 @@ erDiagram
   `WHERE`/`ON`/`SET`. `ctrl+e` / `:run` executes the statement under the
   cursor; `:runall` / `:source` runs every statement in the buffer (stop on
   error); `:source <file>` runs a `.sql` file without replacing the buffer.
+  Unique `:` prefixes run on first Enter (`:go` → `:goto`, `:th` → `:theme`);
+  ambiguous stems (`:g` → goto vs grep) still complete first.
   On a syntax error, the cursor jumps to the reported token/line.
 - **Query history & bookmarks** — per-connection, persisted, searchable.
 - **`:watch` / `:tail`** — periodic refresh of the last query (status bar

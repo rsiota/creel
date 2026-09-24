@@ -45,8 +45,9 @@ type exCompItem struct {
 }
 
 // handleExKey routes keys to the open ":" command line. It is modal: every
-// key is consumed while the ex line is visible. enter runs the input (or
-// completes the highlighted popup row when the typed token is still partial);
+// key is consumed while the ex line is visible. enter runs the input when the
+// verb is exact or uniquely resolved (`:go` → goto); it completes the
+// highlighted popup row when the token is still ambiguous (`:g` → goto/grep).
 // esc cancels; ↑/↓ recalls history.
 func (m *Model) handleExKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -132,8 +133,9 @@ func (m *Model) applyExSelection() {
 }
 
 // exEnterShouldComplete reports whether Enter should accept the highlighted
-// popup row instead of running the current input. Valid command aliases (e.g.
-// ":w") still run immediately; partial verbs, partial argument tokens, and
+// popup row instead of running the current input. Exact aliases (":w") and
+// unique prefixes / unique fuzzy verbs (":go", ":gto", ":th") run immediately.
+// Ambiguous prefixes (":g" → goto vs grep), partial argument tokens, and
 // browsing a list after a trailing space (empty partial — same as Tab)
 // complete first so a second Enter executes the finished line.
 func (m *Model) exEnterShouldComplete() bool {
@@ -160,7 +162,7 @@ func (m *Model) exEnterShouldComplete() bool {
 	if hasSpace {
 		return false
 	}
-	return exLookup(strings.ToLower(strings.TrimSuffix(verb, "!"))) == nil
+	return exResolve(strings.ToLower(strings.TrimSuffix(verb, "!"))) == nil
 }
 
 func (ex exCmd) selectedCompItem() exCompItem {
@@ -309,8 +311,9 @@ func (m *Model) recomputeExCompletion() {
 	m.ex.argMode = true
 	m.ex.selIdx = 0
 	// A trailing "!" (force) on the verb must be stripped, mirroring parseExLine.
+	// Unique prefixes resolve here too so `:go users` can complete tables.
 	lookup := strings.TrimSuffix(verb, "!")
-	spec := exLookup(lookup)
+	spec := exResolve(lookup)
 	if spec == nil || spec.complete == nil {
 		return
 	}
@@ -643,13 +646,16 @@ func (m *Model) runExCommand(input string) tea.Cmd {
 		return spec.run(m, args, force)
 	}
 	// Legacy fallback: in the results view a bare identifier jumps to the
-	// best-matching column. Use the original input so column-name case is
-	// preserved.
+	// best-matching column. This runs *before* unique-prefix resolve so a
+	// common column like "id" is not stolen by :indexes.
 	if m.focus == FocusResults && m.results.NumCols() > 0 && len(args) == 0 {
 		if idx := bestColumnMatch(m.results.columns, input); idx >= 0 {
 			m.results.SetCursor(m.results.CursorRow(), idx)
 			return nil
 		}
+	}
+	if spec := uniqueExMatch(verb); spec != nil {
+		return spec.run(m, args, force)
 	}
 	m.schemaMsg = fmt.Sprintf("E492: not a command: %s", input)
 	return nil
