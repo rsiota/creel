@@ -181,6 +181,43 @@ func TestAssistantLongPromptWraps(t *testing.T) {
 // runeWidth is a rough visible-width measure for the wrap test.
 func runeWidth(s string) int { return len([]rune(s)) }
 
+// TestAssistantBrowseScrollJump covers j/k line scroll plus g/G top/bottom —
+// the transcript jump that was reserved but left unfinished until now.
+func TestAssistantBrowseScrollJump(t *testing.T) {
+	a := NewAssistant()
+	a.Show()
+	a.SetSize(40, 12) // viewportLines ≈ 8 after composeHeight
+	for i := 0; i < 30; i++ {
+		a.AppendUser("question line enough to wrap and stack")
+		a.AppendAssistant("summary", "SELECT "+strings.Repeat("x", 20)+";")
+	}
+	if a.transcriptHeight() <= a.viewportLines() {
+		t.Fatalf("transcriptHeight=%d viewport=%d; need overflow for scroll",
+			a.transcriptHeight(), a.viewportLines())
+	}
+
+	a, _ = a.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	wantBottom := a.transcriptHeight() - a.viewportLines()
+	if a.scrollRow != wantBottom {
+		t.Fatalf("after G: scrollRow=%d, want %d", a.scrollRow, wantBottom)
+	}
+
+	a, _ = a.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	if a.scrollRow != wantBottom-1 {
+		t.Fatalf("after k: scrollRow=%d, want %d", a.scrollRow, wantBottom-1)
+	}
+
+	a, _ = a.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	if a.scrollRow != 0 {
+		t.Fatalf("after g: scrollRow=%d, want 0", a.scrollRow)
+	}
+
+	a, _ = a.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	if a.scrollRow != 1 {
+		t.Fatalf("after j: scrollRow=%d, want 1", a.scrollRow)
+	}
+}
+
 // TestAssistantHintsOnStatusBar locks in that the AI panel surfaces its
 // keybindings on the status bar (via hintList) rather than an in-panel footer:
 //
@@ -194,7 +231,7 @@ func TestAssistantHintsOnStatusBar(t *testing.T) {
 	m.focus = FocusAssistant
 
 	browse := strings.Join(m.hintList(), " ")
-	for _, want := range []string{"i/a/o", "M", "esc"} {
+	for _, want := range []string{"i/a/o", "M", "g/G", "esc"} {
 		if !strings.Contains(browse, want) {
 			t.Errorf("browse hints missing %q: got %v", want, m.hintList())
 		}

@@ -515,7 +515,7 @@ func registry() []Section {
 				{"M", []string{"M"}, "switch provider", "M"},
 				{"m", []string{"m"}, "browse models for active provider", "m"},
 				{"j/k", []string{"j", "k", "up", "down"}, "scroll transcript", "j/k"},
-				{"G", []string{"G"}, "bottom", "G"},
+				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
 				{"c", []string{"c"}, "clear transcript", "c"},
 				{"esc / q", []string{"esc", "q"}, "leave compose / close panel", "esc"},
 			},

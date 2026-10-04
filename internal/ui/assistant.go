@@ -296,6 +296,9 @@ func (a *Assistant) handleBrowseKey(msg tea.KeyMsg) (Assistant, tea.Cmd) {
 	case "k", "up":
 		a.scrollUp(1)
 		return *a, nil
+	case "g":
+		a.scrollToTop()
+		return *a, nil
 	case "G":
 		a.scrollToBottom()
 		return *a, nil
@@ -327,6 +330,10 @@ func (a *Assistant) scrollDown(lines int) {
 	}
 }
 
+func (a *Assistant) scrollToTop() {
+	a.scrollRow = 0
+}
+
 func (a *Assistant) scrollToBottom() {
 	max := a.transcriptHeight() - a.viewportLines()
 	if max < 0 {
@@ -350,8 +357,6 @@ func (a Assistant) viewportLines() int {
 func (a Assistant) transcriptHeight() int {
 	return len(a.renderTranscriptLines())
 }
-
-// scrollUpToTop was reserved for a "g g" chord; left out for now.
 
 // View renders the panel: the scrollable transcript, a pending indicator when
 // a request is in flight, and the compose box at the bottom.

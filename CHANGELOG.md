@@ -11,6 +11,9 @@ commits, so it can come up empty).
 
 ## [Unreleased]
 
+### Added
+- AI assistant: `g` jumps the transcript to the top (pairs with existing `G`).
+
 ### Changed
 - Command palette: split dual-action keybinding rows (`g t` / `g T`, `g g` /
   `G`, `ctrl+e` / `\`) so each action is Ctrl+P-replayable.
