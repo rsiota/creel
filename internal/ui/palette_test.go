@@ -129,6 +129,42 @@ func TestPaletteEnterExecutableSingleKey(t *testing.T) {
 	}
 }
 
+// Former dual-action / alias rows (g t / g T, g g / G, ctrl+e / \) are split
+// into one-action entries so each is Ctrl+P-replayable.
+func TestPaletteSplitDualActionRowsExecutable(t *testing.T) {
+	var p palette
+	p.Open(paletteJumpSrc{})
+	want := map[string][]string{
+		"ctrl+e": {"ctrl+e"},
+		"\\":     {"\\"},
+		"g t":    {"g", "t"},
+		"g T":    {"g", "T"},
+		"g g":    {"g", "g"},
+		"G":      {"G"},
+	}
+	seen := map[string]bool{}
+	for _, it := range p.items {
+		if exp, ok := want[it.display]; ok {
+			seen[it.display] = true
+			if !reflect.DeepEqual(it.replay, exp) {
+				t.Errorf("binding %q replay = %v, want %v", it.display, it.replay, exp)
+			}
+		}
+	}
+	for k := range want {
+		if !seen[k] {
+			t.Errorf("expected a palette item for %q", k)
+		}
+	}
+	// Combined Displays must be gone — otherwise they stay non-executable.
+	for _, it := range p.items {
+		switch it.display {
+		case "g t / g T", "g g / G", "ctrl+e / \\":
+			t.Errorf("dual-action Display %q still present; split into one-action rows", it.display)
+		}
+	}
+}
+
 func TestPaletteEnterNonExecutable(t *testing.T) {
 	var p palette
 	p.Open(paletteJumpSrc{})
@@ -217,6 +253,9 @@ func TestPaletteChordsExecutableViaSequence(t *testing.T) {
 		"g s": {"g", "s"},
 		"g X": {"g", "X"},
 		"g c": {"g", "c"},
+		"g t": {"g", "t"},
+		"g T": {"g", "T"},
+		"g g": {"g", "g"},
 		"dd":  {"d", "d"},
 		"y y": {"y", "y"},
 		"==":  {"=", "="},
@@ -615,6 +654,49 @@ func TestPaletteResultsChordFocusesResults(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Fatal("expected a replay command for g R")
+	}
+}
+
+// Tabs / Sidebar g-chords also need a panel pending-G flag. Confirming those
+// rows from the editor-focused post-connect state must move focus first.
+func TestPaletteDualActionRowsFocusPanel(t *testing.T) {
+	cases := []struct {
+		display string
+		section string
+		want    Focus
+	}{
+		{"g t", "Tabs", FocusResults},
+		{"g T", "Tabs", FocusResults},
+		{"g g", "Sidebar (Tables)", FocusConnections},
+		{"G", "Sidebar (Tables)", FocusConnections},
+		{"\\", "Global", FocusEditor},
+	}
+	for _, tc := range cases {
+		t.Run(tc.display+"/"+tc.section, func(t *testing.T) {
+			m := NewModel(&config.Config{})
+			m.state = stateWorkspace
+			// Start on a panel that would break the chord if left alone.
+			if tc.want == FocusEditor {
+				m.focus = FocusResults
+			} else {
+				m.focus = FocusEditor
+			}
+			m.width, m.height = 100, 30
+			m.palette.Open(paletteJumpSrc{})
+			if !paletteSetCursorToItem(&m.palette, func(it paletteItem) bool {
+				return it.display == tc.display && it.section == tc.section
+			}) {
+				t.Fatalf("palette missing %q in %s", tc.display, tc.section)
+			}
+			next, cmd := m.handlePaletteKey(tea.KeyMsg{Type: tea.KeyEnter})
+			m = next.(Model)
+			if m.focus != tc.want {
+				t.Fatalf("focus = %v, want %v", m.focus, tc.want)
+			}
+			if cmd == nil {
+				t.Fatal("expected a replay command")
+			}
+		})
 	}
 }
 

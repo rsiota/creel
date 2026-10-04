@@ -11,6 +11,10 @@ commits, so it can come up empty).
 
 ## [Unreleased]
 
+### Changed
+- Command palette: split dual-action keybinding rows (`g t` / `g T`, `g g` /
+  `G`, `ctrl+e` / `\`) so each action is Ctrl+P-replayable.
+
 ## [0.6.1] - 2026-10-04
 
 Postgres foreign-schema browsing without switching, smarter `:` matching, and

@@ -62,21 +62,23 @@ dispatch via `tea.Sequence` (no parallel executors, no behaviour divergence):
 - `keymsg.go`: `replayKeySequence` builds a `tea.Sequence` of synthesised keys so
   the stateful pending-G/pending-D flag set by key 1 is consumed by key 2.
 - `chordReplays` (palette.go) lists the unambiguous single-action chords now
-  reachable from Ctrl+P: `g d/b/r/R/f/s/e/E/H//X`, `g c`, `g x`, `dd`, `y y`,
-  `y r`, `==`. Alternative-action lines (`g t / g T`, `g g / G`, `ctrl+e / \`)
-  stay non-executable until split into one-action entries.
-- Confirming a **Results**-section row focuses the results panel before
-  replaying, so chords like `g R` / `g r` work even when the editor still has
-  focus (the usual post-connect state).
-- Tests: `TestPaletteChordsExecutableViaSequence`, `TestReplayKeySequence`,
+  reachable from Ctrl+P: `g d/b/r/R/f/s/e/E/H//X`, `g c`, `g x`, `g t`/`g T`,
+  `g g`, `dd`, `y y`, `y r`, `==`. Former alternative-action lines were split
+  into one-action entries (`g t` / `g T`, `g g` / `G`, `ctrl+e` / `\`) so each
+  is palette-reachable. Navigation clusters (`j/k`, `ctrl+h/j/k/l`, …) stay
+  combined and non-executable from the palette.
+- Confirming a panel-scoped row focuses that panel before replaying:
+  Results / Tabs / Theme Picker → results (so g-chords get a pending-G flag),
+  Sidebar (Tables) → table list, Global `\` → editor (`\` only runs from vim
+  normal).
+- Tests: `TestPaletteChordsExecutableViaSequence`,
+  `TestPaletteSplitDualActionRowsExecutable`,
+  `TestPaletteDualActionRowsFocusPanel`, `TestReplayKeySequence`,
   `TestChordReplaysAreRealBindings` (drift guard).
 
 The full `Action` type (ID + keybinding + ex verbs + executor, merging the
 keybinding and ex registries) was DEFERRED — sequence-replay already delivers
 the reachability goal without a big refactor or behaviour-divergence risk.
-Known limitation (pre-existing, shared with single-key palette actions): a
-results-context chord only fires when results is focused, since replay drives
-the panel-specific dispatch.
 
 ### Step 4 — Semantic fixes ✅ DONE
 - `:q`/`:q!` now closes the active tab, and quits the app when it is the last

@@ -205,6 +205,9 @@ func flattenPaletteQuery(q string) string {
 var chordReplays = map[string][]string{
 	"g x": {"g", "x"},
 	"g c": {"g", "c"},
+	"g t": {"g", "t"},
+	"g T": {"g", "T"},
+	"g g": {"g", "g"},
 	"==":  {"=", "="},
 	"g d": {"g", "d"},
 	"g b": {"g", "b"},
@@ -225,10 +228,9 @@ var chordReplays = map[string][]string{
 // replayTokens returns the key sequence the command palette should replay to
 // invoke this binding, or nil if it isn't directly executable. Chords and
 // double-presses (g d, dd, …) are looked up in chordReplays; a single-token
-// binding replays its one token. Multi-token "alternative" bindings (e.g.
-// "g t / g T", "ctrl+e / \") have no single replay sequence and return nil —
-// they'd need to be split into separate one-action entries to become
-// palette-reachable.
+// binding replays its one token. Multi-token rows that still pack several
+// unrelated actions into one Display (e.g. "j/k, ↑/↓", "ctrl+h/j/k/l") return
+// nil — split them into one-action entries to make them palette-reachable.
 func (b Binding) replayTokens() []string {
 	if seq, ok := chordReplays[b.Display]; ok {
 		return seq

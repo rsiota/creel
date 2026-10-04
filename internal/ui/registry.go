@@ -13,8 +13,8 @@ package ui
 // the current panel or modal overlay. When empty the binding is not shown in
 // the hint line (it is still documented in the full help overlay).
 type Binding struct {
-	Display string   // e.g. "g g / G", "ctrl+h/j/k/l"
-	Tokens  []string // dispatch tokens, e.g. ["g", "G"]
+	Display string   // e.g. "g g", "ctrl+h/j/k/l"
+	Tokens  []string // dispatch tokens, e.g. ["g"]
 	Desc    string   // short human description
 	Hint    string   // compact key-only string for the status-bar hint line; empty = not hint-worthy
 }
@@ -42,7 +42,10 @@ func registry() []Section {
 			Title:  "Global",
 			Source: "app.go",
 			Items: []Binding{
-				{"ctrl+e / \\", []string{"ctrl+e", "\\"}, "run statement under cursor", ""},
+				// Split aliases so each is Ctrl+P-replayable (one Display = one
+				// replay sequence). Same action; both rows share the desc.
+				{"ctrl+e", []string{"ctrl+e"}, "run statement under cursor", ""},
+				{"\\", []string{"\\"}, "run statement under cursor", ""},
 				{"ctrl+r", []string{"ctrl+r"}, "refresh schema & re-run query", ""},
 				{"esc / ctrl+c", []string{"esc", "ctrl+c"}, "cancel running query", ""},
 				{"ctrl+w", []string{"ctrl+w"}, "maximize / restore editor", ""},
@@ -68,7 +71,9 @@ func registry() []Section {
 			Title:  "Tabs",
 			Source: "app.go",
 			Items: []Binding{
-				{"g t / g T", []string{"g", "t", "T"}, "next / previous tab", ""},
+				// One action per row so the palette can replay each chord.
+				{"g t", []string{"g", "t"}, "next tab", ""},
+				{"g T", []string{"g", "T"}, "previous tab", ""},
 				{"t", []string{"t"}, "new tab", ""},
 				{"g x", []string{"g", "x"}, "close tab", ""},
 				{"g 1-9", []string{"g", "1", "2", "3", "4", "5", "6", "7", "8", "9"}, "go to tab 1-9", ""},
@@ -118,7 +123,8 @@ func registry() []Section {
 			Items: []Binding{
 				{"j/k, ↑/↓", []string{"j", "k", "up", "down"}, "move", "j/k"},
 				{"l", []string{"l", "right"}, "focus results", "l"},
-				{"g g / G", []string{"g", "G"}, "top / bottom", ""},
+				{"g g", []string{"g"}, "top", ""},
+				{"G", []string{"G"}, "bottom", ""},
 				{"space", []string{" "}, "expand columns", "space"},
 				{"enter / s", []string{"enter", "s"}, "select * from table", "enter"},
 				{"d", []string{"d"}, "structure (columns/indexes/triggers)", "d"},
@@ -308,7 +314,8 @@ func registry() []Section {
 			Items: []Binding{
 				{"h/j/k/l", []string{"h", "j", "k", "l"}, "move cursor", "h/j/k/l"},
 				{"0 / $", []string{"0", "$"}, "first / last column", "0/$"},
-				{"g g / G", []string{"g", "G"}, "top / bottom", "G"},
+				{"g g", []string{"g"}, "top", ""},
+				{"G", []string{"G"}, "bottom", "G"},
 				{"y y", []string{"y"}, "copy cell", "y"},
 				{"y r", []string{"y", "r"}, "copy rows as TSV (Sheets/Slack)", "yr"},
 				{"p", []string{"p"}, "paste clipboard (fill marked/visual column)", "p"},

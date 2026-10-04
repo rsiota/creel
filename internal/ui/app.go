@@ -1064,21 +1064,35 @@ func (m *Model) toggleBookmarks() {
 	m.layoutWorkspace()
 }
 
-// handlePaletteKey routes keys to the open command palette. Results-panel
-// bindings (g R, g r, g d, …) only fire when results has focus — the usual
-// post-connect focus is the editor, so confirming those rows from Ctrl+P used
-// to replay into vim and look like a no-op. Focus results before the replay.
+// handlePaletteKey routes keys to the open command palette. Many bindings only
+// fire in a specific panel — the usual post-connect focus is the editor, so
+// confirming those rows from Ctrl+P used to replay into vim and look like a
+// no-op. Focus the owning panel before the replay.
 func (m Model) handlePaletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	confirming := msg.String() == "enter"
-	section := ""
+	var section, display string
 	if confirming {
-		section = m.palette.selectedItem().section
+		it := m.palette.selectedItem()
+		section = it.section
+		display = it.display
 	}
 	var cmd tea.Cmd
 	m.palette, cmd = m.palette.Update(msg)
-	if confirming && cmd != nil && section == "Results" {
-		m.focus = FocusResults
-		m.applyFocus()
+	if confirming && cmd != nil {
+		switch {
+		case section == "Sidebar (Tables)":
+			// Workspace table list reuses FocusConnections.
+			m.focus = FocusConnections
+			m.applyFocus()
+		case section == "Results" || section == "Tabs" || section == "Theme Picker":
+			// g-chords (g R, g t, g c, …) need a panel pending-G flag.
+			m.focus = FocusResults
+			m.applyFocus()
+		case section == "Global" && display == "\\":
+			// \ only runs the query from the editor in vim normal mode.
+			m.focus = FocusEditor
+			m.applyFocus()
+		}
 	}
 	return m, cmd
 }
@@ -1122,7 +1136,7 @@ func (m *Model) applyPaletteJump(msg paletteJumpMsg) tea.Cmd {
 // from any focused panel (except the editor in insert mode). Returns true if
 // the key was consumed.
 //
-// g t / g T — next / previous tab
+// g t / g T — next / previous tab (separate registry rows for palette replay)
 // g x       — close tab
 // g 1-9     — go to tab N
 // g c       — open theme picker (live preview)
