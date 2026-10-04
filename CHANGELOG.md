@@ -11,15 +11,23 @@ commits, so it can come up empty).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-04
+
+Postgres foreign-schema browsing without switching, smarter `:` matching, and
+a round of Results / palette / ERD polish.
+
 ### Added
 - Unique-prefix `:` execute — unambiguous stems run on first Enter (`:go` →
   `:goto`, `:th` → `:theme`, `:gto` fuzzy-matches `:goto`). Ambiguous stems
   (`:g` → goto vs grep) still complete first. A results-column jump still
   beats a prefix (`:id` stays the `id` column, not `:indexes`).
-- Postgres foreign-schema structure — `d` / `:describe` / `:columns` / `:indexes`
-  / `:fk` / `:constraints` accept `schema.table` and open read-only; sidebar
-  column expand works on foreign schemas. DDL (`T`/`D`/`r`/`a`, `:drop`, …)
-  still requires `:schema` to switch.
+- Postgres foreign-schema browse — open tables and inspect structure
+  (`d` / `:describe` / `:columns` / `:indexes` / `:fk` / `:constraints`, plus
+  sidebar column expand) with `schema.table` without switching schema. DDL
+  (`T`/`D`/`r`/`a`, `:drop`, …) still requires `:schema` to switch.
+- Replay `g R` (ERD) from the Ctrl+P command palette.
+- First-run jump hints teach the graph (`g r` / `g R`) and chart (`M`) entry
+  points.
 
 ### Changed
 - ERD arrowheads leave a two-cell stub before the elbow (`◀─┐`) so the turn
@@ -29,6 +37,12 @@ commits, so it can come up empty).
 - Postgres active schema after picking a database — when `Schema` is unset,
   creel now reads `current_schema()` so the sidebar marks and expands the
   live namespace (usually `public`) instead of leaving every section collapsed.
+- Results chords (`g f`, `g d`, …): land `g f` on the current cell, explain
+  why a chord does nothing, and focus Results before replaying those chords
+  from Ctrl+P.
+- Filter picker: Enter applies the highlighted value.
+- Keep Windows paths intact in `:` commands; truncate Start-help rows so the
+  overlay keeps a fixed height.
 
 ## [0.6.0] - 2026-09-17
 
@@ -436,7 +450,8 @@ First public release. creel succeeds `gsql` (the project was renamed) and migrat
 - **Read-only mode** for safely pointing at production.
 - **Session restore**, per-connection query history & bookmarks, EXPLAIN plans, and ~570 themes.
 
-[Unreleased]: https://github.com/rsiota/creel/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/rsiota/creel/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/rsiota/creel/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/rsiota/creel/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/rsiota/creel/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/rsiota/creel/compare/v0.3.1...v0.4.0
