@@ -18,6 +18,10 @@ commits, so it can come up empty).
 - Command palette: split dual-action keybinding rows (`g t` / `g T`, `g g` /
   `G`, `ctrl+e` / `\`) so each action is Ctrl+P-replayable.
 
+### Fixed
+- Docs/comments hygiene: drop unused `addDefaultSQLiteConnection` stub; refresh
+  stale `docs/command-registry.md` "next target" and theme-picker comment.
+
 ## [0.6.1] - 2026-10-04
 
 Postgres foreign-schema browsing without switching, smarter `:` matching, and

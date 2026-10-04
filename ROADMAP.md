@@ -210,7 +210,8 @@ palette). Never copy a key handler body into an ex executor. A full unified
     plus results verbs `:follow`/`:back`/`:keep`/`:hide`/`:undo`/`:unfilter`/
     `:hidecolumn`/`:showcolumns`/`:copyinsert`/`:regex`, and DDL
     `:createdb`/`:dropdb`/`:addcolumn`/`:discard`/`:clone`). All funnel through
-    shared helpers (the architecture habit above). Tier 4 DBA remains open.
+    shared helpers (the architecture habit above). Tier 4 DBA also shipped
+    (`:who` / `:locks` / `:kill` / `:diagnose`, …).
 
 ### 2026-08-04 — Data-fidelity review
 

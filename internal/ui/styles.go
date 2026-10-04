@@ -172,8 +172,8 @@ func init() {
 // sql_highlight.go.
 //
 // Because Bubble Tea re-runs View() on every frame, calling applyPalette is
-// all it takes to re-theme the live UI. Today only defaultPalette is applied
-// (at init); a later step will call this from a theme picker for live preview.
+// all it takes to re-theme the live UI. Init applies defaultPalette; the theme
+// picker (`g c` / `:theme`) calls this again for live preview.
 func applyPalette(p colorPalette) {
 	colorPrimary = p.primary
 	colorAccent = p.accent

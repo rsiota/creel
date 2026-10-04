@@ -1,33 +1,20 @@
 # Command registry: unifying `:` commands, keybindings, and the palette
 
-## Problem
+## Original problem (resolved)
 
-Today there are two parallel, un-unified surfaces:
-
-- **Keybindings** have `registry()` (`internal/ui/registry.go`) as a single
-  source of truth. Both the `?` help overlay (`help.go`) and the `Ctrl+P`
-  palette (`palette.go`) consume it. The palette "replays" a binding by
-  synthesizing its key (`keymsg.go`).
-- **Ex commands** (`:`) are a bare `switch verb` inside `runExCommand`
-  (`excmd.go`). There is **no registry, no autocomplete, and no listing**.
-  `:help` just opens the keybinding sheet, which doesn't enumerate the verbs.
-
-So the most discoverable surface (`:`) is the least self-documenting one. The
-palette is also hobbled: `execToken()` returns `""` for any multi-token
-binding, so chord actions (`g d`, `g e`, `g s`, `g X`, `dd`, …) can't be
-reached from `Ctrl+P` at all.
-
-There is also some tangled duplication to resolve before adding more:
-- `:q` closes a *tab*, but `q`/`ctrl+q` quits the *app* and `g x` also closes a
-  tab — three "quit-ish" things, and `:q` breaks vim expectations.
-- `:w` is overloaded (save edits with no arg; write buffer to file with arg)
-  and overlaps `ctrl+s`.
+When this doc started, keybindings already had `registry()` feeding `?` and
+`Ctrl+P`, but ex commands were a bare `switch` with no autocomplete or listing,
+and the palette could not replay chords (`g d`, `dd`, …). Steps 1–5 below
+closed that gap (ex registry + completion, sequence replay, `:q` semantics,
+high-value aliases). What remains optional is a unified Action ID layer for
+`:map` / config — see Step 6.
 
 ## Goal
 
 One **Action layer** that keybindings, `:` commands, the palette, help, and
 (later) `:map` all funnel through. Add commands in one place; everything else
-picks them up.
+picks them up. Shared helpers + `exCommands()` already deliver most of this;
+stable Action IDs are still optional.
 
 ## Steps (each ships independently)
 
@@ -104,28 +91,26 @@ Each shares the SAME implementation as its keybinding, not a duplicate:
 - `:explain`→`explainQuery`, `:stats`→`fetchColumnStats`, `:bar`→`exBar`, `:freq`→`exFreq`, `:line`→`exLine`, `:scatter`→`exScatter`, `:hist`→`exHist`,
   `:describe`→`openSchemaPanel`, `:format`→`formatSQL` (the editor `==` path).
 
-Deferred from this step (now scheduled in `ROADMAP.md` #15 Tier 5):
-`:connect <name>` (Wave B — async + keyring), and `:readonly` (connection/CLI
-flag at engine level, not a runtime toggle). Tests: `excmd_aliases_test.go`;
-known-verb set extended.
+`:connect <name>` shipped with Tier 5 Wave B. `:readonly` stays a
+connection/CLI flag at engine level (not a runtime toggle). Tests:
+`excmd_aliases_test.go`; known-verb set extended.
 
 ### Step 6 (optional) — `:map` / keymap config
 Enabled once actions have stable IDs + executors.
 
 ### Catalog expansion (ongoing)
 With the registry in place, the `:` line is the cheap, self-documenting home
-for new commands. Tiers 1–3 from `ROADMAP.md` #15 are complete (parameterized
-file/txn/export verbs, monitoring `:watch`/`:tail`/`:refs`/`:uses`, and small
-wins like `:count`/`:peek`/`:rerun`/`:limit`). High-level key mirrors already
-in the catalog (`:refresh`, `:explain`, `:history`, `:bookmarks`, `:import`,
-`:bookmark`) share helpers with their bindings — that pattern is now the
-**preferred** way to grow the set, not something to avoid.
+for new commands. Tiers 1–3, Tier 4 DBA (`:who` / `:locks` / `:kill` /
+`:diagnose`, …), and Tier 5 Waves A–E are complete — see `ROADMAP.md`
+History #15. High-level key mirrors (`:refresh`, `:explain`, `:history`,
+`:bookmarks`, `:import`, `:bookmark`) share helpers with their bindings —
+that pattern is the **preferred** way to grow the set.
 
 **Principle (2026-07-17):** overlap with shortcuts is intentional for
 discoverability. Add a `:` verb for high-level actions even when a key
 exists (`:run` ↔ `ctrl+e`); skip pure UI chrome (`:cursor-down`). Always
-extract/share one helper. Full priority list: **Tier 5** in `ROADMAP.md` #15
-(Wave A mirrors → Wave B connect/nav → Wave C schema → Wave D QoL).
+extract/share one helper. Living conventions: `ROADMAP.md` **Design
+guidance**.
 
-Next implementation target: session restore (#9) or Tier 4 DBA verbs if
-requested. Optional: `:createdb`/`:dropdb`. Tier 5 Waves A–E ✅.
+Live product backlog: `ROADMAP.md` **Open work**. Optional next *in this
+doc*: Step 6 (`:map`) if Action IDs land.

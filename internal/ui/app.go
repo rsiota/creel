@@ -2266,12 +2266,6 @@ func (m Model) updateConnections(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// addDefaultSQLiteConnection creates a quick local SQLite connection for convenience.
-func (m Model) addDefaultSQLiteConnection() (tea.Model, tea.Cmd) {
-	// For now just demonstrate; full add-connection UI is a future slice.
-	return m, nil
-}
-
 func (m Model) openEditForm() (tea.Model, tea.Cmd) {
 	name := m.connList.SelectedName()
 	if name == "" {
