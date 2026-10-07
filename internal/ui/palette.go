@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"unicode"
@@ -46,12 +47,17 @@ type paletteJumpMsg struct {
 // palette is the fuzzy-searchable command palette overlay (Ctrl+P).
 // It lists keybindings plus jump targets (tables, bookmarks, themes),
 // lets the user fuzzy-filter, and on Enter either replays a binding or jumps.
+//
+// Contextual mode (g m / :menu) lists only executable bindings for the
+// focused panel plus Global — a short action menu, not the full jump catalog.
 type palette struct {
-	visible  bool
-	input    string
-	cursor   int
-	items    []paletteItem
-	filtered []paletteItem
+	visible      bool
+	input        string
+	cursor       int
+	items        []paletteItem
+	filtered     []paletteItem
+	contextual   bool   // true when opened via OpenContextual
+	contextLabel string // panel section title for the header (e.g. "Results")
 }
 
 // maxPaletteItems is the maximum number of results shown at once.
@@ -73,10 +79,26 @@ func palettePopupDim() (w, h int) {
 // optional jump targets in src.
 func (p *palette) Open(src paletteJumpSrc) {
 	p.visible = true
+	p.contextual = false
+	p.contextLabel = ""
 	p.input = ""
 	p.cursor = 0
 	p.items = buildPaletteItems(src)
 	sortPaletteItems(p.items)
+	p.refilter()
+}
+
+// OpenContextual shows an action menu for the given registry sections (typically
+// the focused panel plus "Global"). Only bindings with a non-nil replay sequence
+// are listed — navigation clusters stay on `?`. Section order matches sections;
+// within a section, registry order is preserved.
+func (p *palette) OpenContextual(sections []string, label string) {
+	p.visible = true
+	p.contextual = true
+	p.contextLabel = label
+	p.input = ""
+	p.cursor = 0
+	p.items = buildContextualPaletteItems(sections)
 	p.refilter()
 }
 
@@ -85,6 +107,9 @@ func (p *palette) Hide() { p.visible = false }
 
 // IsVisible reports whether the palette is shown.
 func (p palette) IsVisible() bool { return p.visible }
+
+// IsContextual reports whether the palette was opened as a panel action menu.
+func (p palette) IsContextual() bool { return p.contextual }
 
 // Jump-target sections are listed first so Ctrl+P surfaces tables and bookmarks
 // before the long keybinding catalog. Themes are omitted from the empty filter
@@ -140,6 +165,43 @@ func buildPaletteItems(src paletteJumpSrc) []paletteItem {
 				replay:  b.replayTokens(),
 			})
 		}
+	}
+	return items
+}
+
+// buildContextualPaletteItems collects executable bindings from the named
+// registry sections, in the order sections is given, preserving registry order
+// within each section. Jump targets and non-replayable rows are omitted.
+func buildContextualPaletteItems(sections []string) []paletteItem {
+	want := make(map[string]int, len(sections))
+	for i, s := range sections {
+		if _, dup := want[s]; dup {
+			continue
+		}
+		want[s] = i
+	}
+	bySec := make([][]paletteItem, len(sections))
+	for _, sec := range registry() {
+		idx, ok := want[sec.Title]
+		if !ok {
+			continue
+		}
+		for _, b := range sec.Items {
+			replay := b.replayTokens()
+			if len(replay) == 0 {
+				continue
+			}
+			bySec[idx] = append(bySec[idx], paletteItem{
+				display: b.Display,
+				desc:    b.Desc,
+				section: sec.Title,
+				replay:  replay,
+			})
+		}
+	}
+	var items []paletteItem
+	for _, group := range bySec {
+		items = append(items, group...)
 	}
 	return items
 }
@@ -205,6 +267,7 @@ func flattenPaletteQuery(q string) string {
 var chordReplays = map[string][]string{
 	"g x": {"g", "x"},
 	"g c": {"g", "c"},
+	"g m": {"g", "m"},
 	"g t": {"g", "t"},
 	"g T": {"g", "T"},
 	"g g": {"g", "g"},
@@ -364,11 +427,16 @@ func (p palette) View(width, height int) string {
 
 	keyW, descW, secW := paletteColumnWidths(p.items, innerW)
 
-	start := 0
-	if p.cursor >= maxPaletteItems {
-		start = p.cursor - maxPaletteItems + 1
+	listMax := maxPaletteItems
+	if p.contextual {
+		// Reserve one body row for the "Results actions" header.
+		listMax = maxPaletteItems - 1
 	}
-	end := start + maxPaletteItems
+	start := 0
+	if p.cursor >= listMax {
+		start = p.cursor - listMax + 1
+	}
+	end := start + listMax
 	if end > len(p.filtered) {
 		end = len(p.filtered)
 	}
@@ -381,13 +449,16 @@ func (p palette) View(width, height int) string {
 		lines = append(lines, mutedStyle.Render("  no matches"))
 	}
 	// Pad to a fixed row count so the panel height never changes.
-	for len(lines) < maxPaletteItems {
+	for len(lines) < listMax {
 		lines = append(lines, "")
 	}
 
 	prompt := renderPalettePrompt(p.input, true)
-
 	body := prompt + "\n" + strings.Join(lines, "\n")
+	if p.contextual {
+		header := lipgloss.NewStyle().Foreground(colorMuted).Render(contextualActionHeader(p.contextLabel, len(p.items), len(p.filtered), p.input != ""))
+		body = header + "\n" + body
+	}
 
 	panel := lipgloss.NewStyle().
 		Width(width-2).
@@ -482,6 +553,19 @@ func clampPaletteText(s string, width int) string {
 		return s
 	}
 	return truncateCell(s, width)
+}
+
+// contextualActionHeader is the muted title above the contextual action menu
+// prompt, e.g. "Results actions (18)" or "Results actions (3/18)" while
+// filtering.
+func contextualActionHeader(label string, total, matched int, filtering bool) string {
+	if label == "" {
+		label = "Panel"
+	}
+	if filtering {
+		return fmt.Sprintf("%s actions (%d/%d)", label, matched, total)
+	}
+	return fmt.Sprintf("%s actions (%d)", label, total)
 }
 
 // renderPalettePrompt renders the chevron-style fuzzy-search prompt used by

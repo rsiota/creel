@@ -114,3 +114,10 @@ guidance**.
 
 Live product backlog: `ROADMAP.md` **Open work**. Optional next *in this
 doc*: Step 6 (`:map`) if Action IDs land.
+
+### Discoverability — contextual action menu ✅ DONE
+`g m` / `:menu` opens the palette in **contextual mode**: executable
+bindings for `hintSection()` (focused panel) plus `Global`, no jump targets,
+no non-replayable navigation clusters. Same Enter → `replayKeySequence` path
+as Ctrl+P (including focus-before-replay). This is the menubar substitute —
+browse “what can I do here?” without a permanent strip or Action IDs.

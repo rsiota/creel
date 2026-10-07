@@ -357,8 +357,10 @@ erDiagram
 - **Command palette** (`Ctrl+P`) — fuzzy jump-anywhere: keybindings, tables,
   bookmarks, and themes. Themes appear once you type a filter (so the empty
   list stays useful). Enter opens a table, loads a bookmark, applies a
-  theme, or replays a binding. History stays on `Ctrl+Y`. Full **help
-  overlay** (`?`).
+  theme, or replays a binding. History stays on `Ctrl+Y`. **`g m` / `:menu`**
+  opens a short action menu for the focused panel (executable bindings only,
+  plus Global) — discoverability without a menubar. Full **help overlay**
+  (`?`).
 - **AI assistant** — turn a natural-language question into SQL using any
   OpenAI-compatible endpoint (`:ai`, assistant panel). Schema context is the
   current table plus its FK neighbours (and tables named in the question),

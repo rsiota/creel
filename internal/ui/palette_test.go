@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -697,6 +698,129 @@ func TestPaletteDualActionRowsFocusPanel(t *testing.T) {
 				t.Fatal("expected a replay command")
 			}
 		})
+	}
+}
+
+func TestContextualActionHeader(t *testing.T) {
+	if got := contextualActionHeader("Results", 18, 18, false); got != "Results actions (18)" {
+		t.Errorf("unfiltered: got %q", got)
+	}
+	if got := contextualActionHeader("Results", 18, 3, true); got != "Results actions (3/18)" {
+		t.Errorf("filtered: got %q", got)
+	}
+	if got := contextualActionHeader("", 2, 2, false); got != "Panel actions (2)" {
+		t.Errorf("empty label: got %q", got)
+	}
+}
+
+// Contextual action menu lists only executable bindings for the panel + Global.
+func TestActionMenuItemsAreExecutable(t *testing.T) {
+	cases := []struct {
+		section string
+		wantKey string // must appear from the panel section
+	}{
+		{"Results", "g R"},
+		{"Sidebar (Tables)", "g g"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.section, func(t *testing.T) {
+			var p palette
+			p.OpenContextual([]string{tc.section, "Global"}, tc.section)
+			if !p.IsContextual() {
+				t.Fatal("expected contextual palette")
+			}
+			if len(p.items) == 0 {
+				t.Fatal("expected action items")
+			}
+			seenPanel, seenGlobal, seenJump := false, false, false
+			for _, it := range p.items {
+				if len(it.replay) == 0 {
+					t.Errorf("non-executable item %q (%s)", it.display, it.section)
+				}
+				if it.jump != paletteJumpNone {
+					seenJump = true
+				}
+				switch it.section {
+				case tc.section:
+					seenPanel = true
+					if it.display == tc.wantKey {
+						// ok
+					}
+				case "Global":
+					seenGlobal = true
+				case "Tables", "Bookmarks", "Themes":
+					seenJump = true
+				}
+			}
+			if !seenPanel {
+				t.Errorf("missing items from %s", tc.section)
+			}
+			if !seenGlobal {
+				t.Error("missing Global items")
+			}
+			if seenJump {
+				t.Error("action menu must not include jump targets")
+			}
+			foundKey, foundCtrlR := false, false
+			for _, it := range p.items {
+				if it.display == tc.wantKey && it.section == tc.section {
+					foundKey = true
+				}
+				if it.display == "ctrl+r" && it.section == "Global" {
+					foundCtrlR = true
+				}
+			}
+			if !foundKey {
+				t.Errorf("missing %q in %s", tc.wantKey, tc.section)
+			}
+			if !foundCtrlR {
+				t.Error("missing Global ctrl+r")
+			}
+		})
+	}
+}
+
+// g m opens the contextual action menu when a panel pending-G is armed.
+func TestActionMenuGMChord(t *testing.T) {
+	m := NewModel(&config.Config{})
+	m.state = stateWorkspace
+	m.focus = FocusResults
+	m.width, m.height = 100, 30
+	m.resultsPendingG = true
+
+	if !m.handleTabKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}}) {
+		t.Fatal("g m should be consumed by handleTabKey")
+	}
+	if m.resultsPendingG {
+		t.Fatal("pending G should be cleared")
+	}
+	if !m.palette.IsVisible() || !m.palette.IsContextual() {
+		t.Fatalf("palette visible=%v contextual=%v", m.palette.IsVisible(), m.palette.IsContextual())
+	}
+	if m.palette.contextLabel != "Results" {
+		t.Errorf("contextLabel=%q, want Results", m.palette.contextLabel)
+	}
+	out := stripAnsi(m.palette.View(71, 19))
+	want := fmt.Sprintf("Results actions (%d)", len(m.palette.items))
+	if !strings.Contains(out, want) {
+		t.Errorf("view missing %q:\n%s", want, out)
+	}
+}
+
+// :menu opens the same action menu from the editor (where typed g-chords
+// cannot steal vim's g).
+func TestExMenuOpensActionMenu(t *testing.T) {
+	m := NewModel(&config.Config{})
+	m.state = stateWorkspace
+	m.focus = FocusEditor
+	m.width, m.height = 100, 30
+
+	m.exMenu()
+	if !m.palette.IsVisible() || !m.palette.IsContextual() {
+		t.Fatalf("palette visible=%v contextual=%v", m.palette.IsVisible(), m.palette.IsContextual())
+	}
+	if m.palette.contextLabel != "Editor (Vim)" {
+		t.Errorf("contextLabel=%q, want Editor (Vim)", m.palette.contextLabel)
 	}
 }
 

@@ -25,6 +25,7 @@ test keeps the documentation in sync with what's actually wired.
 | `tab` / `shift+tab` | Cycle focus (skips tab bar) |
 | `ctrl+d` / `ctrl+u` | Next / previous page        |
 | `ctrl+p`        | Jump-anywhere palette           |
+| `g m` / `:menu` | Actions for this panel          |
 | `:`             | Ex command line (`:q`, `:param`, `:goto`, `:sizes`, `:zen`, …) |
 | `g c`           | Theme picker (live preview)     |
 | `?`             | Toggle help                     |

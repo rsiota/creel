@@ -505,6 +505,13 @@ func exCommands() []exCmdSpec {
 			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exVersion() },
 		},
 		{
+			verbs:   []string{"menu"},
+			desc:    "actions for this panel (same as g m)",
+			usage:   ":menu",
+			argKind: exArgNone,
+			run:     func(m *Model, _ []string, _ bool) tea.Cmd { return m.exMenu() },
+		},
+		{
 			verbs:   []string{"recent"},
 			desc:    "list or re-open recently touched tables",
 			usage:   ":recent [n|name]",

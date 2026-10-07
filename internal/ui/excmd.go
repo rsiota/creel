@@ -1086,6 +1086,14 @@ func (m *Model) exVersion() tea.Cmd {
 	return nil
 }
 
+// exMenu opens the contextual action menu for the focused panel (:menu) —
+// same helper as g m, usable from the editor where typed g-chords cannot
+// steal vim's g.
+func (m *Model) exMenu() tea.Cmd {
+	m.openActionMenu()
+	return nil
+}
+
 // exRecent lists or re-opens recently touched tables (:recent [n|name]).
 // Tables are recorded by openTable (:goto, sidebar enter, mouse). Bare lists
 // them in the lookup overlay; a number opens by MRU rank (1 = most recent);

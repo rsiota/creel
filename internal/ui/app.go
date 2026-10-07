@@ -1064,6 +1064,49 @@ func (m *Model) toggleBookmarks() {
 	m.layoutWorkspace()
 }
 
+// actionMenuSection returns the registry section title for the contextual
+// action menu (g m / :menu). Prefers hintSection(); when that is empty
+// (compose / filter chrome), falls back to the focused panel's section.
+func (m Model) actionMenuSection() string {
+	if sec := m.hintSection(); sec != "" {
+		return sec
+	}
+	switch {
+	case m.state == stateConnections:
+		return "Connections"
+	case m.focus == FocusEditor:
+		return "Editor (Vim)"
+	case m.focus == FocusResults:
+		return "Results"
+	case m.focus == FocusConnections:
+		return "Sidebar (Tables)"
+	case m.focus == FocusInspector:
+		return "Inspector"
+	case m.focus == FocusAssistant:
+		return "Assistant"
+	case m.focus == FocusTabBar:
+		return "Tab Bar"
+	case m.focus == FocusExplorer:
+		return "Relationship Explorer"
+	}
+	return ""
+}
+
+// openActionMenu opens the contextual palette for the current panel plus
+// Global (executable bindings only). Sets schemaMsg when nothing applies.
+func (m *Model) openActionMenu() {
+	sec := m.actionMenuSection()
+	if sec == "" {
+		m.schemaMsg = "no actions here"
+		return
+	}
+	sections := []string{sec}
+	if sec != "Global" {
+		sections = append(sections, "Global")
+	}
+	m.palette.OpenContextual(sections, sec)
+}
+
 // handlePaletteKey routes keys to the open command palette. Many bindings only
 // fire in a specific panel — the usual post-connect focus is the editor, so
 // confirming those rows from Ctrl+P used to replay into vim and look like a
@@ -1140,6 +1183,7 @@ func (m *Model) applyPaletteJump(msg paletteJumpMsg) tea.Cmd {
 // g x       — close tab
 // g 1-9     — go to tab N
 // g c       — open theme picker (live preview)
+// g m       — contextual action menu for the focused panel
 // t         — new tab (sidebar, results, tab bar only)
 func (m *Model) handleTabKey(msg tea.KeyMsg) bool {
 	if m.results.IsEditing() || m.inspector.IsEditing() || m.inspector.IsInserting() ||
@@ -1175,6 +1219,11 @@ func (m *Model) handleTabKey(msg tea.KeyMsg) bool {
 			// g c — open the theme picker for live-preview theme switching.
 			m.clearPendingG()
 			m.themePicker.Show(m.settings.Theme, m.settings.ThemeOverrides)
+			return true
+		case "m":
+			// g m — contextual action menu (focused panel + Global).
+			m.clearPendingG()
+			m.openActionMenu()
 			return true
 		case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 			m.clearPendingG()
