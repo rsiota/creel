@@ -131,12 +131,13 @@ func (m *Model) exportResults(format exportFormat, cols []string, scope exportSc
 
 // defaultExportScope picks the most useful scope when one is not specified
 // explicitly (the `x` key pins scopePage; the overlay and :export use this).
-// Marked rows win, then whole table, then the current page.
+// Marked rows win, then whole table / whole result (re-run lastQuery), then
+// the current page.
 func (m *Model) defaultExportScope() exportScope {
 	if m.results.IsEditable() && m.results.MarkCount() > 0 {
 		return scopeMarked
 	}
-	if m.results.SourceTable() != "" {
+	if m.results.SourceTable() != "" || strings.TrimSpace(m.lastQuery) != "" {
 		return scopeAll
 	}
 	return scopePage

@@ -14,12 +14,11 @@ type exportScope int
 
 const (
 	// scopePage exports the rows currently held in memory (the visible page).
-	// It is the only option for result sets with no backing table, and the
-	// behaviour of the instant `x` key.
+	// Always available; also the behaviour of the instant `x` key.
 	scopePage exportScope = iota
-	// scopeAll re-queries the source table (SELECT cols FROM t, no LIMIT) so
-	// the export is not capped at the page size. Only available when the
-	// results back a known table.
+	// scopeAll re-runs without the page-size LIMIT: SELECT cols FROM t when
+	// results back a known table, or the user's lastQuery for a custom result
+	// set. Shown as "Whole table" or "Whole result" in the overlay.
 	scopeAll
 	// scopeMarked re-queries the marked rows by primary key (SELECT cols FROM
 	// t WHERE pk IN (...)), so marks that span multiple pages are exported in
@@ -54,7 +53,7 @@ type exportEntry struct {
 // ExportOverlay is the `g X` export dialog: a single navigable list with three
 // sections — Format (radio), Columns (checkbox), and Scope (radio). It
 // replaces the old FormatPicker, folding column selection and row scope
-// (whole-table vs. page vs. marked) into one place.
+// (whole-table / whole-result vs. page vs. marked) into one place.
 //
 // Selection model: radio sections (Format, Scope) track a chosen index
 // separately from the cursor, so traversing a section with the cursor never
@@ -86,19 +85,21 @@ func NewExportOverlay() ExportOverlay {
 
 // Show populates the overlay for the current result set and reveals it.
 //
-//   - columns    every column in the result set (all checked by default)
-//   - hasSourceTable whether the results back a known table (enables Whole table)
-//   - markCount  marked row count (enables Marked rows when > 0)
-//   - pageCount  rows on the current page (shown in the Current page label)
-//   - totalRows  total table rows if known (totalRowsSet), else 0
-func (o *ExportOverlay) Show(columns []string, hasSourceTable bool, markCount, pageCount int, totalRows int, totalRowsSet bool) {
+//   - columns         every column in the result set (all checked by default)
+//   - hasSourceTable  results back a known table (enables Whole table)
+//   - hasQuery        a lastQuery exists to re-run (enables Whole result when
+//     there is no source table — custom SELECTs)
+//   - markCount       marked row count (enables Marked rows when > 0)
+//   - pageCount       rows on the current page (Current page label)
+//   - totalRows       total table rows if known (totalRowsSet), else 0
+func (o *ExportOverlay) Show(columns []string, hasSourceTable, hasQuery bool, markCount, pageCount int, totalRows int, totalRowsSet bool) {
 	o.columns = append(o.columns[:0], columns...)
 	o.colChecked = make([]bool, len(columns))
 	for i := range o.colChecked {
 		o.colChecked[i] = true
 	}
 
-	// Build the Scope section adaptively. Order is stable: Whole table,
+	// Build the Scope section adaptively. Order is stable: Whole table/result,
 	// Marked rows, Current page — each shown only when it applies.
 	o.scopes = o.scopes[:0]
 	if hasSourceTable {
@@ -107,17 +108,20 @@ func (o *ExportOverlay) Show(columns []string, hasSourceTable bool, markCount, p
 			label = fmt.Sprintf("Whole table (%d)", totalRows)
 		}
 		o.scopes = append(o.scopes, scopeOpt{scopeAll, label})
+	} else if hasQuery {
+		// Custom query: re-run lastQuery without the page LIMIT wrapper.
+		o.scopes = append(o.scopes, scopeOpt{scopeAll, "Whole result (all rows)"})
 	}
 	if markCount > 0 {
 		o.scopes = append(o.scopes, scopeOpt{scopeMarked, fmt.Sprintf("Marked rows (%d)", markCount)})
 	}
 	o.scopes = append(o.scopes, scopeOpt{scopePage, fmt.Sprintf("Current page (%d)", pageCount)})
 
-	// Default scope: marked if any, else whole table if available, else page.
+	// Default scope: marked if any, else whole table/result if available, else page.
 	o.selectedScope = indexofScope(o.scopes, scopePage)
 	if markCount > 0 {
 		o.selectedScope = indexofScope(o.scopes, scopeMarked)
-	} else if hasSourceTable {
+	} else if hasSourceTable || hasQuery {
 		o.selectedScope = indexofScope(o.scopes, scopeAll)
 	}
 

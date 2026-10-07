@@ -4094,6 +4094,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.exportOverlay.Show(
 					m.results.ColumnNames(),
 					m.results.SourceTable() != "",
+					strings.TrimSpace(m.lastQuery) != "",
 					m.results.MarkCount(),
 					m.results.NumRows(),
 					m.totalRows, m.totalRowsSet,

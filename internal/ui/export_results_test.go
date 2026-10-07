@@ -150,7 +150,7 @@ func TestExportResultsMarkedFallbackToPage(t *testing.T) {
 	}
 }
 
-// defaultExportScope prefers marks, then whole table, then page.
+// defaultExportScope prefers marks, then whole table / whole result, then page.
 func TestDefaultExportScope(t *testing.T) {
 	m, _ := newExportTestModel(t, [][]string{{"1", "Ada", "ada@x"}})
 
@@ -166,11 +166,43 @@ func TestDefaultExportScope(t *testing.T) {
 		t.Errorf("marked scope=%v, want scopeMarked", got)
 	}
 
-	// Non-editable (custom query, no source table) → page.
+	// Custom query with lastQuery → whole result (re-run).
 	m.results.ClearEditable()
 	m.results.SetResult([]string{"x"}, [][]string{{"1"}}, "q")
+	m.lastQuery = "SELECT id FROM users"
+	if got := m.defaultExportScope(); got != scopeAll {
+		t.Errorf("custom-query with lastQuery scope=%v, want scopeAll", got)
+	}
+
+	// No source table and no lastQuery → page only.
+	m.lastQuery = ""
 	if got := m.defaultExportScope(); got != scopePage {
-		t.Errorf("custom-query scope=%v, want scopePage", got)
+		t.Errorf("no-query scope=%v, want scopePage", got)
+	}
+}
+
+// Custom-query scopeAll re-runs lastQuery (no page LIMIT), so all matching
+// rows are exported even when the in-memory page holds just one.
+func TestExportResultsWholeCustomQuery(t *testing.T) {
+	m, _ := newExportTestModel(t, [][]string{{"1", "Ada", "ada@x"}})
+	m.results.ClearEditable()
+	m.results.SetResult([]string{"id", "name"}, [][]string{{"1", "Ada"}}, "page")
+	m.lastQuery = "SELECT id, name FROM users ORDER BY id"
+
+	cmd := m.exportResults(fmtCSV, nil, scopeAll)
+	if cmd == nil {
+		t.Fatal("whole-result export should return an async command")
+	}
+	msg := cmd()
+	done, ok := msg.(exportDoneMsg)
+	if !ok {
+		t.Fatalf("expected exportDoneMsg, got %T: %v", msg, msg)
+	}
+	if done.err != nil {
+		t.Fatalf("export error: %v", done.err)
+	}
+	if done.count != 3 {
+		t.Errorf("whole-result count=%d, want 3 (all rows from re-run)", done.count)
 	}
 }
 

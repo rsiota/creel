@@ -296,8 +296,9 @@ erDiagram
   pure-Go exporter (`X`) that cycles SQL / CSV / JSON (`f` in the picker).
   SQL dumps use native CREATE TABLE DDL (MySQL `SHOW CREATE TABLE`, SQLite
   `sqlite_master`); result-set export
-  via the `g X` dialog (format, columns, and whole-table/marked/page scope)
-  or instant CSV (`x`). `:backup` / `:mysqldump` / `:pg_dump` opens a size-aware
+  via the `g X` dialog (format, columns, and whole-table / whole-result /
+  marked / page scope) or instant CSV (`x`). Whole result re-runs a custom
+  query without the page-size LIMIT. `:backup` / `:mysqldump` / `:pg_dump` opens a size-aware
   table picker (rows, disk size, schema/data per table) then runs the native
   dump binary from PATH into `~/Downloads` (MySQL/MariaDB or PostgreSQL). When
   the DB is on the SSH host, the dump runs remotely and streams back; otherwise

@@ -1951,9 +1951,10 @@ func (m *Model) exSaveBlob(path string) tea.Cmd {
 // and "json lines" are accepted). Optional trailing arguments name the columns
 // to export (comma-separated within one arg or across args, e.g.
 // `:export csv name,email`); when omitted, all columns are exported. The row
-// scope defaults sensibly (marked rows if any, else whole table, else page);
-// use the g X dialog to choose scope explicitly. It reuses exportResults, so
-// feedback flows through the same export status message.
+// scope defaults sensibly (marked rows if any, else whole table / whole
+// result for a custom query, else page); use the g X dialog to choose scope
+// explicitly. It reuses exportResults, so feedback flows through the same
+// export status message.
 func (m *Model) exExport(args []string) tea.Cmd {
 	if len(args) == 0 {
 		m.schemaMsg = ":export needs a format: csv, json, jsonl, md, tsv"

@@ -149,11 +149,47 @@ func TestExportFilenamePerFormat(t *testing.T) {
 	}
 }
 
+// Custom queries (no source table, but a lastQuery) get a "Whole result"
+// scope that defaults on — same scopeAll as Whole table.
+func TestExportOverlayWholeResultForCustomQuery(t *testing.T) {
+	o := NewExportOverlay()
+	o.Show([]string{"id", "name"}, false, true, 0, 200, 0, false)
+
+	found := false
+	for _, s := range o.scopes {
+		if s.scope == scopeAll {
+			found = true
+			if !strings.Contains(s.label, "Whole result") {
+				t.Errorf("custom-query scope label=%q, want Whole result", s.label)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("custom query should offer Whole result (scopeAll)")
+	}
+	_, _, scope := o.Commit()
+	if scope != scopeAll {
+		t.Errorf("default scope=%v, want scopeAll (whole result)", scope)
+	}
+
+	// No table and no query → page only.
+	o.Show([]string{"id"}, false, false, 0, 50, 0, false)
+	for _, s := range o.scopes {
+		if s.scope == scopeAll {
+			t.Fatal("page-only result must not offer scopeAll")
+		}
+	}
+	_, _, scope = o.Commit()
+	if scope != scopePage {
+		t.Errorf("default scope=%v, want scopePage", scope)
+	}
+}
+
 // The overlay opens with all columns checked, defaulting to CSV and a
 // whole-table scope; Commit returns the selection and remembers the format.
 func TestExportOverlayDefaults(t *testing.T) {
 	o := NewExportOverlay()
-	o.Show([]string{"id", "name", "email"}, true, 0, 200, 5234, true)
+	o.Show([]string{"id", "name", "email"}, true, true, 0, 200, 5234, true)
 
 	// Down moves the cursor off the format rows without changing the selection.
 	o.CursorDown() // onto JSON row, but selection stays CSV until activated
@@ -178,7 +214,7 @@ func TestExportOverlayDefaults(t *testing.T) {
 	}
 
 	// Reopening remembers the last-used format (JSON).
-	o.Show([]string{"id"}, true, 0, 1, 0, false)
+	o.Show([]string{"id"}, true, true, 0, 1, 0, false)
 	if o.selectedFmt != fmtJSON {
 		t.Errorf("last-used format should be json, got %v", o.selectedFmt)
 	}
@@ -187,7 +223,7 @@ func TestExportOverlayDefaults(t *testing.T) {
 // Column toggles project the export; the last checked column is protected.
 func TestExportOverlayColumnToggle(t *testing.T) {
 	o := NewExportOverlay()
-	o.Show([]string{"id", "name", "email"}, false, 0, 2, 0, false)
+	o.Show([]string{"id", "name", "email"}, false, false, 0, 2, 0, false)
 
 	// Cursor starts at format row 0. Walk down to the first column (id):
 	// formats (5) then column 0.
@@ -202,7 +238,7 @@ func TestExportOverlayColumnToggle(t *testing.T) {
 	}
 
 	// Uncheck down to a single column; further unchecks are refused.
-	o.Show([]string{"id", "name", "email"}, false, 0, 2, 0, false)
+	o.Show([]string{"id", "name", "email"}, false, false, 0, 2, 0, false)
 	o.SelectNoneCols() // keeps the first column (id)
 	// Move to column 1 (name) and try to toggle it off — should be refused.
 	for i := 0; i < len(exportFormats)+1; i++ {
@@ -219,7 +255,7 @@ func TestExportOverlayColumnToggle(t *testing.T) {
 // Cursor navigation clamps at the top and bottom of the flat entry list.
 func TestExportOverlayNavClamp(t *testing.T) {
 	o := NewExportOverlay()
-	o.Show([]string{"a", "b"}, true, 0, 1, 0, false)
+	o.Show([]string{"a", "b"}, true, true, 0, 1, 0, false)
 	total := len(o.entries)
 	o.CursorUp() // already at top
 	if o.cursor != 0 {

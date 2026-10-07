@@ -13,6 +13,8 @@ commits, so it can come up empty).
 
 ### Added
 - AI assistant: `g` jumps the transcript to the top (pairs with existing `G`).
+- Export dialog (`g X`) / `:export`: **Whole result** scope for custom queries —
+  re-runs the query without the page-size LIMIT (same idea as Whole table).
 
 ### Changed
 - Command palette: split dual-action keybinding rows (`g t` / `g T`, `g g` /

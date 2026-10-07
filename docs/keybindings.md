@@ -164,7 +164,7 @@ Status bar shows `NORMAL` / `INSERT` / `SEARCH` / `V-LINE` while the editor is f
 | `Y`        | Copy rows as INSERT statements               |
 | `P`        | Clone marked/cursor row                      |
 | `x`        | Export current page to CSV                 |
-| `g X`      | Export dialog (format · columns · scope)   |
+| `g X`      | Export dialog (format · columns · scope: whole table/result, marked, page) |
 | `:diff`    | Diff result pages of two tabs (`:diff [a] [b]`) |
 
 ## Record inspector (`ctrl+o`)
