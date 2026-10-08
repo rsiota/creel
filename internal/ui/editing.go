@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/rsiota/creel/internal/db"
 )
@@ -19,7 +18,7 @@ func (m *Model) copyCursorCell() tea.Cmd {
 	}
 	val := m.results.CursorCellValue()
 	m.yank = val
-	if err := clipboard.WriteAll(val); err != nil {
+	if err := writeClipboard(val); err != nil {
 		// Keep the internal yank so fill/paste still work without the OS board.
 		m.schemaMsg = "clipboard: " + err.Error()
 		m.results.StartCopyFeedback()
@@ -29,16 +28,46 @@ func (m *Model) copyCursorCell() tea.Cmd {
 	return copyFeedbackCmd()
 }
 
+// pasteIntoCursorCell writes val into the focused results cell and saves.
+// An empty val reports an empty clipboard. Callers have already rejected
+// primary-key and binary cells.
+func (m *Model) pasteIntoCursorCell(val string) tea.Cmd {
+	if val == "" {
+		m.exportMsg = "clipboard is empty"
+		return copyFeedbackCmd()
+	}
+	m.results.SetDirtyCell(m.results.CursorRow(), m.results.CursorCol(), val)
+	return m.saveChanges()
+}
+
+// pasteConnURI applies a connection URI copied from the clipboard.
+func (m *Model) pasteConnURI(clip string) {
+	if strings.TrimSpace(clip) == "" {
+		return
+	}
+	if err := m.connForm.ApplyURI(clip); err != nil {
+		if db.LooksLikeConnectionURI(clip) {
+			m.connForm.SetError(err.Error())
+		}
+	}
+}
+
 // resolveFillValue picks the value for visual/marked fill: last yy yank first,
 // then the system clipboard, then fallback (cursor or visual-anchor cell).
-func (m Model) resolveFillValue(fallback string) string {
+// query is true when the OS clipboard could not be read and the caller should
+// ask the terminal via OSC 52 before using fallback.
+func (m Model) resolveFillValue(fallback string) (val string, query bool) {
 	if m.yank != "" {
-		return m.yank
+		return m.yank, false
 	}
-	if clip, err := clipboard.ReadAll(); err == nil && clip != "" {
-		return clip
+	clip, ok := readOSClipboard()
+	if !ok {
+		return "", true
 	}
-	return fallback
+	if clip != "" {
+		return clip, false
+	}
+	return fallback, false
 }
 
 func (m *Model) pushQueryStack() {
@@ -795,7 +824,10 @@ func (m *Model) copyRowsAsInsert() tea.Cmd {
 	if count == 0 {
 		return nil
 	}
-	_ = clipboard.WriteAll(sql)
+	if err := writeClipboard(sql); err != nil {
+		m.schemaMsg = "clipboard: " + err.Error()
+		return nil
+	}
 	m.results.StartCopyFeedback()
 	if count >= copyAsInsertMaxRows {
 		m.exportMsg = fmt.Sprintf("copied %d rows as INSERT (cap %d)", count, copyAsInsertMaxRows)
@@ -820,7 +852,10 @@ func (m *Model) copyRowsDelimited(format exportFormat) tea.Cmd {
 		m.schemaMsg = "nothing to copy"
 		return nil
 	}
-	_ = clipboard.WriteAll(content)
+	if err := writeClipboard(content); err != nil {
+		m.schemaMsg = "clipboard: " + err.Error()
+		return nil
+	}
 	m.results.StartCopyFeedback()
 	m.exportMsg = fmt.Sprintf("copied %d row%s as %s", count, plural(count), string(format))
 	return copyFeedbackCmd()
@@ -933,26 +968,27 @@ func (m *Model) commitVisualMarks() {
 
 // fillVisualRange stages the fill value into the current column across the
 // visual row range. Prefers the last yy yank, then the system clipboard, then
-// the visual-anchor cell. Stages dirty cells only — does not save.
-func (m *Model) fillVisualRange() {
+// the visual-anchor cell. Stages dirty cells only — does not save. When the
+// OS clipboard cannot be read, the returned command queries it via OSC 52.
+func (m *Model) fillVisualRange() tea.Cmd {
 	if !m.results.IsVisualMode() {
-		return
+		return nil
 	}
 	if !m.results.IsEditable() || !m.results.HasPrimaryKey() {
 		m.results.ClearVisualMode()
 		m.schemaMsg = "results not editable"
-		return
+		return nil
 	}
 	col := m.results.CursorCol()
 	colName := m.results.ColumnName(col)
 	if colName == "" {
 		m.results.ClearVisualMode()
-		return
+		return nil
 	}
 	if m.results.isPKColumn(colName) {
 		m.results.ClearVisualMode()
 		m.schemaMsg = "cannot fill primary key column"
-		return
+		return nil
 	}
 
 	anchor := m.results.visualAnchor
@@ -960,7 +996,20 @@ func (m *Model) fillVisualRange() {
 	if !m.results.IsBlobCell(anchor, col) {
 		fallback = m.results.RowValue(anchor, col)
 	}
-	val := m.resolveFillValue(fallback)
+	val, query := m.resolveFillValue(fallback)
+	if query {
+		if cmd := m.beginClipQuery(clipFillVisual, fallback); cmd != nil {
+			return cmd
+		}
+		val = fallback
+	}
+	m.applyVisualFill(val)
+	return nil
+}
+
+func (m *Model) applyVisualFill(val string) {
+	col := m.results.CursorCol()
+	anchor := m.results.visualAnchor
 	if val == "" {
 		m.results.ClearVisualMode()
 		if m.results.IsBlobCell(anchor, col) {
@@ -970,7 +1019,6 @@ func (m *Model) fillVisualRange() {
 		m.schemaMsg = "nothing to fill"
 		return
 	}
-
 	n := m.results.FillVisualColumn(col, val)
 	m.results.ClearVisualMode()
 	if n == 0 {
@@ -982,23 +1030,24 @@ func (m *Model) fillVisualRange() {
 
 // fillMarkedRows stages the fill value into the current column across marked
 // rows. Prefers the last yy yank, then the system clipboard, then the cursor
-// cell. Stages dirty cells only — does not save. Marks are kept.
-func (m *Model) fillMarkedRows() {
+// cell. Stages dirty cells only — does not save. Marks are kept. When the OS
+// clipboard cannot be read, the returned command queries it via OSC 52.
+func (m *Model) fillMarkedRows() tea.Cmd {
 	if m.results.MarkCount() == 0 {
-		return
+		return nil
 	}
 	if !m.results.IsEditable() || !m.results.HasPrimaryKey() {
 		m.schemaMsg = "results not editable"
-		return
+		return nil
 	}
 	col := m.results.CursorCol()
 	colName := m.results.ColumnName(col)
 	if colName == "" {
-		return
+		return nil
 	}
 	if m.results.isPKColumn(colName) {
 		m.schemaMsg = "cannot fill primary key column"
-		return
+		return nil
 	}
 
 	row := m.results.CursorRow()
@@ -1006,7 +1055,20 @@ func (m *Model) fillMarkedRows() {
 	if !m.results.IsBlobCell(row, col) {
 		fallback = m.results.RowValue(row, col)
 	}
-	val := m.resolveFillValue(fallback)
+	val, query := m.resolveFillValue(fallback)
+	if query {
+		if cmd := m.beginClipQuery(clipFillMarked, fallback); cmd != nil {
+			return cmd
+		}
+		val = fallback
+	}
+	m.applyMarkedFill(val)
+	return nil
+}
+
+func (m *Model) applyMarkedFill(val string) {
+	col := m.results.CursorCol()
+	row := m.results.CursorRow()
 	if val == "" {
 		if m.results.IsBlobCell(row, col) {
 			m.schemaMsg = "binary cell — use :saveblob to export"
@@ -1015,7 +1077,6 @@ func (m *Model) fillMarkedRows() {
 		m.schemaMsg = "nothing to fill"
 		return
 	}
-
 	n := m.results.FillMarkedColumn(col, val)
 	if n == 0 {
 		m.schemaMsg = "nothing to fill"

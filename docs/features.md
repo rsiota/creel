@@ -269,7 +269,10 @@ erDiagram
   `p`) or marked rows (space + `p`): uses the last `yy` yank, else the system
   clipboard, else the anchor / cursor cell. Review dirty cells, then `:w` /
   `ctrl+s`. Copy helpers: `y y` (cell), `y r` / `:copyrow` (rows as TSV for
-  Sheets/Slack), `Y` / `:copyinsert` (rows as INSERT).
+  Sheets/Slack), `Y` / `:copyinsert` (rows as INSERT). When the OS clipboard
+  is unavailable (typical over SSH), copy and paste use OSC 52 so the local
+  terminal's clipboard is used instead. A terminal that ignores the paste
+  query is remembered for the rest of the session.
 - **Manual transactions** — `:begin` / `:commit` / `:rollback`, with optional
   isolation (`:begin serializable`, `:begin repeatable read`, `:begin read
   committed`, …). The status bar shows `TXN ●` (or `TXN S` / `TXN RR` / …).

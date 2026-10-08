@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -472,6 +471,16 @@ type Model struct {
 	// prefers this over the system clipboard so yy→mark→p stays reliable when
 	// the OS pasteboard is empty, flaky, or overwritten.
 	yank string
+
+	// OSC 52 paste query, used when the OS clipboard cannot be read (SSH).
+	// clipSinking swallows a reply that arrives after the query timed out so
+	// the base64 is not typed into the editor.
+	clipKind       clipKind
+	clipSinking    bool
+	clipGen        uint64
+	clipFallback   string
+	clipCollect    osc52Collect
+	osc52PasteDead bool
 
 	// Wheel coalescing: rapid wheel events accumulate here and are applied in
 	// a single scroll on wheelTickMsg, so a momentum-scroll flood can't outrun
@@ -1287,7 +1296,32 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case osc52TimeoutMsg:
+		return m.handleOSC52Timeout(msg)
+
+	case osc52SinkDoneMsg:
+		return m.handleOSC52SinkDone(msg)
+
 	case tea.KeyMsg:
+		// An OSC 52 reply is ordinary key events. Swallow them while a query
+		// is in flight, and for a short window after a timeout so a late
+		// reply is not typed into the focused panel. ctrl+c still quits.
+		if m.clipKind != clipNone && (msg.String() == "ctrl+c" || msg.String() == "ctrl+q") {
+			m.clipKind = clipNone
+			m.clipCollect = osc52Collect{}
+			m.clipFallback = ""
+			m.clipSinking = false
+			m.clipGen++
+			m.clearReadingMsg()
+		} else if m.clipSinking || m.clipKind != clipNone {
+			var cmd tea.Cmd
+			var consumed bool
+			m, cmd, consumed = m.feedClipKey(msg)
+			if consumed {
+				return m, cmd
+			}
+		}
+
 		// While a query is in flight, esc and ctrl+c cancel the query
 		// instead of their normal behaviour. All other keys are swallowed
 		// so the user can't trigger overlapping operations.
@@ -2414,15 +2448,12 @@ func (m Model) updateAddConnection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "p":
 			// Paste a postgres:// / mysql:// / sqlite URI from the clipboard.
-			clip, err := clipboard.ReadAll()
-			if err != nil || strings.TrimSpace(clip) == "" {
+			if clip, ok := readOSClipboard(); ok {
+				m.pasteConnURI(clip)
 				return m, nil
 			}
-			if err := m.connForm.ApplyURI(clip); err != nil {
-				if db.LooksLikeConnectionURI(clip) {
-					m.connForm.SetError(err.Error())
-				}
-				return m, nil
+			if cmd := m.beginClipQuery(clipPasteURI, ""); cmd != nil {
+				return m, cmd
 			}
 			return m, nil
 		}
@@ -3383,7 +3414,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "y":
 			if text := m.lookupPanel.SelectedCopyText(); text != "" {
-				if err := clipboard.WriteAll(text); err != nil {
+				if err := writeClipboard(text); err != nil {
 					m.schemaMsg = "clipboard: " + err.Error()
 				} else {
 					m.schemaMsg = "copied to clipboard"
@@ -3438,8 +3469,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "y", "Y":
 				m.erdPanel.zPrefix = false // these app-level actions aren't fold
-				_ = clipboard.WriteAll(joinERDLines(m.erdPanel.MermaidLines()))
-				m.schemaMsg = "erd copied to clipboard"
+				if err := writeClipboard(joinERDLines(m.erdPanel.MermaidLines())); err != nil {
+					m.schemaMsg = "clipboard: " + err.Error()
+				} else {
+					m.schemaMsg = "erd copied to clipboard"
+				}
 				return m, nil
 			case "s":
 				m.erdPanel.zPrefix = false // family second keys, so drop a pending `z`
@@ -4073,8 +4107,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "p":
 				// Fill current column across the visual range (dirty only).
-				m.fillVisualRange()
-				return m, nil
+				return m, m.fillVisualRange()
 			case "j", "down":
 				m.results.CursorDown()
 				return m, nil
@@ -4290,8 +4323,7 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				// and save immediately. Allowed even when the inspector is
 				// open — focus is still on results here.
 				if m.results.MarkCount() > 0 {
-					m.fillMarkedRows()
-					return m, nil
+					return m, m.fillMarkedRows()
 				}
 				colName := m.results.ColumnName(m.results.CursorCol())
 				if m.results.isPKColumn(colName) {
@@ -4301,19 +4333,16 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.exportMsg = "binary cell — use :saveblob to export"
 					return m, nil
 				}
-				clip, err := clipboard.ReadAll()
-				val := ""
-				if err == nil && clip != "" {
-					val = clip
-				} else {
-					val = m.yank
+				if clip, ok := readOSClipboard(); ok {
+					if clip == "" {
+						clip = m.yank
+					}
+					return m, m.pasteIntoCursorCell(clip)
 				}
-				if val == "" {
-					m.exportMsg = "clipboard is empty"
-					return m, copyFeedbackCmd()
+				if cmd := m.beginClipQuery(clipPasteCell, ""); cmd != nil {
+					return m, cmd
 				}
-				m.results.SetDirtyCell(m.results.CursorRow(), m.results.CursorCol(), val)
-				return m, m.saveChanges()
+				return m, m.pasteIntoCursorCell(m.yank)
 			case "s":
 				if m.resultsPendingG {
 					m.resultsPendingG = false

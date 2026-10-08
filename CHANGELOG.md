@@ -12,6 +12,8 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- OSC 52 clipboard fallback — when the OS clipboard is unavailable (typical
+  over SSH), copy writes the terminal sequence and paste reads it back.
 - AI assistant: `g` jumps the transcript to the top (pairs with existing `G`).
 - Export dialog (`g X`) / `:export`: **Whole result** scope for custom queries —
   re-runs the query without the page-size LIMIT (same idea as Whole table).
