@@ -30,9 +30,17 @@ type CrossSearchPanel struct {
 	searched  int  // tables searched so far
 	total     int  // total tables to search
 	skipped   int  // tables skipped (schema/query errors)
-	capped    bool // hit the global hit cap
+	capped    bool // paused because more hits exist past the current page
+	more      bool // ctrl+n can continue from the scan cursor
 	done      bool
-	gen       uint64 // bumps on StartSearch / Hide to drop stale batch msgs
+	gen       uint64 // bumps on StartSearch / Hide / Continue to drop stale batch msgs
+	hitLimit  int    // stop and offer ctrl+n once this many hits are collected
+	// Scan cursor. nextTable is the next unvisited table; tableOffset is how
+	// far into that table the previous page read. deferred holds tables that
+	// returned a full page (more rows may exist) after the forward pass.
+	nextTable   int
+	tableOffset int
+	deferred    []crossSearchPos
 }
 
 // NewCrossSearchPanel creates a new cross-search panel.
@@ -59,7 +67,12 @@ func (c *CrossSearchPanel) Show() {
 	c.total = 0
 	c.skipped = 0
 	c.capped = false
+	c.more = false
 	c.done = false
+	c.hitLimit = 0
+	c.nextTable = 0
+	c.tableOffset = 0
+	c.deferred = nil
 }
 
 // SetQuery replaces the search query (used by :grep to prefill).
@@ -116,9 +129,48 @@ func (c *CrossSearchPanel) StartSearch(totalTables int) uint64 {
 	c.total = totalTables
 	c.skipped = 0
 	c.capped = false
+	c.more = false
 	c.done = false
+	c.hitLimit = crossSearchMaxResults
+	c.nextTable = 0
+	c.tableOffset = 0
+	c.deferred = nil
 	c.searching = true
 	return c.gen
+}
+
+// ContinueSearch raises the hit budget by one page and resumes the scan
+// without clearing hits already shown. ok is false when there is nothing
+// further to load or the query has been edited since the last search.
+func (c *CrossSearchPanel) ContinueSearch() (gen uint64, ok bool) {
+	if !c.CanLoadMore() {
+		return 0, false
+	}
+	c.gen++
+	c.hitLimit += crossSearchMaxResults
+	c.searching = true
+	c.done = false
+	c.capped = false
+	c.more = false
+	return c.gen, true
+}
+
+// CanLoadMore reports whether ctrl+n should fetch the next page of hits.
+func (c CrossSearchPanel) CanLoadMore() bool {
+	return c.visible && !c.searching && c.done && c.more && c.query == c.lastQuery
+}
+
+// applyScan stores the cursor returned by a search batch.
+func (c *CrossSearchPanel) applyScan(nextTable, tableOffset int, deferred []crossSearchPos) {
+	c.nextTable = nextTable
+	c.tableOffset = tableOffset
+	c.deferred = deferred
+}
+
+// hasMoreWork reports whether the scan cursor still has tables or deferred
+// pages left. total is the table count captured when the search started.
+func (c CrossSearchPanel) hasMoreWork() bool {
+	return c.nextTable < c.total || len(c.deferred) > 0
 }
 
 // AddResults appends search results from a table and marks progress.
@@ -288,7 +340,11 @@ func (c CrossSearchPanel) View() string {
 func (c CrossSearchPanel) statusExtras() string {
 	var parts []string
 	if c.capped {
-		parts = append(parts, fmt.Sprintf("capped at %d", crossSearchMaxResults))
+		limit := c.hitLimit
+		if limit <= 0 {
+			limit = crossSearchMaxResults
+		}
+		parts = append(parts, fmt.Sprintf("capped at %d — ctrl+n more", limit))
 	}
 	if c.skipped > 0 {
 		parts = append(parts, fmt.Sprintf("%d table%s skipped",

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -60,6 +61,48 @@ func TestCrossSearchJKNavigateWhenResults(t *testing.T) {
 	m = sendKey(m, runeKey('k'))
 	if m.crossSearch.cursor != 0 {
 		t.Fatalf("k should move up: cursor=%d", m.crossSearch.cursor)
+	}
+}
+
+func TestCrossSearchCtrlNLoadsMore(t *testing.T) {
+	m := newWorkspaceModel(t)
+	m.crossSearch.Show()
+	m.crossSearch.SetQuery("a")
+	m.crossSearch.StartSearch(2)
+	m.crossSearch.nextTable = 1
+	m.crossSearch.more = true
+	m.crossSearch.capped = true
+	m.crossSearch.AddResults([]SearchResult{{Table: "t", Column: "c", Value: "a"}}, 1)
+	m.crossSearch.FinishSearch()
+	before := m.crossSearch.hitLimit
+
+	m = sendKey(m, tea.KeyMsg{Type: tea.KeyCtrlN})
+
+	if !m.crossSearch.IsSearching() {
+		t.Fatal("ctrl+n should resume a capped search")
+	}
+	if m.crossSearch.hitLimit != before+crossSearchMaxResults {
+		t.Fatalf("hit limit = %d, want %d", m.crossSearch.hitLimit, before+crossSearchMaxResults)
+	}
+	if len(m.crossSearch.results) != 1 {
+		t.Fatalf("existing hits dropped: %d", len(m.crossSearch.results))
+	}
+}
+
+func TestCrossSearchCtrlNIgnoredAfterQueryEdit(t *testing.T) {
+	m := newWorkspaceModel(t)
+	m.crossSearch.Show()
+	m.crossSearch.SetQuery("a")
+	m.crossSearch.StartSearch(2)
+	m.crossSearch.nextTable = 1
+	m.crossSearch.more = true
+	m.crossSearch.FinishSearch()
+	m.crossSearch.AddQueryChar("b")
+
+	m = sendKey(m, tea.KeyMsg{Type: tea.KeyCtrlN})
+
+	if m.crossSearch.IsSearching() {
+		t.Fatal("ctrl+n must not continue after the query changed")
 	}
 }
 
@@ -154,7 +197,7 @@ func TestCrossSearchStatusShowsCappedAndSkipped(t *testing.T) {
 	p.AddBatchMeta(2, true)
 	p.FinishSearch()
 	view := ansi.Strip(p.View())
-	if !strings.Contains(view, "capped at 200") {
+	if !strings.Contains(view, "capped at 200 — ctrl+n more") {
 		t.Fatalf("missing capped note: %q", view)
 	}
 	if !strings.Contains(view, "2 tables skipped") {

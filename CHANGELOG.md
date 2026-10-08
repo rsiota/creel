@@ -12,6 +12,8 @@ commits, so it can come up empty).
 ## [Unreleased]
 
 ### Added
+- `:grep` / `S`: `ctrl+n` loads the next page of hits after the 200-hit cap,
+  including further rows from tables cut off at 20.
 - OSC 52 clipboard fallback — when the OS clipboard is unavailable (typical
   over SSH), copy writes the terminal sequence and paste reads it back.
 - AI assistant: `g` jumps the transcript to the top (pairs with existing `G`).

@@ -163,13 +163,15 @@ type connTestResultMsg struct {
 
 // crossSearchResultMsg carries partial results from one batch of tables.
 type crossSearchResultMsg struct {
-	gen        uint64 // must match CrossSearchPanel.Gen or the msg is dropped
-	results    []SearchResult
-	tablesDone int
-	batchEnd   int
-	skipped    int  // tables skipped due to schema/query errors in this batch
-	capped     bool // this batch hit the global hit cap
-	done       bool
+	gen         uint64 // must match CrossSearchPanel.Gen or the msg is dropped
+	results     []SearchResult
+	tablesDone  int
+	skipped     int  // tables skipped due to schema/query errors in this batch
+	capped      bool // this batch filled the current hit budget
+	done        bool // no further tables or deferred pages remain
+	nextTable   int
+	tableOffset int
+	deferred    []crossSearchPos
 }
 
 // crossSearchStartMsg signals the search to begin executing.
@@ -1763,7 +1765,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Begin searching from the first table.
 		query := m.crossSearch.Query()
 		gen := m.crossSearch.StartSearch(len(m.tables))
-		return m, m.runCrossSearchBatch(query, 0, gen)
+		return m, m.runCrossSearchBatch(query, gen)
 
 	case crossSearchResultMsg:
 		// Drop stale batches after Hide or a newer StartSearch.
@@ -1771,16 +1773,17 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.crossSearch.AddResults(msg.results, msg.tablesDone)
-		m.crossSearch.AddBatchMeta(msg.skipped, msg.capped)
-		if msg.done || len(m.crossSearch.results) >= crossSearchMaxResults {
-			if len(m.crossSearch.results) >= crossSearchMaxResults {
-				m.crossSearch.capped = true
-			}
-			m.crossSearch.FinishSearch()
-			return m, nil
+		m.crossSearch.AddBatchMeta(msg.skipped, false)
+		m.crossSearch.applyScan(msg.nextTable, msg.tableOffset, msg.deferred)
+		if !msg.done && len(m.crossSearch.results) < m.crossSearch.hitLimit {
+			return m, m.runCrossSearchBatch(m.crossSearch.Query(), msg.gen)
 		}
-		// Continue with next batch.
-		return m, m.runCrossSearchBatch(m.crossSearch.Query(), msg.batchEnd, msg.gen)
+		// Page is full, or the schema has no further hits. more stays set
+		// when the cursor can still yield rows so ctrl+n can continue.
+		m.crossSearch.more = !msg.done
+		m.crossSearch.capped = m.crossSearch.more
+		m.crossSearch.FinishSearch()
+		return m, nil
 
 	case copyFlashTickMsg:
 		if m.results.AdvanceCopyFlash() {
@@ -3935,6 +3938,11 @@ func (m Model) updateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.crossSearch.CursorBottom()
 				return m, nil
 			}
+		case "ctrl+n":
+			if gen, ok := m.crossSearch.ContinueSearch(); ok {
+				return m, m.runCrossSearchBatch(m.crossSearch.Query(), gen)
+			}
+			return m, nil
 		}
 		if ch, ok := keyFilterChar(msg); ok {
 			m.crossSearch.AddQueryChar(ch)

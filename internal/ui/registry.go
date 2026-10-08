@@ -396,6 +396,7 @@ func registry() []Section {
 			Items: []Binding{
 				{"j/k", []string{"j", "k", "up", "down"}, "move result", "j/k"},
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
+				{"ctrl+n", []string{"ctrl+n"}, "load more hits past the cap", "ctrl+n"},
 				{"enter", []string{"enter"}, "search / open result", "enter"},
 				{"esc", []string{"esc", "ctrl+c"}, "close", "esc"},
 			},

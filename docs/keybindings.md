@@ -94,7 +94,7 @@ group). SQLite uses Connection + Options only.
 | `g E` / `:explain!` | EXPLAIN ANALYZE (runs the query; Postgres/MySQL) |
 | `I`        | Import SQL dump           |
 | `S`        | Cross-table search        |
-| `:grep [q]` | Cross-table search (global; optional query) |
+| `:grep [q]` | Cross-table search (global; optional query). In the results, `ctrl+n` loads the next page past the 200-hit cap |
 | `/`        | Filter tables             |
 
 ## Editor (Vim)
