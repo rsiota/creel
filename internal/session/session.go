@@ -1,8 +1,9 @@
 // Package session persists per-connection workspace state — the open tabs,
-// their editor buffers, which tab is active, remembered column widths,
-// ERD card positions, panel layout sizes, and which right-slot panel was open —
-// so reopening a connection restores where the user left off. State is keyed
-// by (connection, database) and stored as JSON under <configDir>/sessions/.
+// their editor buffers, which tab is active, named query parameters,
+// remembered column widths, ERD card positions, panel layout sizes, and which
+// right-slot panel was open — so reopening a connection restores where the
+// user left off. State is keyed by (connection, database) and stored as JSON
+// under <configDir>/sessions/.
 //
 // It intentionally mirrors internal/history's shape (per-key JSON files, a
 // mutex-guarded in-memory cache, a shared sanitize helper) but is kept as a
@@ -77,6 +78,9 @@ type State struct {
 	Layout *Layout `json:"layout,omitempty"`
 	// Panels is which right-slot panel was open. Nil on legacy sessions.
 	Panels *Panels `json:"panels,omitempty"`
+	// Params is the :param name → value map. Nil on legacy sessions and when
+	// none are set. Restored so a buffer that uses :name stays runnable.
+	Params map[string]string `json:"params,omitempty"`
 }
 
 // ERDPos is one card's logical canvas origin in an ERD layout.
@@ -88,8 +92,9 @@ type ERDPos struct {
 // HasContent reports whether s carries anything worth restoring. A session
 // made up only of blank tabs (no editor content, no executed query) is treated
 // as empty so reconnecting keeps the default single "New Query" tab.
-// Column-width memory, ERD positions, layout, and panels alone do not count —
-// those are still loaded by restoreSession even when this returns false.
+// Column-width memory, ERD positions, layout, panels, and query parameters
+// alone do not count — those are still loaded by restoreSession even when
+// this returns false.
 func (s State) HasContent() bool {
 	for _, t := range s.Tabs {
 		if t.Editor != "" || t.LastQuery != "" {

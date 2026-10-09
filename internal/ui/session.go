@@ -18,11 +18,11 @@ func (m *Model) sessionKey() (conn, database string, ok bool) {
 }
 
 // saveSession persists the current workspace (open tabs, their editor buffers,
-// the active tab, remembered column widths, ERD card positions, panel layout
-// sizes, and which right-slot panel was open) for the active
-// connection+database. It is best-effort: write errors are ignored, matching
-// the other persistence sites. Called at connection/database teardown and on
-// quit so reopening a connection restores where the user left off.
+// the active tab, named query parameters, remembered column widths, ERD card
+// positions, panel layout sizes, and which right-slot panel was open) for the
+// active connection+database. It is best-effort: write errors are ignored,
+// matching the other persistence sites. Called at connection/database teardown
+// and on quit so reopening a connection restores where the user left off.
 func (m *Model) saveSession() {
 	conn, database, ok := m.sessionKey()
 	if !ok || m.sessionStore == nil {
@@ -39,6 +39,7 @@ func (m *Model) saveSession() {
 		ERDPositions:      m.erdPosMem,
 		Layout:            m.snapshotSessionLayout(),
 		Panels:            &session.Panels{Right: m.sessionRightPanel()},
+		Params:            cloneStringMap(m.queryParams),
 	}
 	for i, t := range m.resultsTabs {
 		st.Tabs = append(st.Tabs, session.Tab{
@@ -92,10 +93,11 @@ func (m *Model) sessionRightPanel() string {
 // mirroring the creel -f startup flag (avoids stale data and side-effecting
 // writes on reconnect).
 //
-// Column widths, ERD positions, layout, and panels are always reloaded when a
-// session file exists, even if the tabs themselves are blank (HasContent is
-// false). The returned flag is true when Panels was present in the session so
-// callers can skip the settings.InspectorOpen fallback.
+// Column widths, ERD positions, layout, panels, and query parameters are
+// always reloaded when a session file exists, even if the tabs themselves are
+// blank (HasContent is false). The returned flag is true when Panels was
+// present in the session so callers can skip the settings.InspectorOpen
+// fallback.
 func (m *Model) restoreSession() (panelsRestored bool) {
 	conn, database, ok := m.sessionKey()
 	if !ok || m.sessionStore == nil {
@@ -115,6 +117,7 @@ func (m *Model) restoreSession() (panelsRestored bool) {
 	m.colWidthMem = cloneColWidthMem(st.ColWidths)
 	m.colWidthOverride = cloneColWidthMem(st.ColWidthOverrides)
 	m.erdPosMem = cloneERDPosMem(st.ERDPositions)
+	m.queryParams = cloneStringMap(st.Params)
 	if st.Layout != nil {
 		m.applySessionLayout(*st.Layout)
 	}
@@ -430,6 +433,20 @@ func (m *Model) canonicalTableName(table string) string {
 		}
 	}
 	return table
+}
+
+// cloneStringMap copies a flat string map. An empty source becomes nil so a
+// restored session with no :param bindings clears whatever was live, and so
+// later edits do not mutate the store cache.
+func cloneStringMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(src))
+	for k, v := range src {
+		out[k] = v
+	}
+	return out
 }
 
 // cloneColWidthMem deep-copies a col-width map so mutating memory cannot

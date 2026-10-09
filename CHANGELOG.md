@@ -23,6 +23,8 @@ commits, so it can come up empty).
   focused panel (plus Global) in a filtered palette; no permanent menubar.
 
 ### Changed
+- Query parameters (`:param`) are saved with the session and restored on
+  reconnect, so a buffer that uses `:name` stays runnable after a disconnect.
 - Results grid: duplicate JOIN column names are disambiguated (`orders.id`,
   or `id_2` when the source table isn't known) so headers, sort, and filter
   can tell them apart.

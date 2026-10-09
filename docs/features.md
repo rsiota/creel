@@ -284,7 +284,8 @@ erDiagram
 - **Query parameters** — `:param start 2026-01-01` then use `:start` in SQL
   (`WHERE created_at > :start`). `:param` lists them; `:param!` / `:param! name`
   clears. Literals, comments, and Postgres `::casts` are left alone. Status bar
-  shows `PARAM n` while any are set. Cleared on disconnect.
+  shows `PARAM n` while any are set. Bindings are saved with the session and
+  restored when you reconnect to the same connection and database.
 - **Record inspector** — side panel with a vertical form view that tracks the
   results cursor. Results `h`/`l` always update the focused inspector field;
   inspector → grid column sync is opt-in via `:set inspector_sync on`. JSON /
@@ -344,12 +345,13 @@ erDiagram
 - **`:watch` / `:tail`** — periodic refresh of the last query (status bar
   `WATCH` / `TAIL`). New or changed rows are tinted on each tick. An open
   chart redraws with the refresh (bang charts re-query).
-- **Session restore** — reopening a connection brings back your open tabs and
-  editor buffers from the last visit (keyed per connection + database). Buffers
-  are restored but not re-executed; a `creel -f` startup file still takes
-  precedence on first connect. Column widths and ERD card positions restore
-  even when the tabs themselves are blank. `:session clear` wipes the saved
-  snapshot, `:session save` snapshots now.
+- **Session restore** — reopening a connection brings back your open tabs,
+  editor buffers, and `:param` bindings from the last visit (keyed per
+  connection + database). Buffers are restored but not re-executed; a
+  `creel -f` startup file still takes precedence on first connect. Column
+  widths, ERD card positions, and query parameters restore even when the tabs
+  themselves are blank. `:session clear` wipes the saved snapshot, `:session
+  save` snapshots now.
 - **Layout** — `:zen` / `:zen off` toggles a results-only layout (hides
   sidebar, editor, tabs, and side panels). `alt+b` / `alt+e` toggle the table
   sidebar and query editor; `:sidebar`, `:editor`, `:inspector`, and

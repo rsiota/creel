@@ -11,7 +11,8 @@ import (
 
 // queryParams holds named values substituted into SQL before execution.
 // Placeholders look like :name (letter-leading identifier). Postgres ::casts,
-// string/backtick literals, and comments are left alone. Cleared on disconnect.
+// string/backtick literals, and comments are left alone. The map is part of
+// the session snapshot, so it comes back when the connection is reopened.
 func (m *Model) ensureQueryParams() {
 	if m.queryParams == nil {
 		m.queryParams = make(map[string]string)

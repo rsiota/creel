@@ -41,6 +41,7 @@ func TestSessionSaveRestoreRoundTrip(t *testing.T) {
 	m.editor.SetValue("SELECT * FROM users;")
 	m.saveTabState()
 	m.addTab("orders", "SELECT * FROM orders;") // makes "orders" active
+	m.queryParams = map[string]string{"start": "2026-01-01", "status": "ok"}
 	m.saveSession()
 
 	// A brand-new model (simulating a later launch) restores from disk.
@@ -61,6 +62,60 @@ func TestSessionSaveRestoreRoundTrip(t *testing.T) {
 	// The "orders" tab (index 1) should be the restored active one.
 	if m2.activeTabID != m2.resultsTabs[1].ID {
 		t.Errorf("active tab = %d, want orders (%d)", m2.activeTabID, m2.resultsTabs[1].ID)
+	}
+	if m2.queryParams["start"] != "2026-01-01" || m2.queryParams["status"] != "ok" || len(m2.queryParams) != 2 {
+		t.Errorf("restored params = %v", m2.queryParams)
+	}
+}
+
+// TestSessionQueryParamsReplaceAndIsolate checks that a restore copies the
+// saved :param map (so editing it does not mutate the store cache), that a
+// later save with no params clears them, and that another database does not
+// pick them up.
+func TestSessionQueryParamsReplaceAndIsolate(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	connA := newNamedSQLiteConn(t, "conn")
+	m := NewModel(&config.Config{})
+	m.connection = connA
+	m.editor.SetValue("SELECT :start")
+	m.saveTabState()
+	m.queryParams = map[string]string{"start": "2026-01-01"}
+	m.saveSession()
+
+	m2 := NewModel(&config.Config{})
+	m2.connection = connA
+	m2.sessionStore = m.sessionStore
+	m2.queryParams = map[string]string{"leftover": "x"}
+	m2.restoreSession()
+	if m2.queryParams["start"] != "2026-01-01" || len(m2.queryParams) != 1 {
+		t.Fatalf("restore params = %v", m2.queryParams)
+	}
+	m2.queryParams["start"] = "changed"
+	m3 := NewModel(&config.Config{})
+	m3.connection = connA
+	m3.sessionStore = m.sessionStore
+	m3.restoreSession()
+	if m3.queryParams["start"] != "2026-01-01" {
+		t.Fatalf("restore aliased the store cache: %v", m3.queryParams)
+	}
+
+	m.queryParams = nil
+	m.saveSession()
+	m4 := NewModel(&config.Config{})
+	m4.connection = connA
+	m4.queryParams = map[string]string{"stale": "1"}
+	m4.restoreSession()
+	if len(m4.queryParams) != 0 {
+		t.Fatalf("empty snapshot should clear params, got %v", m4.queryParams)
+	}
+
+	connB := newNamedSQLiteConn(t, "conn")
+	m5 := NewModel(&config.Config{})
+	m5.connection = connB
+	m5.restoreSession()
+	if len(m5.queryParams) != 0 || m5.editor.Value() != "" {
+		t.Fatalf("cross-database restore leaked params=%v editor=%q", m5.queryParams, m5.editor.Value())
 	}
 }
 

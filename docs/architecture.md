@@ -74,7 +74,7 @@ so indexes, named FKs, and table options survive a round-trip.
 - `internal/secrets` — OS keychain store: `Store` writes a value and returns a `secret://` ref, `Resolve` turns a ref (or plaintext) back into the value
 - `internal/history` — per-connection query history (JSON, searchable)
 - `internal/bookmarks` — persisted per-connection saved-query store
-- `internal/session` — per-connection workspace snapshot (open tabs + editor buffers), restored on reconnect
+- `internal/session` — per-connection workspace snapshot (open tabs, editor buffers, and `:param` bindings), restored on reconnect
 - `internal/ai` — OpenAI-compatible HTTP client for the assistant
 - `internal/version` — version string, injected via ldflags at release
 

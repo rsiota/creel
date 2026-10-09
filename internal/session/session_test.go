@@ -27,6 +27,7 @@ func TestStoreSaveLoadRoundTrip(t *testing.T) {
 		},
 		Layout: &Layout{SidebarWidth: 36, EditorHeight: 16, RightSlotWidth: 40, EditorMaximized: true},
 		Panels: &Panels{Right: RightInspector},
+		Params: map[string]string{"start": "2026-01-01", "status": "ok"},
 	}
 	if err := s.Save("Work DB", "appdb", st); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -56,6 +57,9 @@ func TestStoreSaveLoadRoundTrip(t *testing.T) {
 	}
 	if got.Panels == nil || got.Panels.Right != RightInspector {
 		t.Errorf("panels round-trip mismatch: %+v", got.Panels)
+	}
+	if got.Params["start"] != "2026-01-01" || got.Params["status"] != "ok" || len(got.Params) != 2 {
+		t.Errorf("params round-trip mismatch: %+v", got.Params)
 	}
 }
 
@@ -130,5 +134,8 @@ func TestHasContent(t *testing.T) {
 	}
 	if (State{Layout: &Layout{SidebarWidth: 40}, Panels: &Panels{Right: RightInspector}}).HasContent() {
 		t.Error("layout/panels alone should not count as content")
+	}
+	if (State{Params: map[string]string{"start": "1"}}).HasContent() {
+		t.Error("query parameters alone should not count as content")
 	}
 }
