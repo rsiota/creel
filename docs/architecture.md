@@ -80,11 +80,15 @@ so indexes, named FKs, and table options survive a round-trip.
 
 ## internal/ui — Bubble Tea components
 
-The UI is one Elm-style state machine in `app.go`. Components are grouped by
-subsystem:
+The UI is one Elm-style state machine. `Model` lives in `app.go`; the update
+loop is split beside it so the key dispatch and the view are not one file.
+Components are grouped by subsystem:
 
 **Core**
-- `app.go` — top-level `Model` (the state machine: `stateConnections` → `stateWorkspace`, focus cycling)
+- `app.go` — top-level `Model` (`stateConnections` → `stateWorkspace`, focus cycling)
+- `app_update.go` — Bubble Tea message switch
+- `app_keys.go` / `app_focus.go` — workspace keys, then the focused panel
+- `app_view.go` — `View` for the connection screens and the workspace
 - `layout.go` — workspace layout + panel sizing
 - `statusbar.go` — bottom status bar (conn/db/table, counts, hints, messages)
 - `hints.go` — context-sensitive keybinding hint line
@@ -151,7 +155,10 @@ subsystem:
 - `help.go` — help overlay (`?`), renders from the registry
 - `palette.go` — fuzzy jump-anywhere palette (`Ctrl+P`: bindings, tables, bookmarks; themes when filtered)
 - `keymsg.go` — maps dispatch token strings → `tea.KeyMsg` for replay
-- `excmd.go` / `excmd_registry.go` — `:` Ex command line
+- `excmd.go` — `:` command line (input, completion, dispatch)
+- `excmd_run.go`, `excmd_schema.go`, `excmd_explore.go`, `excmd_catalog.go`,
+  `excmd_query.go` — the commands themselves, grouped by what they touch
+- `excmd_registry.go` / `excmd_set.go` — command specs and `:set`
 
 **Themes & icons**
 - `themes.go` / `themes_generated.go` (codegen from iTerm2-Color-Schemes) /
@@ -167,7 +174,7 @@ subsystem:
 ## Key design decisions
 
 - **Driver interface** — `internal/db/db.go` defines the `DB` interface; every driver implements it, so adding a database is self-contained. It includes `Begin(level IsolationLevel) (Tx, error)` for transactional batch writes (inline edits & row clones are atomic) and for manual `:begin [isolation]` transactions.
-- **Elm-style state machine** — the UI is an immutable state machine in `app.go` (`stateConnections` → `stateWorkspace`), with `Focus` cycling between panels. Model methods use value receivers (the model is immutable; updates return a new copy).
+- **Elm-style state machine** — the UI is an immutable state machine (`stateConnections` → `stateWorkspace`), with `Focus` cycling between panels. Model methods use value receivers (the model is immutable; updates return a new copy).
 - **Pure-Go SQLite** — `modernc.org/sqlite`, no CGO, which simplifies cross-compilation. Please don't introduce a CGO dependency.
 - **Keybinding registry** — `registry.go` is the single source of truth for both the `?` help overlay and the `Ctrl+P` palette. Each `Binding` carries a `Display` string, dispatch `Tokens`, and a `Desc`; `help.go` only renders it. The `TestKeybindingsMatchDispatch` test parses dispatch (`case` literals + `key.WithKeys` args) via `go/parser` and asserts every documented token is actually implemented, preventing help/dispatch drift.
 - **Command palette replay** — `palette.go` fuzzy-searches the registry plus

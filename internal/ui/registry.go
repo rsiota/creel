@@ -40,7 +40,7 @@ func registry() []Section {
 	return []Section{
 		{
 			Title:  "Global",
-			Source: "app.go",
+			Source: "app.go app_update.go app_keys.go app_focus.go",
 			Items: []Binding{
 				// Split aliases so each is Ctrl+P-replayable (one Display = one
 				// replay sequence). Same action; both rows share the desc.
@@ -70,7 +70,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Tabs",
-			Source: "app.go",
+			Source: "app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				// One action per row so the palette can replay each chord.
 				{"g t", []string{"g", "t"}, "next tab", ""},
@@ -83,7 +83,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Connections",
-			Source: "app.go",
+			Source: "app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"j/k, ↑/↓", []string{"j", "k", "up", "down"}, "move", "j/k"},
 				{"[ / ]", []string{"[", "]", "left", "right", "h", "l"}, "switch group tab", "[/]"},
@@ -97,7 +97,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Connection Form",
-			Source: "app.go connection_form.go",
+			Source: "app.go app_keys.go app_focus.go connection_form.go",
 			Items: []Binding{
 				{"[ / ]", []string{"[", "]"}, "switch page", "[/]"},
 				{"j/k", []string{"j", "k"}, "move", "j/k"},
@@ -111,7 +111,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Tab Bar",
-			Source: "app.go",
+			Source: "app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"h/l, ←/→", []string{"h", "l", "left", "right"}, "switch tab", "h/l"},
 				{"t", []string{"t"}, "new tab", "t"},
@@ -120,7 +120,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Sidebar (Tables)",
-			Source: "app.go",
+			Source: "app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"j/k, ↑/↓", []string{"j", "k", "up", "down"}, "move", "j/k"},
 				{"l", []string{"l", "right"}, "focus results", "l"},
@@ -142,7 +142,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "ERD",
-			Source: "app.go erd_panel.go",
+			Source: "app.go app_keys.go app_focus.go erd_panel.go",
 			Items: []Binding{
 				{"esc / q / ctrl+c", []string{"esc", "q", "ctrl+c"}, "close ERD panel", "esc"},
 				{"j/k/h/l", []string{"j", "k", "h", "l", "up", "down", "left", "right"}, "move focus between cards / scroll source", "j/k/h/l"},
@@ -165,7 +165,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Relationship Explorer",
-			Source: "app.go rel_explorer.go",
+			Source: "app.go app_keys.go app_focus.go rel_explorer.go",
 			Items: []Binding{
 				{"j/k, ↑/↓", []string{"j", "k", "up", "down"}, "move", "j/k"},
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
@@ -181,7 +181,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Schema Editor",
-			Source: "schema_editor.go app.go",
+			Source: "schema_editor.go app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"h/j/k/l", []string{"h", "j", "k", "l"}, "move cell", "h/j/k/l"},
 				{"e / i", []string{"e", "i"}, "edit cell", "e"},
@@ -194,7 +194,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Export Picker",
-			Source: "app.go",
+			Source: "app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"j/k", []string{"j", "k"}, "move", "j/k"},
 				{"space", []string{" "}, "toggle table", "space"},
@@ -207,7 +207,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Backup Picker",
-			Source: "app.go backup_picker.go",
+			Source: "app.go app_keys.go app_focus.go backup_picker.go",
 			Items: []Binding{
 				{"j/k", []string{"j", "k"}, "move", "j/k"},
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
@@ -223,7 +223,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Export Dialog",
-			Source: "app.go export_overlay.go",
+			Source: "app.go app_keys.go app_focus.go export_overlay.go",
 			Items: []Binding{
 				{"j/k, ↑/↓", []string{"j", "k", "up", "down"}, "move (format / columns / scope)", "j/k"},
 				{"space", []string{" "}, "select format / toggle column / select scope", "space"},
@@ -235,7 +235,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Theme Picker",
-			Source: "app.go",
+			Source: "app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"g c", []string{"g", "c"}, "open theme picker (live preview)", ""},
 				{"↑/↓", []string{"up", "down"}, "move; type to filter", "↑/↓"},
@@ -245,7 +245,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Database Picker",
-			Source: "app.go",
+			Source: "app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"j/k, ↑/↓", []string{"j", "k", "up", "down"}, "move", "j/k"},
 				{"enter", []string{"enter"}, "select database", "enter"},
@@ -257,7 +257,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "History Panel",
-			Source: "app.go",
+			Source: "app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"j/k", []string{"j", "k"}, "move", "j/k"},
 				{"s", []string{"s"}, "toggle sort (recent/slowest)", "s"},
@@ -269,7 +269,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Bookmarks Panel",
-			Source: "app.go",
+			Source: "app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"j/k", []string{"j", "k"}, "move", "j/k"},
 				{"enter", []string{"enter"}, "load query into editor", "enter"},
@@ -280,7 +280,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Table Designer",
-			Source: "table_designer.go app.go",
+			Source: "table_designer.go app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"h/j/k/l", []string{"h", "j", "k", "l"}, "move cell", "h/j/k/l"},
 				{"e / i", []string{"e", "i"}, "edit cell", "e"},
@@ -292,7 +292,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Editor (Vim)",
-			Source: "query_editor.go vim_buffer.go app.go",
+			Source: "query_editor.go vim_buffer.go app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"i/a/o/A/O", []string{"i", "a", "o", "A", "O"}, "insert mode", "i/a/o"},
 				{"esc", []string{"esc"}, "normal mode", "esc"},
@@ -311,7 +311,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Results",
-			Source: "app.go",
+			Source: "app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"h/j/k/l", []string{"h", "j", "k", "l"}, "move cursor", "h/j/k/l"},
 				{"0 / $", []string{"0", "$"}, "first / last column", "0/$"},
@@ -360,7 +360,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Inspector",
-			Source: "app.go",
+			Source: "app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"j/k", []string{"j", "k"}, "move field", "j/k"},
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
@@ -392,7 +392,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Cross-Table Search",
-			Source: "app.go",
+			Source: "app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"j/k", []string{"j", "k", "up", "down"}, "move result", "j/k"},
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
@@ -403,7 +403,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Lookup Panel",
-			Source: "lookup_panel.go app.go",
+			Source: "lookup_panel.go app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"j/k", []string{"j", "k", "up", "down"}, "move", "j/k"},
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
@@ -415,7 +415,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Explain Panel",
-			Source: "explain_panel.go app.go",
+			Source: "explain_panel.go app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"j/k", []string{"j", "k", "up", "down"}, "scroll", "j/k"},
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
@@ -425,7 +425,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Diff Panel",
-			Source: "diff_panel.go app.go",
+			Source: "diff_panel.go app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"j/k", []string{"j", "k", "up", "down"}, "scroll", "j/k"},
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
@@ -435,7 +435,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Chart Panel",
-			Source: "chart_panel.go app.go",
+			Source: "chart_panel.go app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"j/k/h/l", []string{"j", "k", "h", "l", "up", "down", "left", "right"}, "move", "j/k"},
 				{"g / G", []string{"g", "G"}, "top / bottom", "g/G"},
@@ -451,7 +451,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Cell Editor",
-			Source: "cell_edit_popup.go vim_buffer.go app.go",
+			Source: "cell_edit_popup.go vim_buffer.go app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"i/a/o", []string{"i", "a", "o", "A", "O"}, "insert mode", "i/a/o"},
 				{"esc", []string{"esc"}, "normal mode / close", "esc"},
@@ -467,7 +467,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Import Prompt",
-			Source: "import_prompt.go app.go",
+			Source: "import_prompt.go app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"tab", []string{"tab"}, "complete path", "tab"},
 				{"↑/↓", []string{"up", "down"}, "navigate completions", "↑/↓"},
@@ -477,7 +477,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Column Picker",
-			Source: "column_picker.go app.go",
+			Source: "column_picker.go app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"↑/↓", []string{"up", "down"}, "move", "↑/↓"},
 				{"space", []string{" "}, "toggle column", "space"},
@@ -489,7 +489,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Filter Picker",
-			Source: "filter_picker.go app.go",
+			Source: "filter_picker.go app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"↑/↓", []string{"up", "down"}, "move", "↑/↓"},
 				{"space", []string{" "}, "toggle value", "space"},
@@ -501,7 +501,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Add Column / Rename Table",
-			Source: "add_column_form.go table_rename_form.go app.go",
+			Source: "add_column_form.go table_rename_form.go app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"tab", []string{"tab"}, "next field", "tab"},
 				{"enter", []string{"enter"}, "confirm", "enter"},
@@ -510,7 +510,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Assistant",
-			Source: "assistant.go app.go",
+			Source: "assistant.go app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"i / a / o", []string{"i", "a", "o"}, "compose a question (insert mode)", "i/a/o"},
 				{"enter", []string{"enter"}, "send / apply latest SQL to editor", "enter"},
@@ -524,7 +524,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "AI Provider",
-			Source: "app.go",
+			Source: "app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"j/k, \u2191/\u2193", []string{"j", "k", "up", "down"}, "move", "j/k"},
 				{"enter", []string{"enter"}, "select provider", "enter"},
@@ -536,7 +536,7 @@ func registry() []Section {
 		},
 		{
 			Title:  "Model Browser",
-			Source: "app.go",
+			Source: "app.go app_keys.go app_focus.go",
 			Items: []Binding{
 				{"j/k", []string{"j", "k", "up", "down"}, "move", "j/k"},
 				{"enter", []string{"enter"}, "select model", "enter"},
