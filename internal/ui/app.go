@@ -117,6 +117,10 @@ type queryExecutedMsg struct {
 	multiRan   int // statements completed successfully before finish/error
 	multiTotal int // total statements in the batch
 	multiFail  int // 1-based index of the failing statement (0 if none)
+	// wrapSource is the alias-rewritten SELECT when this run disambiguated
+	// duplicate output names. setWrap reports whether to store it.
+	wrapSource string
+	setWrap    bool
 }
 
 // schemasLoadedMsg carries prefetched table schemas for autocomplete and
@@ -671,6 +675,12 @@ type Model struct {
 	baseQuery   string            // original query without filters
 	filters     []string          // active filter expressions, AND-joined
 	queryParams map[string]string // :name → value; expanded before execute
+	// wrapSource is the user's SELECT with duplicate output names aliased, so
+	// filter/sort can wrap it. Empty when baseQuery's names are already unique.
+	wrapSource string
+	// colsDisambiguated is set when the grid renamed duplicate headers but the
+	// SQL still has them, so filter/sort must stay off.
+	colsDisambiguated bool
 
 	// Quick sort (single-column, server-side ORDER BY)
 	sortCol string // column name, "" = no sort
@@ -1491,6 +1501,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for i, c := range msg.result.Columns {
 				cols[i] = c.Name
 			}
+			display, renamed := disambiguateColumnNames(cols)
+			m.colsDisambiguated = renamed
+			if msg.setWrap {
+				m.wrapSource = msg.wrapSource
+			}
 
 			// Check for "has next page" — we fetched pageSize+1 rows
 			rows := msg.result.Rows
@@ -1502,7 +1517,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				blobs = db.TrimBlobs(blobs, msg.pageSize)
 			}
 
-			m.results.SetResult(cols, rows, msg.result.Message)
+			m.results.SetResult(display, rows, msg.result.Message)
 			m.results.SetBlobs(blobs)
 
 			// Watch/tail: tint rows whose content wasn't on the previous page.
@@ -1525,9 +1540,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.chartPanel.Hide()
 			}
 
-			colTypes := make(map[string]string)
-			for _, c := range msg.result.Columns {
-				colTypes[c.Name] = c.Type
+			colTypes := make(map[string]string, len(msg.result.Columns))
+			for i, c := range msg.result.Columns {
+				colTypes[display[i]] = c.Type
 			}
 			m.results.SetColumnTypes(colTypes)
 			m.page = msg.page
@@ -1689,6 +1704,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.results.Clear()
 					m.lastQuery = ""
 					m.baseQuery = ""
+					m.clearAliasState()
 					m.filters = nil
 					m.editor.SetValue("")
 				}

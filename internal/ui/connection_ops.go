@@ -213,6 +213,7 @@ func (m *Model) resetWorkspaceForNewConnection() {
 	m.clearQueryFailure()
 	m.clearLastExplain()
 	m.baseQuery = ""
+	m.clearAliasState()
 	m.queryParams = nil
 	m.filters = nil
 	m.sortCol = ""

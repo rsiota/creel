@@ -109,7 +109,7 @@ func (m *Model) exportResults(format exportFormat, cols []string, scope exportSc
 	// and project columns in Go. Running it directly (no subquery wrap) avoids
 	// the JOIN/derived-table caveats that paging relies on.
 	if scope == scopeAll {
-		query := strings.TrimRight(m.lastQuery, ";")
+		query := m.aliasedSource(m.lastQuery)
 		conn := m.connection
 		return func() tea.Msg {
 			result, err := conn.DB().Execute(query)

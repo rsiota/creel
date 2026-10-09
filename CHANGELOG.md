@@ -23,6 +23,9 @@ commits, so it can come up empty).
   focused panel (plus Global) in a filtered palette; no permanent menubar.
 
 ### Changed
+- Results grid: duplicate JOIN column names are disambiguated (`orders.id`,
+  or `id_2` when the source table isn't known) so headers, sort, and filter
+  can tell them apart.
 - Command palette: split dual-action keybinding rows (`g t` / `g T`, `g g` /
   `G`, `ctrl+e` / `\`) so each action is Ctrl+P-replayable.
 

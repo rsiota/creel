@@ -40,8 +40,8 @@ func (m *Model) detectResultMetadata(query string) {
 // canFilter reports whether the current results support quick-filtering and
 // column sort. Simple SELECT * FROM <table> queries rebuild in place; other
 // SELECTs (JOINs, projections, GROUP BY, CTEs) wrap the base query as a
-// subquery. JOIN * with duplicate column names is rejected (MySQL derived
-// tables require unique names).
+// subquery. A JOIN whose duplicate names could not be aliased is rejected
+// (MySQL derived tables require unique names).
 func (m Model) canFilter() bool {
 	if m.connection == nil || m.baseQuery == "" {
 		return false
@@ -51,6 +51,9 @@ func (m Model) canFilter() bool {
 	}
 	if isSelectStarFromSimpleTable(m.baseQuery) {
 		return true
+	}
+	if m.colsDisambiguated {
+		return false
 	}
 	return m.resultColumnsUnique()
 }
@@ -66,6 +69,9 @@ func (m Model) filterUnavailableReason() string {
 	}
 	if !isSelectQuery(m.baseQuery) {
 		return "filtering needs a SELECT"
+	}
+	if !isSelectStarFromSimpleTable(m.baseQuery) && m.colsDisambiguated {
+		return "duplicate columns couldn't be aliased for filtering"
 	}
 	if !isSelectStarFromSimpleTable(m.baseQuery) && !m.resultColumnsUnique() {
 		return "filtering needs a SELECT with unique column names"
@@ -138,6 +144,9 @@ func (m Model) filterBaseSQL() string {
 	base := strings.TrimRight(strings.TrimSpace(m.baseQuery), ";")
 	if isSelectStarFromSimpleTable(base) {
 		return parseSimpleSelectTable(base)
+	}
+	if src := strings.TrimRight(strings.TrimSpace(m.wrapSource), ";"); src != "" {
+		base = src
 	}
 	return "(" + base + ") AS _creel_filt"
 }

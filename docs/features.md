@@ -39,9 +39,12 @@ An overview of everything creel can do. For keys, see
   columns with `:bar` / `:line` / `:scatter` / `:hist` / `:freq` / `:pie`.
   Sort (`o`) and filters (`*` / `!` / `:filter` / value picker) work on
   custom SELECTs too (JOINs, projections, `GROUP BY`) by wrapping the base
-  query; simple `SELECT * FROM <table>` still rebuilds in place. Result
-  columns must have unique names (avoid bare `SELECT *` on multi-table JOINs
-  that duplicate `id`).
+  query; simple `SELECT * FROM <table>` still rebuilds in place. Duplicate
+  names from a JOIN (`SELECT *`, or two bare `id` columns) are shown as
+  `orders.id` when the source table is known, or `id_2` otherwise, and sort
+  and filter use those names. A select list creel cannot rewrite (a subquery
+  in FROM, `count(*)` with no alias) keeps the distinct headers but cannot
+  be filtered.
   Primary-key columns keep the existing `*` marker and stay pinned on the
   left while you scroll horizontally. Foreign-key cells
   use a soft blue tint (primary darkened toward the theme background); headers

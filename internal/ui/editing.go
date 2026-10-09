@@ -105,6 +105,7 @@ func (m *Model) followForeignKeyAt(col int) tea.Cmd {
 	m.editor.SetValue(query)
 	m.lastQuery = query
 	m.baseQuery = ""
+	m.clearAliasState()
 	m.filters = nil
 	m.sortCol = ""
 	m.sortDir = ""
@@ -186,6 +187,7 @@ func (m *Model) applyExplorerDrill(query string) {
 	m.editor.SetValue(query)
 	m.lastQuery = query
 	m.baseQuery = ""
+	m.clearAliasState()
 	m.filters = nil
 	m.sortCol = ""
 	m.sortDir = ""
@@ -257,6 +259,7 @@ func (m *Model) goBackQuery() tea.Cmd {
 	m.editor.SetValue(entry.query)
 	m.lastQuery = entry.query
 	m.baseQuery = ""
+	m.clearAliasState()
 	m.filters = nil
 	m.sortCol = ""
 	m.sortDir = ""

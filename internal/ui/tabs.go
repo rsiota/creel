@@ -14,20 +14,22 @@ type ResultsTab struct {
 	Results ResultsTable
 
 	// Per-tab query/pagination state (synced to/from Model on tab switch).
-	Page         int
-	PageSize     int
-	LastQuery    string
-	BaseQuery    string
-	PageMsg      string
-	TotalRows    int
-	TotalRowsSet bool
-	Filters      []string
-	SortCol      string
-	SortDir      string
-	QueryStack   []queryStackEntry
-	LastSearch   string
-	StatsMsg     string
-	EditorQuery  string
+	Page              int
+	PageSize          int
+	LastQuery         string
+	BaseQuery         string
+	PageMsg           string
+	TotalRows         int
+	TotalRowsSet      bool
+	Filters           []string
+	SortCol           string
+	SortDir           string
+	WrapSource        string
+	ColsDisambiguated bool
+	QueryStack        []queryStackEntry
+	LastSearch        string
+	StatsMsg          string
+	EditorQuery       string
 }
 
 // NewResultsTab creates a new tab with minimal state.
@@ -72,6 +74,8 @@ func (m *Model) saveTabState() {
 	tab.Filters = m.filters
 	tab.SortCol = m.sortCol
 	tab.SortDir = m.sortDir
+	tab.WrapSource = m.wrapSource
+	tab.ColsDisambiguated = m.colsDisambiguated
 	tab.QueryStack = m.queryStack
 	tab.LastSearch = m.lastSearch
 	tab.StatsMsg = m.statsMsg
@@ -95,6 +99,8 @@ func (m *Model) restoreTabState() {
 	m.filters = tab.Filters
 	m.sortCol = tab.SortCol
 	m.sortDir = tab.SortDir
+	m.wrapSource = tab.WrapSource
+	m.colsDisambiguated = tab.ColsDisambiguated
 	m.queryStack = tab.QueryStack
 	m.lastSearch = tab.LastSearch
 	m.statsMsg = tab.StatsMsg

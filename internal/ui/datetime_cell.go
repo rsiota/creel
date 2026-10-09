@@ -24,7 +24,7 @@ const relativeHorizon = 7 * 24 * time.Hour
 // isDatetimeColumnName reports whether a column name typically holds a
 // date/time even when the driver type is TEXT (common for SQLite).
 func isDatetimeColumnName(name string) bool {
-	n := strings.ToLower(strings.TrimSpace(name))
+	n := strings.ToLower(columnLeaf(name))
 	if n == "" {
 		return false
 	}

@@ -28,7 +28,7 @@ func booleanValueFg(val string) (lipgloss.Color, bool) {
 // SQLite). Kept narrow on purpose: is_/has_/can_ prefixes and a few exact
 // names / suffixes.
 func isBooleanColumnName(name string) bool {
-	n := strings.ToLower(strings.TrimSpace(name))
+	n := strings.ToLower(columnLeaf(name))
 	if n == "" {
 		return false
 	}

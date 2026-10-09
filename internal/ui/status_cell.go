@@ -13,7 +13,7 @@ import (
 // isStatusColumnName reports whether a result column should get status styling.
 // Kept narrow on purpose: status / state / *_status / *_state.
 func isStatusColumnName(name string) bool {
-	n := strings.ToLower(strings.TrimSpace(name))
+	n := strings.ToLower(columnLeaf(name))
 	if n == "" {
 		return false
 	}

@@ -100,12 +100,16 @@ func (m *Model) runChart(spec chartSpec, all bool) tea.Cmd {
 		m.schemaMsg = "no query to re-run — :bar! / :line! / :hist! / :freq! / :pie! / :scatter! charts the last SELECT"
 		return nil
 	}
-	expanded, err := m.expandQueryParams(query)
-	if err != nil {
-		m.schemaMsg = err.Error()
-		return nil
+	if alt := m.aliasedSource(query); alt != query {
+		query = alt
+	} else {
+		expanded, err := m.expandQueryParams(query)
+		if err != nil {
+			m.schemaMsg = err.Error()
+			return nil
+		}
+		query = expanded
 	}
-	query = expanded
 	execQuery := query
 	if isSelectQuery(query) && !hasJoinClause(query) {
 		// Same rule as pageExecQuery: don't bury ORDER BY inside a derived
@@ -154,6 +158,7 @@ func (m *Model) runChart(spec chartSpec, all bool) tea.Cmd {
 		for i, c := range result.Columns {
 			cols[i] = c.Name
 		}
+		cols, _ = disambiguateColumnNames(cols)
 		tbl := NewResultsTable()
 		tbl.SetResult(cols, rows, "")
 		msg := buildChartReady(tbl, displaySpec, truncated)

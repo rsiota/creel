@@ -23,6 +23,7 @@ func (m *Model) executeQuery() tea.Cmd {
 
 	m.lastQuery = query
 	m.baseQuery = query
+	m.clearAliasState()
 	m.filters = nil
 	m.sortCol = ""
 	m.sortDir = ""
@@ -67,6 +68,7 @@ func (m *Model) executeAllQueries(sql string) tea.Cmd {
 	m.queryStack = nil
 	m.totalRows = 0
 	m.totalRowsSet = false
+	m.clearAliasState()
 
 	if m.queryCancel != nil {
 		m.queryCancel()
@@ -76,6 +78,8 @@ func (m *Model) executeAllQueries(sql string) tea.Cmd {
 	conn := m.connection
 	tx := m.tx
 	pageSize := m.pageSize
+	lookup := m.resultColumnLookup()
+	driver := conn.Config().Driver
 	ctx, cancel := m.queryContext()
 	m.queryCancel = cancel
 	m.queryRunning = true
@@ -88,13 +92,20 @@ func (m *Model) executeAllQueries(sql string) tea.Cmd {
 			last       db.Result
 			lastQuery  string
 			lastExec   string
+			lastWrap   string
 			hadColumns bool
 			ran        int
 		)
 		for i, q := range expanded {
-			execQ := q
-			if isSelectQuery(q) && !hasJoinClause(q) {
-				execQ = pageExecQuery(q, pageSize, 0)
+			source := q
+			wrap := ""
+			if rewritten, ok := rewriteSelectAliases(q, driver, lookup); ok {
+				source = rewritten
+				wrap = rewritten
+			}
+			execQ := source
+			if isSelectQuery(source) && !hasJoinClause(source) {
+				execQ = pageExecQuery(source, pageSize, 0)
 			}
 			var (
 				result db.Result
@@ -124,9 +135,11 @@ func (m *Model) executeAllQueries(sql string) tea.Cmd {
 			lastExec = execQ
 			if len(result.Columns) > 0 {
 				last = result
+				lastWrap = wrap
 				hadColumns = true
 			} else if !hadColumns {
 				last = result
+				lastWrap = wrap
 			}
 		}
 		return queryExecutedMsg{
@@ -137,6 +150,8 @@ func (m *Model) executeAllQueries(sql string) tea.Cmd {
 			pageSize:   pageSize,
 			multiRan:   ran,
 			multiTotal: len(expanded),
+			wrapSource: lastWrap,
+			setWrap:    true,
 		}
 	}
 
@@ -439,6 +454,11 @@ func (m *Model) runPageQuery() tea.Cmd {
 	page := m.page
 	pageSize := m.pageSize
 	lastQuery := m.lastQuery
+	lookup := m.resultColumnLookup()
+	driver := db.DriverSQLite
+	if conn != nil {
+		driver = conn.Config().Driver
+	}
 
 	ctx, cancel := m.queryContext()
 	m.queryCancel = cancel
@@ -447,18 +467,25 @@ func (m *Model) runPageQuery() tea.Cmd {
 	m.queryStart = time.Now()
 	m.querySpinner = 0
 
-	// Paginate SELECTs. Prefer appending LIMIT/OFFSET directly so an ORDER BY
-	// (e.g. from `o` sort) stays on the outer query — MySQL/MariaDB may ignore
+	// Paginate SELECTs inside the goroutine, after duplicate column names are
+	// aliased. Prefer appending LIMIT/OFFSET directly so an ORDER BY (e.g.
+	// from `o` sort) stays on the outer query — MySQL/MariaDB may ignore
 	// ORDER BY inside a derived table. Only wrap when the user query already
 	// has LIMIT/OFFSET; then hoist a trailing ORDER BY outside the wrap.
-	var execQuery string
-	if isSelectQuery(query) && !hasJoinClause(query) {
-		execQuery = pageExecQuery(query, pageSize, offset)
-	} else {
-		execQuery = query
-	}
-
+	// JOINs stay unwrapped: a rewritten select list is still a join.
 	execCmd := func() tea.Msg {
+		source := query
+		var wrap string
+		var setWrap bool
+		if rewritten, ok := rewriteSelectAliases(query, driver, lookup); ok {
+			source = rewritten
+			wrap = rewritten
+			setWrap = true
+		}
+		execQuery := source
+		if isSelectQuery(source) && !hasJoinClause(source) {
+			execQuery = pageExecQuery(source, pageSize, offset)
+		}
 		// Run on the active manual transaction when one is open, so reads see
 		// the tx's uncommitted writes and writes stage inside it. The ex
 		// guards (refuse :commit/:rollback while queryRunning) keep this
@@ -473,14 +500,16 @@ func (m *Model) runPageQuery() tea.Cmd {
 			result, err = conn.DB().ExecuteContext(ctx, execQuery)
 		}
 		return queryExecutedMsg{
-			query:     lastQuery,
-			execQuery: execQuery,
-			result:    result,
-			err:       err,
-			page:      page,
-			pageSize:  pageSize,
-			cancelled: errors.Is(err, context.Canceled),
-			timedOut:  errors.Is(err, context.DeadlineExceeded),
+			query:      lastQuery,
+			execQuery:  execQuery,
+			result:     result,
+			err:        err,
+			page:       page,
+			pageSize:   pageSize,
+			cancelled:  errors.Is(err, context.Canceled),
+			timedOut:   errors.Is(err, context.DeadlineExceeded),
+			wrapSource: wrap,
+			setWrap:    setWrap,
 		}
 	}
 

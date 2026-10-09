@@ -3962,6 +3962,7 @@ func (m *Model) exTail(args []string) tea.Cmd {
 	}
 	m.lastQuery = q
 	m.baseQuery = q
+	m.clearAliasState()
 	m.filters = nil
 	m.sortCol = ""
 	m.sortDir = ""
